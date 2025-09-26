@@ -5,14 +5,14 @@ import { createError } from 'h3'
  */
 export function getContentDatabaseName(): string {
     const runtimeConfig = useRuntimeConfig()
-    const dbContentPrefix = runtimeConfig.dbContentPrefix
+    const dbLoginPrefix = runtimeConfig.dbLoginPrefix
 
-    if (!dbContentPrefix) {
+    if (!dbLoginPrefix) {
         throw createError({
             statusCode: 500,
-            statusMessage: 'Content database prefix (dbContentPrefix) is not configured'
+            statusMessage: 'Content database prefix (dbLoginPrefix) is not configured'
         })
     }
 
-    return `${dbContentPrefix}-content`
+    return `${dbLoginPrefix}-content`
 }

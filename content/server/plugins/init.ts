@@ -8,13 +8,13 @@ async function initializeContentLayer(): Promise<void> {
         validateCouchDBEnvironment()
 
         const runtimeConfig = useRuntimeConfig()
-        const dbContentPrefix = runtimeConfig.dbContentPrefix
+        const dbLoginPrefix = runtimeConfig.dbLoginPrefix
 
-        if (!dbContentPrefix) {
-            throw new Error('Missing dbContentPrefix runtime configuration for content layer')
+        if (!dbLoginPrefix) {
+            throw new Error('Missing dbLoginPrefix runtime configuration for content layer')
         }
 
-        const contentDatabaseName = `${dbContentPrefix}-content`
+        const contentDatabaseName = `${dbLoginPrefix}-content`
 
         await initializeDatabase(contentDatabaseName, [contentDesignDocument])
 

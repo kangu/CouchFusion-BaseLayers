@@ -16,7 +16,6 @@ export default defineNuxtConfig({
     components: {},
 
     runtimeConfig: {
-        dbContentPrefix: null,
         public: {
             content: {}
         }
@@ -30,14 +29,14 @@ export default defineNuxtConfig({
         ready: async (nuxt) => {
             const runtimeConfig = nuxt.options.runtimeConfig
 
-            if (!runtimeConfig.dbContentPrefix) {
+            if (!runtimeConfig.dbLoginPrefix) {
                 throw new Error(`
 🚨 Content Layer Configuration Error:
-The content layer requires 'dbContentPrefix' to be configured in your app's runtimeConfig.
+The content layer requires 'dbLoginPrefix' to be configured in your app's runtimeConfig.
 
 Add this to your nuxt.config.ts:
 runtimeConfig: {
-  dbContentPrefix: 'your-prefix',
+  dbLoginPrefix: 'your-prefix',
   // ... other config
 }
                 `.trim())
