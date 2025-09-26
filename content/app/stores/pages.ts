@@ -79,10 +79,10 @@ export const useContentPagesStore = defineStore('content-pages', {
             this.index.pending = true
             this.index.error = null
 
-            const { $fetch } = useNuxtApp()
+            const $f = useRequestFetch()
 
             try {
-                const response: any = await $fetch('/api/content/pages')
+                const response: any = await $f('/api/content/pages')
                 const pages = Array.isArray(response?.pages) ? response.pages : []
                 const summaries = pages.map((entry: any) => extractSummary(entry))
 
@@ -112,10 +112,10 @@ export const useContentPagesStore = defineStore('content-pages', {
             state.pending = true
             state.error = null
 
-            const { $fetch } = useNuxtApp()
+            const $f = useRequestFetch()
 
             try {
-                const response: any = await $fetch('/api/content/pages', {
+                const response: any = await $f('/api/content/pages', {
                     params: { path: normalizedPath }
                 })
 
@@ -133,9 +133,9 @@ export const useContentPagesStore = defineStore('content-pages', {
 
         async createPage(payload: { path: string; title?: string | null; content?: any; metadata?: Record<string, any> }): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
-            const { $fetch } = useNuxtApp()
+            const $f = useRequestFetch()
 
-            const response: any = await $fetch('/api/content/pages', {
+            const response: any = await $f('/api/content/pages', {
                 method: 'POST',
                 body: {
                     path: normalizedPath,
@@ -157,9 +157,9 @@ export const useContentPagesStore = defineStore('content-pages', {
 
         async updatePage(payload: { path: string; title?: string | null; content?: any; metadata?: Record<string, any> | null }): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
-            const { $fetch } = useNuxtApp()
+            const $f = useRequestFetch()
 
-            const response: any = await $fetch('/api/content/pages', {
+            const response: any = await $f('/api/content/pages', {
                 method: 'PUT',
                 body: {
                     path: normalizedPath,
