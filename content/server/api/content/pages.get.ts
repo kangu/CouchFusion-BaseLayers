@@ -28,6 +28,9 @@ export default defineEventHandler(async (event) => {
             }
 
             const doc: Record<string, any> = row.doc
+            const seoTitle = doc.seoTitle ?? doc.seo?.title ?? null
+            const seoDescription = doc.seoDescription ?? doc.seo?.description ?? null
+            const meta = doc.meta ?? doc.metadata ?? {}
 
             return {
                 success: true,
@@ -35,6 +38,9 @@ export default defineEventHandler(async (event) => {
                     id: doc._id || pageIdFromPath(normalizedPath),
                     path: normalizedPath,
                     title: doc.title ?? row.value?.title ?? null,
+                    seoTitle,
+                    seoDescription,
+                    meta,
                     updatedAt: doc.updatedAt ?? doc.updated_at ?? row.value?.updatedAt ?? null,
                     doc
                 }
@@ -49,11 +55,17 @@ export default defineEventHandler(async (event) => {
             const doc: Record<string, any> | undefined = row.doc ?? undefined
             const path = typeof row.key === 'string' ? row.key : (doc?._id ? doc._id.replace(/^page-/, '') : null)
             const normalizedPath = path ? normalizePagePath(path) : '/'
+            const seoTitle = doc?.seoTitle ?? doc?.seo?.title ?? null
+            const seoDescription = doc?.seoDescription ?? doc?.seo?.description ?? null
+            const meta = doc?.meta ?? doc?.metadata ?? {}
 
             return {
                 id: doc?._id ?? row.value?.id ?? pageIdFromPath(normalizedPath),
                 path: normalizedPath,
                 title: doc?.title ?? row.value?.title ?? null,
+                seoTitle,
+                seoDescription,
+                meta,
                 updatedAt: doc?.updatedAt ?? doc?.updated_at ?? row.value?.updatedAt ?? null,
                 doc
             }

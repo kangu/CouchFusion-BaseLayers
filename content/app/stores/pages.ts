@@ -1,4 +1,3 @@
-import { useNuxtApp } from '#app'
 import { defineStore } from 'pinia'
 import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 
@@ -11,6 +10,13 @@ export interface ContentPageDocument extends ContentPayload {
     path: string
     title?: string | null
     content?: any
+    seoTitle?: string | null
+    seoDescription?: string | null
+    seo?: {
+        title?: string | null
+        description?: string | null
+    } | null
+    meta?: Record<string, any> | null
     metadata?: Record<string, any> | null
     createdAt?: string | null
     updatedAt?: string | null
@@ -20,6 +26,9 @@ export interface ContentPageSummary {
     id: string
     path: string
     title: string | null
+    seoTitle: string | null
+    seoDescription: string | null
+    meta: Record<string, any>
     updatedAt: string | null
     doc: ContentPageDocument | null
 }
@@ -47,11 +56,21 @@ function extractSummary(payload: any): ContentPageSummary {
     const doc: ContentPageDocument | null = payload?.doc ?? payload?.page ?? payload ?? null
     const path = payload?.path ?? doc?.path ?? '/'
     const normalizedPath = normalizePagePath(path)
+    const seoTitle = payload?.seoTitle ?? doc?.seoTitle ?? doc?.seo?.title ?? null
+    const seoDescription = payload?.seoDescription ?? doc?.seoDescription ?? doc?.seo?.description ?? null
+    const meta =
+        payload?.meta ??
+        doc?.meta ??
+        doc?.metadata ??
+        {}
 
     return {
         id: payload?.id ?? doc?._id ?? pageIdFromPath(normalizedPath),
         path: normalizedPath,
         title: payload?.title ?? doc?.title ?? null,
+        seoTitle,
+        seoDescription,
+        meta,
         updatedAt: payload?.updatedAt ?? doc?.updatedAt ?? doc?.updated_at ?? null,
         doc
     }
@@ -131,7 +150,15 @@ export const useContentPagesStore = defineStore('content-pages', {
             }
         },
 
-        async createPage(payload: { path: string; title?: string | null; content?: any; metadata?: Record<string, any> }): Promise<ContentPageSummary> {
+        async createPage(payload: {
+            path: string
+            title?: string | null
+            content?: any
+            metadata?: Record<string, any>
+            meta?: Record<string, any>
+            seoTitle?: string | null
+            seoDescription?: string | null
+        }): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
             const $f = useRequestFetch()
 
@@ -141,7 +168,10 @@ export const useContentPagesStore = defineStore('content-pages', {
                     path: normalizedPath,
                     title: payload.title ?? null,
                     content: payload.content ?? null,
-                    metadata: payload.metadata ?? {}
+                    metadata: payload.metadata ?? payload.meta ?? {},
+                    meta: payload.meta ?? payload.metadata ?? {},
+                    seoTitle: payload.seoTitle ?? null,
+                    seoDescription: payload.seoDescription ?? null
                 }
             })
 
@@ -155,7 +185,15 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
-        async updatePage(payload: { path: string; title?: string | null; content?: any; metadata?: Record<string, any> | null }): Promise<ContentPageSummary> {
+        async updatePage(payload: {
+            path: string
+            title?: string | null
+            content?: any
+            metadata?: Record<string, any> | null
+            meta?: Record<string, any> | null
+            seoTitle?: string | null
+            seoDescription?: string | null
+        }): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
             const $f = useRequestFetch()
 
@@ -165,7 +203,10 @@ export const useContentPagesStore = defineStore('content-pages', {
                     path: normalizedPath,
                     title: payload.title,
                     content: payload.content,
-                    metadata: payload.metadata
+                    metadata: payload.metadata,
+                    meta: payload.meta,
+                    seoTitle: payload.seoTitle,
+                    seoDescription: payload.seoDescription
                 }
             })
 

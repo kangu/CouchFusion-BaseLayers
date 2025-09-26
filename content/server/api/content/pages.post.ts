@@ -9,6 +9,9 @@ interface CreatePagePayload {
     title?: string | null
     content?: any
     metadata?: Record<string, any>
+    meta?: Record<string, any>
+    seoTitle?: string | null
+    seoDescription?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -38,13 +41,24 @@ export default defineEventHandler(async (event) => {
 
         const timestamp = new Date().toISOString()
 
+        const meta = body.meta ?? body.metadata ?? {}
+        const seoTitle = body.seoTitle ?? null
+        const seoDescription = body.seoDescription ?? null
+
         const document = {
             _id: documentId,
             type: 'page',
             path: normalizedPath,
             title: body.title ?? null,
             content: body.content ?? null,
-            metadata: body.metadata ?? {},
+            seo: {
+                title: seoTitle,
+                description: seoDescription
+            },
+            seoTitle,
+            seoDescription,
+            meta,
+            metadata: meta,
             createdAt: timestamp,
             updatedAt: timestamp
         }

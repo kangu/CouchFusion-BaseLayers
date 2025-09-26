@@ -13,7 +13,16 @@ export default defineNuxtConfig({
         dirs: ['app/composables', 'app/stores']
     },
 
-    components: {},
+    components: {
+        dirs: [
+            /* global component import comes from the implementing app */
+            {
+                path: '~/components/builder',
+                global: true,
+                pathPrefix: false
+            }
+        ]
+    },
 
     runtimeConfig: {
         public: {

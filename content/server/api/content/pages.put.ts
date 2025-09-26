@@ -9,6 +9,9 @@ interface UpdatePagePayload {
     title?: string | null
     content?: any
     metadata?: Record<string, any> | null
+    meta?: Record<string, any> | null
+    seoTitle?: string | null
+    seoDescription?: string | null
 }
 
 export default defineEventHandler(async (event) => {
@@ -37,11 +40,35 @@ export default defineEventHandler(async (event) => {
             })
         }
 
+        const nextMeta =
+            body.meta !== undefined
+                ? body.meta ?? {}
+                : body.metadata !== undefined
+                    ? body.metadata ?? {}
+                    : existingDocument.meta ?? existingDocument.metadata ?? {}
+
+        const nextSeoTitle =
+            body.seoTitle !== undefined
+                ? body.seoTitle
+                : existingDocument.seoTitle ?? existingDocument.seo?.title ?? null
+
+        const nextSeoDescription =
+            body.seoDescription !== undefined
+                ? body.seoDescription
+                : existingDocument.seoDescription ?? existingDocument.seo?.description ?? null
+
         const updatedDocument = {
             ...existingDocument,
             title: body.title !== undefined ? body.title : existingDocument.title ?? null,
             content: body.content !== undefined ? body.content : existingDocument.content ?? null,
-            metadata: body.metadata !== undefined ? body.metadata : existingDocument.metadata ?? {},
+            meta: nextMeta,
+            metadata: nextMeta,
+            seoTitle: nextSeoTitle,
+            seoDescription: nextSeoDescription,
+            seo: {
+                title: nextSeoTitle,
+                description: nextSeoDescription
+            },
             updatedAt: new Date().toISOString()
         }
 
