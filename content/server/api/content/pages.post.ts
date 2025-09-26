@@ -1,66 +1,31 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { getDocument, putDocument } from '#database/utils/couchdb'
 import { getContentDatabaseName } from '../../utils/database'
-import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 import { requireAdminSession } from '../../utils/auth'
-
-interface CreatePagePayload {
-    path: string
-    title?: string | null
-    content?: any
-    metadata?: Record<string, any>
-    meta?: Record<string, any>
-    seoTitle?: string | null
-    seoDescription?: string | null
-}
+import { sanitiseIncomingDocument } from '../../utils/content-documents'
 
 export default defineEventHandler(async (event) => {
     await requireAdminSession(event)
 
     try {
-        const body = await readBody<CreatePagePayload>(event)
+        const body = await readBody<{ document: any }>(event)
 
-        if (!body || typeof body.path !== 'string') {
+        if (!body || typeof body.document !== 'object' || body.document === null) {
             throw createError({
                 statusCode: 400,
-                statusMessage: 'Invalid payload: path is required'
+                statusMessage: 'Invalid payload: document is required'
             })
         }
 
-        const normalizedPath = normalizePagePath(body.path)
-        const documentId = pageIdFromPath(normalizedPath)
+        const document = sanitiseIncomingDocument(body.document, { isCreate: true })
         const databaseName = getContentDatabaseName()
 
-        const existingDocument = await getDocument(databaseName, documentId)
+        const existingDocument = await getDocument(databaseName, document._id)
         if (existingDocument) {
             throw createError({
                 statusCode: 409,
                 statusMessage: 'Page already exists'
             })
-        }
-
-        const timestamp = new Date().toISOString()
-
-        const meta = body.meta ?? body.metadata ?? {}
-        const seoTitle = body.seoTitle ?? null
-        const seoDescription = body.seoDescription ?? null
-
-        const document = {
-            _id: documentId,
-            type: 'page',
-            path: normalizedPath,
-            title: body.title ?? null,
-            content: body.content ?? null,
-            seo: {
-                title: seoTitle,
-                description: seoDescription
-            },
-            seoTitle,
-            seoDescription,
-            meta,
-            metadata: meta,
-            createdAt: timestamp,
-            updatedAt: timestamp
         }
 
         const response = await putDocument(databaseName, document)

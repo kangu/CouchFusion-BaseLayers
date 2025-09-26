@@ -17,7 +17,7 @@ Extended content page APIs and store types to surface path, title, seoTitle, seo
 ## Documentation Overview
 - Server create/update handlers now accept `seoTitle`, `seoDescription`, and `meta`, persisting them alongside existing metadata (`layers/content/server/api/content/pages.post.ts`, `pages.put.ts`).
 - The pages read endpoint includes the new fields when returning a single page or the index list, normalising legacy `metadata` values to `meta` (`layers/content/server/api/content/pages.get.ts`).
-- `useContentPagesStore` exposes the enriched fields through `ContentPageSummary`/`ContentPageDocument` and forwards them through create/update actions to keep cache and API payloads consistent (`layers/content/app/stores/pages.ts`).
+- `useContentPagesStore` exposes the enriched fields through `ContentPageSummary`/`ContentPageDocument`, now also normalising each document to the canonical minimal structure supplied by the content APIs (`layers/content/app/stores/pages.ts`).
 
 ## Implementation Examples
 ```ts

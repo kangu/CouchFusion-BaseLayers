@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import NodeEditor from '~/components/builder/NodeEditor.vue'
-import { useComponentRegistry } from '~/composables/useComponentRegistry'
+import NodeEditor from './NodeEditor.vue'
+import { useComponentRegistry } from '../../composables/useComponentRegistry'
 import type { BuilderNode, BuilderNodeChild, BuilderTree } from '~/types/builder'
 import {
   createDocumentFromTree,
   type MinimalContentDocument,
   type PageConfigInput,
   type SpacingPresetId
-} from '~/utils/contentBuilder'
+} from '../../utils/contentBuilder'
 
 const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
   if (!doc) {
@@ -256,6 +256,20 @@ const serializedDocument = computed(() =>
 )
 
 const serializedJson = computed(() => JSON.stringify(serializedDocument.value, null, 2))
+
+const getSerializedDocument = (): MinimalContentDocument => {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(serializedDocument.value)
+    } catch {}
+  }
+
+  return JSON.parse(JSON.stringify(serializedDocument.value)) as MinimalContentDocument
+}
+
+defineExpose({
+  getSerializedDocument
+})
 
 const importInputRef = ref<HTMLInputElement | null>(null)
 
