@@ -1,0 +1,19 @@
+import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+
+/**
+ * Auth layer design document for user management
+ * Provides views for querying users by email
+ */
+export const authDesignDocument: CouchDBDesignDocument = {
+  _id: '_design/auth',
+  language: 'javascript',
+  views: {
+    has_account: {
+      map: `function(doc) {
+        if (doc.email) {
+          emit(doc.email, doc);
+        }
+      }`
+    }
+  }
+};
