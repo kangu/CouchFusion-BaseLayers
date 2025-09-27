@@ -2,35 +2,7 @@ import type { BuilderNode, BuilderTextNode, ComponentDefinition, ComponentRegist
 
 let uidCounter = 0
 
-const definitions: ComponentDefinition[] = [
-  {
-    id: 'hero-section',
-    label: 'Hero Section',
-    description: 'Displays a prominent hero area with a title prop.',
-    props: [
-      {
-        key: 'title',
-        label: 'Title',
-        type: 'text',
-        required: true,
-        placeholder: 'Enter headline text'
-      }
-    ]
-  },
-  {
-    id: 'you-tube-embed',
-    label: 'YouTube Embed',
-    description: 'Embeds a YouTube video by ID.',
-    props: [
-      {
-        key: 'video_id',
-        label: 'Video ID',
-        type: 'text',
-        required: true,
-        placeholder: 'dQw4w9WgXcQ'
-      }
-    ]
-  },
+const defaultDefinitions: ComponentDefinition[] = [
   {
     id: 'p',
     label: 'Paragraph',
@@ -62,13 +34,75 @@ const definitions: ComponentDefinition[] = [
   }
 ]
 
-const lookup = definitions.reduce<ComponentRegistry['lookup']>((acc, def) => {
+interface DefinitionModule {
+  default?: ComponentDefinition[]
+  definitions?: ComponentDefinition[]
+  getDefinitions?: () => ComponentDefinition[]
+}
+
+const projectDefinitionGlobs = {
+  ...import.meta.glob<DefinitionModule>('~/content-builder/component-definitions.{ts,js,mjs,cjs}', {
+    eager: true
+  }),
+  ...import.meta.glob<DefinitionModule>('~/content-builder/component-definitions/index.{ts,js,mjs,cjs}', {
+    eager: true
+  })
+}
+
+const extractDefinitions = (module: DefinitionModule | undefined): ComponentDefinition[] => {
+  if (!module) {
+    return []
+  }
+
+  if (Array.isArray(module.default)) {
+    return module.default
+  }
+
+  if (Array.isArray(module.definitions)) {
+    return module.definitions
+  }
+
+  if (typeof module.getDefinitions === 'function') {
+    try {
+      const result = module.getDefinitions()
+      return Array.isArray(result) ? result : []
+    } catch (error) {
+      if (import.meta.dev) {
+        console.warn('[content-layer] Failed to resolve project component definitions:', error)
+      }
+    }
+  }
+
+  return []
+}
+
+const mergedDefinitions = (() => {
+  const merged = new Map<string, ComponentDefinition>()
+
+  for (const definition of defaultDefinitions) {
+    merged.set(definition.id, definition)
+  }
+
+  for (const module of Object.values(projectDefinitionGlobs)) {
+    const definitions = extractDefinitions(module)
+    for (const definition of definitions) {
+      if (!definition?.id) {
+        continue
+      }
+      merged.set(definition.id, definition)
+    }
+  }
+
+  return Array.from(merged.values())
+})()
+
+const lookup = mergedDefinitions.reduce<ComponentRegistry['lookup']>((acc, def) => {
   acc[def.id] = def
   return acc
 }, {})
 
 const registry: ComponentRegistry = {
-  list: definitions,
+  list: mergedDefinitions,
   lookup
 }
 
