@@ -17,7 +17,7 @@ export default defineNuxtConfig({
         dirs: [
             /* global component import comes from the implementing app */
             {
-                path: '~/components/builder',
+                path: './app/components/builder',
                 global: true,
                 pathPrefix: false
             }
