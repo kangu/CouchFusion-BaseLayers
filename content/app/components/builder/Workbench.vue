@@ -52,6 +52,39 @@ const spacingPresets: Array<{ id: SpacingPresetId; label: string; className: str
   { id: 'roomy', label: 'Roomy (48px)', className: 'space-roomy' }
 ]
 
+const normalizeJsonProps = (component: string, props: Record<string, unknown>) => {
+  const definition = registry.lookup[component]
+  if (!definition?.props?.length) {
+    return props
+  }
+
+  for (const schema of definition.props) {
+    if (schema.type !== 'json') {
+      continue
+    }
+
+    const rawValue = props[schema.key]
+
+    if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim()
+
+      if (!trimmed) {
+        props[schema.key] = []
+        continue
+      }
+
+      try {
+        props[schema.key] = JSON.parse(trimmed)
+      } catch (error) {
+        console.warn(`Failed to parse JSON prop "${schema.key}" for component ${component}:`, error)
+        // Keep original string so the editor can surface it for correction.
+      }
+    }
+  }
+
+  return props
+}
+
 const deserializeEntry = (entry: any): BuilderNodeChild | null => {
   if (entry === null || entry === undefined) {
     return null
@@ -78,7 +111,7 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
         processedProps[key] = value
       }
     }
-    node.props = processedProps
+    node.props = normalizeJsonProps(component, processedProps)
     node.children = children
       .map((child) => deserializeEntry(child))
       .filter((child): child is BuilderNodeChild => child !== null)

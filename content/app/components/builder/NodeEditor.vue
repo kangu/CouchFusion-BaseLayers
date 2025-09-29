@@ -41,6 +41,16 @@
               </option>
             </select>
           </template>
+          <template v-else-if="prop.type === 'json'">
+            <textarea
+              v-model="propDraft[prop.key]"
+              class="font-mono"
+              rows="6"
+              @change="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
+              @blur="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
+            />
+            <small v-if="jsonErrors[prop.key]" class="node-panel__error">{{ jsonErrors[prop.key] }}</small>
+          </template>
           <template v-else>
             <input
               v-model="propDraft[prop.key]"
@@ -159,6 +169,7 @@ const componentDef = computed(() =>
 
 const propDraft = reactive<Record<string, any>>({})
 const extraPropsDraft = reactive<Record<string, string>>({})
+const jsonErrors = reactive<Record<string, string | null>>({})
 const textDraft = ref(props.node.type === 'text' ? props.node.value : '')
 const selectedChildComponent = ref('')
 const newPropKey = ref('')
@@ -175,6 +186,32 @@ const extraPropEntries = computed(() => {
     .map(([key, value]) => ({ key, value }))
 })
 
+const getPropSchema = (key: string) => componentDef.value?.props?.find((prop) => prop.key === key)
+
+const formatJsonValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return ''
+    }
+    try {
+      return JSON.stringify(JSON.parse(trimmed), null, 2)
+    } catch (error) {
+      return value
+    }
+  }
+
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch (error) {
+    return ''
+  }
+}
+
 const hydrateDrafts = () => {
   for (const key of Object.keys(propDraft)) {
     delete propDraft[key]
@@ -182,10 +219,23 @@ const hydrateDrafts = () => {
   for (const key of Object.keys(extraPropsDraft)) {
     delete extraPropsDraft[key]
   }
+  for (const key of Object.keys(jsonErrors)) {
+    delete jsonErrors[key]
+  }
 
   if (props.node.type === 'component') {
     for (const key of definedPropKeys.value) {
-      propDraft[key] = props.node.props?.[key] ?? ''
+      const schema = getPropSchema(key)
+      const rawValue = props.node.props?.[key]
+
+      if (schema?.type === 'boolean') {
+        propDraft[key] = Boolean(rawValue)
+      } else if (schema?.type === 'json') {
+        propDraft[key] = formatJsonValue(rawValue)
+        jsonErrors[key] = null
+      } else {
+        propDraft[key] = rawValue ?? ''
+      }
     }
     for (const entry of extraPropEntries.value) {
       extraPropsDraft[entry.key] = String(entry.value ?? '')
@@ -207,17 +257,6 @@ const parseValueByType = (value: unknown, type: PropInputType) => {
   if (type === 'boolean') {
     return Boolean(value)
   }
-  if (type === 'json') {
-    try {
-      if (typeof value === 'string' && value.trim().length) {
-        return JSON.parse(value)
-      }
-      return null
-    } catch (error) {
-      console.warn('Invalid JSON for prop', error)
-      return value
-    }
-  }
   return value
 }
 
@@ -225,7 +264,26 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   if (props.node.type !== 'component') {
     return
   }
+  if (type === 'json') {
+    const input = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    if (!input || !input.trim()) {
+      jsonErrors[key] = null
+      props.onUpdateProp(props.node.uid, key, [])
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(input)
+      jsonErrors[key] = null
+      props.onUpdateProp(props.node.uid, key, parsed)
+    } catch (error) {
+      jsonErrors[key] = 'Invalid JSON'
+    }
+    return
+  }
+
   const parsedValue = parseValueByType(value, type)
+  jsonErrors[key] = null
   props.onUpdateProp(props.node.uid, key, parsedValue)
 }
 
@@ -310,6 +368,11 @@ const applyTextValue = () => {
 
 .node-panel__children {
   margin-top: 8px;
+}
+
+.node-panel__error {
+  color: #ef4444;
+  font-size: 0.75rem;
 }
 
 .node-panel__children-actions {
