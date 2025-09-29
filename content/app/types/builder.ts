@@ -1,16 +1,38 @@
 export type BuilderValuePrimitive = string | number | boolean;
 
-export type BuilderValue = BuilderValuePrimitive | BuilderValuePrimitive[] | Record<string, any>;
+export type BuilderValue =
+  | BuilderValuePrimitive
+  | BuilderValuePrimitive[]
+  | Record<string, any>
+  | Array<Record<string, any>>;
+
+export type ComponentFieldType =
+  | 'text'
+  | 'textarea'
+  | 'boolean'
+  | 'select'
+  | 'json'
+  | 'jsonarray'
+  | 'stringarray'
+  | 'number';
+
+export interface ComponentArrayItemField {
+  key: string;
+  label: string;
+  type: Exclude<ComponentFieldType, 'jsonarray' | 'select'>;
+}
 
 export interface ComponentPropSchema {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'boolean' | 'select' | 'json';
+  type: ComponentFieldType;
   required?: boolean;
   placeholder?: string;
   options?: Array<{ label: string; value: string }>;
   description?: string;
   default?: BuilderValue;
+  items?: ComponentArrayItemField[];
+  elementType?: 'string' | 'number' | 'boolean';
 }
 
 export interface ComponentDefinition {

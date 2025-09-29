@@ -51,11 +51,108 @@
             />
             <small v-if="jsonErrors[prop.key]" class="node-panel__error">{{ jsonErrors[prop.key] }}</small>
           </template>
+          <template v-else-if="prop.type === 'jsonarray'">
+            <div class="node-panel__array">
+              <div
+                v-for="(item, index) in propDraft[prop.key]"
+                :key="`${prop.key}-${index}`"
+                class="node-panel__array-item"
+              >
+                <div class="node-panel__array-fields">
+                  <label
+                    v-for="field in prop.items || []"
+                    :key="field.key"
+                    class="node-panel__field node-panel__field--nested"
+                  >
+                    <span>{{ field.label }}</span>
+                    <template v-if="field.type === 'textarea'">
+                      <textarea
+                        v-model="item[field.key]"
+                        rows="3"
+                        @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                        @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                      />
+                    </template>
+                    <template v-else-if="field.type === 'boolean'">
+                      <input
+                        type="checkbox"
+                        :checked="Boolean(item[field.key])"
+                        @change="(event: Event) => handleArrayItemFieldChange(prop.key, index, field, (event.target as HTMLInputElement).checked)"
+                      />
+                    </template>
+                    <template v-else-if="field.type === 'number'">
+                      <input
+                        v-model.number="item[field.key]"
+                        type="number"
+                        @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                        @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                      />
+                    </template>
+                    <template v-else>
+                      <input
+                        v-model="item[field.key]"
+                        type="text"
+                        @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                        @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
+                      />
+                    </template>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  class="node-panel__array-remove"
+                  @click="removeArrayItem(prop.key, index)"
+                >
+                  Remove item
+                </button>
+              </div>
+              <button
+                type="button"
+                class="node-panel__array-add"
+                @click="addArrayItem(prop)"
+              >
+                Add item
+              </button>
+            </div>
+          </template>
+          <template v-else-if="prop.type === 'stringarray'">
+            <div class="node-panel__array">
+              <div
+                v-for="(value, index) in propDraft[prop.key]"
+                :key="`${prop.key}-${index}`"
+                class="node-panel__array-item"
+              >
+                <label class="node-panel__field">
+                  <span>{{ prop.label }} {{ index + 1 }}</span>
+                  <input
+                    v-model="propDraft[prop.key][index]"
+                    type="text"
+                    @change="() => handleStringArrayChange(prop.key, index, propDraft[prop.key][index])"
+                    @blur="() => handleStringArrayChange(prop.key, index, propDraft[prop.key][index])"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="node-panel__array-remove"
+                  @click="removeStringArrayItem(prop.key, index)"
+                >
+                  Remove item
+                </button>
+              </div>
+              <button
+                type="button"
+                class="node-panel__array-add"
+                @click="addStringArrayItem(prop.key)"
+              >
+                Add item
+              </button>
+            </div>
+          </template>
           <template v-else>
             <input
               v-model="propDraft[prop.key]"
               :placeholder="prop.placeholder"
-              :type="prop.type === 'text' ? 'text' : 'text'"
+              :type="prop.type === 'number' ? 'number' : 'text'"
               @change="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
               @blur="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
             />
@@ -145,9 +242,23 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import type { BuilderNodeChild, ComponentDefinition, ComponentRegistry } from '~/types/builder'
+import type {
+  BuilderNodeChild,
+  ComponentArrayItemField,
+  ComponentDefinition,
+  ComponentPropSchema,
+  ComponentRegistry
+} from '~/types/builder'
 
-type PropInputType = 'text' | 'textarea' | 'boolean' | 'select' | 'json'
+type PropInputType =
+  | 'text'
+  | 'textarea'
+  | 'boolean'
+  | 'select'
+  | 'json'
+  | 'jsonarray'
+  | 'stringarray'
+  | 'number'
 
 const props = defineProps<{
   node: BuilderNodeChild
@@ -175,7 +286,17 @@ const selectedChildComponent = ref('')
 const newPropKey = ref('')
 const newPropValue = ref('')
 
-const definedPropKeys = computed(() => new Set(componentDef.value?.props?.map((prop) => prop.key) || []))
+const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
+  type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
+
+const definedPropKeys = computed(() => {
+  const keys = new Set<string>()
+  for (const prop of componentDef.value?.props || []) {
+    keys.add(prop.key)
+    keys.add(storageKeyForType(prop.key, prop.type))
+  }
+  return keys
+})
 
 const extraPropEntries = computed(() => {
   if (props.node.type !== 'component') {
@@ -187,6 +308,61 @@ const extraPropEntries = computed(() => {
 })
 
 const getPropSchema = (key: string) => componentDef.value?.props?.find((prop) => prop.key === key)
+
+const cloneValue = <T>(value: T): T => {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value)
+  }
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+const ensureArrayValue = (value: unknown): Array<Record<string, any>> => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => ({ ...entry }))
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => ({ ...entry }))
+      }
+    } catch (error) {
+      console.warn('Failed to parse JSON array draft value:', error)
+    }
+  }
+  return []
+}
+
+const ensureStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry ?? ''))
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => String(entry ?? ''))
+      }
+    } catch (error) {
+      console.warn('Failed to parse string array draft value:', error)
+    }
+  }
+  return []
+}
+
+const createEmptyArrayItem = (fields: ComponentArrayItemField[]) => {
+  const item: Record<string, unknown> = {}
+  for (const field of fields) {
+    if (field.type === 'boolean') {
+      item[field.key] = false
+    } else if (field.type === 'number') {
+      item[field.key] = 0
+    } else {
+      item[field.key] = ''
+    }
+  }
+  return item
+}
 
 const formatJsonValue = (value: unknown): string => {
   if (value === null || value === undefined) {
@@ -226,13 +402,18 @@ const hydrateDrafts = () => {
   if (props.node.type === 'component') {
     for (const key of definedPropKeys.value) {
       const schema = getPropSchema(key)
-      const rawValue = props.node.props?.[key]
+      const storageKey = schema ? storageKeyForType(schema.key, schema.type) : key
+      const rawValue = props.node.props?.[storageKey] ?? props.node.props?.[key]
 
       if (schema?.type === 'boolean') {
         propDraft[key] = Boolean(rawValue)
       } else if (schema?.type === 'json') {
         propDraft[key] = formatJsonValue(rawValue)
         jsonErrors[key] = null
+      } else if (schema?.type === 'jsonarray') {
+        propDraft[key] = ensureArrayValue(rawValue ?? [])
+      } else if (schema?.type === 'stringarray') {
+        propDraft[key] = ensureStringArray(rawValue ?? [])
       } else {
         propDraft[key] = rawValue ?? ''
       }
@@ -257,6 +438,10 @@ const parseValueByType = (value: unknown, type: PropInputType) => {
   if (type === 'boolean') {
     return Boolean(value)
   }
+  if (type === 'number') {
+    const parsed = Number(value)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
   return value
 }
 
@@ -264,20 +449,41 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   if (props.node.type !== 'component') {
     return
   }
+  const storageKey = storageKeyForType(key, type)
   if (type === 'json') {
     const input = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
     if (!input || !input.trim()) {
       jsonErrors[key] = null
-      props.onUpdateProp(props.node.uid, key, [])
+      props.onUpdateProp(props.node.uid, storageKey, [])
       return
     }
 
     try {
       const parsed = JSON.parse(input)
       jsonErrors[key] = null
-      props.onUpdateProp(props.node.uid, key, parsed)
+      props.onUpdateProp(props.node.uid, storageKey, parsed)
     } catch (error) {
       jsonErrors[key] = 'Invalid JSON'
+    }
+    return
+  }
+
+  if (type === 'jsonarray') {
+    const normalized = ensureArrayValue(value)
+    jsonErrors[key] = null
+    props.onUpdateProp(props.node.uid, storageKey, cloneValue(normalized))
+    if (storageKey !== key) {
+      props.onUpdateProp(props.node.uid, key, undefined)
+    }
+    return
+  }
+
+  if (type === 'stringarray') {
+    const normalized = ensureStringArray(value)
+    jsonErrors[key] = null
+    props.onUpdateProp(props.node.uid, storageKey, JSON.stringify(normalized))
+    if (storageKey !== key) {
+      props.onUpdateProp(props.node.uid, key, undefined)
     }
     return
   }
@@ -285,6 +491,75 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   const parsedValue = parseValueByType(value, type)
   jsonErrors[key] = null
   props.onUpdateProp(props.node.uid, key, parsedValue)
+}
+
+const normalizeArrayFieldValue = (field: ComponentArrayItemField, value: unknown) => {
+  if (field.type === 'boolean') {
+    return Boolean(value)
+  }
+  if (field.type === 'number') {
+    const parsed = Number(value)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  return typeof value === 'string' ? value : value ?? ''
+}
+
+const handleArrayItemFieldChange = (
+  propKey: string,
+  index: number,
+  field: ComponentArrayItemField,
+  rawValue: unknown
+) => {
+  if (!Array.isArray(propDraft[propKey])) {
+    propDraft[propKey] = []
+  }
+  const current = ensureArrayValue(propDraft[propKey])
+  const next = current.map((item) => ({ ...item }))
+  if (!next[index]) {
+    next[index] = createEmptyArrayItem(field ? [field] : [])
+  }
+  next[index][field.key] = normalizeArrayFieldValue(field, rawValue)
+  propDraft[propKey] = next
+  applyProp(propKey, next, 'jsonarray')
+}
+
+const addArrayItem = (schema: ComponentPropSchema) => {
+  if (!schema.items || !schema.items.length) {
+    return
+  }
+  const key = schema.key
+  const current = ensureArrayValue(propDraft[key])
+  const next = [...current, createEmptyArrayItem(schema.items)]
+  propDraft[key] = next
+  applyProp(key, next, 'jsonarray')
+}
+
+const removeArrayItem = (propKey: string, index: number) => {
+  const current = ensureArrayValue(propDraft[propKey])
+  current.splice(index, 1)
+  propDraft[propKey] = current
+  applyProp(propKey, current, 'jsonarray')
+}
+
+const handleStringArrayChange = (propKey: string, index: number, rawValue: unknown) => {
+  const current = ensureStringArray(propDraft[propKey])
+  current[index] = String(rawValue ?? '')
+  propDraft[propKey] = current
+  applyProp(propKey, current, 'stringarray')
+}
+
+const addStringArrayItem = (propKey: string) => {
+  const current = ensureStringArray(propDraft[propKey])
+  current.push('')
+  propDraft[propKey] = current
+  applyProp(propKey, current, 'stringarray')
+}
+
+const removeStringArrayItem = (propKey: string, index: number) => {
+  const current = ensureStringArray(propDraft[propKey])
+  current.splice(index, 1)
+  propDraft[propKey] = current
+  applyProp(propKey, current, 'stringarray')
 }
 
 const handleAddChildComponent = () => {
@@ -364,6 +639,51 @@ const applyTextValue = () => {
   padding: 6px 8px;
   border-radius: 4px;
   border: 1px solid #cbd5f5;
+}
+
+.node-panel__field--nested {
+  background: #f8fafc;
+  padding: 8px;
+  border: 1px dashed #cbd5f5;
+}
+
+.node-panel__array {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-panel__array-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-panel__array-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.node-panel__array-add {
+  align-self: flex-start;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.node-panel__array-remove {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
 }
 
 .node-panel__children {

@@ -59,26 +59,70 @@ const normalizeJsonProps = (component: string, props: Record<string, unknown>) =
   }
 
   for (const schema of definition.props) {
-    if (schema.type !== 'json') {
+    const storageKey =
+      schema.type === 'stringarray' || schema.type === 'jsonarray' ? `:${schema.key}` : schema.key
+    const rawValue = props[schema.key] ?? props[storageKey]
+
+    if (schema.type === 'json') {
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim()
+
+        if (!trimmed) {
+          props[schema.key] = []
+          continue
+        }
+
+        try {
+          props[schema.key] = JSON.parse(trimmed)
+        } catch (error) {
+          console.warn(`Failed to parse JSON prop "${schema.key}" for component ${component}:`, error)
+          // Keep original string so the editor can surface it for correction.
+        }
+      }
+    }
+
+    if (schema.type === 'jsonarray') {
+      let parsedArray: unknown[] = []
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim()
+        if (trimmed) {
+          try {
+            const parsed = JSON.parse(trimmed)
+            parsedArray = Array.isArray(parsed) ? parsed : []
+          } catch (error) {
+            console.warn(`Failed to parse JSON array prop "${schema.key}" for component ${component}:`, error)
+            parsedArray = []
+          }
+        }
+      } else if (Array.isArray(rawValue)) {
+        parsedArray = rawValue
+      }
+
+      props[storageKey] = parsedArray
+      if (storageKey !== schema.key) {
+        delete props[schema.key]
+      }
       continue
     }
 
-    const rawValue = props[schema.key]
-
-    if (typeof rawValue === 'string') {
-      const trimmed = rawValue.trim()
-
-      if (!trimmed) {
-        props[schema.key] = []
-        continue
+    if (schema.type === 'stringarray') {
+      let serialized: string | undefined
+      if (typeof rawValue === 'string') {
+        serialized = rawValue
+      } else if (Array.isArray(rawValue)) {
+        serialized = JSON.stringify(rawValue.map((entry) => String(entry ?? '')))
       }
 
-      try {
-        props[schema.key] = JSON.parse(trimmed)
-      } catch (error) {
-        console.warn(`Failed to parse JSON prop "${schema.key}" for component ${component}:`, error)
-        // Keep original string so the editor can surface it for correction.
+      if (serialized !== undefined) {
+        props[storageKey] = serialized
+      } else if (props[storageKey] === undefined) {
+        props[storageKey] = '[]'
       }
+
+      if (storageKey !== schema.key) {
+        delete props[schema.key]
+      }
+      continue
     }
   }
 
