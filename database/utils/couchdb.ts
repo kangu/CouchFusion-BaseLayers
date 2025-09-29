@@ -533,6 +533,33 @@ export async function putDocument<T extends CouchDBDocument>(
 }
 
 /**
+ * Delete a document from a database
+ */
+export async function deleteDocument(
+  databaseName: string,
+  documentId: string,
+  revision: string,
+  config?: CouchDBConfig
+): Promise<CouchDBResponse> {
+  const { baseUrl } = getCouchDBConfig(config)
+
+  const response = await couchDBRequest(
+    `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}?rev=${encodeURIComponent(revision)}`,
+    {
+      method: 'DELETE'
+    },
+    config
+  )
+
+  if (!response.ok) {
+    const error: CouchDBError = await response.json()
+    throw new Error(`CouchDB delete error: ${error.error} - ${error.reason}`)
+  }
+
+  return await response.json() as CouchDBResponse
+}
+
+/**
  * Persist multiple documents in a single bulk request
  */
 export async function bulkDocs<T extends CouchDBDocument>(

@@ -32,7 +32,7 @@ export const contentIdFromPath = (path: string): string => {
     const normalized = normalizePagePath(path)
     const trimmed = normalized.replace(/^\//, '')
     const segment = trimmed || 'index'
-    return `content/${segment}`
+    return `page-/${segment}`
 }
 
 export const ensureMinimalBody = (value: any): MinimalContentDocument['body'] => {
@@ -58,7 +58,7 @@ export const ensureLayout = (value: any): ContentPageDocument['layout'] => {
 export const minimalToContentDocument = (doc: MinimalContentDocument): ContentPageDocument => {
     const normalizedPath = normalizePagePath(doc.path ?? '/')
     return {
-        _id: doc.id ?? contentIdFromPath(normalizedPath),
+        _id: /*doc.id ?? */contentIdFromPath(normalizedPath),
         title: doc.title ?? 'Page title',
         layout: ensureLayout(doc.layout),
         body: ensureMinimalBody(doc.body),
@@ -78,7 +78,7 @@ export const minimalToContentDocument = (doc: MinimalContentDocument): ContentPa
 
 export const contentToMinimalDocument = (doc: ContentPageDocument): MinimalContentDocument => {
     return {
-        id: doc._id ?? contentIdFromPath(doc.path),
+        id: /*doc._id ?? */contentIdFromPath(doc.path),
         title: doc.title ?? 'Page title',
         layout: doc.layout ? clonePlain(doc.layout) : undefined,
         body: {

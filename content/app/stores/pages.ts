@@ -232,6 +232,20 @@ export const useContentPagesStore = defineStore('content-pages', {
             this.index.data = existingIndex.sort((a, b) => a.path.localeCompare(b.path))
 
             return summary
+        },
+
+        async deletePage(path: string): Promise<void> {
+            const normalizedPath = normalizePagePath(path)
+            const $f = useRequestFetch()
+
+            await $f('/api/content/pages', {
+                method: 'DELETE',
+                params: { path: normalizedPath }
+            })
+
+            delete this.pages[normalizedPath]
+            this.index.data = this.index.data
+                .filter((entry) => normalizePagePath(entry.path) !== normalizedPath)
         }
     }
 })
