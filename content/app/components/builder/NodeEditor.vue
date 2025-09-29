@@ -57,6 +57,17 @@
                 v-for="(item, index) in propDraft[prop.key]"
                 :key="`${prop.key}-${index}`"
                 class="node-panel__array-item"
+                :class="{
+                  'node-panel__array-item--drag-over':
+                    dragOverArrayItem?.propKey === prop.key && dragOverArrayItem.index === index
+                }"
+                draggable="true"
+                @dragstart.stop="(event) => handleArrayItemDragStart(prop.key, index, 'jsonarray', event)"
+                @dragenter.stop.prevent="() => handleArrayItemDragEnter(prop.key, index)"
+                @dragover.stop.prevent="() => handleArrayItemDragEnter(prop.key, index)"
+                @dragleave.stop="handleArrayItemDragLeave"
+                @drop.stop.prevent="() => handleArrayItemDrop(prop.key, index, 'jsonarray')"
+                @dragend.stop="handleArrayItemDragEnd"
               >
                 <div class="node-panel__array-fields">
                   <label
@@ -121,6 +132,17 @@
                 v-for="(value, index) in propDraft[prop.key]"
                 :key="`${prop.key}-${index}`"
                 class="node-panel__array-item"
+                :class="{
+                  'node-panel__array-item--drag-over':
+                    dragOverArrayItem?.propKey === prop.key && dragOverArrayItem.index === index
+                }"
+                draggable="true"
+                @dragstart.stop="(event) => handleArrayItemDragStart(prop.key, index, 'stringarray', event)"
+                @dragenter.stop.prevent="() => handleArrayItemDragEnter(prop.key, index)"
+                @dragover.stop.prevent="() => handleArrayItemDragEnter(prop.key, index)"
+                @dragleave.stop="handleArrayItemDragLeave"
+                @drop.stop.prevent="() => handleArrayItemDrop(prop.key, index, 'stringarray')"
+                @dragend.stop="handleArrayItemDragEnd"
               >
                 <label class="node-panel__field">
                   <span>{{ prop.label }} {{ index + 1 }}</span>
@@ -285,6 +307,10 @@ const textDraft = ref(props.node.type === 'text' ? props.node.value : '')
 const selectedChildComponent = ref('')
 const newPropKey = ref('')
 const newPropValue = ref('')
+const draggingArrayItem = ref<{ propKey: string; index: number; type: 'jsonarray' | 'stringarray' } | null>(
+  null
+)
+const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null)
 
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
@@ -471,7 +497,7 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   if (type === 'jsonarray') {
     const normalized = ensureArrayValue(value)
     jsonErrors[key] = null
-    props.onUpdateProp(props.node.uid, storageKey, cloneValue(normalized))
+    props.onUpdateProp(props.node.uid, storageKey, JSON.stringify(normalized))
     if (storageKey !== key) {
       props.onUpdateProp(props.node.uid, key, undefined)
     }
@@ -560,6 +586,89 @@ const removeStringArrayItem = (propKey: string, index: number) => {
   current.splice(index, 1)
   propDraft[propKey] = current
   applyProp(propKey, current, 'stringarray')
+}
+
+const handleArrayItemDragStart = (
+  propKey: string,
+  index: number,
+  type: 'jsonarray' | 'stringarray',
+  event: DragEvent
+) => {
+  draggingArrayItem.value = { propKey, index, type }
+  dragOverArrayItem.value = { propKey, index }
+  event.dataTransfer?.setData('text/plain', `${propKey}:${index}`)
+  event.dataTransfer?.setDragImage?.((event.target as HTMLElement) || new Image(), 0, 0)
+}
+
+const handleArrayItemDragEnter = (propKey: string, index: number) => {
+  if (!draggingArrayItem.value) {
+    return
+  }
+  if (draggingArrayItem.value.propKey !== propKey) {
+    return
+  }
+  dragOverArrayItem.value = { propKey, index }
+}
+
+const handleArrayItemDragLeave = () => {
+  dragOverArrayItem.value = null
+}
+
+const reorderArrayItems = (
+  propKey: string,
+  fromIndex: number,
+  toIndex: number,
+  type: 'jsonarray' | 'stringarray'
+) => {
+  if (fromIndex === toIndex) {
+    return
+  }
+
+  if (type === 'jsonarray') {
+    const current = ensureArrayValue(propDraft[propKey])
+    if (!current[fromIndex]) {
+      return
+    }
+    const [moved] = current.splice(fromIndex, 1)
+    current.splice(toIndex, 0, moved)
+    propDraft[propKey] = current
+    applyProp(propKey, current, 'jsonarray')
+    return
+  }
+
+  const current = ensureStringArray(propDraft[propKey])
+  if (fromIndex < 0 || fromIndex >= current.length) {
+    return
+  }
+  const [moved] = current.splice(fromIndex, 1)
+  current.splice(toIndex, 0, moved)
+  propDraft[propKey] = current
+  applyProp(propKey, current, 'stringarray')
+}
+
+const handleArrayItemDrop = (
+  propKey: string,
+  index: number,
+  type: 'jsonarray' | 'stringarray'
+) => {
+  if (!draggingArrayItem.value) {
+    return
+  }
+  const { propKey: sourceKey, index: sourceIndex, type: sourceType } = draggingArrayItem.value
+  if (sourceKey !== propKey || sourceType !== type) {
+    draggingArrayItem.value = null
+    dragOverArrayItem.value = null
+    return
+  }
+
+  reorderArrayItems(propKey, sourceIndex, index, type)
+  draggingArrayItem.value = null
+  dragOverArrayItem.value = null
+}
+
+const handleArrayItemDragEnd = () => {
+  draggingArrayItem.value = null
+  dragOverArrayItem.value = null
 }
 
 const handleAddChildComponent = () => {
@@ -661,11 +770,17 @@ const applyTextValue = () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  cursor: move;
 }
 
 .node-panel__array-fields {
   display: grid;
   gap: 8px;
+}
+
+.node-panel__array-item--drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
 }
 
 .node-panel__array-add {

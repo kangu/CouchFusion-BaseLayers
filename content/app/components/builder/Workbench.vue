@@ -82,23 +82,19 @@ const normalizeJsonProps = (component: string, props: Record<string, unknown>) =
     }
 
     if (schema.type === 'jsonarray') {
-      let parsedArray: unknown[] = []
+      let serialized: string | undefined
       if (typeof rawValue === 'string') {
-        const trimmed = rawValue.trim()
-        if (trimmed) {
-          try {
-            const parsed = JSON.parse(trimmed)
-            parsedArray = Array.isArray(parsed) ? parsed : []
-          } catch (error) {
-            console.warn(`Failed to parse JSON array prop "${schema.key}" for component ${component}:`, error)
-            parsedArray = []
-          }
-        }
+        serialized = rawValue
       } else if (Array.isArray(rawValue)) {
-        parsedArray = rawValue
+        serialized = JSON.stringify(rawValue)
       }
 
-      props[storageKey] = parsedArray
+      if (serialized !== undefined) {
+        props[storageKey] = serialized
+      } else if (props[storageKey] === undefined) {
+        props[storageKey] = '[]'
+      }
+
       if (storageKey !== schema.key) {
         delete props[schema.key]
       }
