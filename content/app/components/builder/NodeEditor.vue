@@ -12,7 +12,7 @@
 
     <div v-if="node.type === 'component'" class="node-panel__body">
       <div v-if="componentDef?.props?.length" class="node-panel__props">
-        <label v-for="prop in componentDef.props" :key="prop.key" class="node-panel__field">
+        <label v-for="prop in componentDef.props" :key="prop.key" class="node-panel__field" :class="{'is-row': prop.type === 'boolean'}">
           <span>{{ prop.label }}</span>
           <template v-if="prop.type === 'textarea'">
             <textarea
@@ -24,11 +24,19 @@
             />
           </template>
           <template v-else-if="prop.type === 'boolean'">
-            <input
-              type="checkbox"
-              :checked="Boolean(propDraft[prop.key])"
-              @change="(event: Event) => applyProp(prop.key, (event.target as HTMLInputElement).checked, prop.type)"
-            />
+            <span class="node-panel__checkbox">
+              <input
+                type="checkbox"
+                class="node-panel__checkbox-input"
+                :checked="Boolean(propDraft[prop.key])"
+                @change="(event: Event) => applyProp(prop.key, (event.target as HTMLInputElement).checked, prop.type)"
+              />
+              <span class="node-panel__checkbox-box" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 10.5L8.5 14L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </span>
           </template>
           <template v-else-if="prop.type === 'select'">
             <select
@@ -104,11 +112,19 @@
                       />
                     </template>
                     <template v-else-if="field.type === 'boolean'">
-                      <input
-                        type="checkbox"
-                        :checked="Boolean(item[field.key])"
-                        @change="(event: Event) => handleArrayItemFieldChange(prop.key, index, field, (event.target as HTMLInputElement).checked)"
-                      />
+                      <span class="node-panel__checkbox">
+                        <input
+                          type="checkbox"
+                          class="node-panel__checkbox-input"
+                          :checked="Boolean(item[field.key])"
+                          @change="(event: Event) => handleArrayItemFieldChange(prop.key, index, field, (event.target as HTMLInputElement).checked)"
+                        />
+                        <span class="node-panel__checkbox-box" aria-hidden="true">
+                          <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 10.5L8.5 14L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </span>
+                      </span>
                     </template>
                     <template v-else-if="field.type === 'number'">
                       <input
@@ -875,6 +891,11 @@ const applyTextValue = () => {
   gap: 4px;
 }
 
+.node-panel__field.is-row {
+  flex-direction: row;
+  align-items: center;
+}
+
 .node-panel__field input,
 .node-panel__field textarea,
 .node-panel__field select {
@@ -929,7 +950,7 @@ const applyTextValue = () => {
   align-items: center;
   justify-content: center;
   width: 1rem;
-  content: attr(data-symbol);
+  content: '+';
   font-weight: 600;
   transition: transform 160ms ease;
 }
@@ -966,6 +987,57 @@ const applyTextValue = () => {
 .node-panel__array-item--drag-over {
   border-color: #2563eb;
   background: #eff6ff;
+}
+
+.node-panel__checkbox {
+  position: relative;
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  order: -1;
+}
+
+.node-panel__checkbox-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.node-panel__checkbox-box {
+  width: 100%;
+  height: 100%;
+  border-radius: 0.4rem;
+  border: 1.5px solid #94a3b8;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.node-panel__checkbox svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.node-panel__checkbox:hover .node-panel__checkbox-box {
+  border-color: #2563eb;
+}
+
+.node-panel__checkbox-input:focus-visible + .node-panel__checkbox-box {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  border-color: #2563eb;
+}
+
+.node-panel__checkbox-input:checked + .node-panel__checkbox-box {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
 }
 
 
@@ -1009,13 +1081,7 @@ const applyTextValue = () => {
 .node-panel__array-add:hover .node-panel__array-add-icon,
 .node-panel__array-add:focus-visible .node-panel__array-add-icon {
   transform: rotate(90deg);
-  background: rgba(255, 255, 255, 0.35);
-}
-
-.node-panel__array-add:hover .node-panel__array-add-icon,
-.node-panel__array-add:focus-visible .node-panel__array-add-icon {
-  transform: rotate(90deg);
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .node-panel__array-remove {
