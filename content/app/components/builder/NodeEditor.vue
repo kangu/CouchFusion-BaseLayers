@@ -52,7 +52,16 @@
             <small v-if="jsonErrors[prop.key]" class="node-panel__error">{{ jsonErrors[prop.key] }}</small>
           </template>
           <template v-else-if="prop.type === 'jsonarray'">
-            <div class="node-panel__array">
+            <div class="node-panel__array" :data-collapsed="collapsedArrays[prop.key]">
+              <div class="node-panel__array-header">
+                <button
+                  type="button"
+                  class="node-panel__array-toggle"
+                  @click="toggleArray(prop.key)"
+                >
+                  {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
+                </button>
+              </div>
               <div
                 v-for="(item, index) in propDraft[prop.key]"
                 :key="`${prop.key}-${index}`"
@@ -68,6 +77,7 @@
                 @dragleave.stop="handleArrayItemDragLeave"
                 @drop.stop.prevent="() => handleArrayItemDrop(prop.key, index, 'jsonarray')"
                 @dragend.stop="handleArrayItemDragEnd"
+                v-show="!collapsedArrays[prop.key]"
               >
                 <div class="node-panel__array-fields">
                   <label
@@ -127,7 +137,16 @@
             </div>
           </template>
           <template v-else-if="prop.type === 'stringarray'">
-            <div class="node-panel__array">
+            <div class="node-panel__array" :data-collapsed="collapsedArrays[prop.key]">
+              <div class="node-panel__array-header">
+                <button
+                  type="button"
+                  class="node-panel__array-toggle"
+                  @click="toggleArray(prop.key)"
+                >
+                  {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
+                </button>
+              </div>
               <div
                 v-for="(value, index) in propDraft[prop.key]"
                 :key="`${prop.key}-${index}`"
@@ -143,6 +162,7 @@
                 @dragleave.stop="handleArrayItemDragLeave"
                 @drop.stop.prevent="() => handleArrayItemDrop(prop.key, index, 'stringarray')"
                 @dragend.stop="handleArrayItemDragEnd"
+                v-show="!collapsedArrays[prop.key]"
               >
                 <label class="node-panel__field">
                   <span>{{ prop.label }} {{ index + 1 }}</span>
@@ -311,6 +331,7 @@ const draggingArrayItem = ref<{ propKey: string; index: number; type: 'jsonarray
   null
 )
 const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null)
+const collapsedArrays = reactive<Record<string, boolean>>({})
 
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
@@ -438,8 +459,14 @@ const hydrateDrafts = () => {
         jsonErrors[key] = null
       } else if (schema?.type === 'jsonarray') {
         propDraft[key] = ensureArrayValue(rawValue ?? [])
+        if (!(key in collapsedArrays)) {
+          collapsedArrays[key] = true
+        }
       } else if (schema?.type === 'stringarray') {
         propDraft[key] = ensureStringArray(rawValue ?? [])
+        if (!(key in collapsedArrays)) {
+          collapsedArrays[key] = true
+        }
       } else {
         propDraft[key] = rawValue ?? ''
       }
@@ -671,6 +698,10 @@ const handleArrayItemDragEnd = () => {
   dragOverArrayItem.value = null
 }
 
+const toggleArray = (key: string) => {
+  collapsedArrays[key] = !(collapsedArrays[key] ?? true)
+}
+
 const handleAddChildComponent = () => {
   if (!selectedChildComponent.value) {
     return
@@ -760,6 +791,20 @@ const applyTextValue = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.node-panel__array-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.node-panel__array-toggle {
+  background: transparent;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-decoration: underline;
 }
 
 .node-panel__array-item {
