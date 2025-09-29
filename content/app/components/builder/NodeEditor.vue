@@ -1,16 +1,28 @@
 <template>
   <div class="node-panel" :style="{ marginLeft: depth * 16 + 'px' }">
     <div v-if="node.type === 'component'" class="node-panel__header">
-      <div>
-        <strong>{{ componentDef?.label || node.component }}</strong>
-        <span v-if="componentDef?.description" class="node-panel__description">{{ componentDef.description }}</span>
+      <div class="node-panel__header-main">
+        <div class="node-panel__header-text">
+          <strong>{{ componentDef?.label || node.component }}</strong>
+          <span v-if="componentDef?.description" class="node-panel__description">{{ componentDef.description }}</span>
+        </div>
+        <div class="node-panel__header-actions">
+          <button
+            type="button"
+            class="node-panel__toggle"
+            :data-state="collapsedNodes[node.uid] ? 'collapsed' : 'expanded'"
+            @click="toggleNode(node.uid)"
+          >
+            {{ collapsedNodes[node.uid] ? 'Expand' : 'Collapse' }}
+          </button>
+          <button class="node-panel__remove" type="button" @click="onRemove(node.uid)">
+            Remove
+          </button>
+        </div>
       </div>
-      <button class="node-panel__remove" type="button" @click="onRemove(node.uid)">
-        Remove
-      </button>
     </div>
 
-    <div v-if="node.type === 'component'" class="node-panel__body">
+    <div v-if="node.type === 'component'" class="node-panel__body" v-show="!collapsedNodes[node.uid]">
       <div v-if="componentDef?.props?.length" class="node-panel__props">
         <label v-for="prop in componentDef.props" :key="prop.key" class="node-panel__field" :class="{'is-row': prop.type === 'boolean'}">
           <span>{{ prop.label }}</span>
@@ -377,6 +389,7 @@ const draggingArrayItem = ref<{ propKey: string; index: number; type: 'jsonarray
   null
 )
 const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null)
+const collapsedNodes = reactive<Record<string, boolean>>({})
 const collapsedArrays = reactive<Record<string, boolean>>({})
 const insertDialog = reactive<{
   key: string | null
@@ -504,6 +517,9 @@ const hydrateDrafts = () => {
   }
 
   if (props.node.type === 'component') {
+    if (!(props.node.uid in collapsedNodes)) {
+      collapsedNodes[props.node.uid] = true
+    }
     for (const key of definedPropKeys.value) {
       const schema = getPropSchema(key)
       const storageKey = schema ? storageKeyForType(schema.key, schema.type) : key
@@ -740,6 +756,10 @@ const toggleArray = (key: string) => {
   collapsedArrays[key] = !(collapsedArrays[key] ?? true)
 }
 
+const toggleNode = (uid: string) => {
+  collapsedNodes[uid] = !(collapsedNodes[uid] ?? true)
+}
+
 const openInsertDialog = (schema: ComponentPropSchema) => {
   if (schema.type !== 'jsonarray' && schema.type !== 'stringarray') {
     return
@@ -858,7 +878,26 @@ const applyTextValue = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  /*margin-bottom: 12px;*/
+}
+
+.node-panel__header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.node-panel__header-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.node-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .node-panel__description {
@@ -882,7 +921,7 @@ const applyTextValue = () => {
 
 .node-panel__props {
   display: grid;
-  gap: 8px;
+  gap: 2rem;
 }
 
 .node-panel__field {
@@ -965,6 +1004,52 @@ const applyTextValue = () => {
 
 .node-panel__array-toggle[data-state='expanded']:hover::before,
 .node-panel__array-toggle[data-state='expanded']:focus-visible::before {
+  transform: rotate(180deg);
+}
+
+.node-panel__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.node-panel__toggle:hover,
+.node-panel__toggle:focus-visible {
+  background: #1e293b;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(30, 41, 59, 0.2);
+  border-color: #1e293b;
+}
+
+.node-panel__toggle::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  content: '•';
+  font-weight: 600;
+  transition: transform 160ms ease;
+}
+
+.node-panel__toggle[data-state='collapsed']::before {
+  content: '+';
+}
+
+.node-panel__toggle[data-state='expanded']::before {
+  content: '–';
+}
+
+.node-panel__toggle[data-state='expanded']:hover::before,
+.node-panel__toggle[data-state='expanded']:focus-visible::before {
   transform: rotate(180deg);
 }
 
