@@ -57,6 +57,7 @@
                 <button
                   type="button"
                   class="node-panel__array-toggle"
+                  :data-state="collapsedArrays[prop.key] ? 'collapsed' : 'expanded'"
                   @click="toggleArray(prop.key)"
                 >
                   {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
@@ -66,7 +67,8 @@
                   class="node-panel__array-add"
                   @click="openInsertDialog(prop)"
                 >
-                  + New
+                  <span class="node-panel__array-add-icon" aria-hidden="true">+</span>
+<!--                  <span>Add item</span>-->
                 </button>
               </div>
               <div
@@ -142,6 +144,7 @@
                 <button
                   type="button"
                   class="node-panel__array-toggle"
+                  :data-state="collapsedArrays[prop.key] ? 'collapsed' : 'expanded'"
                   @click="toggleArray(prop.key)"
                 >
                   {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
@@ -151,7 +154,8 @@
                   class="node-panel__array-add"
                   @click="openInsertDialog(prop)"
                 >
-                  Add item
+                  <span class="node-panel__array-add-icon" aria-hidden="true">+</span>
+<!--                  <span>Add item</span>-->
                 </button>
               </div>
               <div
@@ -891,16 +895,53 @@ const applyTextValue = () => {
 .node-panel__array-header {
   display: flex;
   justify-content: flex-start;
-  gap: 1rem;
+  gap: 10px;
 }
 
 .node-panel__array-toggle {
-  background: transparent;
-  border: none;
-  color: #2563eb;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: #ffffff;
+  color: #1e293b;
   font-size: 0.85rem;
-  text-decoration: underline;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.node-panel__array-toggle:hover,
+.node-panel__array-toggle:focus-visible {
+  background: #1e293b;
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(30, 41, 59, 0.18);
+  border-color: #1e293b;
+}
+
+.node-panel__array-toggle::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  content: attr(data-symbol);
+  font-weight: 600;
+  transition: transform 160ms ease;
+}
+
+.node-panel__array-toggle[data-state='collapsed']::before {
+  content: '+';
+}
+
+.node-panel__array-toggle[data-state='expanded']::before {
+  content: '–';
+}
+
+.node-panel__array-toggle[data-state='expanded']:hover::before,
+.node-panel__array-toggle[data-state='expanded']:focus-visible::before {
+  transform: rotate(180deg);
 }
 
 .node-panel__array-item {
@@ -924,14 +965,54 @@ const applyTextValue = () => {
   background: #eff6ff;
 }
 
+
 .node-panel__array-add {
   align-self: flex-start;
-  outline: 1px solid #2563eb;
-  color: #2563eb;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #0f766e;
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: #ffffff;
+  color: #0f766e;
+  font-weight: 600;
   cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.node-panel__array-add:hover,
+.node-panel__array-add:focus-visible {
+  background: #0f766e;
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(15, 118, 110, 0.25);
+  border-color: #0f766e;
+}
+
+
+.node-panel__array-add-icon {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(15, 118, 110, 0.12);
+  color: inherit;
+  font-size: 1rem;
+  transition: transform 160ms ease, background 140ms ease;
+}
+
+.node-panel__array-add:hover .node-panel__array-add-icon,
+.node-panel__array-add:focus-visible .node-panel__array-add-icon {
+  transform: rotate(90deg);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.node-panel__array-add:hover .node-panel__array-add-icon,
+.node-panel__array-add:focus-visible .node-panel__array-add-icon {
+  transform: rotate(90deg);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .node-panel__array-remove {
