@@ -61,6 +61,13 @@
                 >
                   {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
                 </button>
+                <button
+                  type="button"
+                  class="node-panel__array-add"
+                  @click="openInsertDialog(prop)"
+                >
+                  + New
+                </button>
               </div>
               <div
                 v-for="(item, index) in propDraft[prop.key]"
@@ -127,13 +134,6 @@
                   Remove item
                 </button>
               </div>
-              <button
-                type="button"
-                class="node-panel__array-add"
-                @click="addArrayItem(prop)"
-              >
-                Add item
-              </button>
             </div>
           </template>
           <template v-else-if="prop.type === 'stringarray'">
@@ -145,6 +145,13 @@
                   @click="toggleArray(prop.key)"
                 >
                   {{ collapsedArrays[prop.key] ? 'Expand' : 'Collapse' }} ({{ propDraft[prop.key]?.length || 0 }})
+                </button>
+                <button
+                  type="button"
+                  class="node-panel__array-add"
+                  @click="openInsertDialog(prop)"
+                >
+                  Add item
                 </button>
               </div>
               <div
@@ -181,13 +188,6 @@
                   Remove item
                 </button>
               </div>
-              <button
-                type="button"
-                class="node-panel__array-add"
-                @click="addStringArrayItem(prop.key)"
-              >
-                Add item
-              </button>
             </div>
           </template>
           <template v-else>
@@ -279,6 +279,29 @@
         Remove
       </button>
     </div>
+    <div v-if="insertDialog.key && insertDialog.type" class="node-panel__insert-dialog">
+      <div class="node-panel__insert-backdrop" @click="closeInsertDialog"></div>
+      <div class="node-panel__insert-content">
+        <header class="node-panel__insert-header">
+          <h3>Select insertion point</h3>
+          <button type="button" class="node-panel__insert-close" @click="closeInsertDialog">×</button>
+        </header>
+        <p class="node-panel__insert-subtitle">
+          Choose where to place the new {{ insertDialog.type === 'jsonarray' ? 'entry' : 'text item' }}.
+        </p>
+        <ul class="node-panel__insert-options">
+          <li
+            v-for="option in getInsertPositions()"
+            :key="`${insertDialog.key}-${option.index}`"
+          >
+            <button type="button" @click="handleInsertAt(option.index)">
+              <strong>Position {{ option.index + 1 }}</strong>
+              <span>{{ option.preview }}</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -332,6 +355,17 @@ const draggingArrayItem = ref<{ propKey: string; index: number; type: 'jsonarray
 )
 const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null)
 const collapsedArrays = reactive<Record<string, boolean>>({})
+const insertDialog = reactive<{
+  key: string | null
+  type: 'jsonarray' | 'stringarray' | null
+  schema: ComponentPropSchema | null
+}>(
+  {
+    key: null,
+    type: null,
+    schema: null
+  }
+)
 
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
@@ -576,34 +610,15 @@ const handleArrayItemFieldChange = (
   applyProp(propKey, next, 'jsonarray')
 }
 
-const addArrayItem = (schema: ComponentPropSchema) => {
-  if (!schema.items || !schema.items.length) {
-    return
-  }
-  const key = schema.key
-  const current = ensureArrayValue(propDraft[key])
-  const next = [...current, createEmptyArrayItem(schema.items)]
-  propDraft[key] = next
-  applyProp(key, next, 'jsonarray')
-}
-
 const removeArrayItem = (propKey: string, index: number) => {
   const current = ensureArrayValue(propDraft[propKey])
   current.splice(index, 1)
   propDraft[propKey] = current
   applyProp(propKey, current, 'jsonarray')
 }
-
 const handleStringArrayChange = (propKey: string, index: number, rawValue: unknown) => {
   const current = ensureStringArray(propDraft[propKey])
   current[index] = String(rawValue ?? '')
-  propDraft[propKey] = current
-  applyProp(propKey, current, 'stringarray')
-}
-
-const addStringArrayItem = (propKey: string) => {
-  const current = ensureStringArray(propDraft[propKey])
-  current.push('')
   propDraft[propKey] = current
   applyProp(propKey, current, 'stringarray')
 }
@@ -702,6 +717,86 @@ const toggleArray = (key: string) => {
   collapsedArrays[key] = !(collapsedArrays[key] ?? true)
 }
 
+const openInsertDialog = (schema: ComponentPropSchema) => {
+  if (schema.type !== 'jsonarray' && schema.type !== 'stringarray') {
+    return
+  }
+  insertDialog.key = schema.key
+  insertDialog.type = schema.type
+  insertDialog.schema = schema
+  collapsedArrays[schema.key] = false
+}
+
+const closeInsertDialog = () => {
+  insertDialog.key = null
+  insertDialog.type = null
+  insertDialog.schema = null
+}
+
+const getInsertPositions = () => {
+  if (!insertDialog.key || !insertDialog.type) {
+    return [] as Array<{ index: number; preview: string }>
+  }
+  const key = insertDialog.key
+  const type = insertDialog.type
+  const items =
+    type === 'jsonarray'
+      ? ensureArrayValue(propDraft[key])
+      : ensureStringArray(propDraft[key])
+  const positions: Array<{ index: number; preview: string }> = []
+  const formatPreview = (value: unknown) => {
+    if (type === 'stringarray') {
+      return String(value ?? '') || '(empty)'
+    }
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+      if (!entries.length) {
+        return '(empty object)'
+      }
+      return entries
+        .slice(0, 3)
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join(', ')
+    }
+    return '(empty)'
+  }
+
+  for (let index = 0; index <= items.length; index += 1) {
+    const before = index > 0 ? formatPreview(items[index - 1]) : 'Beginning'
+    const after = index < items.length ? formatPreview(items[index]) : 'End'
+    const preview = `${before} → ${after}`
+    positions.push({ index, preview })
+  }
+  return positions
+}
+
+const handleInsertAt = (index: number) => {
+  if (!insertDialog.key || !insertDialog.type) {
+    return
+  }
+  const key = insertDialog.key
+  const type = insertDialog.type
+
+  if (type === 'jsonarray') {
+    const schemaItems = insertDialog.schema?.items || []
+    const current = ensureArrayValue(propDraft[key])
+    const next = [...current]
+    next.splice(index, 0, createEmptyArrayItem(schemaItems))
+    propDraft[key] = next
+    collapsedArrays[key] = false
+    applyProp(key, next, 'jsonarray')
+  } else {
+    const current = ensureStringArray(propDraft[key])
+    const next = [...current]
+    next.splice(index, 0, '')
+    propDraft[key] = next
+    collapsedArrays[key] = false
+    applyProp(key, next, 'stringarray')
+  }
+
+  closeInsertDialog()
+}
+
 const handleAddChildComponent = () => {
   if (!selectedChildComponent.value) {
     return
@@ -795,7 +890,8 @@ const applyTextValue = () => {
 
 .node-panel__array-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  gap: 1rem;
 }
 
 .node-panel__array-toggle {
@@ -830,8 +926,8 @@ const applyTextValue = () => {
 
 .node-panel__array-add {
   align-self: flex-start;
-  background: #2563eb;
-  color: #fff;
+  outline: 1px solid #2563eb;
+  color: #2563eb;
   border: none;
   border-radius: 4px;
   padding: 6px 10px;
@@ -844,6 +940,114 @@ const applyTextValue = () => {
   border: none;
   color: #ef4444;
   cursor: pointer;
+}
+
+.node-panel__insert-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.node-panel__insert-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.node-panel__insert-content {
+  position: relative;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 24px;
+  width: min(420px, 90vw);
+  max-height: min(560px, 100vh);
+  box-shadow: 0 40px 80px rgba(15, 23, 42, 0.25);
+  animation: node-panel__insert-fade 160ms ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.node-panel__insert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-panel__insert-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.node-panel__insert-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #475569;
+}
+
+.node-panel__insert-subtitle {
+  margin: 0;
+  color: #64748b;
+}
+
+.node-panel__insert-options {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.node-panel__insert-options button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.node-panel__insert-options button strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1e293b;
+}
+
+.node-panel__insert-options button span {
+  display: block;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.node-panel__insert-options button:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+@keyframes node-panel__insert-fade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .node-panel__children {
