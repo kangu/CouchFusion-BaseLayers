@@ -67,7 +67,18 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
       return null
     }
     const node = createNode(component)
-    node.props = { ...(rawProps as Record<string, unknown>) }
+
+    // Handle v-slot attributes for template components
+    const processedProps: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(rawProps as Record<string, unknown>)) {
+      if (component === 'template' && key.startsWith('v-slot:')) {
+        // Convert v-slot:name back to slot prop
+        processedProps.slot = key.replace('v-slot:', '')
+      } else {
+        processedProps[key] = value
+      }
+    }
+    node.props = processedProps
     node.children = children
       .map((child) => deserializeEntry(child))
       .filter((child): child is BuilderNodeChild => child !== null)
@@ -345,14 +356,6 @@ const handleSaveDebugClick = () => {
           <span>SEO description</span>
           <textarea v-model="pageConfig.seoDescription" rows="2" placeholder="SEO description." />
         </label>
-        <label class="builder-config__checkbox">
-          <input v-model="pageConfig.navigation" type="checkbox" />
-          <span>Show in navigation</span>
-        </label>
-        <label>
-          <span>Extension</span>
-          <input v-model="pageConfig.extension" type="text" placeholder="md" />
-        </label>
       </div>
       <div class="builder-derived">
         <div>
@@ -392,7 +395,7 @@ const handleSaveDebugClick = () => {
 
       <div class="builder-layout">
         <label>
-          <span>Spacing preset</span>
+          <span>Spacing preset (dummy for now)</span>
           <select v-model="layout.spacing">
             <option v-for="preset in spacingPresets" :key="preset.id" :value="preset.id">
               {{ preset.label }}
@@ -438,10 +441,12 @@ const handleSaveDebugClick = () => {
       </div>
     </section>
 
+<!--
     <section class="builder-output">
       <h2>Serialized Output</h2>
       <pre>{{ serializedJson }}</pre>
     </section>
+-->
 
     <section class="builder-preview">
       <h2>Preview</h2>
