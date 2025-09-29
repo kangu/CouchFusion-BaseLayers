@@ -219,6 +219,8 @@
         </label>
       </div>
 
+      <!-- New props are not enabled for the moment, keep it here for possible future use -->
+<!--
       <form class="node-panel__new-prop" @submit.prevent="handleAddCustomProp">
         <div>
           <input v-model="newPropKey" placeholder="Prop key (e.g. theme)" />
@@ -228,6 +230,7 @@
         </div>
         <button type="submit">Add prop</button>
       </form>
+-->
 
       <div v-if="componentDef?.allowChildren" class="node-panel__children">
         <div class="node-panel__children-actions">
