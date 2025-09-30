@@ -410,6 +410,53 @@
       </form>
 -->
 
+      <div class="node-panel__margins">
+        <div class="node-panel__margins-header">
+          <h4>Margins</h4>
+          <button
+            type="button"
+            class="node-panel__margins-reset"
+            @click="resetMargins"
+          >
+            Reset
+          </button>
+        </div>
+        <div class="node-panel__margins-grid">
+          <label class="node-panel__margin-field">
+            <span>Top</span>
+            <select :value="marginDraft.top" @change="handleMarginChange('top', ($event.target as HTMLSelectElement).value)">
+              <option v-for="option in marginOptions" :key="`mt-${option.value}`" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="node-panel__margin-field">
+            <span>Right</span>
+            <select :value="marginDraft.right" @change="handleMarginChange('right', ($event.target as HTMLSelectElement).value)">
+              <option v-for="option in marginOptions" :key="`mr-${option.value}`" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="node-panel__margin-field">
+            <span>Bottom</span>
+            <select :value="marginDraft.bottom" @change="handleMarginChange('bottom', ($event.target as HTMLSelectElement).value)">
+              <option v-for="option in marginOptions" :key="`mb-${option.value}`" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label class="node-panel__margin-field">
+            <span>Left</span>
+            <select :value="marginDraft.left" @change="handleMarginChange('left', ($event.target as HTMLSelectElement).value)">
+              <option v-for="option in marginOptions" :key="`ml-${option.value}`" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       <div v-if="componentDef?.allowChildren" class="node-panel__children">
         <div class="node-panel__children-actions">
           <select v-model="selectedChildComponent">
@@ -565,6 +612,23 @@ const insertDialog = reactive<{
 const nestedArrayKey = (propKey: string, parentIndex: number, fieldKey: string) =>
   `${propKey}:${parentIndex}:${fieldKey}`
 
+const marginOptions = [
+  { label: 'None', value: '0' },
+  { label: 'XS', value: '1' },
+  { label: 'SM', value: '2' },
+  { label: 'MD', value: '4' },
+  { label: 'LG', value: '6' },
+  { label: 'XL', value: '8' },
+  { label: '2XL', value: '12' }
+]
+
+const marginDraft = reactive<{ top: string; right: string; bottom: string; left: string }>({
+  top: '0',
+  right: '0',
+  bottom: '0',
+  left: '0'
+})
+
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
 
@@ -631,6 +695,56 @@ const ensureArrayValue = (value: unknown): Array<Record<string, any>> => {
     }
   }
   return []
+}
+
+const isActiveMarginValue = (value?: string) => Boolean(value && value !== '0' && value !== 'none')
+
+const applyMarginDraftToNode = () => {
+  if (props.node.type !== 'component') {
+    return
+  }
+  const next: Record<string, string> = {}
+  if (isActiveMarginValue(marginDraft.top)) {
+    next.top = marginDraft.top
+  }
+  if (isActiveMarginValue(marginDraft.right)) {
+    next.right = marginDraft.right
+  }
+  if (isActiveMarginValue(marginDraft.bottom)) {
+    next.bottom = marginDraft.bottom
+  }
+  if (isActiveMarginValue(marginDraft.left)) {
+    next.left = marginDraft.left
+  }
+
+  props.node.margins = Object.keys(next).length ? next : undefined
+}
+
+const setMarginDraftFromNode = () => {
+  if (props.node.type !== 'component') {
+    marginDraft.top = '0'
+    marginDraft.right = '0'
+    marginDraft.bottom = '0'
+    marginDraft.left = '0'
+    return
+  }
+  marginDraft.top = props.node.margins?.top ?? '0'
+  marginDraft.right = props.node.margins?.right ?? '0'
+  marginDraft.bottom = props.node.margins?.bottom ?? '0'
+  marginDraft.left = props.node.margins?.left ?? '0'
+}
+
+const handleMarginChange = (side: 'top' | 'right' | 'bottom' | 'left', value: string) => {
+  marginDraft[side] = value
+  applyMarginDraftToNode()
+}
+
+const resetMargins = () => {
+  marginDraft.top = '0'
+  marginDraft.right = '0'
+  marginDraft.bottom = '0'
+  marginDraft.left = '0'
+  applyMarginDraftToNode()
 }
 
 const ensureStringArray = (value: unknown): string[] => {
@@ -900,8 +1014,10 @@ const hydrateDrafts = () => {
     for (const entry of extraPropEntries.value) {
       extraPropsDraft[entry.key] = String(entry.value ?? '')
     }
+    setMarginDraftFromNode()
   } else {
     textDraft.value = props.node.value
+    setMarginDraftFromNode()
   }
 }
 
@@ -1315,6 +1431,53 @@ const applyTextValue = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.node-panel__margins {
+  border-top: 1px dashed #e2e8f0;
+  margin-top: 12px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-panel__margins-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-panel__margins-header h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.node-panel__margins-reset {
+  font-size: 0.75rem;
+  color: #2563eb;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.node-panel__margins-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.node-panel__margin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-panel__margin-field select {
+  border: 1px solid #cbd5f5;
+  border-radius: 4px;
+  padding: 6px 8px;
 }
 
 .node-panel__array--nested {

@@ -63,6 +63,13 @@ export interface ComponentDefinition {
   childHint?: string;
 }
 
+export interface BuilderNodeMargins {
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
+}
+
 export type BuilderNodeChild = BuilderNode | BuilderTextNode;
 
 export interface BuilderNode {
@@ -71,6 +78,7 @@ export interface BuilderNode {
   component: string; // from ComponentDefinition.id
   props: Record<string, BuilderValue>;
   children: BuilderNodeChild[];
+  margins?: BuilderNodeMargins;
 }
 
 export interface BuilderTextNode {

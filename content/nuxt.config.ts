@@ -20,6 +20,11 @@ export default defineNuxtConfig({
                 path: './app/components/builder',
                 global: true,
                 pathPrefix: false
+            },
+            {
+                path: './app/components/runtime',
+                global: true,
+                pathPrefix: false
             }
         ]
     },

@@ -125,6 +125,25 @@ const normalizeJsonProps = (component: string, props: Record<string, unknown>) =
   return props
 }
 
+const parseMarginClasses = (className: unknown) => {
+  if (typeof className !== 'string' || !className.trim()) {
+    return null
+  }
+  const margins: Record<string, string> = {}
+  for (const token of className.split(/\s+/)) {
+    if (token.startsWith('mt-')) {
+      margins.top = token.replace('mt-', '')
+    } else if (token.startsWith('mr-')) {
+      margins.right = token.replace('mr-', '')
+    } else if (token.startsWith('mb-')) {
+      margins.bottom = token.replace('mb-', '')
+    } else if (token.startsWith('ml-')) {
+      margins.left = token.replace('ml-', '')
+    }
+  }
+  return Object.keys(margins).length ? margins : null
+}
+
 const deserializeEntry = (entry: any): BuilderNodeChild | null => {
   if (entry === null || entry === undefined) {
     return null
@@ -138,6 +157,17 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
     const [component, rawProps = {}, ...children] = entry
     if (typeof component !== 'string') {
       return null
+    }
+    if (component === 'content-margin-wrapper') {
+      const [wrapped] = children
+      const inner = deserializeEntry(wrapped)
+      if (inner && inner.type === 'component') {
+        const margins = parseMarginClasses((rawProps as Record<string, unknown>)?.class)
+        if (margins) {
+          inner.margins = margins
+        }
+      }
+      return inner
     }
     const node = createNode(component)
 

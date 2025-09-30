@@ -1,6 +1,7 @@
 import type {
   BuilderNode,
   BuilderNodeChild,
+  BuilderNodeMargins,
   BuilderTextNode,
   BuilderTree
 } from '~/types/builder'
@@ -45,13 +46,9 @@ const isTextNode = (node: BuilderNodeChild): node is BuilderTextNode => node.typ
 const isComponentNode = (node: BuilderNodeChild): node is BuilderNode => node.type === 'component'
 
 const serializeProps = (node: BuilderNode): Record<string, any> => {
-  if (!node.props) {
-    return {}
-  }
-
   const props: Record<string, any> = {}
 
-  for (const [key, value] of Object.entries(node.props)) {
+  for (const [key, value] of Object.entries(node.props || {})) {
     if (value === undefined || value === '') {
       continue
     }
@@ -65,6 +62,63 @@ const serializeProps = (node: BuilderNode): Record<string, any> => {
   }
 
   return props
+}
+
+const isActiveMargin = (value?: string) => Boolean(value && value !== '0' && value !== 'none')
+
+const hasMargins = (margins?: BuilderNodeMargins): boolean => {
+  if (!margins) {
+    return false
+  }
+  return (
+    isActiveMargin(margins.top) ||
+    isActiveMargin(margins.right) ||
+    isActiveMargin(margins.bottom) ||
+    isActiveMargin(margins.left)
+  )
+}
+
+const buildMarginClasses = (margins?: BuilderNodeMargins): string[] => {
+  if (!hasMargins(margins)) {
+    return []
+  }
+  const classes: string[] = []
+  if (isActiveMargin(margins?.top)) {
+    classes.push(`mt-${margins.top}`)
+  }
+  if (isActiveMargin(margins?.right)) {
+    classes.push(`mr-${margins.right}`)
+  }
+  if (isActiveMargin(margins?.bottom)) {
+    classes.push(`mb-${margins.bottom}`)
+  }
+  if (isActiveMargin(margins?.left)) {
+    classes.push(`ml-${margins.left}`)
+  }
+  return classes
+}
+
+const parseMarginClasses = (className: string): BuilderNodeMargins | null => {
+  if (!className) {
+    return null
+  }
+  const margins: BuilderNodeMargins = {}
+  const classes = className.split(/\s+/)
+  for (const token of classes) {
+    if (token.startsWith('mt-')) {
+      margins.top = token.replace('mt-', '')
+    }
+    if (token.startsWith('mr-')) {
+      margins.right = token.replace('mr-', '')
+    }
+    if (token.startsWith('mb-')) {
+      margins.bottom = token.replace('mb-', '')
+    }
+    if (token.startsWith('ml-')) {
+      margins.left = token.replace('ml-', '')
+    }
+  }
+  return hasMargins(margins) ? margins : null
 }
 
 const serializeChildren = (nodes: BuilderNodeChild[]): MinimalContentEntry[] => {
@@ -84,12 +138,19 @@ export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | nul
 
   const props = serializeProps(node)
   const children = serializeChildren(node.children)
+  const baseEntry: MinimalContentEntry =
+    children.length > 0
+      ? [node.component, Object.keys(props).length ? props : {}, ...children]
+      : [node.component, Object.keys(props).length ? props : {}]
 
-  if (children.length > 0) {
-    return [node.component, Object.keys(props).length ? props : {}, ...children]
+  if (!hasMargins(node.margins)) {
+    return baseEntry
   }
 
-  return [node.component, Object.keys(props).length ? props : {}]
+  const marginClasses = buildMarginClasses(node.margins)
+  const wrapperProps = marginClasses.length ? { class: marginClasses.join(' ') } : {}
+
+  return ['content-margin-wrapper', wrapperProps, baseEntry]
 }
 
 export const serializeTree = (tree: BuilderTree): MinimalContentEntry[] => {
