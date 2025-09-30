@@ -351,8 +351,14 @@ const getSerializedDocument = (): MinimalContentDocument => {
   return JSON.parse(JSON.stringify(serializedDocument.value)) as MinimalContentDocument
 }
 
+const loadDocument = (doc: MinimalContentDocument | null) => {
+  const cloned = cloneDocument(doc)
+  applyDocument(cloned)
+}
+
 defineExpose({
-  getSerializedDocument
+  getSerializedDocument,
+  loadDocument
 })
 
 const importInputRef = ref<HTMLInputElement | null>(null)

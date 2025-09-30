@@ -16,6 +16,10 @@ export const contentDesignDocument: CouchDBDesignDocument = {
                 }
 
                 var id = doc._id || '';
+                if (typeof id === 'string' && id.indexOf('oldpage-') === 0) {
+                    return;
+                }
+
                 var isPageDoc = typeof id === 'string' && id.indexOf('page-') === 0;
 
                 if (!isPageDoc && typeof doc.path !== 'string') {
@@ -34,6 +38,40 @@ export const contentDesignDocument: CouchDBDesignDocument = {
                     id: id,
                     title: doc.title || null,
                     updatedAt: doc.updatedAt || doc.updated_at || null
+                });
+            }`
+        }
+        ,
+        history_by_path: {
+            map: `function (doc) {
+                if (!doc || typeof doc !== 'object') {
+                    return;
+                }
+
+                var id = doc._id || '';
+                if (typeof id !== 'string' || id.indexOf('oldpage-') !== 0) {
+                    return;
+                }
+
+                var path = doc.path || '';
+                if (typeof path !== 'string' || !path) {
+                    path = id.substring('oldpage-'.length);
+                }
+
+                if (!path) {
+                    return;
+                }
+
+                var timestamp = doc.updatedAt || doc.updated_at || doc.createdAt || doc.created_at || doc.savedAt;
+                if (!timestamp) {
+                    timestamp = new Date().toISOString();
+                }
+
+                emit([path, timestamp], {
+                    id: id,
+                    path: path,
+                    timestamp: timestamp,
+                    title: doc.title || null
                 });
             }`
         }

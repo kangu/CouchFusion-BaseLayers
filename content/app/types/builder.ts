@@ -16,11 +16,29 @@ export type ComponentFieldType =
   | 'stringarray'
   | 'number';
 
-export interface ComponentArrayItemField {
+export interface ComponentArrayItemFieldBase {
   key: string;
   label: string;
-  type: Exclude<ComponentFieldType, 'jsonarray' | 'select'>;
+  description?: string;
 }
+
+export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
+  type: Exclude<ComponentFieldType, 'jsonarray' | 'stringarray' | 'select'>;
+}
+
+export interface ComponentArrayNestedField extends ComponentArrayItemFieldBase {
+  type: 'jsonarray';
+  items: ComponentArrayItemField[];
+}
+
+export interface ComponentArrayPrimitiveListField extends ComponentArrayItemFieldBase {
+  type: 'stringarray';
+}
+
+export type ComponentArrayItemField =
+  | ComponentArrayPrimitiveField
+  | ComponentArrayNestedField
+  | ComponentArrayPrimitiveListField;
 
 export interface ComponentPropSchema {
   key: string;

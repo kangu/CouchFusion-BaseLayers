@@ -36,3 +36,11 @@ export interface ContentPageSummary {
     updatedAt: string | null
     document: ContentPageDocument | null
 }
+
+export interface ContentPageHistoryEntry {
+    id: string
+    path: string
+    title: string | null
+    timestamp: string
+    document: ContentPageDocument
+}

@@ -6,8 +6,8 @@ export const ordersDesignDocument: CouchDBDesignDocument = {
   views: {
     by_timestamp: {
       map: `function (doc) {
-        if (doc.type === 'purchase' && doc.timestamp) {
-          emit(doc.timestamp, doc);
+        if (doc.type === 'purchase' && (doc.timestamp || doc.createdAt)) {
+          emit(doc.timestamp || doc.createdAt, doc);
         }
       }`
     }
