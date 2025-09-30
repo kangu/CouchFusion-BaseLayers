@@ -84,16 +84,16 @@ const buildMarginClasses = (margins?: BuilderNodeMargins): string[] => {
   }
   const classes: string[] = []
   if (isActiveMargin(margins?.top)) {
-    classes.push(`mt-${margins.top}`)
+    classes.push(`pt-${margins.top}`)
   }
   if (isActiveMargin(margins?.right)) {
-    classes.push(`mr-${margins.right}`)
+    classes.push(`pr-${margins.right}`)
   }
   if (isActiveMargin(margins?.bottom)) {
-    classes.push(`mb-${margins.bottom}`)
+    classes.push(`pb-${margins.bottom}`)
   }
   if (isActiveMargin(margins?.left)) {
-    classes.push(`ml-${margins.left}`)
+    classes.push(`pl-${margins.left}`)
   }
   return classes
 }
@@ -105,17 +105,17 @@ const parseMarginClasses = (className: string): BuilderNodeMargins | null => {
   const margins: BuilderNodeMargins = {}
   const classes = className.split(/\s+/)
   for (const token of classes) {
-    if (token.startsWith('mt-')) {
-      margins.top = token.replace('mt-', '')
+    if (token.startsWith('pt-')) {
+      margins.top = token.replace('pt-', '')
     }
-    if (token.startsWith('mr-')) {
-      margins.right = token.replace('mr-', '')
+    if (token.startsWith('pr-')) {
+      margins.right = token.replace('pr-', '')
     }
-    if (token.startsWith('mb-')) {
-      margins.bottom = token.replace('mb-', '')
+    if (token.startsWith('pb-')) {
+      margins.bottom = token.replace('pb-', '')
     }
-    if (token.startsWith('ml-')) {
-      margins.left = token.replace('ml-', '')
+    if (token.startsWith('pl-')) {
+      margins.left = token.replace('pl-', '')
     }
   }
   return hasMargins(margins) ? margins : null

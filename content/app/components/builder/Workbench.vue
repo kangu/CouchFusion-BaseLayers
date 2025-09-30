@@ -131,14 +131,14 @@ const parseMarginClasses = (className: unknown) => {
   }
   const margins: Record<string, string> = {}
   for (const token of className.split(/\s+/)) {
-    if (token.startsWith('mt-')) {
-      margins.top = token.replace('mt-', '')
-    } else if (token.startsWith('mr-')) {
-      margins.right = token.replace('mr-', '')
-    } else if (token.startsWith('mb-')) {
-      margins.bottom = token.replace('mb-', '')
-    } else if (token.startsWith('ml-')) {
-      margins.left = token.replace('ml-', '')
+    if (token.startsWith('pt-')) {
+      margins.top = token.replace('pt-', '')
+    } else if (token.startsWith('pr-')) {
+      margins.right = token.replace('pr-', '')
+    } else if (token.startsWith('pb-')) {
+      margins.bottom = token.replace('pb-', '')
+    } else if (token.startsWith('pl-')) {
+      margins.left = token.replace('pl-', '')
     }
   }
   return Object.keys(margins).length ? margins : null

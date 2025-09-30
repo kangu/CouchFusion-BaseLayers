@@ -619,7 +619,8 @@ const marginOptions = [
   { label: 'MD', value: '4' },
   { label: 'LG', value: '6' },
   { label: 'XL', value: '8' },
-  { label: '2XL', value: '12' }
+  { label: '2XL', value: '12' },
+  { label: '4XL', value: '24' },
 ]
 
 const marginDraft = reactive<{ top: string; right: string; bottom: string; left: string }>({

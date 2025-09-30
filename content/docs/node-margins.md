@@ -5,14 +5,15 @@ Implement the specs in layers/content/docs/specs/margin_for_all_elements.md. Pro
 Ask me for anything that after evalulation, you are not so sure what decision to make. Strive for minimal impact on other areas of the applicaiton. Any time your confidence for taking an actions is < 80%, ask for clarification.
 
 ## Implementation Summary
-Added margin controls for builder nodes, serializing them through a wrapper component so ContentRenderer applies optional spacing.
+Added margin controls for builder nodes, serializing them through a wrapper component so ContentRenderer applies optional (padding-based) spacing.
 
 ## Documentation Overview
 - Builder nodes now expose a dedicated margins section that edits per-side spacing without cluttering component props.
-- Serialization wraps components with `content-margin-wrapper`, which applies Tailwind margin classes at render time and is hidden from the component palette.
+- Serialization wraps components with `content-margin-wrapper`, which applies Tailwind padding classes at render time (while keeping the UI labelled as margins) and is hidden from the component palette.
 - Deserialization detects the wrapper and restores the margin configuration so existing pages round-trip cleanly.
+- Added a Tailwind safelist for dynamic margin utilities (`mt|mr|mb|ml-(0|1|2|4|6|8|12|24)`) to ensure all configurable options ship in production CSS.
 
 ## Implementation Examples
 - `layers/content/app/components/builder/NodeEditor.vue:360` – renders the margins UI and mutates the node’s stored margin configuration.
-- `layers/content/app/utils/contentBuilder.ts:58` – wraps serialized components with the margin wrapper and rebuilds Tailwind classes from stored margins.
+- `layers/content/app/utils/contentBuilder.ts:58` – wraps serialized components with the margin wrapper and rebuilds Tailwind padding classes from stored margins.
 - `layers/content/app/components/runtime/ContentMarginWrapper.vue:1` – simple runtime component that forwards children while applying the computed margin classes.
