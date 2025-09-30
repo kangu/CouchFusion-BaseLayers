@@ -125,22 +125,56 @@ const normalizeJsonProps = (component: string, props: Record<string, unknown>) =
   return props
 }
 
-const parseMarginClasses = (className: unknown) => {
+const parseMarginClasses = (className: unknown): BuilderNode['margins'] | null => {
   if (typeof className !== 'string' || !className.trim()) {
     return null
   }
-  const margins: Record<string, string> = {}
-  for (const token of className.split(/\s+/)) {
-    if (token.startsWith('pt-')) {
-      margins.top = token.replace('pt-', '')
-    } else if (token.startsWith('pr-')) {
-      margins.right = token.replace('pr-', '')
-    } else if (token.startsWith('pb-')) {
-      margins.bottom = token.replace('pb-', '')
-    } else if (token.startsWith('pl-')) {
-      margins.left = token.replace('pl-', '')
-    }
+
+  const margins: BuilderNode['margins'] = {}
+  const prefixMap: Record<string, 'sm' | 'md' | 'lg' | 'xl'> = {
+    sm: 'sm',
+    md: 'md',
+    lg: 'lg',
+    xl: 'xl'
   }
+
+  for (const token of className.split(/\s+/)) {
+    if (!token) {
+      continue
+    }
+    const segments = token.split(':')
+    const utility = segments.pop()
+    if (!utility) {
+      continue
+    }
+    const prefix = segments.pop() ?? 'base'
+    const breakpoint = prefix === 'base' ? 'base' : prefixMap[prefix]
+    if (!breakpoint) {
+      continue
+    }
+    const [axis, value] = utility.split('-')
+    if (!value) {
+      continue
+    }
+    let side: keyof BuilderNode['margins'] | undefined
+    if (axis === 'pt') {
+      side = 'top'
+    } else if (axis === 'pr') {
+      side = 'right'
+    } else if (axis === 'pb') {
+      side = 'bottom'
+    } else if (axis === 'pl') {
+      side = 'left'
+    }
+    if (!side) {
+      continue
+    }
+    if (!margins[side]) {
+      margins[side] = {}
+    }
+    margins[side]![breakpoint] = value
+  }
+
   return Object.keys(margins).length ? margins : null
 }
 

@@ -2,6 +2,8 @@ import type {
   BuilderNode,
   BuilderNodeChild,
   BuilderNodeMargins,
+  BuilderMarginBreakpoint,
+  BuilderResponsiveMargin,
   BuilderTextNode,
   BuilderTree
 } from '~/types/builder'
@@ -66,16 +68,23 @@ const serializeProps = (node: BuilderNode): Record<string, any> => {
 
 const isActiveMargin = (value?: string) => Boolean(value && value !== '0' && value !== 'none')
 
+const breakpoints: Array<{ key: BuilderMarginBreakpoint; prefix: string }> = [
+  { key: 'base', prefix: '' },
+  { key: 'sm', prefix: 'sm:' },
+  { key: 'md', prefix: 'md:' },
+  { key: 'lg', prefix: 'lg:' },
+  { key: 'xl', prefix: 'xl:' }
+]
+
 const hasMargins = (margins?: BuilderNodeMargins): boolean => {
   if (!margins) {
     return false
   }
-  return (
-    isActiveMargin(margins.top) ||
-    isActiveMargin(margins.right) ||
-    isActiveMargin(margins.bottom) ||
-    isActiveMargin(margins.left)
-  )
+  const sides: Array<keyof BuilderNodeMargins> = ['top', 'right', 'bottom', 'left']
+  return sides.some((side) => {
+    const config = margins[side]
+    return breakpoints.some((bp) => isActiveMargin(config?.[bp.key]))
+  })
 }
 
 const buildMarginClasses = (margins?: BuilderNodeMargins): string[] => {
@@ -83,18 +92,22 @@ const buildMarginClasses = (margins?: BuilderNodeMargins): string[] => {
     return []
   }
   const classes: string[] = []
-  if (isActiveMargin(margins?.top)) {
-    classes.push(`pt-${margins.top}`)
+
+  const addClassesForSide = (config: BuilderResponsiveMargin | undefined, axis: 'pt' | 'pr' | 'pb' | 'pl') => {
+    for (const { key, prefix } of breakpoints) {
+      const value = config?.[key]
+      if (isActiveMargin(value)) {
+        const utility = `${axis}-${value}`
+        classes.push(prefix ? `${prefix}${utility}` : utility)
+      }
+    }
   }
-  if (isActiveMargin(margins?.right)) {
-    classes.push(`pr-${margins.right}`)
-  }
-  if (isActiveMargin(margins?.bottom)) {
-    classes.push(`pb-${margins.bottom}`)
-  }
-  if (isActiveMargin(margins?.left)) {
-    classes.push(`pl-${margins.left}`)
-  }
+
+  addClassesForSide(margins?.top, 'pt')
+  addClassesForSide(margins?.right, 'pr')
+  addClassesForSide(margins?.bottom, 'pb')
+  addClassesForSide(margins?.left, 'pl')
+
   return classes
 }
 
@@ -103,21 +116,50 @@ const parseMarginClasses = (className: string): BuilderNodeMargins | null => {
     return null
   }
   const margins: BuilderNodeMargins = {}
-  const classes = className.split(/\s+/)
-  for (const token of classes) {
-    if (token.startsWith('pt-')) {
-      margins.top = token.replace('pt-', '')
-    }
-    if (token.startsWith('pr-')) {
-      margins.right = token.replace('pr-', '')
-    }
-    if (token.startsWith('pb-')) {
-      margins.bottom = token.replace('pb-', '')
-    }
-    if (token.startsWith('pl-')) {
-      margins.left = token.replace('pl-', '')
-    }
+  const prefixMap: Record<string, BuilderMarginBreakpoint> = {
+    sm: 'sm',
+    md: 'md',
+    lg: 'lg',
+    xl: 'xl'
   }
+
+  for (const token of className.split(/\s+/)) {
+    if (!token) {
+      continue
+    }
+    const segments = token.split(':')
+    const utility = segments.pop()
+    if (!utility) {
+      continue
+    }
+    const breakpointPrefix = segments.pop() ?? 'base'
+    const breakpointKey = breakpointPrefix === 'base' ? 'base' : prefixMap[breakpointPrefix]
+    if (!breakpointKey) {
+      continue
+    }
+    const [axis, value] = utility.split('-')
+    if (!value || !isActiveMargin(value)) {
+      continue
+    }
+    let side: keyof BuilderNodeMargins | null = null
+    if (axis === 'pt') {
+      side = 'top'
+    } else if (axis === 'pr') {
+      side = 'right'
+    } else if (axis === 'pb') {
+      side = 'bottom'
+    } else if (axis === 'pl') {
+      side = 'left'
+    }
+    if (!side) {
+      continue
+    }
+    if (!margins[side]) {
+      margins[side] = {}
+    }
+    margins[side]![breakpointKey] = value
+  }
+
   return hasMargins(margins) ? margins : null
 }
 

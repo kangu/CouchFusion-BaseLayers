@@ -63,11 +63,21 @@ export interface ComponentDefinition {
   childHint?: string;
 }
 
+export type BuilderMarginBreakpoint = 'base' | 'sm' | 'md' | 'lg' | 'xl';
+
+export interface BuilderResponsiveMargin {
+  base?: string;
+  sm?: string;
+  md?: string;
+  lg?: string;
+  xl?: string;
+}
+
 export interface BuilderNodeMargins {
-  top?: string;
-  right?: string;
-  bottom?: string;
-  left?: string;
+  top?: BuilderResponsiveMargin;
+  right?: BuilderResponsiveMargin;
+  bottom?: BuilderResponsiveMargin;
+  left?: BuilderResponsiveMargin;
 }
 
 export type BuilderNodeChild = BuilderNode | BuilderTextNode;

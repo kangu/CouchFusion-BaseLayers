@@ -413,48 +413,72 @@
       <div class="node-panel__margins">
         <div class="node-panel__margins-header">
           <h4>Margins</h4>
-          <button
-            type="button"
-            class="node-panel__margins-reset"
-            @click="resetMargins"
-          >
-            Reset
-          </button>
+          <div class="node-panel__margins-actions">
+            <button type="button" class="node-panel__margins-toggle" @click="showResponsiveMargins = !showResponsiveMargins">
+              {{ showResponsiveMargins ? 'Hide responsive' : 'Responsive overrides' }}
+            </button>
+            <button
+              type="button"
+              class="node-panel__margins-reset"
+              @click="resetMargins"
+            >
+              Reset
+            </button>
+          </div>
         </div>
         <div class="node-panel__margins-grid">
-          <label class="node-panel__margin-field">
-            <span>Top</span>
-            <select :value="marginDraft.top" @change="handleMarginChange('top', ($event.target as HTMLSelectElement).value)">
-              <option v-for="option in marginOptions" :key="`mt-${option.value}`" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label class="node-panel__margin-field">
-            <span>Right</span>
-            <select :value="marginDraft.right" @change="handleMarginChange('right', ($event.target as HTMLSelectElement).value)">
-              <option v-for="option in marginOptions" :key="`mr-${option.value}`" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label class="node-panel__margin-field">
-            <span>Bottom</span>
-            <select :value="marginDraft.bottom" @change="handleMarginChange('bottom', ($event.target as HTMLSelectElement).value)">
-              <option v-for="option in marginOptions" :key="`mb-${option.value}`" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label class="node-panel__margin-field">
-            <span>Left</span>
-            <select :value="marginDraft.left" @change="handleMarginChange('left', ($event.target as HTMLSelectElement).value)">
-              <option v-for="option in marginOptions" :key="`ml-${option.value}`" :value="option.value">
+          <label
+            v-for="side in marginSides"
+            :key="`base-${side.key}`"
+            class="node-panel__margin-field"
+          >
+            <span>{{ side.label }}</span>
+            <select
+              :value="marginDraft[side.key].base"
+              @change="handleMarginChange(side.key, 'base', ($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="option in marginOptions"
+                :key="`${side.key}-base-${option.value}`"
+                :value="option.value"
+              >
                 {{ option.label }}
               </option>
             </select>
           </label>
         </div>
+        <Transition name="fade">
+          <div v-if="showResponsiveMargins" class="node-panel__margins-responsive">
+            <div
+              v-for="breakpoint in responsiveBreakpoints"
+              :key="breakpoint.key"
+              class="node-panel__margins-row"
+            >
+              <div class="node-panel__margin-breakpoint">{{ breakpoint.label }}</div>
+              <div class="node-panel__margins-grid node-panel__margins-grid--responsive">
+                <label
+                  v-for="side in marginSides"
+                  :key="`${breakpoint.key}-${side.key}`"
+                  class="node-panel__margin-field"
+                >
+                  <span>{{ side.short }}</span>
+                  <select
+                    :value="marginDraft[side.key][breakpoint.key]"
+                    @change="handleMarginChange(side.key, breakpoint.key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option
+                      v-for="option in marginOptions"
+                      :key="`${side.key}-${breakpoint.key}-${option.value}`"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+        </Transition>
       </div>
 
       <div v-if="componentDef?.allowChildren" class="node-panel__children">
@@ -541,6 +565,7 @@
 import { computed, reactive, ref, toRaw, watch } from 'vue'
 import type {
   BuilderNodeChild,
+  BuilderResponsiveMargin,
   ComponentArrayItemField,
   ComponentDefinition,
   ComponentPropSchema,
@@ -620,15 +645,39 @@ const marginOptions = [
   { label: 'LG', value: '6' },
   { label: 'XL', value: '8' },
   { label: '2XL', value: '12' },
-  { label: '4XL', value: '24' },
+  { label: '4XL', value: '24' }
 ]
 
-const marginDraft = reactive<{ top: string; right: string; bottom: string; left: string }>({
-  top: '0',
-  right: '0',
-  bottom: '0',
-  left: '0'
-})
+type MarginSide = 'top' | 'right' | 'bottom' | 'left'
+type BreakpointKey = 'base' | 'sm' | 'md' | 'lg' | 'xl'
+
+const marginSides: Array<{ key: MarginSide; label: string; short: string }> = [
+  { key: 'top', label: 'Top', short: 'Top' },
+  { key: 'right', label: 'Right', short: 'Right' },
+  { key: 'bottom', label: 'Bottom', short: 'Bottom' },
+  { key: 'left', label: 'Left', short: 'Left' }
+]
+
+const responsiveBreakpoints = [
+  { key: 'sm', label: 'Small ≥640px', short: 'SM' },
+  { key: 'md', label: 'Medium ≥768px', short: 'MD' },
+  { key: 'lg', label: 'Large ≥1024px', short: 'LG' },
+  { key: 'xl', label: 'XL ≥1280px', short: 'XL' }
+] as const
+
+const createMarginState = () => ({ base: '0', sm: '0', md: '0', lg: '0', xl: '0' })
+
+const marginDraft = reactive<Record<MarginSide, Record<BreakpointKey, string>>>([
+  'top',
+  'right',
+  'bottom',
+  'left'
+].reduce((acc, side) => {
+  acc[side as MarginSide] = createMarginState()
+  return acc
+}, {} as Record<MarginSide, Record<BreakpointKey, string>>))
+
+const showResponsiveMargins = ref(false)
 
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
@@ -704,18 +753,28 @@ const applyMarginDraftToNode = () => {
   if (props.node.type !== 'component') {
     return
   }
-  const next: Record<string, string> = {}
-  if (isActiveMarginValue(marginDraft.top)) {
-    next.top = marginDraft.top
-  }
-  if (isActiveMarginValue(marginDraft.right)) {
-    next.right = marginDraft.right
-  }
-  if (isActiveMarginValue(marginDraft.bottom)) {
-    next.bottom = marginDraft.bottom
-  }
-  if (isActiveMarginValue(marginDraft.left)) {
-    next.left = marginDraft.left
+  const next: BuilderNode['margins'] = {}
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    const config: BuilderResponsiveMargin = {}
+    if (isActiveMarginValue(state.base)) {
+      config.base = state.base
+    }
+    if (isActiveMarginValue(state.sm)) {
+      config.sm = state.sm
+    }
+    if (isActiveMarginValue(state.md)) {
+      config.md = state.md
+    }
+    if (isActiveMarginValue(state.lg)) {
+      config.lg = state.lg
+    }
+    if (isActiveMarginValue(state.xl)) {
+      config.xl = state.xl
+    }
+    if (Object.keys(config).length) {
+      next[side.key] = config
+    }
   }
 
   props.node.margins = Object.keys(next).length ? next : undefined
@@ -723,28 +782,57 @@ const applyMarginDraftToNode = () => {
 
 const setMarginDraftFromNode = () => {
   if (props.node.type !== 'component') {
-    marginDraft.top = '0'
-    marginDraft.right = '0'
-    marginDraft.bottom = '0'
-    marginDraft.left = '0'
+    for (const side of marginSides) {
+      const state = marginDraft[side.key]
+      state.base = '0'
+      state.sm = '0'
+      state.md = '0'
+      state.lg = '0'
+      state.xl = '0'
+    }
+    showResponsiveMargins.value = false
     return
   }
-  marginDraft.top = props.node.margins?.top ?? '0'
-  marginDraft.right = props.node.margins?.right ?? '0'
-  marginDraft.bottom = props.node.margins?.bottom ?? '0'
-  marginDraft.left = props.node.margins?.left ?? '0'
+
+  let hasResponsive = false
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    const config = props.node.margins?.[side.key]
+    state.base = config?.base ?? '0'
+    state.sm = config?.sm ?? '0'
+    state.md = config?.md ?? '0'
+    state.lg = config?.lg ?? '0'
+    state.xl = config?.xl ?? '0'
+    if (
+      isActiveMarginValue(state.sm) ||
+      isActiveMarginValue(state.md) ||
+      isActiveMarginValue(state.lg) ||
+      isActiveMarginValue(state.xl)
+    ) {
+      hasResponsive = true
+    }
+  }
+  showResponsiveMargins.value = hasResponsive
 }
 
-const handleMarginChange = (side: 'top' | 'right' | 'bottom' | 'left', value: string) => {
-  marginDraft[side] = value
+const handleMarginChange = (side: MarginSide, breakpoint: BreakpointKey, value: string) => {
+  marginDraft[side][breakpoint] = value
+  if (breakpoint !== 'base' && isActiveMarginValue(value)) {
+    showResponsiveMargins.value = true
+  }
   applyMarginDraftToNode()
 }
 
 const resetMargins = () => {
-  marginDraft.top = '0'
-  marginDraft.right = '0'
-  marginDraft.bottom = '0'
-  marginDraft.left = '0'
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    state.base = '0'
+    state.sm = '0'
+    state.md = '0'
+    state.lg = '0'
+    state.xl = '0'
+  }
+  showResponsiveMargins.value = false
   applyMarginDraftToNode()
 }
 
@@ -1455,6 +1543,30 @@ const applyTextValue = () => {
   color: #1e293b;
 }
 
+.node-panel__margins-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-panel__margins-toggle {
+  font-size: 0.75rem;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #cbd5f5;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.node-panel__margins-toggle:hover,
+.node-panel__margins-toggle:focus-visible {
+  background: #e0f2fe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
 .node-panel__margins-reset {
   font-size: 0.75rem;
   color: #2563eb;
@@ -1467,6 +1579,16 @@ const applyTextValue = () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .node-panel__margins-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.node-panel__margins-grid--responsive {
+  gap: 8px;
 }
 
 .node-panel__margin-field {
@@ -1863,6 +1985,30 @@ const applyTextValue = () => {
   padding: 6px 8px;
   border-radius: 4px;
   border: 1px solid #cbd5f5;
+}
+
+.node-panel__margins-responsive {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-panel__margins-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.node-panel__margin-breakpoint {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
 }
 
 .node-panel__new-prop button {
