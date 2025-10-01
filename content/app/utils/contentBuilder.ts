@@ -1,6 +1,9 @@
 import type {
   BuilderNode,
   BuilderNodeChild,
+  BuilderNodeMargins,
+  BuilderMarginBreakpoint,
+  BuilderResponsiveMargin,
   BuilderTextNode,
   BuilderTree
 } from '~/types/builder'
@@ -45,13 +48,9 @@ const isTextNode = (node: BuilderNodeChild): node is BuilderTextNode => node.typ
 const isComponentNode = (node: BuilderNodeChild): node is BuilderNode => node.type === 'component'
 
 const serializeProps = (node: BuilderNode): Record<string, any> => {
-  if (!node.props) {
-    return {}
-  }
-
   const props: Record<string, any> = {}
 
-  for (const [key, value] of Object.entries(node.props)) {
+  for (const [key, value] of Object.entries(node.props || {})) {
     if (value === undefined || value === '') {
       continue
     }
@@ -65,6 +64,103 @@ const serializeProps = (node: BuilderNode): Record<string, any> => {
   }
 
   return props
+}
+
+const isActiveMargin = (value?: string) => Boolean(value && value !== '0' && value !== 'none')
+
+const breakpoints: Array<{ key: BuilderMarginBreakpoint; prefix: string }> = [
+  { key: 'base', prefix: '' },
+  { key: 'sm', prefix: 'sm:' },
+  { key: 'md', prefix: 'md:' },
+  { key: 'lg', prefix: 'lg:' },
+  { key: 'xl', prefix: 'xl:' }
+]
+
+const hasMargins = (margins?: BuilderNodeMargins): boolean => {
+  if (!margins) {
+    return false
+  }
+  const sides: Array<keyof BuilderNodeMargins> = ['top', 'right', 'bottom', 'left']
+  return sides.some((side) => {
+    const config = margins[side]
+    return breakpoints.some((bp) => isActiveMargin(config?.[bp.key]))
+  })
+}
+
+const buildMarginClasses = (margins?: BuilderNodeMargins): string[] => {
+  if (!hasMargins(margins)) {
+    return []
+  }
+  const classes: string[] = []
+
+  const addClassesForSide = (config: BuilderResponsiveMargin | undefined, axis: 'pt' | 'pr' | 'pb' | 'pl') => {
+    for (const { key, prefix } of breakpoints) {
+      const value = config?.[key]
+      if (isActiveMargin(value)) {
+        const utility = `${axis}-${value}`
+        classes.push(prefix ? `${prefix}${utility}` : utility)
+      }
+    }
+  }
+
+  addClassesForSide(margins?.top, 'pt')
+  addClassesForSide(margins?.right, 'pr')
+  addClassesForSide(margins?.bottom, 'pb')
+  addClassesForSide(margins?.left, 'pl')
+
+  return classes
+}
+
+const parseMarginClasses = (className: string): BuilderNodeMargins | null => {
+  if (!className) {
+    return null
+  }
+  const margins: BuilderNodeMargins = {}
+  const prefixMap: Record<string, BuilderMarginBreakpoint> = {
+    sm: 'sm',
+    md: 'md',
+    lg: 'lg',
+    xl: 'xl'
+  }
+
+  for (const token of className.split(/\s+/)) {
+    if (!token) {
+      continue
+    }
+    const segments = token.split(':')
+    const utility = segments.pop()
+    if (!utility) {
+      continue
+    }
+    const breakpointPrefix = segments.pop() ?? 'base'
+    const breakpointKey = breakpointPrefix === 'base' ? 'base' : prefixMap[breakpointPrefix]
+    if (!breakpointKey) {
+      continue
+    }
+    const [axis, value] = utility.split('-')
+    if (!value || !isActiveMargin(value)) {
+      continue
+    }
+    let side: keyof BuilderNodeMargins | null = null
+    if (axis === 'pt') {
+      side = 'top'
+    } else if (axis === 'pr') {
+      side = 'right'
+    } else if (axis === 'pb') {
+      side = 'bottom'
+    } else if (axis === 'pl') {
+      side = 'left'
+    }
+    if (!side) {
+      continue
+    }
+    if (!margins[side]) {
+      margins[side] = {}
+    }
+    margins[side]![breakpointKey] = value
+  }
+
+  return hasMargins(margins) ? margins : null
 }
 
 const serializeChildren = (nodes: BuilderNodeChild[]): MinimalContentEntry[] => {
@@ -84,12 +180,19 @@ export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | nul
 
   const props = serializeProps(node)
   const children = serializeChildren(node.children)
+  const baseEntry: MinimalContentEntry =
+    children.length > 0
+      ? [node.component, Object.keys(props).length ? props : {}, ...children]
+      : [node.component, Object.keys(props).length ? props : {}]
 
-  if (children.length > 0) {
-    return [node.component, Object.keys(props).length ? props : {}, ...children]
+  if (!hasMargins(node.margins)) {
+    return baseEntry
   }
 
-  return [node.component, Object.keys(props).length ? props : {}]
+  const marginClasses = buildMarginClasses(node.margins)
+  const wrapperProps = marginClasses.length ? { class: marginClasses.join(' ') } : {}
+
+  return ['content-margin-wrapper', wrapperProps, baseEntry]
 }
 
 export const serializeTree = (tree: BuilderTree): MinimalContentEntry[] => {

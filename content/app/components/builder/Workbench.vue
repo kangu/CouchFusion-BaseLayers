@@ -125,6 +125,59 @@ const normalizeJsonProps = (component: string, props: Record<string, unknown>) =
   return props
 }
 
+const parseMarginClasses = (className: unknown): BuilderNode['margins'] | null => {
+  if (typeof className !== 'string' || !className.trim()) {
+    return null
+  }
+
+  const margins: BuilderNode['margins'] = {}
+  const prefixMap: Record<string, 'sm' | 'md' | 'lg' | 'xl'> = {
+    sm: 'sm',
+    md: 'md',
+    lg: 'lg',
+    xl: 'xl'
+  }
+
+  for (const token of className.split(/\s+/)) {
+    if (!token) {
+      continue
+    }
+    const segments = token.split(':')
+    const utility = segments.pop()
+    if (!utility) {
+      continue
+    }
+    const prefix = segments.pop() ?? 'base'
+    const breakpoint = prefix === 'base' ? 'base' : prefixMap[prefix]
+    if (!breakpoint) {
+      continue
+    }
+    const [axis, value] = utility.split('-')
+    if (!value) {
+      continue
+    }
+    let side: keyof BuilderNode['margins'] | undefined
+    if (axis === 'pt') {
+      side = 'top'
+    } else if (axis === 'pr') {
+      side = 'right'
+    } else if (axis === 'pb') {
+      side = 'bottom'
+    } else if (axis === 'pl') {
+      side = 'left'
+    }
+    if (!side) {
+      continue
+    }
+    if (!margins[side]) {
+      margins[side] = {}
+    }
+    margins[side]![breakpoint] = value
+  }
+
+  return Object.keys(margins).length ? margins : null
+}
+
 const deserializeEntry = (entry: any): BuilderNodeChild | null => {
   if (entry === null || entry === undefined) {
     return null
@@ -138,6 +191,17 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
     const [component, rawProps = {}, ...children] = entry
     if (typeof component !== 'string') {
       return null
+    }
+    if (component === 'content-margin-wrapper') {
+      const [wrapped] = children
+      const inner = deserializeEntry(wrapped)
+      if (inner && inner.type === 'component') {
+        const margins = parseMarginClasses((rawProps as Record<string, unknown>)?.class)
+        if (margins) {
+          inner.margins = margins
+        }
+      }
+      return inner
     }
     const node = createNode(component)
 
@@ -351,8 +415,14 @@ const getSerializedDocument = (): MinimalContentDocument => {
   return JSON.parse(JSON.stringify(serializedDocument.value)) as MinimalContentDocument
 }
 
+const loadDocument = (doc: MinimalContentDocument | null) => {
+  const cloned = cloneDocument(doc)
+  applyDocument(cloned)
+}
+
 defineExpose({
-  getSerializedDocument
+  getSerializedDocument,
+  loadDocument
 })
 
 const importInputRef = ref<HTMLInputElement | null>(null)

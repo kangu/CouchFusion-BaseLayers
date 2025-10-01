@@ -146,6 +146,156 @@
                         @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                       />
                     </template>
+                    <template v-else-if="field.type === 'jsonarray'">
+                      <div
+                        class="node-panel__array node-panel__array--nested"
+                        :data-collapsed="isNestedArrayCollapsed(prop.key, index, field.key)"
+                      >
+                        <div class="node-panel__array-header node-panel__array-header--nested">
+                          <button
+                            type="button"
+                            class="node-panel__array-toggle"
+                            :data-state="isNestedArrayCollapsed(prop.key, index, field.key) ? 'collapsed' : 'expanded'"
+                            @click="toggleNestedArray(prop.key, index, field.key)"
+                          >
+                            {{ isNestedArrayCollapsed(prop.key, index, field.key) ? 'Expand' : 'Collapse' }}
+                            ({{ getNestedArrayItems(prop.key, index, field).length }})
+                          </button>
+                          <button
+                            type="button"
+                            class="node-panel__array-add"
+                            @click="addNestedArrayItem(prop.key, index, field)"
+                          >
+                            <span class="node-panel__array-add-icon" aria-hidden="true">+</span>
+                          </button>
+                        </div>
+                        <div
+                          v-for="(nestedItem, nestedIndex) in getNestedArrayItems(prop.key, index, field)"
+                          :key="`${prop.key}-${index}-${field.key}-${nestedIndex}`"
+                          class="node-panel__array-item node-panel__array-item--nested"
+                          v-show="!isNestedArrayCollapsed(prop.key, index, field.key)"
+                        >
+                          <div class="node-panel__array-fields node-panel__array-fields--nested">
+                            <label
+                              v-for="nestedField in field.items || []"
+                              :key="`${field.key}-${nestedField.key}-${nestedIndex}`"
+                              class="node-panel__field node-panel__field--nested"
+                            >
+                              <span>{{ nestedField.label }}</span>
+                              <template v-if="nestedField.type === 'textarea'">
+                                <textarea
+                                  v-model="nestedItem[nestedField.key]"
+                                  rows="3"
+                                  @change="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                  @blur="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                />
+                              </template>
+                              <template v-else-if="nestedField.type === 'boolean'">
+                                <span class="node-panel__checkbox">
+                                  <input
+                                    type="checkbox"
+                                    class="node-panel__checkbox-input"
+                                    :checked="Boolean(nestedItem[nestedField.key])"
+                                    @change="(event: Event) =>
+                                      updateNestedArrayItemField(
+                                        prop.key,
+                                        index,
+                                        field,
+                                        nestedIndex,
+                                        nestedField,
+                                        (event.target as HTMLInputElement).checked
+                                      )
+                                    "
+                                  />
+                                  <span class="node-panel__checkbox-box" aria-hidden="true">
+                                    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M5 10.5L8.5 14L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                  </span>
+                                </span>
+                              </template>
+                              <template v-else-if="nestedField.type === 'number'">
+                                <input
+                                  v-model.number="nestedItem[nestedField.key]"
+                                  type="number"
+                                  @change="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                  @blur="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                />
+                              </template>
+                              <template v-else>
+                                <input
+                                  v-model="nestedItem[nestedField.key]"
+                                  type="text"
+                                  @change="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                  @blur="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key]
+                                    )
+                                  "
+                                />
+                              </template>
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            class="node-panel__array-remove"
+                            @click="removeNestedArrayItem(prop.key, index, field, nestedIndex)"
+                          >
+                            Remove item
+                          </button>
+                        </div>
+                      </div>
+                    </template>
                     <template v-else>
                       <input
                         v-model="item[field.key]"
@@ -260,6 +410,77 @@
       </form>
 -->
 
+      <div class="node-panel__margins">
+        <div class="node-panel__margins-header">
+          <h4>Margins</h4>
+          <div class="node-panel__margins-actions">
+            <button type="button" class="node-panel__margins-toggle" @click="showResponsiveMargins = !showResponsiveMargins">
+              {{ showResponsiveMargins ? 'Hide responsive' : 'Responsive overrides' }}
+            </button>
+            <button
+              type="button"
+              class="node-panel__margins-reset"
+              @click="resetMargins"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        <div class="node-panel__margins-grid">
+          <label
+            v-for="side in marginSides"
+            :key="`base-${side.key}`"
+            class="node-panel__margin-field"
+          >
+            <span>{{ side.label }}</span>
+            <select
+              :value="marginDraft[side.key].base"
+              @change="handleMarginChange(side.key, 'base', ($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="option in marginOptions"
+                :key="`${side.key}-base-${option.value}`"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+        </div>
+        <Transition name="fade">
+          <div v-if="showResponsiveMargins" class="node-panel__margins-responsive">
+            <div
+              v-for="breakpoint in responsiveBreakpoints"
+              :key="breakpoint.key"
+              class="node-panel__margins-row"
+            >
+              <div class="node-panel__margin-breakpoint">{{ breakpoint.label }}</div>
+              <div class="node-panel__margins-grid node-panel__margins-grid--responsive">
+                <label
+                  v-for="side in marginSides"
+                  :key="`${breakpoint.key}-${side.key}`"
+                  class="node-panel__margin-field"
+                >
+                  <span>{{ side.short }}</span>
+                  <select
+                    :value="marginDraft[side.key][breakpoint.key]"
+                    @change="handleMarginChange(side.key, breakpoint.key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option
+                      v-for="option in marginOptions"
+                      :key="`${side.key}-${breakpoint.key}-${option.value}`"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+
       <div v-if="componentDef?.allowChildren" class="node-panel__children">
         <div class="node-panel__children-actions">
           <select v-model="selectedChildComponent">
@@ -341,14 +562,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, toRaw, watch } from 'vue'
 import type {
   BuilderNodeChild,
+  BuilderResponsiveMargin,
   ComponentArrayItemField,
   ComponentDefinition,
   ComponentPropSchema,
   ComponentRegistry
 } from '~/types/builder'
+
+const isNestedArrayField = (
+  field: ComponentArrayItemField
+): field is Extract<ComponentArrayItemField, { type: 'jsonarray' }> => field.type === 'jsonarray'
+
+const isStringArrayField = (
+  field: ComponentArrayItemField
+): field is Extract<ComponentArrayItemField, { type: 'stringarray' }> => field.type === 'stringarray'
 
 type PropInputType =
   | 'text'
@@ -391,6 +621,7 @@ const draggingArrayItem = ref<{ propKey: string; index: number; type: 'jsonarray
 const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null)
 const collapsedNodes = reactive<Record<string, boolean>>({})
 const collapsedArrays = reactive<Record<string, boolean>>({})
+const collapsedNestedArrays = reactive<Record<string, boolean>>({})
 const insertDialog = reactive<{
   key: string | null
   type: 'jsonarray' | 'stringarray' | null
@@ -402,6 +633,51 @@ const insertDialog = reactive<{
     schema: null
   }
 )
+
+const nestedArrayKey = (propKey: string, parentIndex: number, fieldKey: string) =>
+  `${propKey}:${parentIndex}:${fieldKey}`
+
+const marginOptions = [
+  { label: 'None', value: '0' },
+  { label: 'XS', value: '1' },
+  { label: 'SM', value: '2' },
+  { label: 'MD', value: '4' },
+  { label: 'LG', value: '6' },
+  { label: 'XL', value: '8' },
+  { label: '2XL', value: '12' },
+  { label: '4XL', value: '24' }
+]
+
+type MarginSide = 'top' | 'right' | 'bottom' | 'left'
+type BreakpointKey = 'base' | 'sm' | 'md' | 'lg' | 'xl'
+
+const marginSides: Array<{ key: MarginSide; label: string; short: string }> = [
+  { key: 'top', label: 'Top', short: 'Top' },
+  { key: 'right', label: 'Right', short: 'Right' },
+  { key: 'bottom', label: 'Bottom', short: 'Bottom' },
+  { key: 'left', label: 'Left', short: 'Left' }
+]
+
+const responsiveBreakpoints = [
+  { key: 'sm', label: 'Small ≥640px', short: 'SM' },
+  { key: 'md', label: 'Medium ≥768px', short: 'MD' },
+  { key: 'lg', label: 'Large ≥1024px', short: 'LG' },
+  { key: 'xl', label: 'XL ≥1280px', short: 'XL' }
+] as const
+
+const createMarginState = () => ({ base: '0', sm: '0', md: '0', lg: '0', xl: '0' })
+
+const marginDraft = reactive<Record<MarginSide, Record<BreakpointKey, string>>>([
+  'top',
+  'right',
+  'bottom',
+  'left'
+].reduce((acc, side) => {
+  acc[side as MarginSide] = createMarginState()
+  return acc
+}, {} as Record<MarginSide, Record<BreakpointKey, string>>))
+
+const showResponsiveMargins = ref(false)
 
 const storageKeyForType = (key: string, type: PropInputType | ComponentPropSchema['type']) =>
   type === 'stringarray' || type === 'jsonarray' ? `:${key}` : key
@@ -427,27 +703,137 @@ const extraPropEntries = computed(() => {
 const getPropSchema = (key: string) => componentDef.value?.props?.find((prop) => prop.key === key)
 
 const cloneValue = <T>(value: T): T => {
+  const raw = value && typeof value === 'object' ? (toRaw(value) as T) : value
+
   if (typeof structuredClone === 'function') {
-    return structuredClone(value)
+    try {
+      return structuredClone(raw)
+    } catch (error) {
+      console.warn('structuredClone failed, falling back to JSON clone:', error)
+    }
   }
-  return JSON.parse(JSON.stringify(value)) as T
+
+  try {
+    return JSON.parse(JSON.stringify(raw)) as T
+  } catch (error) {
+    if (raw && typeof raw === 'object') {
+      return { ...(raw as Record<string, unknown>) } as T
+    }
+    return raw
+  }
 }
 
 const ensureArrayValue = (value: unknown): Array<Record<string, any>> => {
+  const toObject = (entry: unknown) => {
+    if (entry && typeof entry === 'object') {
+      return cloneValue(entry as Record<string, any>)
+    }
+    return {}
+  }
+
   if (Array.isArray(value)) {
-    return value.map((entry) => ({ ...entry }))
+    return value.map((entry) => toObject(entry))
   }
   if (typeof value === 'string') {
     try {
       const parsed = JSON.parse(value)
       if (Array.isArray(parsed)) {
-        return parsed.map((entry) => ({ ...entry }))
+        return parsed.map((entry) => toObject(entry))
       }
     } catch (error) {
       console.warn('Failed to parse JSON array draft value:', error)
     }
   }
   return []
+}
+
+const isActiveMarginValue = (value?: string) => Boolean(value && value !== '0' && value !== 'none')
+
+const applyMarginDraftToNode = () => {
+  if (props.node.type !== 'component') {
+    return
+  }
+  const next: BuilderNode['margins'] = {}
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    const config: BuilderResponsiveMargin = {}
+    if (isActiveMarginValue(state.base)) {
+      config.base = state.base
+    }
+    if (isActiveMarginValue(state.sm)) {
+      config.sm = state.sm
+    }
+    if (isActiveMarginValue(state.md)) {
+      config.md = state.md
+    }
+    if (isActiveMarginValue(state.lg)) {
+      config.lg = state.lg
+    }
+    if (isActiveMarginValue(state.xl)) {
+      config.xl = state.xl
+    }
+    if (Object.keys(config).length) {
+      next[side.key] = config
+    }
+  }
+
+  props.node.margins = Object.keys(next).length ? next : undefined
+}
+
+const setMarginDraftFromNode = () => {
+  if (props.node.type !== 'component') {
+    for (const side of marginSides) {
+      const state = marginDraft[side.key]
+      state.base = '0'
+      state.sm = '0'
+      state.md = '0'
+      state.lg = '0'
+      state.xl = '0'
+    }
+    showResponsiveMargins.value = false
+    return
+  }
+
+  let hasResponsive = false
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    const config = props.node.margins?.[side.key]
+    state.base = config?.base ?? '0'
+    state.sm = config?.sm ?? '0'
+    state.md = config?.md ?? '0'
+    state.lg = config?.lg ?? '0'
+    state.xl = config?.xl ?? '0'
+    if (
+      isActiveMarginValue(state.sm) ||
+      isActiveMarginValue(state.md) ||
+      isActiveMarginValue(state.lg) ||
+      isActiveMarginValue(state.xl)
+    ) {
+      hasResponsive = true
+    }
+  }
+  showResponsiveMargins.value = hasResponsive
+}
+
+const handleMarginChange = (side: MarginSide, breakpoint: BreakpointKey, value: string) => {
+  marginDraft[side][breakpoint] = value
+  if (breakpoint !== 'base' && isActiveMarginValue(value)) {
+    showResponsiveMargins.value = true
+  }
+  applyMarginDraftToNode()
+}
+
+const resetMargins = () => {
+  for (const side of marginSides) {
+    const state = marginDraft[side.key]
+    state.base = '0'
+    state.sm = '0'
+    state.md = '0'
+    state.lg = '0'
+    state.xl = '0'
+  }
+  showResponsiveMargins.value = false
+  applyMarginDraftToNode()
 }
 
 const ensureStringArray = (value: unknown): string[] => {
@@ -467,9 +853,179 @@ const ensureStringArray = (value: unknown): string[] => {
   return []
 }
 
+const ensureNestedArrayValue = (
+  parent: Record<string, any>,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>
+) => {
+  const storageKey = `:${field.key}`
+  if (!(field.key in parent) && storageKey in parent) {
+    const legacy = parent[storageKey]
+    if (typeof legacy === 'string') {
+      try {
+        const parsed = JSON.parse(legacy)
+        if (Array.isArray(parsed)) {
+          parent[field.key] = parsed
+        }
+      } catch (error) {
+        console.warn('Failed to parse legacy nested array value:', error)
+      }
+    } else if (Array.isArray(legacy)) {
+      parent[field.key] = legacy
+    }
+    delete parent[storageKey]
+  }
+
+  const current = parent[field.key]
+  if (Array.isArray(current)) {
+    if (current.some((entry) => !entry || typeof entry !== 'object')) {
+      parent[field.key] = current.map((entry) =>
+        entry && typeof entry === 'object'
+          ? cloneValue(entry as Record<string, any>)
+          : createEmptyArrayItem(field.items || [])
+      )
+    }
+    return parent[field.key] as Array<Record<string, any>>
+  }
+  if (typeof current === 'string') {
+    try {
+      const parsed = JSON.parse(current)
+      if (Array.isArray(parsed)) {
+        parent[field.key] = parsed.map((entry) =>
+          entry && typeof entry === 'object'
+            ? cloneValue(entry as Record<string, any>)
+            : createEmptyArrayItem(field.items || [])
+        )
+        return parent[field.key] as Array<Record<string, any>>
+      }
+    } catch (error) {
+      console.warn('Failed to parse nested JSON array draft value:', error)
+    }
+  }
+  parent[field.key] = []
+  delete parent[storageKey]
+  return parent[field.key] as Array<Record<string, any>>
+}
+
+const getNestedArrayItems = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>
+) => {
+  if (!Array.isArray(propDraft[propKey])) {
+    propDraft[propKey] = []
+  }
+  if (!propDraft[propKey][parentIndex]) {
+    propDraft[propKey][parentIndex] = {}
+  }
+  const parent = propDraft[propKey][parentIndex] as Record<string, any>
+  return ensureNestedArrayValue(parent, field)
+}
+
+const setNestedArrayItems = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
+  items: Array<Record<string, any>>
+) => {
+  const current = ensureArrayValue(propDraft[propKey])
+  const next = current.map((entry) => cloneValue(entry))
+  if (!next[parentIndex]) {
+    next[parentIndex] = {}
+  }
+  delete next[parentIndex][`:${field.key}`]
+  next[parentIndex][field.key] = items.map((item) => cloneValue(item))
+  propDraft[propKey] = next
+  applyProp(propKey, next, 'jsonarray')
+}
+
+const isNestedArrayCollapsed = (propKey: string, parentIndex: number, fieldKey: string) => {
+  const key = nestedArrayKey(propKey, parentIndex, fieldKey)
+  if (!(key in collapsedNestedArrays)) {
+    collapsedNestedArrays[key] = true
+  }
+  return collapsedNestedArrays[key]
+}
+
+const toggleNestedArray = (propKey: string, parentIndex: number, fieldKey: string) => {
+  const key = nestedArrayKey(propKey, parentIndex, fieldKey)
+  collapsedNestedArrays[key] = !(collapsedNestedArrays[key] ?? true)
+}
+
+const addNestedArrayItem = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>
+) => {
+  const items = getNestedArrayItems(propKey, parentIndex, field)
+  const next = [...items, createEmptyArrayItem(field.items || [])]
+  collapsedNestedArrays[nestedArrayKey(propKey, parentIndex, field.key)] = false
+  setNestedArrayItems(propKey, parentIndex, field, next)
+}
+
+const removeNestedArrayItem = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
+  index: number
+) => {
+  const items = getNestedArrayItems(propKey, parentIndex, field)
+  const next = items.filter((_, itemIndex) => itemIndex !== index)
+  setNestedArrayItems(propKey, parentIndex, field, next)
+}
+
+const updateNestedArrayItemField = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
+  index: number,
+  nestedField: ComponentArrayItemField,
+  rawValue: unknown
+) => {
+  const items = getNestedArrayItems(propKey, parentIndex, field)
+  const next = items.map((entry, entryIndex) => {
+    if (entryIndex !== index) {
+      return entry
+    }
+    const draft = cloneValue(entry)
+    if (isNestedArrayField(nestedField)) {
+      const ensured = ensureNestedArrayValue(draft, nestedField)
+      let updated: Array<Record<string, any>>
+      if (Array.isArray(rawValue)) {
+        updated = rawValue.map((value) => (value && typeof value === 'object' ? cloneValue(value) : {}))
+      } else {
+        try {
+          updated = ensureArrayValue(rawValue).map((value) => cloneValue(value))
+        } catch (error) {
+          updated = ensured
+        }
+      }
+      draft[nestedField.key] = updated
+      delete draft[`:${nestedField.key}`]
+      return draft
+    }
+    if (isStringArrayField(nestedField)) {
+      draft[nestedField.key] = ensureStringArray(rawValue)
+      delete draft[`:${nestedField.key}`]
+      return draft
+    }
+    draft[nestedField.key] = normalizeArrayFieldValue(nestedField, rawValue)
+    delete draft[`:${nestedField.key}`]
+    return draft
+  })
+  setNestedArrayItems(propKey, parentIndex, field, next)
+}
+
 const createEmptyArrayItem = (fields: ComponentArrayItemField[]) => {
   const item: Record<string, unknown> = {}
   for (const field of fields) {
+    if (isNestedArrayField(field)) {
+      item[field.key] = []
+      continue
+    }
+    if (isStringArrayField(field)) {
+      item[field.key] = []
+      continue
+    }
     if (field.type === 'boolean') {
       item[field.key] = false
     } else if (field.type === 'number') {
@@ -547,8 +1103,10 @@ const hydrateDrafts = () => {
     for (const entry of extraPropEntries.value) {
       extraPropsDraft[entry.key] = String(entry.value ?? '')
     }
+    setMarginDraftFromNode()
   } else {
     textDraft.value = props.node.value
+    setMarginDraftFromNode()
   }
 }
 
@@ -620,6 +1178,12 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
 }
 
 const normalizeArrayFieldValue = (field: ComponentArrayItemField, value: unknown) => {
+  if (isNestedArrayField(field)) {
+    return ensureArrayValue(value)
+  }
+  if (isStringArrayField(field)) {
+    return ensureStringArray(value)
+  }
   if (field.type === 'boolean') {
     return Boolean(value)
   }
@@ -636,6 +1200,9 @@ const handleArrayItemFieldChange = (
   field: ComponentArrayItemField,
   rawValue: unknown
 ) => {
+  if (isNestedArrayField(field)) {
+    return
+  }
   if (!Array.isArray(propDraft[propKey])) {
     propDraft[propKey] = []
   }
@@ -955,6 +1522,98 @@ const applyTextValue = () => {
   gap: 12px;
 }
 
+.node-panel__margins {
+  border-top: 1px dashed #e2e8f0;
+  margin-top: 12px;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-panel__margins-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.node-panel__margins-header h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.node-panel__margins-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-panel__margins-toggle {
+  font-size: 0.75rem;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #cbd5f5;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.node-panel__margins-toggle:hover,
+.node-panel__margins-toggle:focus-visible {
+  background: #e0f2fe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.node-panel__margins-reset {
+  font-size: 0.75rem;
+  color: #2563eb;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.node-panel__margins-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .node-panel__margins-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.node-panel__margins-grid--responsive {
+  gap: 8px;
+}
+
+.node-panel__margin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-panel__margin-field select {
+  border: 1px solid #cbd5f5;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.node-panel__array--nested {
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.node-panel__array-header--nested {
+  align-items: center;
+}
+
 .node-panel__array-header {
   display: flex;
   justify-content: flex-start;
@@ -1064,9 +1723,18 @@ const applyTextValue = () => {
   cursor: move;
 }
 
+.node-panel__array-item--nested {
+  cursor: default;
+  margin-left: 12px;
+}
+
 .node-panel__array-fields {
   display: grid;
   gap: 8px;
+}
+
+.node-panel__array-fields--nested {
+  gap: 6px;
 }
 
 .node-panel__array-item--drag-over {
@@ -1317,6 +1985,30 @@ const applyTextValue = () => {
   padding: 6px 8px;
   border-radius: 4px;
   border: 1px solid #cbd5f5;
+}
+
+.node-panel__margins-responsive {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.node-panel__margins-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.node-panel__margin-breakpoint {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
 }
 
 .node-panel__new-prop button {

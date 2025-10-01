@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 import { createDocumentFromTree } from '#content/app/utils/contentBuilder'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
-import type { ContentPageDocument, ContentPageSummary } from '#content/types/content-page'
+import type { ContentPageDocument, ContentPageSummary, ContentPageHistoryEntry } from '#content/types/content-page'
 import {
     ensureMinimalBody,
     ensureLayout,
@@ -24,6 +24,7 @@ interface FetchState<T> {
 interface PagesState {
     index: FetchState<ContentPageSummary[]>
     pages: Record<string, FetchState<Maybe<ContentPageSummary>>>
+    history: Record<string, FetchState<ContentPageHistoryEntry[]>>
 }
 
 const createEmptyFetchState = <T>(initialValue: T): FetchState<T> => ({
@@ -97,16 +98,50 @@ const extractSummary = (payload: any): ContentPageSummary => {
     }
 }
 
+const normalizeHistoryEntry = (payload: any, fallbackPath: string): ContentPageHistoryEntry => {
+    const minimalDoc = payload?.document ?? payload?.doc ?? null
+    const minimal: MinimalContentDocument = minimalDoc ? minimalDoc as MinimalContentDocument : {
+        id: payload?.id ?? null,
+        body: { type: 'minimal', value: [] },
+        path: fallbackPath,
+        title: payload?.title ?? null,
+        seo: {
+            title: payload?.title ?? null,
+            description: null
+        }
+    } as MinimalContentDocument
+
+    const contentDoc = minimalToContentDocument(minimal)
+    contentDoc._id = contentDoc._id ?? payload?.id ?? pageIdFromPath(contentDoc.path)
+
+    const timestamp = typeof payload?.timestamp === 'string'
+        ? payload.timestamp
+        : contentDoc.updatedAt ?? contentDoc.createdAt ?? new Date().toISOString()
+
+    return {
+        id: payload?.id ?? contentDoc._id,
+        path: normalizePagePath(contentDoc.path ?? fallbackPath),
+        title: payload?.title ?? contentDoc.title ?? null,
+        timestamp,
+        document: contentDoc
+    }
+}
+
 export const useContentPagesStore = defineStore('content-pages', {
     state: (): PagesState => ({
         index: createEmptyFetchState<ContentPageSummary[]>([]),
-        pages: {}
+        pages: {},
+        history: {}
     }),
 
     getters: {
         getPage: (state) => (path: string): Maybe<ContentPageSummary> => {
             const normalizedPath = normalizePagePath(path)
             return state.pages[normalizedPath]?.data ?? null
+        },
+        getHistoryState: (state) => (path: string): FetchState<ContentPageHistoryEntry[]> | null => {
+            const normalizedPath = normalizePagePath(path)
+            return state.history[normalizedPath] ?? null
         }
     },
 
@@ -165,6 +200,41 @@ export const useContentPagesStore = defineStore('content-pages', {
             } catch (error: any) {
                 state.error = error?.message || 'Failed to load page'
                 state.data = null
+                throw error
+            } finally {
+                state.pending = false
+            }
+        },
+
+        async fetchHistory(path: string, force = false): Promise<ContentPageHistoryEntry[]> {
+            const normalizedPath = normalizePagePath(path)
+
+            if (!this.history[normalizedPath]) {
+                this.history[normalizedPath] = createEmptyFetchState<ContentPageHistoryEntry[]>([])
+            }
+
+            const state = this.history[normalizedPath]
+
+            if (!force && state.data.length && !state.pending) {
+                return state.data
+            }
+
+            state.pending = true
+            state.error = null
+
+            const $f = useRequestFetch()
+
+            try {
+                const response: any = await $f('/api/content/pages/history', {
+                    params: { path: normalizedPath }
+                })
+
+                const history = Array.isArray(response?.history) ? response.history : []
+                const entries = history.map((entry: any) => normalizeHistoryEntry(entry, normalizedPath))
+                state.data = entries
+                return entries
+            } catch (error: any) {
+                state.error = error?.message || 'Failed to load history'
                 throw error
             } finally {
                 state.pending = false
@@ -231,6 +301,12 @@ export const useContentPagesStore = defineStore('content-pages', {
             existingIndex.push(summary)
             this.index.data = existingIndex.sort((a, b) => a.path.localeCompare(b.path))
 
+            try {
+                await this.fetchHistory(normalizedPath, true)
+            } catch (error) {
+                console.error('Failed to refresh history after save:', error)
+            }
+
             return summary
         },
 
@@ -244,6 +320,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             })
 
             delete this.pages[normalizedPath]
+            delete this.history[normalizedPath]
             this.index.data = this.index.data
                 .filter((entry) => normalizePagePath(entry.path) !== normalizedPath)
         }

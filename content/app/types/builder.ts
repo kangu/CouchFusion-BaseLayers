@@ -16,11 +16,29 @@ export type ComponentFieldType =
   | 'stringarray'
   | 'number';
 
-export interface ComponentArrayItemField {
+export interface ComponentArrayItemFieldBase {
   key: string;
   label: string;
-  type: Exclude<ComponentFieldType, 'jsonarray' | 'select'>;
+  description?: string;
 }
+
+export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
+  type: Exclude<ComponentFieldType, 'jsonarray' | 'stringarray' | 'select'>;
+}
+
+export interface ComponentArrayNestedField extends ComponentArrayItemFieldBase {
+  type: 'jsonarray';
+  items: ComponentArrayItemField[];
+}
+
+export interface ComponentArrayPrimitiveListField extends ComponentArrayItemFieldBase {
+  type: 'stringarray';
+}
+
+export type ComponentArrayItemField =
+  | ComponentArrayPrimitiveField
+  | ComponentArrayNestedField
+  | ComponentArrayPrimitiveListField;
 
 export interface ComponentPropSchema {
   key: string;
@@ -45,6 +63,23 @@ export interface ComponentDefinition {
   childHint?: string;
 }
 
+export type BuilderMarginBreakpoint = 'base' | 'sm' | 'md' | 'lg' | 'xl';
+
+export interface BuilderResponsiveMargin {
+  base?: string;
+  sm?: string;
+  md?: string;
+  lg?: string;
+  xl?: string;
+}
+
+export interface BuilderNodeMargins {
+  top?: BuilderResponsiveMargin;
+  right?: BuilderResponsiveMargin;
+  bottom?: BuilderResponsiveMargin;
+  left?: BuilderResponsiveMargin;
+}
+
 export type BuilderNodeChild = BuilderNode | BuilderTextNode;
 
 export interface BuilderNode {
@@ -53,6 +88,7 @@ export interface BuilderNode {
   component: string; // from ComponentDefinition.id
   props: Record<string, BuilderValue>;
   children: BuilderNodeChild[];
+  margins?: BuilderNodeMargins;
 }
 
 export interface BuilderTextNode {

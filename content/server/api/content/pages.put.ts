@@ -3,6 +3,7 @@ import { getDocument, putDocument } from '#database/utils/couchdb'
 import { getContentDatabaseName } from '../../utils/database'
 import { requireAdminSession } from '../../utils/auth'
 import { sanitiseIncomingDocument, contentIdFromPath } from '../../utils/content-documents'
+import { savePageHistory } from '../../utils/page-history'
 import { normalizePagePath } from '#content/utils/page'
 
 export default defineEventHandler(async (event) => {
@@ -40,6 +41,11 @@ export default defineEventHandler(async (event) => {
         updatedDocument._rev = existingDocument._rev
 
         const response = await putDocument(databaseName, updatedDocument)
+        if (response.rev) {
+            updatedDocument._rev = response.rev
+        }
+
+        await savePageHistory(updatedDocument)
 
         return {
             success: true,
