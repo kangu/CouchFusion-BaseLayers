@@ -1,4 +1,4 @@
-import { defineNuxtRouteMiddleware } from '#imports'
+import { defineNuxtRouteMiddleware, createError, abortNavigation } from '#imports'
 import { useContentPagesStore } from '#content/app/stores/pages'
 
 const reservedPrefixes = [
@@ -27,7 +27,7 @@ const isContentRoute = (path: string) => {
     }
 
     const lastSegment = path.split('/').pop() ?? ''
-    if (!lastSegment || lastSegment.includes('.')) {
+    if ((!lastSegment || lastSegment.includes('.')) && (path !== '/')) {
         // Treat empty/extension segments (e.g. ".json", ".ico") as non-content resources.
         return false
     }
@@ -35,7 +35,12 @@ const isContentRoute = (path: string) => {
     return true
 }
 
-export default defineNuxtRouteMiddleware(async (to) => {
+export default defineNuxtRouteMiddleware(async (to, from) => {
+    if (import.meta.client && (!from || (from.path === to.path))) {
+        // Skip duplicate client execution during initial hydration; SSR already fetched the page.
+        return
+    }
+
     if (!isContentRoute(to.path)) {
         return
     }
@@ -45,8 +50,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
     try {
         await store.fetchPage(to.path)
     } catch (error: any) {
-        if (error?.statusCode !== 404) {
-            console.error('Content middleware fetch error:', error)
+        if (error?.statusCode === 404) {
+            console.warn('Content page not found, triggering 404:', to.path)
+            return abortNavigation(createError({
+                statusCode: 404,
+                statusMessage: 'Content page not found'
+            }))
         }
+
+        console.error('Content middleware fetch error:', error)
     }
 })

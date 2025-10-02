@@ -10,19 +10,22 @@ export default defineNuxtConfig({
     modules: [],
 
     imports: {
-        dirs: ['app/composables', 'app/stores']
+        dirs: [
+            fileURLToPath(new URL('./app/composables', import.meta.url)),
+            fileURLToPath(new URL('./app/stores', import.meta.url))
+        ]
     },
 
     components: {
         dirs: [
             /* global component import comes from the implementing app */
             {
-                path: './app/components/builder',
+                path: './components/builder',
                 global: true,
                 pathPrefix: false
             },
             {
-                path: './app/components/runtime',
+                path: './components/runtime',
                 global: true,
                 pathPrefix: false
             }
