@@ -2,10 +2,19 @@ import { defineEventHandler, readBody, createError } from 'h3'
 import useIds from '../../../app/composables/useIds'
 import { bulkDocs, getView } from '#database/utils/couchdb'
 
+interface ImportUserProfile {
+  full_name?: string
+  telegram_handle?: string
+  linkedin_url?: string
+  referral_source?: string
+  comments?: string
+  [key: string]: unknown
+}
+
 interface ImportUserRow {
   email?: string
   roles?: string[]
-  profile?: Record<string, unknown>
+  profile?: ImportUserProfile
   pow_lab_status?: string | null
   pow_lab_valid_until?: string | null
   pow_lab_lite_status?: string | null
@@ -93,7 +102,22 @@ export default defineEventHandler(async (event) => {
     }
 
     if (row.profile && typeof row.profile === 'object') {
-      doc.profile = row.profile
+      const profile: Record<string, unknown> = {}
+
+      for (const [key, value] of Object.entries(row.profile)) {
+        if (typeof value === 'string') {
+          const trimmed = value.trim()
+          if (trimmed.length > 0) {
+            profile[key] = trimmed
+          }
+        } else if (value !== null && value !== undefined) {
+          profile[key] = value
+        }
+      }
+
+      if (Object.keys(profile).length > 0) {
+        doc.profile = profile
+      }
     }
 
     const optionalStringFields: Array<keyof ImportUserRow> = [

@@ -24,6 +24,10 @@ export interface AuthSession {
 
 export interface AdminUserProfile {
     full_name?: string | null
+    telegram_handle?: string | null
+    linkedin_url?: string | null
+    referral_source?: string | null
+    comments?: string | null
 
     [key: string]: any
 }
