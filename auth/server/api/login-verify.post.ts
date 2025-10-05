@@ -10,9 +10,9 @@ function isValidEmail (email) {
     return typeof email === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
 }
 
-// Checks expiration date
+// Checks expiration date and if it's not used
 function isNotExpired (tokenDoc) {
-    if (!tokenDoc || !tokenDoc.expires) { return false }
+    if (!tokenDoc || !tokenDoc.expires || tokenDoc.used) { return false }
     const currentTime = new Date()
     const expirationTime = new Date(tokenDoc.expires)
     return currentTime < expirationTime
