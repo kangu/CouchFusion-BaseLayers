@@ -16,10 +16,17 @@ export type ComponentFieldType =
   | 'stringarray'
   | 'number';
 
+export interface ComponentFieldUiConfig {
+  component?: string;
+  widget?: string;
+  [key: string]: unknown;
+}
+
 export interface ComponentArrayItemFieldBase {
   key: string;
   label: string;
   description?: string;
+  ui?: ComponentFieldUiConfig;
 }
 
 export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
@@ -51,6 +58,7 @@ export interface ComponentPropSchema {
   default?: BuilderValue;
   items?: ComponentArrayItemField[];
   elementType?: 'string' | 'number' | 'boolean';
+  ui?: ComponentFieldUiConfig;
 }
 
 export interface ComponentDefinition {

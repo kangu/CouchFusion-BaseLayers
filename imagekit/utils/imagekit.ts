@@ -64,7 +64,14 @@ export interface ImageKitAuthenticationParameters {
   token: string
 }
 
-export type ImageKitFile = Record<string, unknown>
+export interface ImageKitFile {
+  fileId?: string
+  filePath?: string
+  name?: string
+  url?: string
+  thumbnailUrl?: string
+  [key: string]: unknown
+}
 
 export type ImageKitServiceResponse<T> =
   | { success: true; data: T }
@@ -124,7 +131,7 @@ class ImageKitService {
   async uploadFile(
     file: UploadableFile,
     fileName: string,
-    folder = 'email-templates',
+    folder = 'bucket',
   ): Promise<ImageKitServiceResponse<ImageKitUploadResult>> {
     if (!this.client) {
       return {
@@ -139,7 +146,7 @@ class ImageKitService {
         fileName,
         folder,
         useUniqueFileName: true,
-        tags: ['email-template', 'user-upload'],
+        tags: ['user-upload'],
       })
 
       const payload: ImageKitUploadResult = {

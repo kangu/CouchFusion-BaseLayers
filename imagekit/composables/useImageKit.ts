@@ -1,6 +1,11 @@
 import { computed, ref } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import type { ImageKitListOptions, ImageKitTransformations, ImageKitUploadResult } from '#imagekit/utils/imagekit'
+import type {
+  ImageKitFile,
+  ImageKitListOptions,
+  ImageKitTransformations,
+  ImageKitUploadResult,
+} from '#imagekit/utils/imagekit'
 
 interface UploadOptions {
   folder?: string
@@ -15,7 +20,7 @@ interface ApiResponse<T> {
 
 type UploadApiResponse = ApiResponse<ImageKitUploadResult>
 type UrlApiResponse = ApiResponse<string>
-type ListApiResponse = ApiResponse<ImageKitUploadResult[]>
+type ListApiResponse = ApiResponse<ImageKitFile[]>
 type DeleteApiResponse = ApiResponse<boolean>
 export interface UseImageKit {
   isUploading: ComputedRef<boolean>
@@ -24,7 +29,7 @@ export interface UseImageKit {
   error: ComputedRef<string | null>
   uploadImage: (file: File, options?: UploadOptions) => Promise<ImageKitUploadResult>
   generateImageUrl: (filePath: string, transformations?: ImageKitTransformations) => Promise<string>
-  getImageList: (options?: ImageKitListOptions) => Promise<ImageKitUploadResult[]>
+  getImageList: (options?: ImageKitListOptions) => Promise<ImageKitFile[]>
   deleteImage: (fileId: string) => Promise<boolean>
   parseTransformations: (transformString?: string) => ImageKitTransformations
   buildTransformationString: (transformations: ImageKitTransformations) => string
@@ -114,7 +119,7 @@ export function useImageKit(): UseImageKit {
     }
   }
 
-  const getImageList = async (options: ImageKitListOptions = {}): Promise<ImageKitUploadResult[]> => {
+  const getImageList = async (options: ImageKitListOptions = {}): Promise<ImageKitFile[]> => {
     try {
       const params = new URLSearchParams()
 
