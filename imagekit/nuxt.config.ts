@@ -9,6 +9,8 @@ export default defineNuxtConfig({
     dirs: ['composables', 'utils'],
   },
 
+  plugins: [{ src: './plugins/imagekit-directive' }],
+
   runtimeConfig: {
     imagekit: {
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY,

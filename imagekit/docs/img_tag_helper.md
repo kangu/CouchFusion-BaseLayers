@@ -1,5 +1,11 @@
-The imagekit layer should provide a global directive that would help <img> tags apply transformations 
-to the loaded imagekit url.
+## Checklist
+- [x] Provide ImageKit transformation helper and global directive
+- [x] Integrate transformations with apps using `v-lazy`
+- [x] Document usage and verification notes
+
+---
+
+The imagekit layer should provide a global directive that would help <img> tags apply transformations to the loaded imagekit url.
 Consider that the images are loaded using v-lazy, something like this:
 
 <img
