@@ -15,16 +15,22 @@ const buildAbsoluteUrl = (source: string, endpoint?: string): string | null => {
     return null
   }
 
-  if (/^https?:\/\//i.test(source)) {
-    return source
+  const trimmed = source.trim()
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
+  }
+
+  if (trimmed.startsWith('/')) {
+    return trimmed
   }
 
   const normalizedEndpoint = normalizeEndpoint(endpoint)
   if (!normalizedEndpoint) {
-    return null
+    return trimmed
   }
 
-  return `${normalizedEndpoint}/${normalizePath(source)}`
+  return `${normalizedEndpoint}/${normalizePath(trimmed)}`
 }
 
 const splitPathSegments = (path: string): string[] =>
@@ -64,6 +70,10 @@ export const withImageKitTransformations = (source: string, options: TransformOp
     return source
   }
 
+  if (absolute.startsWith('/')) {
+    return absolute
+  }
+
   const transforms = normalizeTransformInput(options.transformations)
   if (!transforms) {
     return absolute
@@ -71,7 +81,7 @@ export const withImageKitTransformations = (source: string, options: TransformOp
 
   const url = new URL(absolute)
   const segments = stripExistingTransformSegment(splitPathSegments(url.pathname))
-  const insertionIndex = segments.length >= 1 ? 1 : 0
+  const insertionIndex = segments.length > 1 ? 1 : 0
   segments.splice(insertionIndex, 0, `${TRANSFORM_PREFIX}${transforms}`)
   const pathWithTransform = segments.join('/')
 
