@@ -9,7 +9,7 @@ export default defineNuxtConfig({
     dirs: ['composables', 'utils'],
   },
 
-  plugins: [{ src: './plugins/imagekit-directive' }],
+  plugins: [{ src: fileURLToPath(new URL('./plugins/imagekit-directive', import.meta.url)) }],
 
   runtimeConfig: {
     imagekit: {
