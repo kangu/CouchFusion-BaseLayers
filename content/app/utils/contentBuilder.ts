@@ -47,6 +47,77 @@ export interface MinimalContentDocument {
 const isTextNode = (node: BuilderNodeChild): node is BuilderTextNode => node.type === 'text'
 const isComponentNode = (node: BuilderNodeChild): node is BuilderNode => node.type === 'component'
 
+const PARAGRAPH_COMPONENT_ID = 'p'
+const PARAGRAPH_ALIGN_VALUES = ['left', 'center', 'right'] as const
+type ParagraphAlignment = typeof PARAGRAPH_ALIGN_VALUES[number]
+const DEFAULT_PARAGRAPH_ALIGN: ParagraphAlignment = 'left'
+
+const isPlainObject = (value: unknown): value is Record<string, any> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const normaliseParagraphAlign = (value: unknown): ParagraphAlignment | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const normalized = value.trim().toLowerCase()
+  return PARAGRAPH_ALIGN_VALUES.includes(normalized as ParagraphAlignment)
+    ? (normalized as ParagraphAlignment)
+    : null
+}
+
+const resolveParagraphAlign = (value: unknown): ParagraphAlignment => {
+  return normaliseParagraphAlign(value) ?? DEFAULT_PARAGRAPH_ALIGN
+}
+
+const stripTextAlignStyle = (style: unknown): unknown => {
+  if (typeof style === 'string') {
+    const filtered = style
+      .split(';')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0 && !entry.toLowerCase().startsWith('text-align'))
+
+    if (filtered.length === 0) {
+      return undefined
+    }
+
+    return filtered.join('; ')
+  }
+
+  if (isPlainObject(style)) {
+    const cleaned: Record<string, any> = {}
+
+    for (const [key, value] of Object.entries(style)) {
+      if (key === 'textAlign' || key === 'text-align') {
+        continue
+      }
+      cleaned[key] = value
+    }
+
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined
+  }
+
+  return style
+}
+
+const appendTextAlignStyle = (style: unknown, align: Exclude<ParagraphAlignment, 'left'>): unknown => {
+  if (isPlainObject(style)) {
+    return {
+      ...style,
+      textAlign: align
+    }
+  }
+
+  const base =
+    typeof style === 'string' && style.trim().length > 0
+      ? style.trim().replace(/;+$/, '')
+      : ''
+
+  const declaration = `text-align:${align}`
+
+  return base.length > 0 ? `${base}; ${declaration}` : declaration
+}
+
 const serializeProps = (node: BuilderNode): Record<string, any> => {
   const props: Record<string, any> = {}
 
@@ -60,7 +131,26 @@ const serializeProps = (node: BuilderNode): Record<string, any> => {
       continue
     }
 
+    if (node.component === PARAGRAPH_COMPONENT_ID && key === 'align') {
+      continue
+    }
+
     props[key] = value
+  }
+
+  if (node.component === PARAGRAPH_COMPONENT_ID) {
+    const align = resolveParagraphAlign(node.props?.align)
+    let styleValue = stripTextAlignStyle(props.style)
+
+    if (align !== DEFAULT_PARAGRAPH_ALIGN) {
+      styleValue = appendTextAlignStyle(styleValue, align)
+    }
+
+    if (styleValue === undefined || (typeof styleValue === 'string' && styleValue.trim().length === 0)) {
+      delete props.style
+    } else {
+      props.style = styleValue
+    }
   }
 
   return props

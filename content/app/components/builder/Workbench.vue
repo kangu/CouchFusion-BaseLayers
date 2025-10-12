@@ -20,6 +20,80 @@ const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
   return JSON.parse(JSON.stringify(doc)) as MinimalContentDocument
 }
 
+const PARAGRAPH_ALIGN_VALUES = ['left', 'center', 'right'] as const
+type ParagraphAlignment = typeof PARAGRAPH_ALIGN_VALUES[number]
+const DEFAULT_PARAGRAPH_ALIGN: ParagraphAlignment = 'left'
+
+const isPlainObject = (value: unknown): value is Record<string, any> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const normaliseParagraphAlignment = (value: unknown): ParagraphAlignment | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const normalized = value.trim().toLowerCase()
+  return PARAGRAPH_ALIGN_VALUES.includes(normalized as ParagraphAlignment)
+    ? (normalized as ParagraphAlignment)
+    : null
+}
+
+const extractParagraphAlignFromStyle = (style: unknown): ParagraphAlignment | null => {
+  if (typeof style === 'string') {
+    for (const token of style.split(';')) {
+      if (!token) {
+        continue
+      }
+      const [property, rawValue] = token.split(':')
+      if (!property || !rawValue) {
+        continue
+      }
+      if (property.trim().toLowerCase() === 'text-align') {
+        const alignment = normaliseParagraphAlignment(rawValue)
+        if (alignment) {
+          return alignment
+        }
+      }
+    }
+    return null
+  }
+
+  if (isPlainObject(style)) {
+    const candidate = style.textAlign ?? style['text-align']
+    return normaliseParagraphAlignment(candidate)
+  }
+
+  return null
+}
+
+const stripParagraphAlignFromStyle = (style: unknown): unknown => {
+  if (typeof style === 'string') {
+    const filtered = style
+      .split(';')
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0 && token.split(':')[0]?.trim().toLowerCase() !== 'text-align')
+
+    if (filtered.length === 0) {
+      return undefined
+    }
+
+    return filtered.join('; ')
+  }
+
+  if (isPlainObject(style)) {
+    const cleaned: Record<string, any> = {}
+    for (const [key, value] of Object.entries(style)) {
+      if (key === 'textAlign' || key === 'text-align') {
+        continue
+      }
+      cleaned[key] = value
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined
+  }
+
+  return style
+}
+
 const props = defineProps<{ initialDocument?: MinimalContentDocument | null }>()
 
 const { registry, createNode, createTextNode } = useComponentRegistry()
@@ -216,6 +290,22 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
       }
     }
     node.props = normalizeJsonProps(component, processedProps)
+
+    if (component === 'p') {
+      const alignFromProp = normaliseParagraphAlignment(node.props.align)
+      const alignFromStyle = extractParagraphAlignFromStyle(node.props.style)
+      const resolvedAlign = alignFromProp ?? alignFromStyle ?? DEFAULT_PARAGRAPH_ALIGN
+
+      node.props.align = resolvedAlign
+
+      const cleanedStyle = stripParagraphAlignFromStyle(node.props.style)
+      if (cleanedStyle === undefined) {
+        delete node.props.style
+      } else {
+        node.props.style = cleanedStyle
+      }
+    }
+
     node.children = children
       .map((child) => deserializeEntry(child))
       .filter((child): child is BuilderNodeChild => child !== null)

@@ -8,13 +8,33 @@ const defaultDefinitions: ComponentDefinition[] = [
     label: 'Paragraph',
     description: 'Rich text paragraph wrapper. Combine with text nodes or inline elements.',
     allowChildren: true,
-    childHint: 'Add text nodes or inline components as children.'
+    childHint: 'Add text nodes or inline components as children.',
+    props: [
+      {
+        key: 'align',
+        label: 'Alignment',
+        type: 'select',
+        options: [
+          { label: 'Left', value: 'left' },
+          { label: 'Center', value: 'center' },
+          { label: 'Right', value: 'right' }
+        ],
+        default: 'left'
+      }
+    ]
   },
   {
     id: 'span',
     label: 'Span',
     description: 'Inline span element.',
     allowChildren: true
+  },
+  {
+    id: 'strong',
+    label: 'Strong Text',
+    description: 'Inline wrapper that renders children with bold emphasis.',
+    allowChildren: true,
+    childHint: 'Add text nodes or inline components that should display in bold.'
   },
   {
     id: 'template',
