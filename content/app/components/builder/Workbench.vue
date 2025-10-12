@@ -28,6 +28,21 @@ const isPlainObject = (value: unknown): value is Record<string, any> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+const normalizeComponentId = (component: unknown): string | null => {
+  if (typeof component !== 'string' || !component.trim()) {
+    return null
+  }
+
+  if (component.includes('-')) {
+    return component
+  }
+
+  return component
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+}
+
 const normaliseParagraphAlignment = (value: unknown): ParagraphAlignment | null => {
   if (typeof value !== 'string') {
     return null
@@ -262,8 +277,9 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
     return textNode
   }
   if (Array.isArray(entry)) {
-    const [component, rawProps = {}, ...children] = entry
-    if (typeof component !== 'string') {
+    const [rawComponent, rawProps = {}, ...children] = entry
+    const component = normalizeComponentId(rawComponent)
+    if (!component) {
       return null
     }
     if (component === 'content-margin-wrapper') {

@@ -118,7 +118,22 @@ const appendTextAlignStyle = (style: unknown, align: Exclude<ParagraphAlignment,
   return base.length > 0 ? `${base}; ${declaration}` : declaration
 }
 
-const serializeProps = (node: BuilderNode): Record<string, any> => {
+const normalizeComponentId = (component: string): string => {
+  if (!component) {
+    return component
+  }
+
+  if (component.includes('-')) {
+    return component
+  }
+
+  return component
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+}
+
+const serializeProps = (node: BuilderNode, componentName: string): Record<string, any> => {
   const props: Record<string, any> = {}
 
   for (const [key, value] of Object.entries(node.props || {})) {
@@ -126,19 +141,19 @@ const serializeProps = (node: BuilderNode): Record<string, any> => {
       continue
     }
 
-    if (node.component === 'template' && key === 'slot') {
+    if (componentName === 'template' && key === 'slot') {
       props[`v-slot:${value}`] = ''
       continue
     }
 
-    if (node.component === PARAGRAPH_COMPONENT_ID && key === 'align') {
+    if (componentName === PARAGRAPH_COMPONENT_ID && key === 'align') {
       continue
     }
 
     props[key] = value
   }
 
-  if (node.component === PARAGRAPH_COMPONENT_ID) {
+  if (componentName === PARAGRAPH_COMPONENT_ID) {
     const align = resolveParagraphAlign(node.props?.align)
     let styleValue = stripTextAlignStyle(props.style)
 
@@ -268,12 +283,13 @@ export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | nul
     return null
   }
 
-  const props = serializeProps(node)
+  const componentName = normalizeComponentId(node.component)
+  const props = serializeProps(node, componentName)
   const children = serializeChildren(node.children)
   const baseEntry: MinimalContentEntry =
     children.length > 0
-      ? [node.component, Object.keys(props).length ? props : {}, ...children]
-      : [node.component, Object.keys(props).length ? props : {}]
+      ? [componentName, Object.keys(props).length ? props : {}, ...children]
+      : [componentName, Object.keys(props).length ? props : {}]
 
   if (!hasMargins(node.margins)) {
     return baseEntry
