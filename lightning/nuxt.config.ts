@@ -34,7 +34,7 @@ export default defineNuxtConfig({
             defaultProvider: 'strike',
             providers: {
                 strike: {
-                    apiKey: process.env.STRIKE_API_KEY,
+                    apiKey: process.env.NUXT_STRIKE_API_KEY,
                     webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
                 }
             }
@@ -62,13 +62,13 @@ Add this to your nuxt.config.ts:
 runtimeConfig: {
   lightning: {
     defaultProvider: 'strike', // or 'boltz'
-    providers: {
-      strike: {
-        apiKey: process.env.STRIKE_API_KEY,
-        webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
-      },
-      // or
-      boltz: {
+providers: {
+  strike: {
+    apiKey: process.env.NUXT_STRIKE_API_KEY,
+    webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
+  },
+  // or
+  boltz: {
         apiUrl: 'https://api.boltz.exchange/',
         network: 'mainnet',
         liquidAddress: 'your-liquid-address'
@@ -107,7 +107,7 @@ At least one provider must be configured in 'lightning.providers'.
 Example configuration:
 providers: {
   strike: {
-    apiKey: process.env.STRIKE_API_KEY,
+    apiKey: process.env.NUXT_STRIKE_API_KEY,
     webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
   }
 }
@@ -122,7 +122,7 @@ providers: {
 🚨 Lightning Layer Configuration Error:
 Strike provider requires 'apiKey' to be configured.
 
-Set STRIKE_API_KEY environment variable or configure directly:
+Set NUXT_STRIKE_API_KEY environment variable or configure directly:
 providers: {
   strike: {
     apiKey: 'your-strike-api-key',
