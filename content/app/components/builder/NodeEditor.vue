@@ -146,6 +146,16 @@
                         @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                       />
                     </template>
+                    <template v-else-if="field.ui?.component">
+                      <component
+                        :is="field.ui.component"
+                        :model-value="item[field.key]"
+                        :prop-definition="field"
+                        :field-context="{ propKey: prop.key, arrayIndex: index }"
+                        @update:modelValue="(value: unknown) =>
+                          handleCustomArrayFieldUpdate(prop.key, index, field, value)"
+                      />
+                    </template>
                     <template v-else-if="field.type === 'jsonarray'">
                       <div
                         class="node-panel__array node-panel__array--nested"
@@ -257,6 +267,28 @@
                                     )
                                   "
                                 />
+                              </template>
+                              <template v-else-if="nestedField.ui?.component">
+                                <component
+                                  :is="nestedField.ui.component"
+                                  :model-value="nestedItem[nestedField.key]"
+                                  :prop-definition="nestedField"
+                                  :field-context="{
+                                    propKey: prop.key,
+                                    arrayIndex: index,
+                                    nestedFieldKey: nestedField.key,
+                                    nestedIndex
+                                  }"
+                                  @update:modelValue="(value: unknown) =>
+                                    updateCustomNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      value
+                                    )"
+                                  />
                               </template>
                               <template v-else>
                                 <input
@@ -371,6 +403,15 @@
                 </button>
               </div>
             </div>
+          </template>
+          <template v-else-if="prop.ui?.component">
+            <component
+              :is="prop.ui.component"
+              :model-value="propDraft[prop.key]"
+              :prop-definition="prop"
+              :field-context="{ propKey: prop.key }"
+              @update:modelValue="(value: unknown) => handleCustomPropUpdate(prop, value)"
+            />
           </template>
           <template v-else>
             <input
@@ -1015,6 +1056,17 @@ const updateNestedArrayItemField = (
   setNestedArrayItems(propKey, parentIndex, field, next)
 }
 
+const updateCustomNestedArrayItemField = (
+  propKey: string,
+  parentIndex: number,
+  field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
+  index: number,
+  nestedField: ComponentArrayItemField,
+  value: unknown
+) => {
+  updateNestedArrayItemField(propKey, parentIndex, field, index, nestedField, value)
+}
+
 const createEmptyArrayItem = (fields: ComponentArrayItemField[]) => {
   const item: Record<string, unknown> = {}
   for (const field of fields) {
@@ -1177,6 +1229,11 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   props.onUpdateProp(props.node.uid, key, parsedValue)
 }
 
+const handleCustomPropUpdate = (schema: ComponentPropSchema, value: unknown) => {
+  propDraft[schema.key] = value
+  applyProp(schema.key, value, schema.type)
+}
+
 const normalizeArrayFieldValue = (field: ComponentArrayItemField, value: unknown) => {
   if (isNestedArrayField(field)) {
     return ensureArrayValue(value)
@@ -1214,6 +1271,18 @@ const handleArrayItemFieldChange = (
   next[index][field.key] = normalizeArrayFieldValue(field, rawValue)
   propDraft[propKey] = next
   applyProp(propKey, next, 'jsonarray')
+}
+
+const handleCustomArrayFieldUpdate = (
+  propKey: string,
+  index: number,
+  field: ComponentArrayItemField,
+  value: unknown
+) => {
+  if (isNestedArrayField(field)) {
+    return
+  }
+  handleArrayItemFieldChange(propKey, index, field, value)
 }
 
 const removeArrayItem = (propKey: string, index: number) => {
