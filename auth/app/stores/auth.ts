@@ -370,9 +370,9 @@ export const useAuthStore = defineStore('auth', {
 
             if (connected && !wasConnected) {
                 this.sse.connectionCount++
-                console.log('[AuthStore] SSE connected')
+                // console.log('[AuthStore] SSE connected')
             } else if (!connected && wasConnected) {
-                console.log('[AuthStore] SSE disconnected')
+                // console.log('[AuthStore] SSE disconnected')
             }
         },
 
