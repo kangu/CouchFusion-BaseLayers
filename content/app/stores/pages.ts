@@ -190,8 +190,13 @@ export const useContentPagesStore = defineStore('content-pages', {
             const $f = useRequestFetch()
 
             try {
+                const cacheBuster = Date.now().toString()
                 const response: any = await $f('/api/content/pages', {
-                    params: { path: normalizedPath }
+                    params: { path: normalizedPath, _ts: cacheBuster },
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache'
+                    }
                 })
 
                 const summary = extractSummary(response?.page ?? response)
@@ -225,8 +230,13 @@ export const useContentPagesStore = defineStore('content-pages', {
             const $f = useRequestFetch()
 
             try {
+                const cacheBuster = Date.now().toString()
                 const response: any = await $f('/api/content/pages/history', {
-                    params: { path: normalizedPath }
+                    params: { path: normalizedPath, _ts: cacheBuster },
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache'
+                    }
                 })
 
                 const history = Array.isArray(response?.history) ? response.history : []

@@ -1,10 +1,14 @@
-import { defineEventHandler, getQuery, createError } from 'h3'
+import { defineEventHandler, getQuery, createError, setResponseHeader } from 'h3'
 import { getView } from '#database/utils/couchdb'
 import { getContentDatabaseName } from '../../utils/database'
 import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 
 export default defineEventHandler(async (event) => {
     try {
+        setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        setResponseHeader(event, 'Pragma', 'no-cache')
+        setResponseHeader(event, 'Expires', '0')
+
         const query = getQuery(event)
         const requestedPath = typeof query.path === 'string' ? query.path : null
 

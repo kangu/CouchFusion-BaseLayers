@@ -37,6 +37,7 @@ export interface InvoiceDocument {
     invoiceData: InvoiceResponse;
     userName: string;
     lastEvent: string;
+    email?: string
 }
 
 export interface SaveInvoiceOptions {
@@ -186,6 +187,9 @@ export async function saveInvoiceToDatabase(options: SaveInvoiceOptions): Promis
     // Get current user name from session
     const userName = await getCurrentUserName(event)
 
+    // Also get user doc email
+    const userDoc = await getDocument('_users', `org.couchdb.user:${userName}`)
+
     // Create invoice document
     const invoiceDocument: InvoiceDocument = {
         _id: invoiceDocId,
@@ -194,6 +198,7 @@ export async function saveInvoiceToDatabase(options: SaveInvoiceOptions): Promis
         orderId: orderId,
         invoiceData: invoiceData,
         userName: userName,
+        email: userDoc.email,
         lastEvent: 'created'
     }
 

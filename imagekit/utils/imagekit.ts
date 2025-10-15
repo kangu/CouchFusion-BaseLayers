@@ -56,6 +56,7 @@ export interface ImageKitListOptions {
   searchQuery?: string
   path?: string
   tags?: string[]
+  sort?: string
 }
 
 export interface ImageKitAuthenticationParameters {
@@ -70,7 +71,14 @@ export interface ImageKitFile {
   name?: string
   url?: string
   thumbnailUrl?: string
+  createdAt?: string
+  tags?: string[]
   [key: string]: unknown
+}
+
+export interface ImageKitFileListResult {
+  files: ImageKitFile[]
+  total: number
 }
 
 export type ImageKitServiceResponse<T> =
@@ -102,11 +110,33 @@ function extractErrorMessage(error: unknown): string {
   if (typeof error === 'string') {
     return error
   }
+  if (typeof error === 'object' && error !== null) {
+    const candidate =
+      (error as Record<string, unknown>).message ??
+      (error as Record<string, unknown>).msg ??
+      (error as Record<string, unknown>).error
+
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate
+    }
+
+    const response = (error as Record<string, any>).response
+    const responseMessage =
+      response?.body?.message ??
+      response?.body?.error ??
+      response?.message ??
+      response?.statusText
+
+    if (typeof responseMessage === 'string' && responseMessage.trim().length > 0) {
+      return responseMessage
+    }
+  }
   return 'Unknown ImageKit error'
 }
 
 class ImageKitService {
   private readonly client: ImageKit | null
+  private static readonly FALLBACK_SEARCH_LIMIT = 50
 
   constructor(config: ImageKitClientConfig | null) {
     if (!config) {
@@ -341,7 +371,7 @@ class ImageKitService {
     }
   }
 
-  async listFiles(options: ImageKitListOptions = {}): Promise<ImageKitServiceResponse<ImageKitFile[]>> {
+  async listFiles(options: ImageKitListOptions = {}): Promise<ImageKitServiceResponse<ImageKitFileListResult>> {
     if (!this.client) {
       return {
         success: false,
@@ -349,21 +379,64 @@ class ImageKitService {
       }
     }
 
+    const rawSearch = typeof options.searchQuery === 'string' ? options.searchQuery.trim() : ''
+    const searchQuery = this.buildSearchQuery(rawSearch)
+    const keywords = rawSearch ? this.tokenizeKeywords(rawSearch) : []
+    const limit = options.limit ?? 20
+    const effectiveLimit = rawSearch ? Math.max(limit, ImageKitService.FALLBACK_SEARCH_LIMIT) : limit
+
+    const baseOptions = {
+      skip: options.skip ?? 0,
+      limit: effectiveLimit,
+      path: options.path ?? '',
+      tags: options.tags ?? [],
+      sort: options.sort ?? 'DESC_CREATED',
+    }
+
     try {
       const files = await this.client.listFiles({
-        skip: options.skip ?? 0,
-        limit: options.limit ?? 20,
-        searchQuery: options.searchQuery ?? '',
-        path: options.path ?? '',
-        tags: options.tags ?? [],
+        ...baseOptions,
+        searchQuery: searchQuery ?? undefined,
       })
+
+      let data = files as ImageKitFile[]
+      const total = this.extractTotalCount(files, data.length)
+
+      if (keywords.length) {
+        data = this.filterFilesByKeywords(data, keywords)
+      }
 
       return {
         success: true,
-        data: files as ImageKitFile[],
+        data: {
+          files: data.slice(0, limit),
+          total,
+        },
       }
     } catch (error) {
       console.error('ImageKit list files error:', error)
+
+      if (rawSearch) {
+        try {
+          const fallbackFiles = await this.client.listFiles(baseOptions)
+          const filtered = this.filterFilesByKeywords(fallbackFiles as ImageKitFile[], keywords)
+          const total = keywords.length ? filtered.length : this.extractTotalCount(fallbackFiles, filtered.length)
+          return {
+            success: true,
+            data: {
+              files: filtered.slice(0, limit),
+              total,
+            },
+          }
+        } catch (fallbackError) {
+          console.error('ImageKit fallback list files error:', fallbackError)
+          return {
+            success: false,
+            error: extractErrorMessage(fallbackError),
+          }
+        }
+      }
+
       return {
         success: false,
         error: extractErrorMessage(error),
@@ -392,6 +465,94 @@ class ImageKitService {
         error: extractErrorMessage(error),
       }
     }
+  }
+
+  private sanitizeSearchTerm(term: string): string {
+    return term.trim().replace(/\s+/g, ' ')
+  }
+
+  private isAdvancedQuery(term: string): boolean {
+    return /[:\(\)\{\}\[\]"]/.test(term) || /\b(?:AND|OR|NOT)\b/i.test(term)
+  }
+
+  private escapeLucene(term: string): string {
+    return term.replace(/([+\-&|!(){}\[\]^"~*?:\\\/])/g, '\\$1')
+  }
+
+  private buildSearchQuery(term: string): string | null {
+    if (!term) {
+      return null
+    }
+
+    if (this.isAdvancedQuery(term)) {
+      return term
+    }
+
+    const sanitized = this.sanitizeSearchTerm(term)
+    if (!sanitized) {
+      return null
+    }
+
+    const wildcardTerm = this.escapeLucene(sanitized).replace(/\s+/g, '*')
+    const escapedPhrase = this.escapeLucene(sanitized)
+    return `(name:*${wildcardTerm}* OR filePath:*${wildcardTerm}* OR tags:"${escapedPhrase}")`
+  }
+
+  private tokenizeKeywords(term: string): string[] {
+    return this.sanitizeSearchTerm(term)
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+  }
+
+  private filterFilesByKeywords(files: ImageKitFile[], keywords: string[]): ImageKitFile[] {
+    if (!keywords.length) {
+      return files
+    }
+
+    return files.filter((file) => {
+      const name = String(file.name ?? '').toLowerCase()
+      const filePath = String(file.filePath ?? '').toLowerCase()
+      const url = String(file.url ?? '').toLowerCase()
+      const tagSource = (file as Record<string, unknown>).tags
+      const tags = Array.isArray(tagSource)
+        ? (tagSource as unknown[]).map((tag) => String(tag ?? '').toLowerCase())
+        : []
+
+      return keywords.every((keyword) => {
+        if (!keyword) {
+          return true
+        }
+
+        return (
+          name.includes(keyword) ||
+          filePath.includes(keyword) ||
+          url.includes(keyword) ||
+          tags.some((tag) => tag.includes(keyword))
+        )
+      })
+    })
+  }
+
+  private extractTotalCount(response: any, fallback: number): number {
+    const maybeMetadata = response?.$ResponseMetadata
+    const headerValue =
+      maybeMetadata?.headers?.['x-total-count'] ??
+      maybeMetadata?.headers?.['X-Total-Count'] ??
+      maybeMetadata?.headers?.['x-totalcount']
+
+    if (typeof headerValue === 'number') {
+      return headerValue
+    }
+
+    if (typeof headerValue === 'string') {
+      const parsed = Number.parseInt(headerValue, 10)
+      if (Number.isFinite(parsed)) {
+        return parsed
+      }
+    }
+
+    return fallback
   }
 }
 

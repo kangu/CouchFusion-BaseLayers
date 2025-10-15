@@ -3,6 +3,7 @@ import type { ComputedRef, Ref } from 'vue'
 import type {
   ImageKitFile,
   ImageKitListOptions,
+  ImageKitFileListResult,
   ImageKitTransformations,
   ImageKitUploadResult,
 } from '#imagekit/utils/imagekit'
@@ -20,7 +21,7 @@ interface ApiResponse<T> {
 
 type UploadApiResponse = ApiResponse<ImageKitUploadResult>
 type UrlApiResponse = ApiResponse<string>
-type ListApiResponse = ApiResponse<ImageKitFile[]>
+type ListApiResponse = ApiResponse<ImageKitFileListResult>
 type DeleteApiResponse = ApiResponse<boolean>
 export interface UseImageKit {
   isUploading: ComputedRef<boolean>
@@ -29,7 +30,7 @@ export interface UseImageKit {
   error: ComputedRef<string | null>
   uploadImage: (file: File, options?: UploadOptions) => Promise<ImageKitUploadResult>
   generateImageUrl: (filePath: string, transformations?: ImageKitTransformations) => Promise<string>
-  getImageList: (options?: ImageKitListOptions) => Promise<ImageKitFile[]>
+  getImageList: (options?: ImageKitListOptions) => Promise<ImageKitFileListResult>
   deleteImage: (fileId: string) => Promise<boolean>
   parseTransformations: (transformString?: string) => ImageKitTransformations
   buildTransformationString: (transformations: ImageKitTransformations) => string
@@ -119,7 +120,7 @@ export function useImageKit(): UseImageKit {
     }
   }
 
-  const getImageList = async (options: ImageKitListOptions = {}): Promise<ImageKitFile[]> => {
+  const getImageList = async (options: ImageKitListOptions = {}): Promise<ImageKitFileListResult> => {
     try {
       const params = new URLSearchParams()
 
@@ -128,6 +129,7 @@ export function useImageKit(): UseImageKit {
       if (options.searchQuery) params.append('searchQuery', options.searchQuery)
       if (options.path) params.append('path', options.path)
       if (options.tags?.length) params.append('tags', options.tags.join(','))
+      if (options.sort) params.append('sort', options.sort)
 
       const response = await fetch(`/api/imagekit/files?${params}`)
       const result = (await response.json()) as ListApiResponse
