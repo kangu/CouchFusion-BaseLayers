@@ -1,38 +1,30 @@
-import { fileURLToPath } from 'node:url'
+import {fileURLToPath} from 'node:url'
 
 export default defineNuxtConfig({
-
     alias: {
         '#auth': fileURLToPath(new URL('.', import.meta.url))
     },
-
-// Expose this layer's resources
+    modules: ['@pinia/nuxt'],
     extends: ['../database'],
 
-
-    modules: [
-// shared modules for all apps
-    ],
-
-
-// Auto-import from layer
     imports: {
-        dirs: ['app/composables', 'app/middleware', 'app/stores']
+        dirs: [
+            'app/composables',
+            fileURLToPath(new URL('./app/composables', import.meta.url)),
+            fileURLToPath(new URL('./app/middleware', import.meta.url)),
+            'middleware',
+            'app/stores',
+            fileURLToPath(new URL('./app/stores', import.meta.url))
+        ]
     },
-
-
-    components: {
-        // dirs: [{path: 'components', pathPrefix: false}]
-    },
-
 
     nitro: {
         experimental: {
             websocket: true
         },
         routeRules: {
-            '/api/**': {cors: true},
-            '/**': {headers: {'x-powered-by': 'my-org'}}
+            '/api/**': {cors: true}
+            // '/**': {headers: {'x-powered-by': 'my-org'}}
         }
     },
 
@@ -118,7 +110,5 @@ Expected format: base64(username:password)
                 `.trim())
             }
         }
-    },
-
-    devtools: {enabled: true}
+    }
 })
