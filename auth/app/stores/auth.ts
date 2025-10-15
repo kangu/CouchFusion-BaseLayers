@@ -351,13 +351,13 @@ export const useAuthStore = defineStore('auth', {
          */
         updateUserFromSSE(userDoc: AuthUser): void {
             if (this.user && userDoc.name === this.user.name) {
-                console.log('[AuthStore] Updating user from SSE:', userDoc.name)
+                // console.log('[AuthStore] Updating user from SSE:', userDoc.name)
 
                 // Update user data while preserving reactive properties
                 this.user = { ...this.user, ...userDoc }
                 this.sse.lastUserUpdate = new Date().toISOString()
 
-                console.log('[AuthStore] User updated from real-time data')
+                // console.log('[AuthStore] User updated from real-time data')
             }
         },
 

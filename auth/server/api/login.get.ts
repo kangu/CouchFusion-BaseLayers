@@ -1,6 +1,6 @@
 // Check user session and return user data if authenticated
 
-import {defineEventHandler, createError, getHeader} from "h3"
+import {defineEventHandler, createError, getHeader, setResponseHeader} from "h3"
 import { getSession, getDocument } from '#database/utils/couchdb'
 
 /**
@@ -22,6 +22,10 @@ function extractAuthSessionCookie(cookieHeader: string | undefined): string | nu
 
 export default defineEventHandler(async (event) => {
     try {
+        // make sure nothing is cached
+        setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        setResponseHeader(event, 'Pragma', 'no-cache')
+        setResponseHeader(event, 'Expires', '0')
         // Extract AuthSession cookie from request headers
         const cookieHeader = getHeader(event, 'cookie')
         const authSessionCookie = extractAuthSessionCookie(cookieHeader)
