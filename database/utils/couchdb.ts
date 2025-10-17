@@ -686,55 +686,66 @@ export async function initializeDatabase(
 /**
  * Validate CouchDB environment configuration
  */
-export function validateCouchDBEnvironment(): void {
-  if (!process.env.COUCHDB_ADMIN_AUTH) {
-    throw new Error(`
-🚨 CouchDB Configuration Error:
-COUCHDB_ADMIN_AUTH environment variable is required.
+export interface CouchDBEnvironmentOptions {
+  adminAuth?: string | null
+  cookieSecret?: string | null
+  strict?: boolean
+}
 
-Set this environment variable with base64-encoded admin credentials:
-COUCHDB_ADMIN_AUTH=base64(username:password)
+export function validateCouchDBEnvironment(options: CouchDBEnvironmentOptions = {}): void {
+  const adminAuth =
+    options.adminAuth ??
+    process.env.NUXT_COUCHDB_ADMIN_AUTH ??
+    process.env.COUCHDB_ADMIN_AUTH
 
-Example:
-COUCHDB_ADMIN_AUTH=YWRtaW46cGFzc3dvcmQ=
-    `.trim());
+  if (!adminAuth) {
+    const message = `
+🚨 CouchDB Configuration Warning:
+COUCHDB_ADMIN_AUTH (or NUXT_COUCHDB_ADMIN_AUTH) is not defined. Database initialization will be skipped.
+    `.trim()
+
+    if (options.strict) {
+      throw new Error(message)
+    } else {
+      console.warn(message)
+      return
+    }
   }
 
-  // Validate base64 format
   try {
-    const decoded = Buffer.from(process.env.COUCHDB_ADMIN_AUTH, 'base64').toString('utf-8');
+    const decoded = Buffer.from(adminAuth, 'base64').toString('utf-8')
     if (!decoded.includes(':')) {
-      throw new Error('Invalid format');
+      throw new Error('Invalid format')
     }
   } catch (error) {
-    throw new Error(`
+    const message = `
 🚨 CouchDB Configuration Error:
-COUCHDB_ADMIN_AUTH must be a valid base64-encoded string in format 'username:password'.
+COUCHDB_ADMIN_AUTH must be base64("username:password").
+    `.trim()
 
-Current value appears to be invalid.
-Expected format: base64(username:password)
-    `.trim());
+    if (options.strict) {
+      throw new Error(message)
+    } else {
+      console.warn(message)
+    }
   }
 
-  // Validate cookie secret (check both NUXT_ prefixed and regular format)
-  if (!process.env.NUXT_COUCHDB_COOKIE_SECRET && !process.env.COUCHDB_COOKIE_SECRET) {
-    throw new Error(`
-🚨 CouchDB Configuration Error:
-COUCHDB_COOKIE_SECRET environment variable is required.
+  const cookieSecret =
+    options.cookieSecret ??
+    process.env.NUXT_COUCHDB_COOKIE_SECRET ??
+    process.env.COUCHDB_COOKIE_SECRET
 
-For development: COUCHDB_COOKIE_SECRET=your-secret
-For production deployment: NUXT_COUCHDB_COOKIE_SECRET=your-secret
+  if (!cookieSecret) {
+    const message = `
+🚨 CouchDB Configuration Warning:
+COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Session generation may fail at runtime.
+    `.trim()
 
-Production Note: When using 'nuxt build' and deploying with runtime environment override,
-use the NUXT_ prefixed version. The NUXT_ prefix allows runtime override of build-time values.
-
-Example:
-# Development
-COUCHDB_COOKIE_SECRET=45213e7a8ec395d1ddec4f78cc011672
-
-# Production deployment
-NUXT_COUCHDB_COOKIE_SECRET=production-secret-override
-    `.trim());
+    if (options.strict) {
+      throw new Error(message)
+    } else {
+      console.warn(message)
+    }
   }
 }
 
