@@ -11,6 +11,7 @@ interface UpdateUserPayload {
   pow_lab_valid_until?: string | null
   pow_lab_lite_status?: string | null
   pow_lab_lite_valid_until?: string | null
+  allow_affiliate?: boolean | null
 }
 
 type CouchUserDocument = Record<string, unknown> & {
@@ -158,6 +159,21 @@ export default defineEventHandler(async (event) => {
     }
 
     nextDocument[field] = value
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'allow_affiliate')) {
+    const value = payload.allow_affiliate
+
+    if (value === null) {
+      delete nextDocument.allow_affiliate
+    } else if (typeof value === 'boolean') {
+      nextDocument.allow_affiliate = value
+    } else {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'allow_affiliate must be a boolean or null'
+      })
+    }
   }
 
   const response = await putDocument('_users', nextDocument)

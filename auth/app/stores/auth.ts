@@ -13,6 +13,7 @@ export interface AuthUser {
     name: string
     email?: string
     roles: string[]
+    allow_affiliate?: boolean
 
     [key: string]: any
 }
@@ -43,6 +44,7 @@ export interface AdminUserDoc {
     pow_lab_valid_until?: string | null
     pow_lab_lite_status?: PowLabStatus | null
     pow_lab_lite_valid_until?: string | null
+    allow_affiliate?: boolean | null
 
     [key: string]: any
 }

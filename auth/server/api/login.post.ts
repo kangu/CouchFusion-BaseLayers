@@ -42,16 +42,18 @@ export default defineEventHandler(async (event) => {
 
     if (affiliateCode) {
         const affiliateDocumentId = `org.couchdb.user:${dbLoginPrefix}${affiliateCode}`
-        const affiliateDocument = await getDocument('_users', affiliateDocumentId)
 
-        if (!affiliateDocument) {
-            throw createError({
-                statusCode: 400,
-                statusMessage: 'Invalid affiliate code'
-            })
+        try {
+            const affiliateDocument = await getDocument<Record<string, unknown>>('_users', affiliateDocumentId)
+
+            if (affiliateDocument?.allow_affiliate === true) {
+                validatedAffiliateCode = affiliateCode
+            } else {
+                console.warn(`Affiliate code rejected: ${affiliateCode} (user not found or not opted in)`)
+            }
+        } catch (error) {
+            console.warn(`Failed to validate affiliate code "${affiliateCode}":`, error)
         }
-
-        validatedAffiliateCode = affiliateCode
     }
 
     // generate unique login token and save to couch

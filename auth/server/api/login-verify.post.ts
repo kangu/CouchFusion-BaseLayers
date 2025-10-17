@@ -82,9 +82,26 @@ export default defineEventHandler(async (event) => {
         })
         console.log('Existing docs:', existingDocs.rows)
 
-        const affiliateFriendCode = typeof resp.affiliate_friend_code === 'string'
+        let affiliateFriendCode = typeof resp.affiliate_friend_code === 'string'
             ? resp.affiliate_friend_code
             : undefined
+        let affiliateAllowed = false
+
+        if (affiliateFriendCode) {
+            const affiliateDocumentId = `org.couchdb.user:${config.dbLoginPrefix}${affiliateFriendCode}`
+
+            try {
+                const affiliateDoc = await getDocument<Record<string, unknown>>('_users', affiliateDocumentId)
+                if (affiliateDoc?.allow_affiliate === true) {
+                    affiliateAllowed = true
+                } else {
+                    affiliateFriendCode = undefined
+                }
+            } catch (error) {
+                console.warn(`Failed to verify affiliate code "${affiliateFriendCode}":`, error)
+                affiliateFriendCode = undefined
+            }
+        }
 
         let userDoc = {}
         let newCookie = ''
@@ -94,10 +111,11 @@ export default defineEventHandler(async (event) => {
             const userName = config.dbLoginPrefix + randomId(8)
             const userPayload: Record<string, unknown> = {
                 email: body.email,
-                funnel: resp.funnel
+                funnel: resp.funnel,
+                allow_affiliate: false
             }
 
-            if (affiliateFriendCode) {
+            if (affiliateAllowed && affiliateFriendCode) {
                 userPayload.referred_by = affiliateFriendCode
             }
 
