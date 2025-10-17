@@ -9,11 +9,11 @@ export default defineNuxtConfig({
 
     imports: {
         dirs: [
-            'app/composables',
+            // 'app/composables',
             fileURLToPath(new URL('./app/composables', import.meta.url)),
             fileURLToPath(new URL('./app/middleware', import.meta.url)),
-            'middleware',
-            'app/stores',
+            // 'middleware',
+            // 'app/stores',
             fileURLToPath(new URL('./app/stores', import.meta.url))
         ]
     },
