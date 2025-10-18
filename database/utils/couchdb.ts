@@ -311,6 +311,55 @@ export async function getDocument<T extends CouchDBDocument = CouchDBDocument>(
 }
 
 /**
+ * Retrieve a document along with attachment metadata or inline attachment data.
+ *
+ * @param databaseName - CouchDB database name
+ * @param documentId - Document identifier
+ * @param includeAttachmentData - When true, attachments are returned inline (base64 encoded)
+ * @param config - Optional CouchDB configuration overrides
+ */
+export async function getDocumentWithAttachments<
+  T extends CouchDBDocumentWithAttachments = CouchDBDocumentWithAttachments
+>(
+  databaseName: string,
+  documentId: string,
+  includeAttachmentData = false,
+  config?: CouchDBConfig
+): Promise<T | null> {
+  try {
+    const { baseUrl } = getCouchDBConfig(config);
+    const query = new URLSearchParams();
+    if (includeAttachmentData) {
+      query.set('attachments', 'true');
+      query.set('att_encoding_info', 'true');
+    }
+
+    const queryString = query.toString();
+    const url = `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}${queryString ? `?${queryString}` : ''}`;
+
+    const response = await couchDBRequest(
+      url,
+      {},
+      config
+    );
+
+    if (response.ok) {
+      return await response.json() as T;
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const error: CouchDBError = await response.json();
+    throw new Error(`CouchDB document fetch error: ${error.error} - ${error.reason}`);
+  } catch (error) {
+    console.warn(`Failed to get document with attachments: ${documentId}`, error);
+    return null;
+  }
+}
+
+/**
  * Query a CouchDB view using POST method with query parameters in JSON body
  *
  * @param databaseName - The name of the CouchDB database
