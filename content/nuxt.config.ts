@@ -1,57 +1,71 @@
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from "node:url";
 
 export default defineNuxtConfig({
-    alias: {
-        '#content': fileURLToPath(new URL('.', import.meta.url))
-    },
+  alias: {
+    "#content": fileURLToPath(new URL(".", import.meta.url)),
+  },
 
-    extends: ['../database'],
+  extends: ["../database"],
 
-    modules: [
-        fileURLToPath(new URL('./module/ignored-prefixes', import.meta.url))
+  modules: [
+    fileURLToPath(new URL("./module/ignored-prefixes", import.meta.url)),
+  ],
+
+  imports: {
+    dirs: [
+      fileURLToPath(new URL("./app/composables", import.meta.url)),
+      fileURLToPath(new URL("./app/stores", import.meta.url)),
     ],
+  },
 
-    imports: {
-        dirs: [
-            fileURLToPath(new URL('./app/composables', import.meta.url)),
-            fileURLToPath(new URL('./app/stores', import.meta.url))
-        ]
+  plugins: [
+    fileURLToPath(
+      new URL(
+        "./app/plugins/register-project-content-components",
+        import.meta.url,
+      ),
+    ),
+  ],
+
+  components: {
+    dirs: [
+      /* global component import comes from the implementing app */
+      {
+        path: fileURLToPath(
+          new URL("./app/components/builder", import.meta.url),
+        ),
+        // path: './components/builder',
+        global: true,
+        pathPrefix: false,
+      },
+      {
+        path: fileURLToPath(
+          new URL("./app/components/runtime", import.meta.url),
+        ),
+        // path: './components/runtime',
+        global: true,
+        pathPrefix: false,
+      },
+    ],
+  },
+
+  runtimeConfig: {
+    public: {
+      content: {},
     },
+  },
 
-    components: {
-        dirs: [
-            /* global component import comes from the implementing app */
-            {
-                path: fileURLToPath(new URL('./app/components/builder', import.meta.url)),
-                // path: './components/builder',
-                global: true,
-                pathPrefix: false
-            },
-            {
-                path: fileURLToPath(new URL('./app/components/runtime', import.meta.url)),
-                // path: './components/runtime',
-                global: true,
-                pathPrefix: false
-            }
-        ]
-    },
+  typescript: {
+    strict: true,
+  },
 
-    runtimeConfig: {
-        public: {
-            content: {}
-        }
-    },
+  hooks: {
+    ready: async (nuxt) => {
+      const runtimeConfig = nuxt.options.runtimeConfig;
 
-    typescript: {
-        strict: true
-    },
-
-    hooks: {
-        ready: async (nuxt) => {
-            const runtimeConfig = nuxt.options.runtimeConfig
-
-            if (!runtimeConfig.dbLoginPrefix) {
-                throw new Error(`
+      if (!runtimeConfig.dbLoginPrefix) {
+        throw new Error(
+          `
 🚨 Content Layer Configuration Error:
 The content layer requires 'dbLoginPrefix' to be configured in your app's runtimeConfig.
 
@@ -60,10 +74,11 @@ runtimeConfig: {
   dbLoginPrefix: 'your-prefix',
   // ... other config
 }
-                `.trim())
-            }
-        }
+                `.trim(),
+        );
+      }
     },
+  },
 
-    devtools: { enabled: true }
-})
+  devtools: { enabled: true },
+});
