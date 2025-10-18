@@ -979,6 +979,7 @@ defineExpose({
 .content-admin-workbench__editor-header.is-pinned {
   position: sticky;
   top: 0;
+  z-index: 1000;
   box-shadow: 0 10px 30px -20px rgba(15, 23, 42, 0.3);
 }
 

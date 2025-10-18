@@ -13,6 +13,7 @@ export type ComponentFieldType =
   | 'select'
   | 'json'
   | 'jsonarray'
+  | 'jsonobject'
   | 'stringarray'
   | 'number';
 
@@ -27,6 +28,8 @@ export interface ComponentArrayItemFieldBase {
   label: string;
   description?: string;
   ui?: ComponentFieldUiConfig;
+  default?: BuilderValue;
+  options?: Array<{ label: string; value: string }>;
 }
 
 export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
@@ -47,6 +50,8 @@ export type ComponentArrayItemField =
   | ComponentArrayNestedField
   | ComponentArrayPrimitiveListField;
 
+export type ComponentObjectField = ComponentArrayItemField;
+
 export interface ComponentPropSchema {
   key: string;
   label: string;
@@ -59,6 +64,7 @@ export interface ComponentPropSchema {
   items?: ComponentArrayItemField[];
   elementType?: 'string' | 'number' | 'boolean';
   ui?: ComponentFieldUiConfig;
+  fields?: ComponentObjectField[];
 }
 
 export interface ComponentDefinition {
