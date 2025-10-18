@@ -7,7 +7,9 @@ export default defineNuxtConfig({
 
     extends: ['../database'],
 
-    modules: [],
+    modules: [
+        fileURLToPath(new URL('./module/ignored-prefixes', import.meta.url))
+    ],
 
     imports: {
         dirs: [
@@ -20,12 +22,14 @@ export default defineNuxtConfig({
         dirs: [
             /* global component import comes from the implementing app */
             {
-                path: './components/builder',
+                path: fileURLToPath(new URL('./app/components/builder', import.meta.url)),
+                // path: './components/builder',
                 global: true,
                 pathPrefix: false
             },
             {
-                path: './components/runtime',
+                path: fileURLToPath(new URL('./app/components/runtime', import.meta.url)),
+                // path: './components/runtime',
                 global: true,
                 pathPrefix: false
             }

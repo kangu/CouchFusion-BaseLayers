@@ -69,10 +69,10 @@ const projectDefinitionGlobs = {
   })
 }
 
-if (import.meta.dev) {
-    console.log('[content-layer] projectDefinitionGlobs keys:',
-        Object.keys(projectDefinitionGlobs))
-}
+// if (import.meta.dev) {
+//     console.log('[content-layer] projectDefinitionGlobs keys:',
+//         Object.keys(projectDefinitionGlobs))
+// }
 
 const extractDefinitions = (module: DefinitionModule | undefined): ComponentDefinition[] => {
   if (!module) {

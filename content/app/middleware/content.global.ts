@@ -1,4 +1,4 @@
-import { defineNuxtRouteMiddleware, createError, abortNavigation } from '#imports'
+import { defineNuxtRouteMiddleware, createError, abortNavigation, useAppConfig } from '#imports'
 import { useContentPagesStore } from '#content/app/stores/pages'
 
 const reservedPrefixes = [
@@ -10,13 +10,48 @@ const reservedPrefixes = [
     '/__' // Dev tools or internal diagnostic routes (e.g. __nuxt_error).
 ]
 
-const isContentRoute = (path: string) => {
+const normalisePrefix = (value: string): string | null => {
+    if (typeof value !== 'string') {
+        return null
+    }
+
+    const trimmed = value.trim()
+    if (!trimmed.startsWith('/')) {
+        return null
+    }
+
+    if (trimmed === '/') {
+        return null
+    }
+
+    return trimmed.replace(/\/+$/, '')
+}
+
+const buildIgnoredPrefixes = (): string[] => {
+    const appConfig = useAppConfig()
+    const appDefined = Array.isArray(appConfig?.content?.ignoredPrefixes)
+        ? appConfig.content.ignoredPrefixes
+        : []
+
+    const combined = new Set<string>(reservedPrefixes)
+
+    for (const prefix of appDefined) {
+        const normalised = typeof prefix === 'string' ? normalisePrefix(prefix) : null
+        if (normalised) {
+            combined.add(normalised)
+        }
+    }
+
+    return Array.from(combined)
+}
+
+const isContentRoute = (path: string, ignoredPrefixes: string[]) => {
     if (!path || !path.startsWith('/')) {
         // Guard for undefined/empty paths or hash-style navigation.
         return false
     }
 
-    if (reservedPrefixes.some((prefix) => path.startsWith(prefix))) {
+    if (ignoredPrefixes.some((prefix) => path.startsWith(prefix))) {
         // Skip reserved prefixes defined above to avoid logging noise and unnecessary fetches.
         return false
     }
@@ -41,7 +76,9 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
         return
     }
 
-    if (!isContentRoute(to.path)) {
+    const ignoredPrefixes = buildIgnoredPrefixes()
+
+    if (!isContentRoute(to.path, ignoredPrefixes)) {
         return
     }
 
