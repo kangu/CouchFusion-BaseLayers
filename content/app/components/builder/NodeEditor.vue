@@ -478,7 +478,16 @@
               >
                 <label class="node-panel__field">
                   <span>{{ prop.label }} {{ index + 1 }}</span>
+                  <component
+                    v-if="prop.ui?.component"
+                    :is="prop.ui.component"
+                    :model-value="propDraft[prop.key][index]"
+                    :prop-definition="prop"
+                    :field-context="{ propKey: prop.key, arrayIndex: index }"
+                    @update:modelValue="(value: unknown) => handleStringArrayChange(prop.key, index, value)"
+                  />
                   <input
+                    v-else
                     v-model="propDraft[prop.key][index]"
                     type="text"
                     @change="() => handleStringArrayChange(prop.key, index, propDraft[prop.key][index])"
