@@ -14,6 +14,14 @@ export const authDesignDocument: CouchDBDesignDocument = {
           emit(doc.email, doc);
         }
       }`
+    },
+    referrals: {
+      map: `function(doc) {
+        if (doc.type === 'user' && typeof doc.referred_by === 'string' && doc.referred_by) {
+          emit(doc.referred_by, 1);
+        }
+      }`,
+      reduce: '_sum'
     }
   }
 };
