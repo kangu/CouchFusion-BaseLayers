@@ -9,6 +9,7 @@ export default defineNuxtConfig({
 
   modules: [
     fileURLToPath(new URL("./module/ignored-prefixes", import.meta.url)),
+    fileURLToPath(new URL("./module/sitemap-routes", import.meta.url)),
   ],
 
   imports: {
