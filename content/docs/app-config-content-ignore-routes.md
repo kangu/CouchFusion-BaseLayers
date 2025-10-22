@@ -11,7 +11,7 @@ Content middleware now merges runtime app-configured ignore prefixes with built-
 
 ## Documentation Overview
 - Middleware now requests `content.ignoredPrefixes` from `useAppConfig()`, normalises the values, and folds them into the fixed system prefixes before evaluating a route. This keeps the layer generic while allowing each consuming application to provide bespoke exclusions.
-- The new `utils/ignored-prefixes.ts` Nuxt module runs during setup, inspects the consuming app's `/pages` directory, filters static entries, normalises the prefixes, and merges them with any `appConfig.content.manualIgnoredPrefixes`.
+- The new `utils/ignored-prefixes.server.ts` Nuxt module runs during setup, inspects the consuming app's `/pages` directory, filters static entries, normalises the prefixes, and merges them with any `appConfig.content.manualIgnoredPrefixes`.
 - Hard-coded app-specific routes were removed from the layer; any exclusions beyond the shared defaults are now supplied via configuration rather than bespoke middleware edits.
 
 ## Implementation Examples
@@ -37,7 +37,7 @@ const buildIgnoredPrefixes = (): string[] => {
 ```
 
 ```ts
-// layers/content/utils/ignored-prefixes.ts
+// layers/content/utils/ignored-prefixes.server.ts
 const merged = Array.from(
   new Set([...autoNormalised, ...manualNormalised])
 ).sort((a, b) => a.localeCompare(b))

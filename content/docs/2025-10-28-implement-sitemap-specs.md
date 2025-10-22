@@ -10,7 +10,7 @@ Ask me for anything that after evalulation, you are not so sure what decision to
 Added build-time static route harvesting and a Nitro handler exposing `/api/sitemap.xml` that merges static pages, CouchDB-backed content, and optional app-configured entries while respecting content ignore rules.
 
 ## Documentation Overview
-- `utils/sitemap-routes.ts` scans the consuming app's `/pages` tree during init/build hooks, persists the deduplicated static paths, and exposes them through both runtime config and a build artifact for runtime consumption.
+- `utils/sitemap-routes.server.ts` scans the consuming app's `/pages` tree during init/build hooks, persists the deduplicated static paths, and exposes them through both runtime config and a build artifact for runtime consumption.
 - A new server handler `server/api/sitemap.xml.get.ts` produces the XML sitemap by combining static routes, content documents queried from the `content/by_path` view, and `app.config.ts` `sitemapExtraRoutes`, filtering against reserved/manual prefixes and metadata flags.
 - Shared utilities in `utils/content-route.ts` centralise prefix normalisation and the `isContentRoute` guard so middleware and sitemap generation follow identical inclusion logic.
 - The ignored-prefix utilities now allow consumers to exclude automatic page-derived prefixes when building the sitemap, so manually declared paths remain opt-in while middleware continues to skip static routes.

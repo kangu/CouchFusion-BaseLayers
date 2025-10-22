@@ -63,6 +63,7 @@ const props = defineProps<{
   feedback?: FeedbackHandlers
   confirmDelete?: (page: ContentPageSummary) => boolean | Promise<boolean>
   ui?: Partial<UiConfig>
+  initialPath?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   (e: 'save-error', error: Error): void
   (e: 'delete-success', page: ContentPageSummary): void
   (e: 'delete-error', error: Error): void
+  (e: 'document-change', document: MinimalContentDocument): void
 }>()
 
 const title = computed(() => props.title ?? 'Content Builder')
@@ -80,6 +82,12 @@ const description = computed(() => props.description ?? 'Manage content pages an
 const ui = computed<UiConfig>(() => ({ ...defaultUi, ...(props.ui ?? {}) }))
 const feedback = computed(() => props.feedback ?? {})
 const autoSelectFirst = computed(() => props.autoSelectFirst !== false)
+const initialPath = computed(() => {
+  if (!props.initialPath) {
+    return null
+  }
+  return normalizePagePath(props.initialPath)
+})
 
 const contentStore = useContentPagesStore()
 await contentStore.fetchIndex()
@@ -102,6 +110,7 @@ const isDeletePending = ref(false)
 const saveError = ref<string | null>(null)
 const lastSavedAt = ref<string | null>(null)
 const selectedHistoryId = ref<string | null>(null)
+const latestDocument = ref<MinimalContentDocument | null>(null)
 
 const isCreateModalOpen = ref(false)
 const isCreatingPage = ref(false)
@@ -196,12 +205,29 @@ const selectedDocument = computed<MinimalContentDocument | null>(() => {
 watch(
   () => availablePages.value,
   (pages) => {
+    if (hasBootstrappedSelection.value) {
+      return
+    }
+    if (!pages || pages.length === 0) {
+      return
+    }
+
+    const target = initialPath.value
+    if (target) {
+      const match = pages.find(
+        (entry) => normalizePagePath(entry.path) === target
+      )
+      if (match) {
+        hasBootstrappedSelection.value = true
+        openPageForEditing(match.path)
+        return
+      }
+    }
+
     if (!autoSelectFirst.value) {
       return
     }
-    if (hasBootstrappedSelection.value || !pages || pages.length === 0) {
-      return
-    }
+
     hasBootstrappedSelection.value = true
     openPageForEditing(pages[0].path)
   },
@@ -432,6 +458,12 @@ async function handleCreatePage(): Promise<void> {
   } finally {
     isCreatingPage.value = false
   }
+}
+
+function handleDocumentChange(document: MinimalContentDocument): void {
+  latestDocument.value = document
+  lastSavedAt.value = null
+  emit('document-change', document)
 }
 
 async function handleSaveDocument(): Promise<void> {
@@ -725,6 +757,7 @@ defineExpose({
               ref="builderRef"
               :initial-document="selectedDocument"
               :key="selectedDocument.id"
+              @document-change="handleDocumentChange"
             />
           </div>
           <div v-else class="editor-canvas__placeholder">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import NodeEditor from './NodeEditor.vue'
 import { useComponentRegistry } from '../../composables/useComponentRegistry'
 import type { BuilderNode, BuilderNodeChild, BuilderTree } from '~/types/builder'
@@ -110,6 +110,9 @@ const stripParagraphAlignFromStyle = (style: unknown): unknown => {
 }
 
 const props = defineProps<{ initialDocument?: MinimalContentDocument | null }>()
+const emit = defineEmits<{
+  (e: 'document-change', document: MinimalContentDocument): void
+}>()
 
 const { registry, createNode, createTextNode } = useComponentRegistry()
 const componentOptions = computed(() => registry.list)
@@ -508,6 +511,44 @@ const serializedDocument = computed(() =>
     { spacing: layout.spacing }
   )
 )
+
+let documentEmitTimeout: ReturnType<typeof setTimeout> | null = null
+
+const scheduleDocumentEmit = (document: MinimalContentDocument) => {
+  if (documentEmitTimeout) {
+    clearTimeout(documentEmitTimeout)
+  }
+
+  documentEmitTimeout = setTimeout(() => {
+    documentEmitTimeout = null
+    try {
+      const cloned = cloneDocument(document)
+      if (cloned) {
+        emit('document-change', cloned)
+      }
+    } catch (error) {
+      console.error('Failed to emit document change', error)
+    }
+  }, 200)
+}
+
+watch(
+  serializedDocument,
+  (value) => {
+    if (!value) {
+      return
+    }
+    scheduleDocumentEmit(value)
+  },
+  { deep: true, immediate: true }
+)
+
+onBeforeUnmount(() => {
+  if (documentEmitTimeout) {
+    clearTimeout(documentEmitTimeout)
+    documentEmitTimeout = null
+  }
+})
 
 const serializedJson = computed(() => JSON.stringify(serializedDocument.value, null, 2))
 

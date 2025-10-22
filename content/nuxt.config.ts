@@ -8,8 +8,8 @@ export default defineNuxtConfig({
   extends: ["../database"],
 
   modules: [
-    fileURLToPath(new URL("./utils/ignored-prefixes", import.meta.url)),
-    fileURLToPath(new URL("./utils/sitemap-routes", import.meta.url)),
+    fileURLToPath(new URL("./utils/ignored-prefixes.server", import.meta.url)),
+    fileURLToPath(new URL("./utils/sitemap-routes.server", import.meta.url)),
   ],
 
   imports: {
