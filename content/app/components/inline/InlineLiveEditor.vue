@@ -2,13 +2,19 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { normalizePagePath } from "#content/utils/page";
 import ContentAdminWorkbench from "#content/app/components/admin/ContentAdminWorkbench.vue";
+import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type { ContentPageSummary } from "#content/types/content-page";
 import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
+
+type ContentAdminWorkbenchProps = InstanceType<
+    typeof ContentAdminWorkbenchComponent
+>["$props"];
 
 const props = defineProps<{
     previewBaseUrl?: string | null;
     initialPath?: string;
     iframeTitle?: string;
+    workbench?: Partial<ContentAdminWorkbenchProps>;
 }>();
 
 const runtimeConfig = useRuntimeConfig();
@@ -20,6 +26,7 @@ const selectedSummary = ref<ContentPageSummary | null>(null);
 const cacheBuster = ref(Date.now());
 const resolvedBaseUrl = ref<string>("");
 const isClientReady = ref(false);
+const workbenchProps = computed(() => props.workbench ?? {});
 
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
@@ -186,6 +193,7 @@ onMounted(() => {
         <section class="inline-live-editor__sidebar">
             <ContentAdminWorkbench
                 class="inline-live-editor__workbench"
+                v-bind="workbenchProps"
                 :initial-path="initialPath"
                 :auto-select-first="false"
                 @page-selected="handlePageSelected"
