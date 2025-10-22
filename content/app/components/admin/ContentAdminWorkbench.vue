@@ -120,13 +120,16 @@ const headerRef = ref<HTMLElement | null>(null)
 const headerSentinelRef = ref<HTMLElement | null>(null)
 const isHeaderPinned = ref(false)
 const headerPlaceholderHeight = ref(0)
-const headerPosition = reactive({ left: '0px', width: 'auto' })
+const headerPosition = reactive({ top: '0px', left: '0px', width: 'auto' })
 
 const headerFixedStyles = computed(() => {
   if (!isHeaderPinned.value) {
     return undefined
   }
+  const parsedTop = Number.parseFloat(headerPosition.top)
+  const safeTop = Number.isFinite(parsedTop) ? Math.max(parsedTop, 0) : 0
   return {
+    top: `${safeTop}px`,
     left: headerPosition.left,
     width: headerPosition.width
   }
@@ -225,8 +228,11 @@ const updateHeaderMeasurements = () => {
     return
   }
   const cardEl = editorCardRef.value
-  const referenceRect = cardEl?.getBoundingClientRect() ?? headerEl.getBoundingClientRect()
+  const cardRect = cardEl?.getBoundingClientRect()
+  const headerRect = headerEl.getBoundingClientRect()
+  const referenceRect = cardRect ?? headerRect
 
+  headerPosition.top = cardRect ? `${cardRect.top}px` : '0px'
   headerPosition.left = `${referenceRect.left}px`
   headerPosition.width = `${referenceRect.width}px`
   headerPlaceholderHeight.value = headerEl.offsetHeight
@@ -977,7 +983,7 @@ defineExpose({
 }
 
 .content-admin-workbench__editor-header.is-pinned {
-  position: sticky;
+  position: fixed;
   top: 0;
   z-index: 1000;
   box-shadow: 0 10px 30px -20px rgba(15, 23, 42, 0.3);
