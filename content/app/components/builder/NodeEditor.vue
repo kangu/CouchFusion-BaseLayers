@@ -31,8 +31,8 @@
               v-model="propDraft[prop.key]"
               :placeholder="prop.placeholder"
               rows="3"
-              @change="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
-              @blur="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
+              @input="() => schedulePropUpdate(prop.key, propDraft[prop.key], prop.type)"
+              @blur="() => flushPropUpdate(prop.key, propDraft[prop.key], prop.type)"
             />
           </template>
           <template v-else-if="prop.type === 'boolean'">
@@ -518,8 +518,8 @@
               v-model="propDraft[prop.key]"
               :placeholder="prop.placeholder"
               :type="prop.type === 'number' ? 'number' : 'text'"
-              @change="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
-              @blur="() => applyProp(prop.key, propDraft[prop.key], prop.type)"
+              @input="() => schedulePropUpdate(prop.key, propDraft[prop.key], prop.type)"
+              @blur="() => flushPropUpdate(prop.key, propDraft[prop.key], prop.type)"
             />
           </template>
           <small v-if="prop.description">{{ prop.description }}</small>
@@ -532,8 +532,8 @@
           <input
             v-model="extraPropsDraft[entry.key]"
             type="text"
-            @change="() => applyProp(entry.key, extraPropsDraft[entry.key], 'text')"
-            @blur="() => applyProp(entry.key, extraPropsDraft[entry.key], 'text')"
+            @input="() => schedulePropUpdate(entry.key, extraPropsDraft[entry.key], 'text')"
+            @blur="() => flushPropUpdate(entry.key, extraPropsDraft[entry.key], 'text')"
           />
         </label>
       </div>
@@ -703,7 +703,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, toRaw, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from 'vue'
 import type {
   BuilderNodeChild,
   BuilderResponsiveMargin,
@@ -779,6 +779,44 @@ const insertDialog = reactive<{
 
 const nestedArrayKey = (propKey: string, parentIndex: number, fieldKey: string) =>
   `${propKey}:${parentIndex}:${fieldKey}`
+
+const PROP_UPDATE_DEBOUNCE_MS = 500
+const propUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+const timerKeyForProp = (key: string) => `${props.node.uid}:${key}`
+
+const schedulePropUpdate = (key: string, value: unknown, type: PropInputType) => {
+  if (typeof window === 'undefined') {
+    applyProp(key, value, type)
+    return
+  }
+
+  const timerKey = timerKeyForProp(key)
+  const existing = propUpdateTimers.get(timerKey)
+  if (existing) {
+    window.clearTimeout(existing)
+  }
+
+  const timer = window.setTimeout(() => {
+    propUpdateTimers.delete(timerKey)
+    applyProp(key, value, type)
+  }, PROP_UPDATE_DEBOUNCE_MS)
+
+  propUpdateTimers.set(timerKey, timer)
+}
+
+const flushPropUpdate = (key: string, value: unknown, type: PropInputType) => {
+  if (typeof window !== 'undefined') {
+    const timerKey = timerKeyForProp(key)
+    const existing = propUpdateTimers.get(timerKey)
+    if (existing) {
+      window.clearTimeout(existing)
+      propUpdateTimers.delete(timerKey)
+    }
+  }
+
+  applyProp(key, value, type)
+}
 
 const marginOptions = [
   { label: 'None', value: '0' },
@@ -1399,6 +1437,14 @@ const applyProp = (key: string, value: unknown, type: PropInputType) => {
   jsonErrors[key] = null
   props.onUpdateProp(props.node.uid, key, parsedValue)
 }
+
+onBeforeUnmount(() => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  propUpdateTimers.forEach((timer) => window.clearTimeout(timer))
+  propUpdateTimers.clear()
+})
 
 const handleCustomPropUpdate = (schema: ComponentPropSchema, value: unknown) => {
   propDraft[schema.key] = value
