@@ -24,17 +24,22 @@ const initialPath = computed(() => normalizePagePath(props.initialPath ?? '/'))
 const activePath = ref(initialPath.value)
 
 const resolveBaseCandidates = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
   if (typeof props.previewBaseUrl === 'string' && props.previewBaseUrl.trim()) {
     return props.previewBaseUrl.trim()
+  }
+  const origin = window.location.origin
+  if (origin) {
+    return origin
   }
   const configUrl = runtimeConfig.public?.siteUrl || runtimeConfig.public?.siteURL
   if (typeof configUrl === 'string' && configUrl.trim()) {
     return configUrl.trim()
   }
-  if (typeof window !== 'undefined') {
-    return window.location.origin
-  }
-  return ''
+  return origin
 }
 
 const previewUrl = computed(() => {
@@ -46,6 +51,7 @@ const previewUrl = computed(() => {
     const url = new URL(activePath.value || '/', resolvedBaseUrl.value)
     url.searchParams.set('inline-preview', '1')
     url.searchParams.set('_ts', cacheBuster.value.toString())
+    console.debug('[inline-live-editor] resolved preview url', url.toString())
     return url.toString()
   } catch (error) {
     console.error('Failed to resolve inline preview URL:', error)
@@ -85,6 +91,11 @@ const sendLiveUpdate = (document: MinimalContentDocument) => {
     path: normalizedPath
   })
 
+  console.debug('[inline-live-editor] sending live update', {
+    path: normalizedPath,
+    document: payload
+  })
+
   iframeRef.value.contentWindow.postMessage(
     {
       type: 'live_updates',
@@ -114,6 +125,7 @@ const handleDocumentChange = (document: MinimalContentDocument) => {
   const normalized = getClonedDocument(document)
   normalized.path = normalizePagePath(normalized.path ?? activePath.value)
   latestDocument.value = normalized
+  console.debug('[inline-live-editor] document change', normalized)
   if (activePath.value !== normalized.path) {
     activePath.value = normalized.path
     isIframeReady.value = false
@@ -135,7 +147,12 @@ watch(
   () => {
     const candidate = resolveBaseCandidates()
     if (candidate) {
+      console.debug('[inline-live-editor] previewBaseUrl updated', {
+        prop: props.previewBaseUrl,
+        resolved: candidate
+      })
       resolvedBaseUrl.value = candidate
+      console.debug('[inline-live-editor] resolvedBaseUrl now', resolvedBaseUrl.value)
     }
   },
   { immediate: true }

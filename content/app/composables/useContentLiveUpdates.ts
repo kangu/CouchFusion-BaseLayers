@@ -63,7 +63,13 @@ export const useContentLiveUpdates = (): void => {
         document.path = path
       }
 
+      console.log('[content-live-updates] applying document', { path, document })
+
       contentStore.applyLiveDocument(document)
+      console.log('[content-live-updates] document applied', {
+        path,
+        summary: contentStore.getPage(path)
+      })
     } catch (error) {
       console.error('Failed to apply live content update:', error)
     }

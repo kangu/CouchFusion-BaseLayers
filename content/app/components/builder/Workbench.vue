@@ -15,7 +15,11 @@ const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
     return null
   }
   if (typeof structuredClone === 'function') {
-    return structuredClone(doc)
+    try {
+      return structuredClone(doc)
+    } catch (error) {
+      console.warn('Structured clone failed in Workbench, falling back to JSON clone:', error)
+    }
   }
   return JSON.parse(JSON.stringify(doc)) as MinimalContentDocument
 }

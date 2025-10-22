@@ -111,6 +111,8 @@ const saveError = ref<string | null>(null)
 const lastSavedAt = ref<string | null>(null)
 const selectedHistoryId = ref<string | null>(null)
 const latestDocument = ref<MinimalContentDocument | null>(null)
+const editorBodyRef = ref<HTMLElement | null>(null)
+const isCondensed = ref(false)
 
 const isCreateModalOpen = ref(false)
 const isCreatingPage = ref(false)
@@ -146,6 +148,7 @@ const headerFixedStyles = computed(() => {
 
 let headerObserver: IntersectionObserver | null = null
 let resizeObserver: ResizeObserver | null = null
+let editorBodyObserver: ResizeObserver | null = null
 
 const availablePages = computed(() => indexState.value.data)
 
@@ -186,6 +189,7 @@ const indexError = computed(() => indexState.value.error)
 const hasPages = computed(() => (availablePages.value?.length ?? 0) > 0)
 const isFilteredEmpty = computed(() => hasPages.value && filteredPages.value.length === 0)
 const lastUpdatedDisplay = computed(() => formatTimestamp(selectedSummary.value?.updatedAt ?? null, lastSavedAt.value))
+const condensedHistoryValue = computed(() => selectedHistoryId.value ?? '')
 
 const selectedHistoryDocument = computed<MinimalContentDocument | null>(() => {
   if (!selectedHistoryId.value) {
@@ -264,6 +268,15 @@ const updateHeaderMeasurements = () => {
   headerPlaceholderHeight.value = headerEl.offsetHeight
 }
 
+const updateCondensedState = () => {
+  const element = editorBodyRef.value
+  if (!element) {
+    return
+  }
+  const { width } = element.getBoundingClientRect()
+  isCondensed.value = width < 1000
+}
+
 const handleIntersection: IntersectionObserverCallback = (entries) => {
   const entry = entries[0]
   if (!entry) {
@@ -292,7 +305,10 @@ onMounted(() => {
   }
 
   updateHeaderMeasurements()
+  updateCondensedState()
+
   window.addEventListener('resize', updateHeaderMeasurements)
+  window.addEventListener('resize', updateCondensedState)
 
   if ('ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(() => updateHeaderMeasurements())
@@ -303,6 +319,19 @@ onMounted(() => {
 
     if (editorCardRef.value) {
       resizeObserver.observe(editorCardRef.value)
+    }
+
+    editorBodyObserver = new ResizeObserver(() => updateCondensedState())
+
+    if (editorBodyRef.value) {
+      editorBodyObserver.observe(editorBodyRef.value)
+    } else {
+      nextTick(() => {
+        if (editorBodyRef.value) {
+          editorBodyObserver?.observe(editorBodyRef.value)
+          updateCondensedState()
+        }
+      })
     }
   }
 
@@ -315,10 +344,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', updateHeaderMeasurements)
+    window.removeEventListener('resize', updateCondensedState)
   }
 
   headerObserver?.disconnect()
   resizeObserver?.disconnect()
+  editorBodyObserver?.disconnect()
 })
 
 function formatTimestamp(value: string | null, override?: string | null): string | null {
@@ -377,6 +408,7 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
     lastSavedAt.value = null
     selectedHistoryId.value = null
     contentStore.fetchHistory(normalizedPath, force).catch(() => {})
+    nextTick(() => updateCondensedState())
   } catch (error: any) {
     selectionError.value = error?.message || 'Failed to load page content.'
   } finally {
@@ -529,6 +561,14 @@ async function handleSelectHistory(entryId: string): Promise<void> {
     const wrapped = error instanceof Error ? error : new Error(error?.message || 'Failed to load history entry.')
     feedback.value.error?.(wrapped.message)
   }
+}
+
+async function handleCondensedHistoryChange(event: Event): Promise<void> {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) {
+    return
+  }
+  await handleSelectHistory(target.value ?? '')
 }
 
 async function handleDeletePage(): Promise<void> {
@@ -709,8 +749,46 @@ defineExpose({
         aria-hidden="true"
       />
 
-      <div class="content-admin-workbench__editor-body">
-        <div class="content-admin-workbench__editor-sidebar">
+      <div
+        ref="editorBodyRef"
+        class="content-admin-workbench__editor-body"
+      >
+        <div
+          v-if="isCondensed"
+          class="content-admin-workbench__condensed-history"
+        >
+          <div class="condensed-history__header">
+            <label class="condensed-history__label" for="condensed-history-select">
+              <span class="sidebar__title">History</span>
+              <span class="sidebar__subtitle">Restore recent revisions.</span>
+            </label>
+          </div>
+
+          <div v-if="historyError" class="sidebar__error">
+            {{ historyError }}
+          </div>
+          <div v-else-if="isHistoryLoading" class="sidebar__hint">Loading history…</div>
+          <div v-else class="condensed-history__control">
+            <select
+              id="condensed-history-select"
+              :value="condensedHistoryValue"
+              :disabled="isHistoryLoading || historyEntries.length === 0"
+              @change="handleCondensedHistoryChange"
+            >
+              <option value="">Current version</option>
+              <option
+                v-for="entry in historyEntries"
+                :key="entry.id"
+                :value="entry.id"
+              >
+                {{ formatHistoryLabel(entry.timestamp) }}
+              </option>
+            </select>
+            <p v-if="historyEntries.length === 0" class="sidebar__hint">No history available yet.</p>
+          </div>
+        </div>
+
+        <div v-if="!isCondensed" class="content-admin-workbench__editor-sidebar">
           <h2 class="sidebar__title">History</h2>
           <p class="sidebar__subtitle">Restore recent revisions.</p>
 
@@ -1075,31 +1153,101 @@ defineExpose({
 
 .content-admin-workbench__editor-body {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) 1fr;
+  grid-template-columns: 1fr;
   gap: 1.5rem;
   padding: 1.25rem;
+  container-type: inline-size;
+  container-name: workbench;
 }
 
-@media (max-width: 1023px) {
+@container workbench (min-width: 1000px) {
   .content-admin-workbench__editor-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(240px, 280px) 1fr;
+  }
+
+  .content-admin-workbench__editor-sidebar {
+    display: block;
+    border-right: 1px solid #e5e7eb;
+    padding-right: 1.25rem;
+  }
+
+  .content-admin-workbench__condensed-history {
+    display: none;
   }
 }
 
 .content-admin-workbench__editor-sidebar {
   border-right: 1px solid #e5e7eb;
   padding-right: 1.25rem;
+  display: none;
 }
 
-@media (max-width: 1023px) {
-  .content-admin-workbench__editor-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #e5e7eb;
-    padding-right: 0;
-    padding-bottom: 1.25rem;
-    margin-bottom: 1.25rem;
+.content-admin-workbench__condensed-history {
+  display: block;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.condensed-history__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.condensed-history__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.condensed-history__control {
+  display: flex;
+  flex-direction: column;
+}
+
+.content-admin-workbench__condensed-history select {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #111827;
+  background-color: #ffffff;
+}
+
+.content-admin-workbench__condensed-history select:disabled {
+  color: #9ca3af;
+  background-color: #f9fafb;
+}
+
+.content-admin-workbench__condensed-history .sidebar__hint {
+  margin-top: 0.5rem;
+}
+
+@container workbench (max-width: 999px) {
+  .content-admin-workbench__editor-body {
+    padding: 1rem;
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+  }
+
+  .content-admin-workbench__editor-body > * {
+    width: 100%;
+  }
+
+  .content-admin-workbench__editor-canvas {
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .editor-canvas__workbench,
+  .editor-canvas__placeholder {
+    width: 100%;
   }
 }
+
 
 .sidebar__title {
   font-size: 1rem;
@@ -1162,6 +1310,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
 }
 
 .editor-canvas__error {
