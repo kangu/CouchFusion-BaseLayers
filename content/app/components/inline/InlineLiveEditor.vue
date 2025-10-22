@@ -19,31 +19,27 @@ const latestDocument = ref<MinimalContentDocument | null>(null);
 const selectedSummary = ref<ContentPageSummary | null>(null);
 const cacheBuster = ref(Date.now());
 const resolvedBaseUrl = ref<string>("");
+const isClientReady = ref(false);
 
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
 
 const resolveBaseCandidates = () => {
-    if (typeof window === "undefined") {
-        return "";
-    }
-
     if (
         typeof props.previewBaseUrl === "string" &&
         props.previewBaseUrl.trim()
     ) {
         return props.previewBaseUrl.trim();
     }
-    const origin = window.location.origin;
-    if (origin) {
-        return origin;
-    }
     const configUrl =
         runtimeConfig.public?.siteUrl || runtimeConfig.public?.siteURL;
     if (typeof configUrl === "string" && configUrl.trim()) {
         return configUrl.trim();
     }
-    return origin;
+    if (typeof window !== "undefined" && window.location?.origin) {
+        return window.location.origin;
+    }
+    return "";
 };
 
 const previewUrl = computed(() => {
@@ -181,6 +177,7 @@ onMounted(() => {
     if (!resolvedBaseUrl.value) {
         resolvedBaseUrl.value = resolveBaseCandidates();
     }
+    isClientReady.value = true;
 });
 </script>
 
@@ -199,13 +196,16 @@ onMounted(() => {
         <section class="inline-live-editor__preview">
             <div class="inline-live-editor__preview-frame">
                 <iframe
-                    v-if="previewUrl"
+                    v-if="isClientReady && previewUrl"
                     ref="iframeRef"
                     :src="previewUrl"
                     :title="iframeTitle || 'Inline preview'"
                     @load="handleIframeLoad"
                 />
-                <div v-else class="inline-live-editor__preview-placeholder">
+                <div
+                    v-else
+                    class="inline-live-editor__preview-placeholder"
+                >
                     Unable to determine preview URL. Configure `public.siteUrl`
                     or pass `preview-base-url`.
                 </div>
