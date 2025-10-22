@@ -105,7 +105,6 @@ const writeStaticRoutesArtifact = async (
   const targetFile = join(targetDir, "sitemap-static-routes.mjs");
   const jsonContent = JSON.stringify(routes, null, 2);
   const moduleSource = `export const routes = ${jsonContent};\nexport default routes;\n`;
-  console.log("Writing to", targetDir, "static routes file", targetFile);
 
   await fs.mkdir(targetDir, { recursive: true });
   await fs.writeFile(targetFile, moduleSource, "utf8");
@@ -180,3 +179,4 @@ export default async function contentLayerSitemapModule(
     };
   });
 }
+

@@ -103,3 +103,4 @@ export default async function contentLayerIgnoredPrefixesModule(_moduleOptions: 
         ignoredPrefixes: merged
     }
 }
+

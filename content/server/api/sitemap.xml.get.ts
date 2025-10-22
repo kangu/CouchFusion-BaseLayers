@@ -198,9 +198,10 @@ export default defineEventHandler(async (event) => {
   try {
     const runtimeConfig = useRuntimeConfig();
     const appConfig = useAppConfig();
-    console.log("Resolving ignored:", appConfig?.content);
-    const ignoredPrefixes = resolveIgnoredPrefixes(appConfig?.content);
-    console.log("Final resolved ignored:", ignoredPrefixes);
+    const ignoredPrefixes = resolveIgnoredPrefixes(appConfig?.content, {
+      includeAuto: false,
+      includeMerged: false,
+    });
 
     const entriesMap = new Map<string, SitemapEntry>();
 
@@ -211,11 +212,6 @@ export default defineEventHandler(async (event) => {
       }
 
       const normalizedPath = normalizePagePath(route);
-      console.log(
-        "Checking static route",
-        normalizedPath,
-        isContentRoute(normalizedPath, ignoredPrefixes),
-      );
       if (!isContentRoute(normalizedPath, ignoredPrefixes)) {
         continue;
       }

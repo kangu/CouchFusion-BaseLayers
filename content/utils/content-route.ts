@@ -24,25 +24,61 @@ export const normaliseContentPrefix = (value: string | null | undefined): string
     return trimmed.replace(/\/+$/, '')
 }
 
-export const mergeIgnoredPrefixes = (manualPrefixes: Array<string | null | undefined>): string[] => {
+const normalisePrefixList = (input: any): string[] => {
+    if (!Array.isArray(input)) {
+        return []
+    }
+
+    return input
+        .map((prefix) => normaliseContentPrefix(prefix))
+        .filter((value): value is string => Boolean(value))
+}
+
+export interface ResolveIgnoredPrefixesOptions {
+    includeAuto?: boolean
+    includeManual?: boolean
+    includeMerged?: boolean
+}
+
+export const resolveIgnoredPrefixes = (
+    appConfigContent: Record<string, any> | undefined | null,
+    options: ResolveIgnoredPrefixesOptions = {}
+): string[] => {
+    const {
+        includeAuto = true,
+        includeManual = true,
+        includeMerged = true
+    } = options
+
     const combined = new Set<string>(RESERVED_CONTENT_PREFIXES)
 
-    for (const prefix of manualPrefixes) {
-        const normalised = normaliseContentPrefix(prefix)
-        if (normalised) {
-            combined.add(normalised)
+    if (includeManual) {
+        const manual = normalisePrefixList(
+            appConfigContent?.manualIgnoredPrefixes ??
+            appConfigContent?.manualPrefixes ??
+            []
+        )
+
+        for (const prefix of manual) {
+            combined.add(prefix)
+        }
+    }
+
+    if (includeAuto) {
+        const auto = normalisePrefixList(appConfigContent?.autoIgnoredPrefixes ?? [])
+        for (const prefix of auto) {
+            combined.add(prefix)
+        }
+    }
+
+    if (includeMerged) {
+        const merged = normalisePrefixList(appConfigContent?.ignoredPrefixes ?? [])
+        for (const prefix of merged) {
+            combined.add(prefix)
         }
     }
 
     return Array.from(combined).sort((a, b) => a.localeCompare(b))
-}
-
-export const resolveIgnoredPrefixes = (appConfigContent: Record<string, any> | undefined | null): string[] => {
-    const configured = Array.isArray(appConfigContent?.ignoredPrefixes)
-        ? appConfigContent?.ignoredPrefixes
-        : []
-
-    return mergeIgnoredPrefixes(configured)
 }
 
 export const isContentRoute = (path: string, ignoredPrefixes: string[]): boolean => {
@@ -67,4 +103,3 @@ export const isContentRoute = (path: string, ignoredPrefixes: string[]): boolean
 
     return true
 }
-
