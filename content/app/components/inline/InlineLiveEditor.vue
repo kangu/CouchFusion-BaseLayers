@@ -26,7 +26,10 @@ const selectedSummary = ref<ContentPageSummary | null>(null);
 const cacheBuster = ref(Date.now());
 const resolvedBaseUrl = ref<string>("");
 const isClientReady = ref(false);
-const workbenchProps = computed(() => props.workbench ?? {});
+const workbenchProps = computed(() => ({
+    // hidePreview: true,
+    ...(props.workbench ?? {}),
+}));
 
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
@@ -196,6 +199,7 @@ onMounted(() => {
                 v-bind="workbenchProps"
                 :initial-path="initialPath"
                 :auto-select-first="false"
+                :hide-preview="true"
                 @page-selected="handlePageSelected"
                 @document-change="handleDocumentChange"
             />
@@ -210,10 +214,7 @@ onMounted(() => {
                     :title="iframeTitle || 'Inline preview'"
                     @load="handleIframeLoad"
                 />
-                <div
-                    v-else
-                    class="inline-live-editor__preview-placeholder"
-                >
+                <div v-else class="inline-live-editor__preview-placeholder">
                     Unable to determine preview URL. Configure `public.siteUrl`
                     or pass `preview-base-url`.
                 </div>

@@ -72,6 +72,7 @@ const props = defineProps<{
     confirmDelete?: (page: ContentPageSummary) => boolean | Promise<boolean>;
     ui?: Partial<UiConfig>;
     initialPath?: string | null;
+    hidePreview?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -91,6 +92,7 @@ const description = computed(
         props.description ??
         "Manage content pages and edit their layout using the builder workbench.",
 );
+const hidePreview = computed(() => props.hidePreview === true);
 const ui = computed<UiConfig>(() => ({ ...defaultUi, ...(props.ui ?? {}) }));
 const feedback = computed(() => props.feedback ?? {});
 const autoSelectFirst = computed(() => props.autoSelectFirst !== false);
@@ -952,16 +954,30 @@ defineExpose({
                         {{ saveError }}
                     </div>
 
-                    <div
-                        v-if="selectedDocument"
-                        class="editor-canvas__workbench"
-                    >
-                        <BuilderWorkbench
-                            ref="builderRef"
-                            :initial-document="selectedDocument"
-                            :key="selectedDocument.id"
-                            @document-change="handleDocumentChange"
-                        />
+                    <div v-if="selectedDocument">
+                        <div
+                            v-if="!hidePreview"
+                            class="editor-canvas__preview-label"
+                        >
+                            <h2 class="preview-title">Preview</h2>
+                            <p class="preview-subtitle">
+                                Rendered output of the current content document.
+                            </p>
+                        </div>
+                        <div
+                            class="editor-canvas__workbench"
+                            :class="{
+                                'editor-canvas__workbench--full': hidePreview,
+                            }"
+                        >
+                            <BuilderWorkbench
+                                ref="builderRef"
+                                :initial-document="selectedDocument"
+                                :hide-preview="hidePreview"
+                                :key="selectedDocument.id"
+                                @document-change="handleDocumentChange"
+                            />
+                        </div>
                     </div>
                     <div v-else class="editor-canvas__placeholder">
                         Select a page to begin editing.
@@ -1473,6 +1489,27 @@ defineExpose({
     background-color: #f9fafb;
     padding: 1rem;
     min-height: 600px;
+}
+
+.editor-canvas__workbench--full {
+    min-height: 0;
+}
+
+.editor-canvas__preview-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.preview-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.preview-subtitle {
+    font-size: 0.875rem;
+    color: #6b7280;
 }
 
 .editor-canvas__placeholder {
