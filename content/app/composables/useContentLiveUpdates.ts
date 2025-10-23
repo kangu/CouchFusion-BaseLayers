@@ -40,6 +40,43 @@ export const useContentLiveUpdates = (): void => {
   }
 
   const contentStore = useContentPagesStore()
+  let pendingScroll: { x: number; y: number } | null = null
+
+  const scheduleScrollRestore = (coords: { x: number; y: number }) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    let attempts = 6
+
+    const attemptRestore = () => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      window.scrollTo({
+        left: coords.x,
+        top: coords.y
+      })
+
+      const aligned =
+        Math.abs(window.scrollX - coords.x) <= 1 &&
+        Math.abs(window.scrollY - coords.y) <= 1
+
+      attempts -= 1
+
+      if (!aligned && attempts > 0) {
+        const delay = attempts <= 3 ? 48 : 0
+        if (delay > 0) {
+          setTimeout(() => requestAnimationFrame(attemptRestore), delay)
+        } else {
+          requestAnimationFrame(attemptRestore)
+        }
+      }
+    }
+
+    requestAnimationFrame(attemptRestore)
+  }
 
   const handleMessage = (event: MessageEvent) => {
     const data = event.data
@@ -65,11 +102,29 @@ export const useContentLiveUpdates = (): void => {
 
       console.log('[content-live-updates] applying document', { path, document })
 
+      if (typeof window !== 'undefined') {
+        const currentPath = normalizePagePath(window.location.pathname || '/')
+        if (currentPath === path) {
+          pendingScroll = {
+            x: window.scrollX,
+            y: window.scrollY
+          }
+        } else {
+          pendingScroll = null
+        }
+      }
+
       contentStore.applyLiveDocument(document)
       console.log('[content-live-updates] document applied', {
         path,
         summary: contentStore.getPage(path)
       })
+
+      if (pendingScroll) {
+        const coords = pendingScroll
+        pendingScroll = null
+        scheduleScrollRestore(coords)
+      }
     } catch (error) {
       console.error('Failed to apply live content update:', error)
     }
