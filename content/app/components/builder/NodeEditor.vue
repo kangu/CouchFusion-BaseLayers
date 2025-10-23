@@ -79,15 +79,16 @@
                 class="node-panel__field node-panel__field--nested"
               >
                 <span>{{ field.label }}</span>
-                <template v-if="field.type === 'textarea'">
-                  <textarea
-                    v-model="propDraft[prop.key][field.key]"
-                    rows="3"
-                    @change="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
-                    @blur="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
-                  />
-                </template>
-                <template v-else-if="field.type === 'boolean'">
+                    <template v-if="field.type === 'textarea'">
+                      <textarea
+                        v-model="propDraft[prop.key][field.key]"
+                        rows="3"
+                        @input="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key], { debounce: true })"
+                        @change="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
+                        @blur="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
+                      />
+                    </template>
+                    <template v-else-if="field.type === 'boolean'">
                   <span class="node-panel__checkbox">
                     <input
                       type="checkbox"
@@ -111,6 +112,7 @@
                   <input
                     v-model.number="propDraft[prop.key][field.key]"
                     type="number"
+                    @input="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key], { debounce: true })"
                     @change="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
                     @blur="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
                   />
@@ -132,13 +134,15 @@
                     :model-value="propDraft[prop.key][field.key]"
                     :prop-definition="field"
                     :field-context="{ propKey: prop.key }"
-                    @update:modelValue="(value: unknown) => handleObjectFieldChange(prop.key, field, value)"
+                    @update:modelValue="(value: unknown) =>
+                      handleObjectFieldChange(prop.key, field, value, { debounce: true })"
                   />
                 </template>
                 <template v-else>
                   <input
                     v-model="propDraft[prop.key][field.key]"
                     type="text"
+                    @input="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key], { debounce: true })"
                     @change="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
                     @blur="() => handleObjectFieldChange(prop.key, field, propDraft[prop.key][field.key])"
                   />
@@ -210,6 +214,10 @@
                       <textarea
                         v-model="item[field.key]"
                         rows="3"
+                        @input="() =>
+                          handleArrayItemFieldChange(prop.key, index, field, item[field.key], {
+                            debounce: true
+                          })"
                         @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                         @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                       />
@@ -233,6 +241,10 @@
                       <input
                         v-model.number="item[field.key]"
                         type="number"
+                        @input="() =>
+                          handleArrayItemFieldChange(prop.key, index, field, item[field.key], {
+                            debounce: true
+                          })"
                         @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                         @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                       />
@@ -244,7 +256,9 @@
                         :prop-definition="field"
                         :field-context="{ propKey: prop.key, arrayIndex: index }"
                         @update:modelValue="(value: unknown) =>
-                          handleCustomArrayFieldUpdate(prop.key, index, field, value)"
+                          handleCustomArrayFieldUpdate(prop.key, index, field, value, {
+                            debounce: true
+                          })"
                       />
                     </template>
                     <template v-else-if="field.type === 'jsonarray'">
@@ -287,6 +301,17 @@
                                 <textarea
                                   v-model="nestedItem[nestedField.key]"
                                   rows="3"
+                                  @input="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key],
+                                      { debounce: true }
+                                    )
+                                  "
                                   @change="() =>
                                     updateNestedArrayItemField(
                                       prop.key,
@@ -337,6 +362,17 @@
                                 <input
                                   v-model.number="nestedItem[nestedField.key]"
                                   type="number"
+                                  @input="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key],
+                                      { debounce: true }
+                                    )
+                                  "
                                   @change="() =>
                                     updateNestedArrayItemField(
                                       prop.key,
@@ -377,14 +413,26 @@
                                       field,
                                       nestedIndex,
                                       nestedField,
-                                      value
+                                      value,
+                                      { debounce: true }
                                     )"
-                                  />
+                                />
                               </template>
                               <template v-else>
                                 <input
                                   v-model="nestedItem[nestedField.key]"
                                   type="text"
+                                  @input="() =>
+                                    updateNestedArrayItemField(
+                                      prop.key,
+                                      index,
+                                      field,
+                                      nestedIndex,
+                                      nestedField,
+                                      nestedItem[nestedField.key],
+                                      { debounce: true }
+                                    )
+                                  "
                                   @change="() =>
                                     updateNestedArrayItemField(
                                       prop.key,
@@ -423,6 +471,10 @@
                       <input
                         v-model="item[field.key]"
                         type="text"
+                        @input="() =>
+                          handleArrayItemFieldChange(prop.key, index, field, item[field.key], {
+                            debounce: true
+                          })"
                         @change="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                         @blur="() => handleArrayItemFieldChange(prop.key, index, field, item[field.key])"
                       />
@@ -484,12 +536,17 @@
                     :model-value="propDraft[prop.key][index]"
                     :prop-definition="prop"
                     :field-context="{ propKey: prop.key, arrayIndex: index }"
-                    @update:modelValue="(value: unknown) => handleStringArrayChange(prop.key, index, value)"
+                    @update:modelValue="(value: unknown) =>
+                      handleStringArrayChange(prop.key, index, value, { debounce: true })"
                   />
                   <input
                     v-else
                     v-model="propDraft[prop.key][index]"
                     type="text"
+                    @input="() =>
+                      handleStringArrayChange(prop.key, index, propDraft[prop.key][index], {
+                        debounce: true
+                      })"
                     @change="() => handleStringArrayChange(prop.key, index, propDraft[prop.key][index])"
                     @blur="() => handleStringArrayChange(prop.key, index, propDraft[prop.key][index])"
                   />
@@ -510,7 +567,7 @@
               :model-value="propDraft[prop.key]"
               :prop-definition="prop"
               :field-context="{ propKey: prop.key }"
-              @update:modelValue="(value: unknown) => handleCustomPropUpdate(prop, value)"
+              @update:modelValue="(value: unknown) => handleCustomPropUpdate(prop, value, { debounce: true })"
             />
           </template>
           <template v-else>
@@ -818,6 +875,19 @@ const flushPropUpdate = (key: string, value: unknown, type: PropInputType) => {
   applyProp(key, value, type)
 }
 
+const commitPropChange = (
+  key: string,
+  value: unknown,
+  type: PropInputType,
+  options: { debounce?: boolean } = {}
+) => {
+  if (options.debounce) {
+    schedulePropUpdate(key, value, type)
+  } else {
+    flushPropUpdate(key, value, type)
+  }
+}
+
 const marginOptions = [
   { label: 'None', value: '0' },
   { label: 'XS', value: '1' },
@@ -1123,7 +1193,8 @@ const setNestedArrayItems = (
   propKey: string,
   parentIndex: number,
   field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
-  items: Array<Record<string, any>>
+  items: Array<Record<string, any>>,
+  options: { debounce?: boolean } = {}
 ) => {
   const current = ensureArrayValue(propDraft[propKey])
   const next = current.map((entry) => cloneValue(entry))
@@ -1133,7 +1204,7 @@ const setNestedArrayItems = (
   delete next[parentIndex][`:${field.key}`]
   next[parentIndex][field.key] = items.map((item) => cloneValue(item))
   propDraft[propKey] = next
-  applyProp(propKey, next, 'jsonarray')
+  commitPropChange(propKey, next, 'jsonarray', options)
 }
 
 const isNestedArrayCollapsed = (propKey: string, parentIndex: number, fieldKey: string) => {
@@ -1177,7 +1248,8 @@ const updateNestedArrayItemField = (
   field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
   index: number,
   nestedField: ComponentArrayItemField,
-  rawValue: unknown
+  rawValue: unknown,
+  options: { debounce?: boolean } = {}
 ) => {
   const items = getNestedArrayItems(propKey, parentIndex, field)
   const next = items.map((entry, entryIndex) => {
@@ -1210,7 +1282,7 @@ const updateNestedArrayItemField = (
     delete draft[`:${nestedField.key}`]
     return draft
   })
-  setNestedArrayItems(propKey, parentIndex, field, next)
+  setNestedArrayItems(propKey, parentIndex, field, next, options)
 }
 
 const updateCustomNestedArrayItemField = (
@@ -1219,9 +1291,10 @@ const updateCustomNestedArrayItemField = (
   field: Extract<ComponentArrayItemField, { type: 'jsonarray' }>,
   index: number,
   nestedField: ComponentArrayItemField,
-  value: unknown
+  value: unknown,
+  options: { debounce?: boolean } = {}
 ) => {
-  updateNestedArrayItemField(propKey, parentIndex, field, index, nestedField, value)
+  updateNestedArrayItemField(propKey, parentIndex, field, index, nestedField, value, options)
 }
 
 const createEmptyArrayItem = (fields: ComponentArrayItemField[]) => {
@@ -1446,9 +1519,13 @@ onBeforeUnmount(() => {
   propUpdateTimers.clear()
 })
 
-const handleCustomPropUpdate = (schema: ComponentPropSchema, value: unknown) => {
+const handleCustomPropUpdate = (
+  schema: ComponentPropSchema,
+  value: unknown,
+  options: { debounce?: boolean } = {}
+) => {
   propDraft[schema.key] = value
-  applyProp(schema.key, value, schema.type)
+  commitPropChange(schema.key, value, schema.type, options)
 }
 
 function normalizeArrayFieldValue(field: ComponentArrayItemField, value: unknown) {
@@ -1548,7 +1625,8 @@ const handleArrayItemFieldChange = (
   propKey: string,
   index: number,
   field: ComponentArrayItemField,
-  rawValue: unknown
+  rawValue: unknown,
+  options: { debounce?: boolean } = {}
 ) => {
   if (isNestedArrayField(field)) {
     return
@@ -1563,10 +1641,15 @@ const handleArrayItemFieldChange = (
   }
   next[index][field.key] = normalizeArrayFieldValue(field, rawValue)
   propDraft[propKey] = next
-  applyProp(propKey, next, 'jsonarray')
+  commitPropChange(propKey, next, 'jsonarray', options)
 }
 
-const handleObjectFieldChange = (propKey: string, field: ComponentArrayItemField, rawValue: unknown) => {
+const handleObjectFieldChange = (
+  propKey: string,
+  field: ComponentArrayItemField,
+  rawValue: unknown,
+  options: { debounce?: boolean } = {}
+) => {
   const schema = getPropSchema(propKey)
   if (!schema || schema.type !== 'jsonobject') {
     return
@@ -1576,39 +1659,45 @@ const handleObjectFieldChange = (propKey: string, field: ComponentArrayItemField
   propDraft[propKey] = draft
   objectFieldErrors[propKey] = objectFieldErrors[propKey] || {}
   objectFieldErrors[propKey][field.key] = null
-  applyProp(propKey, draft, 'jsonobject')
+  commitPropChange(propKey, draft, 'jsonobject', options)
 }
 
 const handleCustomArrayFieldUpdate = (
   propKey: string,
   index: number,
   field: ComponentArrayItemField,
-  value: unknown
+  value: unknown,
+  options: { debounce?: boolean } = {}
 ) => {
   if (isNestedArrayField(field)) {
     return
   }
-  handleArrayItemFieldChange(propKey, index, field, value)
+  handleArrayItemFieldChange(propKey, index, field, value, options)
 }
 
 const removeArrayItem = (propKey: string, index: number) => {
   const current = ensureArrayValue(propDraft[propKey])
   current.splice(index, 1)
   propDraft[propKey] = current
-  applyProp(propKey, current, 'jsonarray')
+  commitPropChange(propKey, current, 'jsonarray')
 }
-const handleStringArrayChange = (propKey: string, index: number, rawValue: unknown) => {
+const handleStringArrayChange = (
+  propKey: string,
+  index: number,
+  rawValue: unknown,
+  options: { debounce?: boolean } = {}
+) => {
   const current = ensureStringArray(propDraft[propKey])
   current[index] = String(rawValue ?? '')
   propDraft[propKey] = current
-  applyProp(propKey, current, 'stringarray')
+  commitPropChange(propKey, current, 'stringarray', options)
 }
 
 const removeStringArrayItem = (propKey: string, index: number) => {
   const current = ensureStringArray(propDraft[propKey])
   current.splice(index, 1)
   propDraft[propKey] = current
-  applyProp(propKey, current, 'stringarray')
+  commitPropChange(propKey, current, 'stringarray')
 }
 
 const handleArrayItemDragStart = (
@@ -1655,7 +1744,7 @@ const reorderArrayItems = (
     const [moved] = current.splice(fromIndex, 1)
     current.splice(toIndex, 0, moved)
     propDraft[propKey] = current
-    applyProp(propKey, current, 'jsonarray')
+    commitPropChange(propKey, current, 'jsonarray')
     return
   }
 
@@ -1666,7 +1755,7 @@ const reorderArrayItems = (
   const [moved] = current.splice(fromIndex, 1)
   current.splice(toIndex, 0, moved)
   propDraft[propKey] = current
-  applyProp(propKey, current, 'stringarray')
+  commitPropChange(propKey, current, 'stringarray')
 }
 
 const handleArrayItemDrop = (
