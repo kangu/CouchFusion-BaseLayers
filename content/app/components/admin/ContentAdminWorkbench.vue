@@ -47,21 +47,14 @@ interface UiConfig {
 }
 
 const defaultUi: UiConfig = {
-    createButton:
-        "inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
-    pageChipActive: "border-blue-500 bg-blue-50 text-blue-600 shadow-sm",
-    pageChipInactive:
-        "border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:text-blue-600",
-    saveButton:
-        "inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-    deleteButton:
-        "inline-flex items-center gap-2 rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-    cancelButton:
-        "inline-flex items-center gap-2 rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2",
-    modalSaveButton:
-        "inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-    modalCancelButton:
-        "rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50",
+    createButton: "",
+    pageChipActive: "",
+    pageChipInactive: "",
+    saveButton: "",
+    deleteButton: "",
+    cancelButton: "",
+    modalSaveButton: "",
+    modalCancelButton: "",
 };
 
 const props = defineProps<{
@@ -686,7 +679,7 @@ defineExpose({
 </script>
 
 <template>
-    <div class="content-admin-workbench space-y-6">
+    <div class="content-admin-workbench">
         <slot
             name="header"
             :title="title"
@@ -703,10 +696,21 @@ defineExpose({
                 <div class="content-admin-workbench__header-actions">
                     <button
                         type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--primary"
                         :class="ui.createButton"
                         @click="showCreatePageModal"
                     >
-                        <Icon name="mdi:plus" class="h-4 w-4" />
+                        <svg
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"
+                            />
+                        </svg>
                         <span>Create New Page</span>
                     </button>
                 </div>
@@ -717,10 +721,17 @@ defineExpose({
             <div class="content-admin-workbench__panel-controls">
                 <div class="content-admin-workbench__search">
                     <label class="search-input">
-                        <Icon
-                            name="mdi:magnify"
-                            class="h-4 w-4 text-gray-400"
-                        />
+                        <svg
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__icon--muted"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
+                            />
+                        </svg>
                         <input
                             v-model="filterTerm"
                             type="search"
@@ -729,7 +740,17 @@ defineExpose({
                     </label>
                 </div>
                 <div v-if="indexError" class="content-admin-workbench__error">
-                    <Icon name="mdi:alert-circle-outline" class="h-5 w-5" />
+                    <svg
+                        class="content-admin-workbench__icon content-admin-workbench__icon--md"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path
+                            fill="currentColor"
+                            d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm1-5h-2v-2h2Zm0-4h-2V7h2Z"
+                        />
+                    </svg>
                     <span>{{ indexError }}</span>
                 </div>
             </div>
@@ -757,11 +778,17 @@ defineExpose({
                         :key="page.path"
                         type="button"
                         class="content-admin-workbench__chip"
-                        :class="
+                        :class="[
                             page.path === selectedPath
-                                ? ui.pageChipActive
-                                : ui.pageChipInactive
-                        "
+                                ? [
+                                      'content-admin-workbench__chip--active',
+                                      ui.pageChipActive,
+                                  ]
+                                : [
+                                      'content-admin-workbench__chip--inactive',
+                                      ui.pageChipInactive,
+                                  ],
+                        ]"
                         @click="openPageForEditing(page.path)"
                     >
                         {{ `${page.path} - ${page.title || "[No title]"}` }}
@@ -811,26 +838,45 @@ defineExpose({
                 <div class="editor-header__actions">
                     <button
                         type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--primary"
                         :class="ui.saveButton"
                         :disabled="isSavePending || !selectedSummary"
                         @click="handleSaveDocument"
                     >
-                        <Icon
+                        <svg
                             v-if="isSavePending"
-                            name="mdi:loading"
-                            class="h-4 w-4 animate-spin"
-                        />
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                            />
+                        </svg>
                         <span>{{
                             isSavePending ? "Saving…" : "Save Changes"
                         }}</span>
                     </button>
                     <button
                         type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--danger"
                         :class="ui.deleteButton"
                         :disabled="isDeletePending || !selectedSummary"
                         @click="handleDeletePage"
                     >
-                        <Icon name="mdi:trash-can-outline" class="h-4 w-4" />
+                        <svg
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14Zm-1 3H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2Zm-3 2v10h-2V9Zm-4 0v10H9V9Z"
+                            />
+                        </svg>
                         <span>Delete</span>
                     </button>
                 </div>
@@ -913,7 +959,17 @@ defineExpose({
                             :class="{ 'is-active': !selectedHistoryId }"
                             @click="handleSelectHistory('')"
                         >
-                            <Icon name="mdi:clock-outline" class="h-4 w-4" />
+                            <svg
+                                class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    fill="currentColor"
+                                    d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.65Z"
+                                />
+                            </svg>
                             <span>Current version</span>
                         </button>
 
@@ -937,10 +993,17 @@ defineExpose({
                                 }"
                                 @click="handleSelectHistory(entry.id)"
                             >
-                                <Icon
-                                    name="mdi:backup-restore"
-                                    class="h-4 w-4"
-                                />
+                                <svg
+                                    class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M12 5V2L8 6l4 4V7a6 6 0 0 1 6 6 6 6 0 0 1-4 5.66v2.1A8 8 0 0 0 20 13a8 8 0 0 0-8-8ZM6 11a6 6 0 0 1 4-5.66v-2.1A8 8 0 0 0 4 11a8 8 0 0 0 8 8v3l4-4-4-4v3a6 6 0 0 1-6-6Z"
+                                    />
+                                </svg>
                                 <span>{{
                                     formatHistoryLabel(entry.timestamp)
                                 }}</span>
@@ -1008,7 +1071,17 @@ defineExpose({
                                 aria-label="Close"
                                 @click="closeCreateModal"
                             >
-                                <Icon name="mdi:close" class="h-5 w-5" />
+                                <svg
+                                    class="h-5 w-5"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12Z"
+                                    />
+                                </svg>
                             </button>
                         </div>
 
@@ -1081,6 +1154,7 @@ defineExpose({
                             <div class="modal__actions">
                                 <button
                                     type="button"
+                                    class="content-admin-workbench__button content-admin-workbench__button--muted"
                                     :class="ui.modalCancelButton"
                                     @click="closeCreateModal"
                                 >
@@ -1088,14 +1162,22 @@ defineExpose({
                                 </button>
                                 <button
                                     type="submit"
+                                    class="content-admin-workbench__button content-admin-workbench__button--primary"
                                     :class="ui.modalSaveButton"
                                     :disabled="isCreatingPage"
                                 >
-                                    <Icon
+                                    <svg
                                         v-if="isCreatingPage"
-                                        name="mdi:loading"
-                                        class="h-4 w-4 animate-spin"
-                                    />
+                                        class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            fill="currentColor"
+                                            d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                                        />
+                                    </svg>
                                     <span>{{
                                         isCreatingPage ? "Saving…" : "Save Page"
                                     }}</span>
@@ -1110,6 +1192,117 @@ defineExpose({
 </template>
 
 <style scoped>
+.content-admin-workbench {
+    display: flex;
+    flex-direction: column;
+}
+
+.content-admin-workbench > * + * {
+    margin-top: 1.5rem;
+}
+
+.content-admin-workbench__button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid transparent;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+    outline: none;
+}
+
+.content-admin-workbench__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.content-admin-workbench__button--primary {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
+}
+
+.content-admin-workbench__button--primary:hover:not(:disabled) {
+    background-color: #1d4ed8;
+}
+
+.content-admin-workbench__button--primary:focus-visible {
+    box-shadow:
+        0 0 0 2px #ffffff,
+        0 0 0 4px rgba(59, 130, 246, 0.75);
+}
+
+.content-admin-workbench__button--danger {
+    background-color: #ffffff;
+    border-color: #fecaca;
+    color: #dc2626;
+}
+
+.content-admin-workbench__button--danger:hover:not(:disabled) {
+    background-color: #fef2f2;
+}
+
+.content-admin-workbench__button--danger:focus-visible {
+    box-shadow:
+        0 0 0 2px #ffffff,
+        0 0 0 4px rgba(248, 113, 113, 0.65);
+}
+
+.content-admin-workbench__button--muted {
+    background-color: #ffffff;
+    border-color: #d1d5db;
+    color: #4b5563;
+    font-weight: 500;
+}
+
+.content-admin-workbench__button--muted:hover:not(:disabled) {
+    background-color: #f9fafb;
+}
+
+.content-admin-workbench__button--muted:focus-visible {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+}
+
+.content-admin-workbench__icon {
+    display: block;
+    flex-shrink: 0;
+}
+
+.content-admin-workbench__icon--sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+.content-admin-workbench__icon--md {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.content-admin-workbench__icon--muted {
+    color: #9ca3af;
+}
+
+@keyframes content-admin-workbench-spinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.content-admin-workbench__spinner {
+    animation: content-admin-workbench-spinner 1s linear infinite;
+}
+
 .content-admin-workbench__header {
     display: flex;
     flex-direction: column;
@@ -1213,12 +1406,47 @@ defineExpose({
 }
 
 .content-admin-workbench__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     border-radius: 9999px;
     border: 1px solid #e5e7eb;
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
-    transition: all 0.15s ease;
+    font-weight: 500;
+    color: #374151;
     background-color: #ffffff;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease,
+        color 0.15s ease;
+    cursor: pointer;
+    outline: none;
+}
+
+.content-admin-workbench__chip--active {
+    border-color: #3b82f6;
+    background-color: #eff6ff;
+    color: #2563eb;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+}
+
+.content-admin-workbench__chip--inactive {
+    border-color: #e5e7eb;
+    background-color: #ffffff;
+    color: #374151;
+}
+
+.content-admin-workbench__chip--inactive:hover {
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+
+.content-admin-workbench__chip:focus-visible {
+    box-shadow:
+        0 0 0 2px #ffffff,
+        0 0 0 4px rgba(59, 130, 246, 0.45);
 }
 
 .content-admin-workbench__hint {

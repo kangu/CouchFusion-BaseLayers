@@ -684,7 +684,6 @@ const handleSaveDebugClick = () => {
 <template>
     <div class="builder-page">
         <section class="builder-controls">
-            <h1>Content Builder MVP</h1>
             <div class="builder-config">
                 <label>
                     <span>Page path</span>
