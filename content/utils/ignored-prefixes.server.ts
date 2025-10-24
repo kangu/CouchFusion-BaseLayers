@@ -73,34 +73,42 @@ const collectStaticPagePrefixes = async (directory: string): Promise<string[]> =
   return Array.from(prefixes)
 }
 
-export default async function contentLayerIgnoredPrefixesModule(_moduleOptions: any, nuxt: any) {
-  nuxt.options.appConfig = nuxt.options.appConfig || {}
-  const contentConfig = nuxt.options.appConfig.content || {}
-
-  const pagesDir = getPagesDir(nuxt)
-  const autoPrefixes = await collectStaticPagePrefixes(pagesDir)
-
-  const manualPrefixesInput = Array.isArray(contentConfig.manualIgnoredPrefixes)
-    ? contentConfig.manualIgnoredPrefixes
+const normalisePrefixList = (input: any): string[] =>
+  Array.isArray(input)
+    ? input
+        .map((prefix) => normalizePrefix(prefix))
+        .filter((value): value is string => Boolean(value))
     : []
 
-  const manualNormalised = manualPrefixesInput
-    .map((prefix) => normalizePrefix(prefix))
-    .filter((value): value is string => Boolean(value))
+export default async function contentLayerIgnoredPrefixesModule(_moduleOptions: any, nuxt: any) {
+  nuxt.options.appConfig = nuxt.options.appConfig || {}
+  const pagesDir = getPagesDir(nuxt)
+  const autoPrefixes = await collectStaticPagePrefixes(pagesDir)
+  const autoNormalised = normalisePrefixList(autoPrefixes)
 
-  const autoNormalised = autoPrefixes
-    .map((prefix) => normalizePrefix(prefix))
-    .filter((value): value is string => Boolean(value))
+  const applyContentConfig = (contentConfig: Record<string, any> | undefined | null) => {
+    const manualPrefixesInput =
+      contentConfig?.manualIgnoredPrefixes ??
+      contentConfig?.manualPrefixes ??
+      []
 
-  const merged = Array.from(
-    new Set<string>([...autoNormalised, ...manualNormalised])
-  ).sort((a, b) => a.localeCompare(b))
+    const manualNormalised = normalisePrefixList(manualPrefixesInput)
 
-  nuxt.options.appConfig.content = {
-    ...contentConfig,
-    autoIgnoredPrefixes: autoNormalised,
-    manualIgnoredPrefixes: manualNormalised,
-    ignoredPrefixes: merged
+    const merged = Array.from(
+      new Set<string>([...autoNormalised, ...manualNormalised])
+    ).sort((a, b) => a.localeCompare(b))
+
+    return {
+      ...contentConfig,
+      autoIgnoredPrefixes: autoNormalised,
+      manualIgnoredPrefixes: manualNormalised,
+      ignoredPrefixes: merged
+    }
   }
-}
 
+  nuxt.options.appConfig.content = applyContentConfig(nuxt.options.appConfig.content)
+
+  nuxt.hook('app:config', (appConfig: any) => {
+    appConfig.content = applyContentConfig(appConfig.content)
+  })
+}
