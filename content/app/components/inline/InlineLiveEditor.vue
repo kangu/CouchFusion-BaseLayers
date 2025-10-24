@@ -33,6 +33,7 @@ const workbenchProps = computed(() => ({
 
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
+const workbenchInstanceKey = ref(0);
 
 const resolveBaseCandidates = () => {
     if (
@@ -183,6 +184,21 @@ watch(
     },
 );
 
+watch(
+    () => initialPath.value,
+    (nextPath, previousPath) => {
+        if (!nextPath || nextPath === previousPath) {
+            return;
+        }
+
+        activePath.value = nextPath;
+        latestDocument.value = null;
+        selectedSummary.value = null;
+        isIframeReady.value = false;
+        workbenchInstanceKey.value += 1;
+    },
+);
+
 onMounted(() => {
     if (!resolvedBaseUrl.value) {
         resolvedBaseUrl.value = resolveBaseCandidates();
@@ -195,6 +211,7 @@ onMounted(() => {
     <div class="inline-live-editor">
         <section class="inline-live-editor__sidebar">
             <ContentAdminWorkbench
+                :key="workbenchInstanceKey"
                 class="inline-live-editor__workbench"
                 v-bind="workbenchProps"
                 :initial-path="initialPath"
