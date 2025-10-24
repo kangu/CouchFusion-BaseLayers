@@ -320,6 +320,29 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
+        applyLiveDocument(document: MinimalContentDocument): ContentPageSummary {
+            const contentDocument = minimalToContentDocument(document)
+            const normalizedPath = normalizePagePath(contentDocument.path)
+            const summary = extractSummary({ document: contentDocument })
+
+            if (!this.pages[normalizedPath]) {
+                this.pages[normalizedPath] = createEmptyFetchState<Maybe<ContentPageSummary>>(null)
+            }
+
+            const state = this.pages[normalizedPath]
+            state.pending = false
+            state.error = null
+            state.data = summary
+
+            const filteredIndex = this.index.data.filter(
+                (entry) => normalizePagePath(entry.path) !== normalizedPath
+            )
+            filteredIndex.push(summary)
+            this.index.data = filteredIndex.sort((a, b) => a.path.localeCompare(b.path))
+
+            return summary
+        },
+
         async deletePage(path: string): Promise<void> {
             const normalizedPath = normalizePagePath(path)
             const $f = useRequestFetch()

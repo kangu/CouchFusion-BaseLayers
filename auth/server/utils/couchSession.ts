@@ -11,20 +11,6 @@ export interface CouchUser {
 }
 
 /**
- * Parse Cookie header into key-value pairs
- */
-function parseCookieHeader(cookieHeader = ''): Record<string, string> {
-    const out: Record<string, string> = {}
-    cookieHeader.split(';').forEach(kv => {
-        const i = kv.indexOf('=')
-        if (i > -1) {
-            out[kv.slice(0, i).trim()] = decodeURIComponent(kv.slice(i + 1).trim())
-        }
-    })
-    return out
-}
-
-/**
  * Validate CouchDB AuthSession cookie and return user info
  * Reuses existing CouchDB utilities from the database layer
  */
@@ -33,7 +19,6 @@ export async function validateCouchSession(cookieHeader?: string): Promise<Couch
 
     console.log('Token', cookieHeader)
     const token = cookieHeader
-    // const token = parseCookieHeader(cookieHeader).AuthSession
     if (!token) return null
 
     try {
