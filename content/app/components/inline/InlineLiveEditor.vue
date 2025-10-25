@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch,
+} from "vue";
 import { normalizePagePath } from "#content/utils/page";
 import ContentAdminWorkbench from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
@@ -36,10 +43,18 @@ const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
 const workbenchInstanceKey = ref(0);
 const hasUnsavedChanges = ref(false);
+const sidebarWidth = ref(420);
+const dividerRef = ref<HTMLDivElement | null>(null);
+const isDraggingDivider = ref(false);
+const pendingDividerDrag = ref(false);
+const dividerPointerId = ref<number | null>(null);
+const dragStartX = ref(0);
+const dragStartWidth = ref(0);
 
 const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
     event.preventDefault();
-    event.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+    event.returnValue =
+        "You have unsaved changes. Are you sure you want to leave?";
 };
 
 const applyBeforeUnload = (enabled: boolean) => {
@@ -70,6 +85,12 @@ const builderBasePath = computed(() => {
     return baseSegment === "k" ? "/k" : "/builder";
 });
 
+const MIN_SIDEBAR_WIDTH = 320;
+const MAX_SIDEBAR_WIDTH = 720;
+const MIN_PREVIEW_WIDTH = 480;
+const DRAG_ACTIVATION_THRESHOLD = 3;
+const SIDEBAR_STORAGE_KEY = "inline-live-editor-sidebar-width";
+
 const resolveBaseCandidates = () => {
     if (
         typeof props.previewBaseUrl === "string" &&
@@ -86,6 +107,66 @@ const resolveBaseCandidates = () => {
         return window.location.origin;
     }
     return "";
+};
+
+const clampSidebarWidth = (value: number): number => {
+    const min = MIN_SIDEBAR_WIDTH;
+    let max = Math.max(min, MAX_SIDEBAR_WIDTH);
+
+    if (typeof window !== "undefined") {
+        const viewportCap = window.innerWidth - MIN_PREVIEW_WIDTH;
+        if (Number.isFinite(viewportCap)) {
+            max = Math.min(max, Math.max(min, viewportCap));
+        }
+    }
+
+    return Math.min(Math.max(value, min), max);
+};
+
+const applySidebarConstraints = () => {
+    sidebarWidth.value = clampSidebarWidth(sidebarWidth.value);
+};
+
+const loadStoredSidebarWidth = (): number | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed)) {
+            return null;
+        }
+        return clampSidebarWidth(parsed);
+    } catch (error) {
+        console.debug(
+            "[inline-live-editor] failed to read sidebar width",
+            error,
+        );
+        return null;
+    }
+};
+
+const persistSidebarWidth = (value: number) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            SIDEBAR_STORAGE_KEY,
+            String(Math.round(value)),
+        );
+    } catch (error) {
+        console.debug(
+            "[inline-live-editor] failed to persist sidebar width",
+            error,
+        );
+    }
 };
 
 const previewUrl = computed(() => {
@@ -196,6 +277,95 @@ const handleUnsavedStateChange = (value: boolean) => {
     setUnsavedState(value);
 };
 
+const stopDividerDrag = (event?: PointerEvent) => {
+    if (
+        dividerPointerId.value !== null &&
+        event &&
+        event.pointerId !== dividerPointerId.value
+    ) {
+        return;
+    }
+
+    if (dividerPointerId.value !== null && dividerRef.value) {
+        try {
+            if (dividerRef.value.hasPointerCapture(dividerPointerId.value)) {
+                dividerRef.value.releasePointerCapture(dividerPointerId.value);
+            }
+        } catch (error) {
+            console.debug(
+                "[inline-live-editor] releasePointerCapture failed",
+                error,
+            );
+        }
+    }
+
+    dividerPointerId.value = null;
+    pendingDividerDrag.value = false;
+    isDraggingDivider.value = false;
+    window.removeEventListener("pointermove", handleDividerDrag);
+    window.removeEventListener("pointerup", stopDividerDrag);
+    window.removeEventListener("pointercancel", stopDividerDrag);
+};
+
+const handleDividerDrag = (event: PointerEvent) => {
+    if (dividerPointerId.value !== event.pointerId) {
+        return;
+    }
+
+    const delta = event.clientX - dragStartX.value;
+
+    if (pendingDividerDrag.value) {
+        if (Math.abs(delta) < DRAG_ACTIVATION_THRESHOLD) {
+            return;
+        }
+        pendingDividerDrag.value = false;
+        isDraggingDivider.value = true;
+    }
+
+    if (!isDraggingDivider.value) {
+        return;
+    }
+
+    event.preventDefault();
+    sidebarWidth.value = clampSidebarWidth(dragStartWidth.value + delta);
+};
+
+const beginDividerDrag = (event: PointerEvent) => {
+    const isPrimaryMouse = event.pointerType === "mouse" && event.button === 0;
+    const isTouchOrPen =
+        event.pointerType === "touch" || event.pointerType === "pen";
+
+    if (!isPrimaryMouse && !isTouchOrPen) {
+        return;
+    }
+
+    event.preventDefault();
+
+    dividerPointerId.value = event.pointerId;
+    pendingDividerDrag.value = true;
+    dragStartX.value = event.clientX;
+    dragStartWidth.value = sidebarWidth.value;
+
+    if (dividerRef.value) {
+        try {
+            dividerRef.value.setPointerCapture(event.pointerId);
+        } catch (error) {
+            console.debug(
+                "[inline-live-editor] setPointerCapture failed",
+                error,
+            );
+        }
+    }
+
+    window.addEventListener("pointermove", handleDividerDrag, {
+        passive: false,
+    });
+    window.addEventListener("pointerup", stopDividerDrag, { passive: true });
+    window.addEventListener("pointercancel", stopDividerDrag, {
+        passive: true,
+    });
+};
+
 const handleIframeLoad = () => {
     isIframeReady.value = true;
     if (latestDocument.value) {
@@ -229,7 +399,10 @@ const normaliseBuilderTarget = (path: string): string => {
     return path.replace(/^\/+/, "");
 };
 
-const syncRouteToActivePath = (nextPath: string, previousPath: string | null) => {
+const syncRouteToActivePath = (
+    nextPath: string,
+    previousPath: string | null,
+) => {
     if (!import.meta.client) {
         return;
     }
@@ -242,7 +415,10 @@ const syncRouteToActivePath = (nextPath: string, previousPath: string | null) =>
         ? `${builderBasePath.value}/${normalised}`
         : `${builderBasePath.value}/`;
 
-    const current = window.location.pathname + window.location.search + window.location.hash;
+    const current =
+        window.location.pathname +
+        window.location.search +
+        window.location.hash;
 
     if (current === targetPath) {
         return;
@@ -251,7 +427,10 @@ const syncRouteToActivePath = (nextPath: string, previousPath: string | null) =>
     try {
         window.history.pushState(null, "", targetPath);
     } catch (error) {
-        console.error("[inline-live-editor] failed to update builder history path:", error);
+        console.error(
+            "[inline-live-editor] failed to update builder history path:",
+            error,
+        );
     }
 };
 
@@ -280,15 +459,42 @@ watch(
 );
 
 onMounted(() => {
+    if (typeof window !== "undefined") {
+        const stored = loadStoredSidebarWidth();
+        if (stored !== null) {
+            sidebarWidth.value = stored;
+        }
+    }
+
     if (!resolvedBaseUrl.value) {
         resolvedBaseUrl.value = resolveBaseCandidates();
     }
     isClientReady.value = true;
+    applySidebarConstraints();
+    if (typeof window !== "undefined") {
+        window.addEventListener("resize", applySidebarConstraints, {
+            passive: true,
+        });
+    }
 });
 
 onBeforeUnmount(() => {
     applyBeforeUnload(false);
+    stopDividerDrag();
+    if (typeof window !== "undefined") {
+        window.removeEventListener("resize", applySidebarConstraints);
+    }
 });
+
+watch(
+    () => sidebarWidth.value,
+    (value, previous) => {
+        if (typeof value !== "number" || value === previous) {
+            return;
+        }
+        persistSidebarWidth(value);
+    },
+);
 
 onBeforeRouteLeave(() => {
     if (!hasUnsavedChanges.value) {
@@ -309,7 +515,13 @@ onBeforeRouteLeave(() => {
 </script>
 
 <template>
-    <div class="inline-live-editor">
+    <div
+        class="inline-live-editor"
+        :class="{ 'inline-live-editor--dragging': isDraggingDivider }"
+        :style="{
+            '--inline-sidebar-width': `${sidebarWidth}px`,
+        }"
+    >
         <section class="inline-live-editor__sidebar">
             <ContentAdminWorkbench
                 :key="workbenchInstanceKey"
@@ -324,6 +536,15 @@ onBeforeRouteLeave(() => {
                 @unsaved-state-change="handleUnsavedStateChange"
             />
         </section>
+
+        <div
+            class="inline-live-editor__divider"
+            role="separator"
+            aria-orientation="vertical"
+            tabindex="0"
+            ref="dividerRef"
+            @pointerdown="beginDividerDrag"
+        ></div>
 
         <section class="inline-live-editor__preview">
             <div class="inline-live-editor__preview-frame">
@@ -345,8 +566,9 @@ onBeforeRouteLeave(() => {
 
 <style scoped>
 .inline-live-editor {
+    --inline-sidebar-width: 420px;
     display: grid;
-    grid-template-columns: minmax(360px, 650px) 1fr;
+    grid-template-columns: var(--inline-sidebar-width) minmax(4px, 8px) 1fr;
     gap: 0;
     width: 100vw;
     height: 100vh;
@@ -356,6 +578,31 @@ onBeforeRouteLeave(() => {
     overflow: auto;
     border-right: 1px solid #e5e7eb;
     background-color: #f8fafc;
+}
+
+.inline-live-editor__divider {
+    position: relative;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    touch-action: none;
+}
+
+.inline-live-editor__divider::before {
+    content: "";
+    width: 1px;
+    height: 80%;
+    border-radius: 999px;
+    background-color: rgba(71, 85, 105, 0.35);
+    transition: background-color 0.2s ease;
+}
+
+.inline-live-editor--dragging .inline-live-editor__divider::before,
+.inline-live-editor__divider:focus-visible::before,
+.inline-live-editor__divider:hover::before {
+    background-color: rgba(37, 99, 235, 0.6);
 }
 
 .inline-live-editor__workbench {
@@ -391,7 +638,7 @@ onBeforeRouteLeave(() => {
     font-size: 0.95rem;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1000px) {
     .inline-live-editor {
         grid-template-columns: 1fr;
         height: auto;
@@ -401,6 +648,10 @@ onBeforeRouteLeave(() => {
     .inline-live-editor__sidebar {
         border-right: none;
         border-bottom: 1px solid #e5e7eb;
+    }
+
+    .inline-live-editor__divider {
+        display: none;
     }
 
     .inline-live-editor__preview {

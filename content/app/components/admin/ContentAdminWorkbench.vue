@@ -646,14 +646,31 @@ async function handleSelectHistory(entryId: string): Promise<void> {
         return;
     }
 
-    if (!entryId) {
+    const targetId = entryId ?? "";
+    if (targetId === (selectedHistoryId.value ?? "")) {
+        return;
+    }
+
+    if (hasUnsavedChanges.value) {
+        const confirmed = await confirmDiscardUnsavedChanges();
+        if (!confirmed) {
+            return;
+        }
+        updateUnsavedState(false);
+        lastSavedSnapshot.value = null;
+    }
+
+    hasLoadedInitialDocument.value = false;
+    lastSavedSnapshot.value = null;
+
+    if (!targetId) {
         selectedHistoryId.value = null;
         return;
     }
 
     try {
         await contentStore.fetchHistory(selectedSummary.value.path);
-        selectedHistoryId.value = entryId;
+        selectedHistoryId.value = targetId;
     } catch (error: any) {
         const wrapped =
             error instanceof Error
@@ -770,7 +787,7 @@ defineExpose({
                                 d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"
                             />
                         </svg>
-                        <span>Create New Page</span>
+                        <span>New Page</span>
                     </button>
                 </div>
             </div>
