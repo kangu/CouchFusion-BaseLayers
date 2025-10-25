@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { normalizePagePath } from "#content/utils/page";
 import ContentAdminWorkbench from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
@@ -18,6 +18,7 @@ const props = defineProps<{
 }>();
 
 const runtimeConfig = useRuntimeConfig();
+const route = useRoute();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const isIframeReady = ref(false);
@@ -34,6 +35,40 @@ const workbenchProps = computed(() => ({
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
 const workbenchInstanceKey = ref(0);
+const hasUnsavedChanges = ref(false);
+
+const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
+    event.preventDefault();
+    event.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+};
+
+const applyBeforeUnload = (enabled: boolean) => {
+    if (!import.meta.client) {
+        return;
+    }
+
+    if (enabled) {
+        window.addEventListener("beforeunload", beforeUnloadHandler);
+    } else {
+        window.removeEventListener("beforeunload", beforeUnloadHandler);
+    }
+};
+
+const setUnsavedState = (value: boolean) => {
+    if (hasUnsavedChanges.value === value) {
+        return;
+    }
+    hasUnsavedChanges.value = value;
+    applyBeforeUnload(value);
+};
+
+const builderBasePath = computed(() => {
+    const currentPath = route.path || "/builder";
+    const cleaned = currentPath.split("?")[0].split("#")[0];
+    const segments = cleaned.split("/").filter(Boolean);
+    const baseSegment = segments[0] ?? "builder";
+    return baseSegment === "k" ? "/k" : "/builder";
+});
 
 const resolveBaseCandidates = () => {
     if (
@@ -127,6 +162,7 @@ const sendLiveUpdate = (document: MinimalContentDocument) => {
 const handlePageSelected = (summary: ContentPageSummary | null) => {
     selectedSummary.value = summary;
     if (!summary) {
+        setUnsavedState(false);
         return;
     }
 
@@ -135,6 +171,7 @@ const handlePageSelected = (summary: ContentPageSummary | null) => {
         activePath.value = normalizedPath;
         isIframeReady.value = false;
     }
+    setUnsavedState(false);
 };
 
 const handleDocumentChange = (document: MinimalContentDocument) => {
@@ -149,6 +186,14 @@ const handleDocumentChange = (document: MinimalContentDocument) => {
     if (isIframeReady.value) {
         sendLiveUpdate(normalized);
     }
+};
+
+const handleSaveSuccess = () => {
+    setUnsavedState(false);
+};
+
+const handleUnsavedStateChange = (value: boolean) => {
+    setUnsavedState(value);
 };
 
 const handleIframeLoad = () => {
@@ -177,10 +222,44 @@ watch(
     { immediate: true },
 );
 
+const normaliseBuilderTarget = (path: string): string => {
+    if (!path || path === "/") {
+        return "";
+    }
+    return path.replace(/^\/+/, "");
+};
+
+const syncRouteToActivePath = (nextPath: string, previousPath: string | null) => {
+    if (!import.meta.client) {
+        return;
+    }
+    if (!nextPath || nextPath === previousPath) {
+        return;
+    }
+
+    const normalised = normaliseBuilderTarget(nextPath);
+    const targetPath = normalised
+        ? `${builderBasePath.value}/${normalised}`
+        : `${builderBasePath.value}/`;
+
+    const current = window.location.pathname + window.location.search + window.location.hash;
+
+    if (current === targetPath) {
+        return;
+    }
+
+    try {
+        window.history.pushState(null, "", targetPath);
+    } catch (error) {
+        console.error("[inline-live-editor] failed to update builder history path:", error);
+    }
+};
+
 watch(
     () => activePath.value,
-    () => {
+    (nextPath, previousPath) => {
         cacheBuster.value = Date.now();
+        syncRouteToActivePath(nextPath, previousPath ?? null);
     },
 );
 
@@ -196,6 +275,7 @@ watch(
         selectedSummary.value = null;
         isIframeReady.value = false;
         workbenchInstanceKey.value += 1;
+        setUnsavedState(false);
     },
 );
 
@@ -204,6 +284,27 @@ onMounted(() => {
         resolvedBaseUrl.value = resolveBaseCandidates();
     }
     isClientReady.value = true;
+});
+
+onBeforeUnmount(() => {
+    applyBeforeUnload(false);
+});
+
+onBeforeRouteLeave(() => {
+    if (!hasUnsavedChanges.value) {
+        return;
+    }
+
+    if (typeof window !== "undefined") {
+        const shouldLeave = window.confirm(
+            "You have unsaved changes. Leave without saving?",
+        );
+        if (!shouldLeave) {
+            return false;
+        }
+    }
+
+    setUnsavedState(false);
 });
 </script>
 
@@ -219,6 +320,8 @@ onMounted(() => {
                 :hide-preview="true"
                 @page-selected="handlePageSelected"
                 @document-change="handleDocumentChange"
+                @save-success="handleSaveSuccess"
+                @unsaved-state-change="handleUnsavedStateChange"
             />
         </section>
 

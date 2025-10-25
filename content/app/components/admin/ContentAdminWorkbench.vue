@@ -77,6 +77,7 @@ const emit = defineEmits<{
     (e: "delete-success", page: ContentPageSummary): void;
     (e: "delete-error", error: Error): void;
     (e: "document-change", document: MinimalContentDocument): void;
+    (e: "unsaved-state-change", hasChanges: boolean): void;
 }>();
 
 const title = computed(() => props.title ?? "Content Builder");
@@ -120,6 +121,8 @@ const selectedHistoryId = ref<string | null>(null);
 const latestDocument = ref<MinimalContentDocument | null>(null);
 const editorBodyRef = ref<HTMLElement | null>(null);
 const isCondensed = ref(false);
+const hasUnsavedChanges = ref(false);
+const lastSavedSnapshot = ref<string | null>(null);
 
 const isCreateModalOpen = ref(false);
 const isCreatingPage = ref(false);
@@ -139,6 +142,7 @@ const headerSentinelRef = ref<HTMLElement | null>(null);
 const isHeaderPinned = ref(false);
 const headerPlaceholderHeight = ref(0);
 const headerPosition = reactive({ top: "0px", left: "0px", width: "auto" });
+const hasLoadedInitialDocument = ref(false);
 
 const headerFixedStyles = computed(() => {
     if (!isHeaderPinned.value) {
@@ -156,6 +160,28 @@ const headerFixedStyles = computed(() => {
 let headerObserver: IntersectionObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let editorBodyObserver: ResizeObserver | null = null;
+
+const updateUnsavedState = (value: boolean) => {
+    if (hasUnsavedChanges.value === value) {
+        return;
+    }
+    hasUnsavedChanges.value = value;
+    emit("unsaved-state-change", value);
+};
+
+const confirmDiscardUnsavedChanges = async (): Promise<boolean> => {
+    if (!hasUnsavedChanges.value) {
+        return true;
+    }
+
+    if (typeof window === "undefined") {
+        return true;
+    }
+
+    return window.confirm(
+        "You have unsaved changes. Discard them and continue?",
+    );
+};
 
 const availablePages = computed(() => indexState.value.data);
 
@@ -424,10 +450,27 @@ function resolveDocument(
 
 async function openPageForEditing(path: string, force = false): Promise<void> {
     const normalizedPath = normalizePagePath(path);
+    if (!force && normalizedPath === selectedPath.value) {
+        return;
+    }
+
+    if (hasUnsavedChanges.value && normalizedPath !== selectedPath.value) {
+        const confirmed = await confirmDiscardUnsavedChanges();
+        if (!confirmed) {
+            return;
+        }
+        updateUnsavedState(false);
+        lastSavedSnapshot.value = latestDocument.value
+            ? JSON.stringify(latestDocument.value)
+            : null;
+    }
+
     if (isSelectingPage.value) {
         return;
     }
 
+    hasLoadedInitialDocument.value = false;
+    lastSavedSnapshot.value = null;
     isSelectingPage.value = true;
     selectionError.value = null;
     saveError.value = null;
@@ -437,6 +480,7 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
         selectedPath.value = normalizedPath;
         lastSavedAt.value = null;
         selectedHistoryId.value = null;
+        updateUnsavedState(false);
         contentStore.fetchHistory(normalizedPath, force).catch(() => {});
         nextTick(() => updateCondensedState());
     } catch (error: any) {
@@ -528,6 +572,17 @@ async function handleCreatePage(): Promise<void> {
 function handleDocumentChange(document: MinimalContentDocument): void {
     latestDocument.value = document;
     lastSavedAt.value = null;
+    const serialized = JSON.stringify(document);
+    const wasBootstrapped = hasLoadedInitialDocument.value;
+    hasLoadedInitialDocument.value = true;
+
+    if (!wasBootstrapped || lastSavedSnapshot.value === null) {
+        lastSavedSnapshot.value = serialized;
+        updateUnsavedState(false);
+    } else {
+        updateUnsavedState(serialized !== lastSavedSnapshot.value);
+    }
+
     emit("document-change", document);
 }
 
@@ -562,6 +617,8 @@ async function handleSaveDocument(): Promise<void> {
         selectedPath.value = savedSummary.path;
         lastSavedAt.value = savedSummary.updatedAt ?? new Date().toISOString();
         selectedHistoryId.value = null;
+        lastSavedSnapshot.value = JSON.stringify(serialized);
+        updateUnsavedState(false);
 
         emit("save-success", savedSummary);
         feedback.value.success?.(
@@ -654,6 +711,8 @@ async function handleDeletePage(): Promise<void> {
             await openPageForEditing(remaining[0].path, true);
         } else {
             selectedPath.value = null;
+            hasLoadedInitialDocument.value = false;
+            updateUnsavedState(false);
             emit("page-selected", null);
         }
     } catch (error: any) {
