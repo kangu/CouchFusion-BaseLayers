@@ -1,15 +1,22 @@
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from "node:url";
 
 export default defineNuxtConfig({
   alias: {
-    '#imagekit': fileURLToPath(new URL('.', import.meta.url)),
+    "#imagekit": fileURLToPath(new URL(".", import.meta.url)),
   },
 
   imports: {
-    dirs: ['composables', 'utils'],
+    dirs: ["composables", "utils"],
   },
 
-  plugins: [{ src: fileURLToPath(new URL('./plugins/imagekit-directive', import.meta.url)) }],
+  plugins: [
+    {
+      src: fileURLToPath(
+        new URL("./plugins/imagekit-directive", import.meta.url),
+      ),
+    },
+    fileURLToPath(new URL("./plugins/lazy", import.meta.url)),
+  ],
 
   runtimeConfig: {
     imagekit: {
@@ -32,4 +39,4 @@ export default defineNuxtConfig({
   devtools: {
     enabled: true,
   },
-})
+});
