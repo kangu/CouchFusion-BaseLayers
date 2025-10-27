@@ -157,6 +157,8 @@ const previewSpacingClass = computed(
             ?.className || "",
 );
 
+const expandedRootNodes = reactive<Record<string, boolean>>({});
+
 const selectedRootComponent = ref(componentOptions.value[0]?.id || "");
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
@@ -389,6 +391,20 @@ const deserializeTree = (entries: any[]): BuilderTree => {
         .filter((entry): entry is BuilderNodeChild => entry !== null);
 };
 
+const resetExpandedRoots = () => {
+    for (const key of Object.keys(expandedRootNodes)) {
+        delete expandedRootNodes[key];
+    }
+};
+
+const pruneExpandedRoots = () => {
+    for (const key of Object.keys(expandedRootNodes)) {
+        if (!builderTree.value.some((node) => node.uid === key)) {
+            delete expandedRootNodes[key];
+        }
+    }
+};
+
 const applyDocument = (doc: MinimalContentDocument | null) => {
     if (!doc) {
         builderTree.value = [];
@@ -400,6 +416,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.extension = "md";
         pageConfig.meta = {};
         layout.spacing = "none";
+        resetExpandedRoots();
         return;
     }
 
@@ -412,6 +429,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = doc.meta ?? {};
     layout.spacing = doc.layout?.spacing ?? "none";
+    pruneExpandedRoots();
 };
 
 watch(
@@ -573,7 +591,9 @@ const removeNode = (uid: string) => {
         return false;
     };
 
-    removeRecursive(builderTree.value);
+    if (removeRecursive(builderTree.value)) {
+        delete expandedRootNodes[uid];
+    }
 };
 
 const cloneNode = (uid: string) => {
@@ -595,6 +615,19 @@ const cloneNode = (uid: string) => {
     entry.parent.splice(entry.index + 1, 0, duplicated);
 };
 
+const isRootExpanded = (uid: string) => expandedRootNodes[uid] === true;
+
+const handleRootExpansion = (uid: string, expanded: boolean) => {
+    if (!builderTree.value.some((node) => node.uid === uid)) {
+        return;
+    }
+    if (expanded) {
+        expandedRootNodes[uid] = true;
+    } else {
+        delete expandedRootNodes[uid];
+    }
+};
+
 const moveRootNode = (dragUid: string | null, targetUid: string | null) => {
     if (!dragUid) {
         return;
@@ -613,6 +646,9 @@ const moveRootNode = (dragUid: string | null, targetUid: string | null) => {
 };
 
 const handleDragStart = (uid: string) => {
+    if (isRootExpanded(uid)) {
+        return;
+    }
     draggingUid.value = uid;
 };
 
@@ -873,9 +909,10 @@ const handleSaveDebugClick = () => {
                 v-for="node in builderTree"
                 :key="node.uid"
                 class="builder-root-item"
-                draggable="true"
+                :draggable="!isRootExpanded(node.uid)"
                 :data-dragging="draggingUid === node.uid"
                 :data-drag-over="dragOverUid === node.uid"
+                :data-expanded="isRootExpanded(node.uid)"
                 @dragstart="handleDragStart(node.uid)"
                 @dragend="handleDragEnd"
                 @dragover.prevent="handleDragOver(node.uid)"
@@ -894,6 +931,7 @@ const handleSaveDebugClick = () => {
                     :on-add-child-text="addChildText"
                     :on-remove="removeNode"
                     :on-clone="cloneNode"
+                    :on-toggle-expanded="handleRootExpansion"
                 />
             </div>
             <div

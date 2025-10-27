@@ -1508,6 +1508,7 @@
                     :on-add-child-text="onAddChildText"
                     :on-remove="onRemove"
                     :on-clone="onClone"
+                    :on-toggle-expanded="onToggleExpanded"
                 />
             </div>
         </div>
@@ -1648,6 +1649,7 @@ const props = defineProps<{
     onAddChildText: (parentUid: string) => void;
     onRemove: (uid: string) => void;
     onClone: (uid: string) => void;
+    onToggleExpanded?: (uid: string, expanded: boolean) => void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
@@ -2749,7 +2751,12 @@ const toggleArray = (key: string) => {
 };
 
 const toggleNode = (uid: string) => {
-    collapsedNodes[uid] = !(collapsedNodes[uid] ?? true);
+    const current = collapsedNodes[uid] ?? true;
+    const nextCollapsed = !current;
+    collapsedNodes[uid] = nextCollapsed;
+    if (typeof props.onToggleExpanded === "function") {
+        props.onToggleExpanded(uid, !nextCollapsed);
+    }
 };
 
 const openInsertDialog = (schema: ComponentPropSchema) => {
