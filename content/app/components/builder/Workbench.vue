@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
 import NodeEditor from "./NodeEditor.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
 import type {
@@ -18,17 +18,22 @@ const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
     if (!doc) {
         return null;
     }
+
+    const rawDoc = toRaw(doc);
+
     if (typeof structuredClone === "function") {
         try {
-            return structuredClone(doc);
-        } catch (error) {
-            console.warn(
-                "Structured clone failed in Workbench, falling back to JSON clone:",
-                error,
-            );
+            return structuredClone(rawDoc);
+        } catch {
+            // fall through to JSON fallback
         }
     }
-    return JSON.parse(JSON.stringify(doc)) as MinimalContentDocument;
+
+    try {
+        return JSON.parse(JSON.stringify(rawDoc)) as MinimalContentDocument;
+    } catch {
+        return rawDoc as MinimalContentDocument;
+    }
 };
 
 const PARAGRAPH_ALIGN_VALUES = ["left", "center", "right"] as const;
