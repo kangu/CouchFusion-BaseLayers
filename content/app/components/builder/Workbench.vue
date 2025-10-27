@@ -441,6 +441,74 @@ const findNode = (
     return null;
 };
 
+const findNodeEntry = (
+    nodes: BuilderNodeChild[],
+    uid: string,
+): { parent: BuilderNodeChild[]; index: number; node: BuilderNodeChild } | null => {
+    for (let index = 0; index < nodes.length; index += 1) {
+        const candidate = nodes[index];
+        if (candidate.uid === uid) {
+            return { parent: nodes, index, node: candidate };
+        }
+        if (candidate.type === "component") {
+            const childEntry = findNodeEntry(candidate.children, uid);
+            if (childEntry) {
+                return childEntry;
+            }
+        }
+    }
+    return null;
+};
+
+const cloneNodeData = <T,>(value: T): T => {
+    if (
+        value === null ||
+        value === undefined ||
+        typeof value === "function" ||
+        typeof value !== "object"
+    ) {
+        return value;
+    }
+
+    if (typeof structuredClone === "function") {
+        try {
+            return structuredClone(value);
+        } catch (error) {
+            console.warn(
+                "[builder] structuredClone failed, falling back to JSON clone:",
+                error,
+            );
+        }
+    }
+
+    try {
+        return JSON.parse(JSON.stringify(value)) as T;
+    } catch (error) {
+        console.warn("[builder] JSON clone failed, using shallow copy:", error);
+        if (Array.isArray(value)) {
+            return [...value] as T;
+        }
+        return { ...(value as Record<string, unknown>) } as T;
+    }
+};
+
+const cloneBuilderNode = (source: BuilderNodeChild): BuilderNodeChild => {
+    if (source.type === "text") {
+        return createTextNode(source.value);
+    }
+
+    const cloned = createNode(source.component);
+    cloned.props = cloneNodeData(source.props ?? {});
+    cloned.children = source.children.map((child) => cloneBuilderNode(child));
+    if (source.margins) {
+        cloned.margins = cloneNodeData(source.margins);
+    } else {
+        delete cloned.margins;
+    }
+
+    return cloned;
+};
+
 const addRootComponent = () => {
     if (!selectedRootComponent.value) {
         return;
@@ -506,6 +574,25 @@ const removeNode = (uid: string) => {
     };
 
     removeRecursive(builderTree.value);
+};
+
+const cloneNode = (uid: string) => {
+    const entry = findNodeEntry(builderTree.value, uid);
+    if (!entry) {
+        return;
+    }
+
+    const shouldClone =
+        typeof window === "undefined"
+            ? true
+            : window.confirm("Clone this element?");
+
+    if (!shouldClone) {
+        return;
+    }
+
+    const duplicated = cloneBuilderNode(entry.node);
+    entry.parent.splice(entry.index + 1, 0, duplicated);
 };
 
 const moveRootNode = (dragUid: string | null, targetUid: string | null) => {
@@ -806,6 +893,7 @@ const handleSaveDebugClick = () => {
                     :on-add-child-component="addChildComponent"
                     :on-add-child-text="addChildText"
                     :on-remove="removeNode"
+                    :on-clone="cloneNode"
                 />
             </div>
             <div
