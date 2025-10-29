@@ -15,7 +15,7 @@ The auth layer's `server/plugins/usersChanges.global.ts` plugin was creating per
 - These persistent connections prevent the Node.js process from naturally terminating after the build completes
 
 **Solution Implemented:**
-Modified `/Users/radu/Projects/nuxt-apps/layers/auth/server/plugins/usersChanges.global.ts` to skip initialization during build/prerendering phases by adding environment detection:
+Modified `layers/auth/server/plugins/usersChanges.global.ts` to skip initialization during build/prerendering phases by adding environment detection:
 
 ```typescript
 export default defineNitroPlugin(() => {
@@ -24,7 +24,7 @@ export default defineNitroPlugin(() => {
     console.log('[UsersChanges] Skipping during build/prerendering phase')
     return
   }
-  
+
   // ... rest of the plugin code
 })
 ```
@@ -44,7 +44,7 @@ NuxtJS layers can include server plugins that run during different phases of the
 
 **Affected File:** `layers/auth/server/plugins/usersChanges.global.ts`
 
-**Plugin Purpose:** 
+**Plugin Purpose:**
 - Creates a global CouchDB `_users` database changes follower
 - Establishes persistent connection to CouchDB's `_changes` feed
 - Broadcasts user document changes to connected SSE clients
@@ -64,7 +64,7 @@ export default defineNitroPlugin(() => {
     console.log('[Plugin] Skipping during build/prerendering phase')
     return
   }
-  
+
   // Runtime initialization code here
 })
 ```

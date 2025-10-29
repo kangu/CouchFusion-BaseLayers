@@ -20,7 +20,7 @@ const secureFlag = isProduction ? '; Secure' : ''
 return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
 ```
 
-**File Fixed**: `/Users/radu/Projects/nuxt-apps/layers/database/utils/couchdb.ts:833-837`
+**File Fixed**: `layers/database/utils/couchdb.ts:833-837`
 
 ### 2. **Enhanced Debugging Infrastructure**
 
@@ -28,7 +28,7 @@ Added comprehensive logging to both client and server to track the complete auth
 
 #### Server-side Debugging (`/layers/auth/server/routes/ws.ts`)
 - Complete WebSocket connection details
-- Raw URL parsing and query parameter extraction  
+- Raw URL parsing and query parameter extraction
 - Cookie header inspection
 - JWT token presence verification
 - Authentication method tracking
@@ -112,7 +112,7 @@ The system now supports **dual authentication**:
 - Client connects to `ws://localhost:9900/ws?token=...`
 - Server validates JWT token and allows connection
 
-### Scenario 2: Cookie Fallback ✅ 
+### Scenario 2: Cookie Fallback ✅
 - Client connects to `ws://localhost:9900/ws` (no token)
 - Server reads AuthSession cookie from WebSocket headers
 - Server validates cookie and allows connection
