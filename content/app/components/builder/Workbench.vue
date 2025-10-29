@@ -959,7 +959,7 @@ const handleSaveDebugClick = () => {
         <section class="builder-preview" v-if="!hidePreview">
             <h2>Preview</h2>
             <div :class="['builder-preview__content', previewSpacingClass]">
-                <ContentRenderer :value="serializedDocument" />
+                <Content :value="serializedDocument" />
             </div>
         </section>
     </div>

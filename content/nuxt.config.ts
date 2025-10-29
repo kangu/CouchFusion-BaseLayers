@@ -39,6 +39,7 @@ export default defineNuxtConfig({
         // path: './components/builder',
         global: true,
         pathPrefix: false,
+        extensions: ["vue"],
       },
       {
         path: fileURLToPath(
@@ -47,6 +48,7 @@ export default defineNuxtConfig({
         // path: './components/runtime',
         global: true,
         pathPrefix: false,
+        extensions: ["vue"],
       },
     ],
   },
