@@ -85,7 +85,7 @@ useHead(() => ({
     meta: [
         {
             name: "description",
-            content: "Sign in to manage Radustanciu content.",
+            content: "Sign in to manage CouchFusion content.",
         },
     ],
 }));
@@ -95,7 +95,7 @@ useHead(() => ({
     <main class="login-page">
         <section class="login-card">
             <header class="login-header">
-                <h1>Radustanciu Studio</h1>
+                <h1>CouchFusion Login</h1>
                 <p>Sign in with your editor credentials.</p>
             </header>
             <form class="login-form" @submit.prevent="handleSubmit">

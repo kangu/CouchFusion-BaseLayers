@@ -1,10 +1,18 @@
-import { defineNuxtRouteMiddleware, createError, abortNavigation, useAppConfig } from '#imports'
+import { defineNuxtRouteMiddleware, createError, abortNavigation, useAppConfig, useRuntimeConfig } from '#imports'
 import { useContentPagesStore } from '#content/app/stores/pages'
-import { resolveIgnoredPrefixes, isContentRoute } from '#content/utils/content-route'
+import { resolveIgnoredPrefixes, isContentRoute, normaliseContentPrefix } from '#content/utils/content-route'
 
 const buildIgnoredPrefixes = (): string[] => {
     const appConfig = useAppConfig()
-    return resolveIgnoredPrefixes(appConfig?.content)
+    const prefixes = resolveIgnoredPrefixes(appConfig?.content)
+    const runtimeConfig = useRuntimeConfig()
+    const loginPath = normaliseContentPrefix(runtimeConfig.public?.authLoginPath)
+
+    if (loginPath && !prefixes.includes(loginPath)) {
+        prefixes.push(loginPath)
+    }
+
+    return prefixes
 }
 
 export default defineNuxtRouteMiddleware(async (to, from) => {

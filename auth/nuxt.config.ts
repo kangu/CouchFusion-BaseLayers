@@ -6,6 +6,10 @@ export default defineNuxtConfig({
     },
     modules: ['@pinia/nuxt'],
     extends: ['../database'],
+    plugins: [
+        fileURLToPath(new URL('./plugins/register-layer-middleware', import.meta.url)),
+        fileURLToPath(new URL('./plugins/ensure-login-ignored-prefix', import.meta.url))
+    ],
 
     imports: {
         dirs: [
