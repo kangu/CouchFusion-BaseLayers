@@ -29,6 +29,33 @@ type RenderContext = {
     resolvers: ComponentResolverMap;
 };
 
+type SlotRenderer = {
+    name: string;
+    children: VNodeChild[];
+    nestedSlots: Record<string, () => VNodeChild[]>;
+};
+
+type SlotDefinition = { __slot: SlotRenderer };
+
+type RenderedChildren = {
+    nodes: VNodeChild[];
+    slots: Record<string, () => VNodeChild[]>;
+};
+
+type NodeRenderResult =
+    | VNodeChild
+    | VNodeChild[]
+    | SlotDefinition
+    | null;
+
+const isSlotDefinition = (value: unknown): value is SlotDefinition => {
+    return Boolean(
+        value &&
+        typeof value === "object" &&
+        "__slot" in (value as Record<string, unknown>),
+    );
+};
+
 function getNodeTag(node: HastElement) {
     return (
         (node.tag as string | undefined) ??
@@ -159,37 +186,90 @@ function resolveComponentReference(
     return normalizeComponent(target);
 }
 
+function flattenNamedSlots(
+    slots: Record<string, () => VNodeChild[]>,
+): VNodeChild[] {
+    return Object.values(slots).flatMap((renderer) => renderer());
+}
+
 function renderChildren(
     nodes: HastNode[] | undefined,
     ctx: RenderContext,
-): VNodeChild[] {
+): RenderedChildren {
+    const response: RenderedChildren = {
+        nodes: [],
+        slots: {},
+    };
+
     if (!nodes?.length) {
-        return [];
+        return response;
     }
 
-    const rendered: VNodeChild[] = [];
     for (const node of nodes) {
         const output = renderNode(node, ctx);
-        if (Array.isArray(output)) {
-            rendered.push(...output);
-        } else if (output !== null && typeof output !== "undefined") {
-            rendered.push(output);
+
+        if (output === null || typeof output === "undefined") {
+            continue;
         }
+
+        if (Array.isArray(output)) {
+            response.nodes.push(...output);
+            continue;
+        }
+
+        if (isSlotDefinition(output)) {
+            const { name, children, nestedSlots } = output.__slot;
+            response.slots[name] = () => [
+                ...children,
+                ...flattenNamedSlots(nestedSlots),
+            ];
+            continue;
+        }
+
+        response.nodes.push(output);
     }
 
-    return rendered;
+    return response;
+}
+
+const extractSlotName = (props: Record<string, unknown>): string | null => {
+    for (const key of Object.keys(props)) {
+        if (key === "v-slot" || key === "slot") {
+            const value = props[key];
+            if (typeof value === "string" && value.trim().length > 0) {
+                return value.trim();
+            }
+            return "default";
+        }
+        if (key.startsWith("v-slot:")) {
+            return key.slice(7) || "default";
+        }
+        if (key.startsWith("#")) {
+            return key.slice(1) || "default";
+        }
+    }
+    return null;
+};
+
+function mergeChildrenAndSlots(
+    rendered: RenderedChildren,
+): VNodeChild[] {
+    return [
+        ...rendered.nodes,
+        ...flattenNamedSlots(rendered.slots),
+    ];
 }
 
 function renderNode(
     node: HastNode,
     ctx: RenderContext,
-): VNodeChild | VNodeChild[] | null {
+): NodeRenderResult {
     if (!node) {
         return null;
     }
 
     if (node.type === "root") {
-        return renderChildren(node.children, ctx);
+        return mergeChildrenAndSlots(renderChildren(node.children, ctx));
     }
 
     if (node.type === "text") {
@@ -206,26 +286,62 @@ function renderNode(
         const mapped = mapTagName(rawTag, element, ctx.tags);
         const component = resolveComponentReference(mapped, ctx);
         const props = normalizeProps(getNodeProps(element));
+        const isTemplate =
+            typeof rawTag === "string" && rawTag.toLowerCase() === "template";
+
+        if (isTemplate) {
+            const slotName = extractSlotName(props);
+            const renderedTemplate = renderChildren(element.children, ctx);
+
+            if (!slotName) {
+                return mergeChildrenAndSlots(renderedTemplate);
+            }
+
+            return {
+                __slot: {
+                    name: slotName,
+                    children: renderedTemplate.nodes,
+                    nestedSlots: renderedTemplate.slots,
+                },
+            };
+        }
+
         const children = renderChildren(element.children, ctx);
-        const hasChildren = children.length > 0;
+        const hasDefaultChildren = children.nodes.length > 0;
+        const hasNamedSlots = Object.keys(children.slots).length > 0;
         const isIntrinsic =
             typeof component === "string" || component === Fragment;
 
-        if (!hasChildren) {
+        if (!hasDefaultChildren && !hasNamedSlots) {
             return h(component as any, props);
         }
 
         if (isIntrinsic) {
-            return h(component as any, props, children);
+            const intrinsicChildren = mergeChildrenAndSlots(children);
+            return intrinsicChildren.length
+                ? h(component as any, props, intrinsicChildren)
+                : h(component as any, props);
         }
 
-        return h(component as any, props, {
-            default: () => children,
-        });
+        const slotObject: Record<string, () => VNodeChild[]> = {};
+
+        if (hasDefaultChildren) {
+            slotObject.default = () => children.nodes;
+        }
+
+        for (const [name, renderer] of Object.entries(children.slots)) {
+            slotObject[name] = renderer;
+        }
+
+        if (Object.keys(slotObject).length === 0) {
+            return h(component as any, props);
+        }
+
+        return h(component as any, props, slotObject);
     }
 
     if (node.children?.length) {
-        return renderChildren(node.children, ctx);
+        return mergeChildrenAndSlots(renderChildren(node.children, ctx));
     }
 
     return null;
@@ -334,6 +450,7 @@ export default defineComponent({
             }
 
             const rootChildren = renderChildren(body.value.children, ctx);
+            const renderedRootChildren = mergeChildrenAndSlots(rootChildren);
             const rootProps: Record<string, unknown> = {};
             if (props.class !== undefined) {
                 rootProps.class = props.class;
@@ -344,7 +461,9 @@ export default defineComponent({
                 ).id;
             }
 
-            return h(props.tag, rootProps, rootChildren);
+            return renderedRootChildren.length
+                ? h(props.tag, rootProps, renderedRootChildren)
+                : h(props.tag, rootProps);
         };
     },
 });
