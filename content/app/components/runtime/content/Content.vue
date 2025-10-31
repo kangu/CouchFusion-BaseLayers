@@ -101,8 +101,34 @@ function normalizeClass(value: unknown) {
 
 function normalizeProps(raw: Record<string, unknown>) {
     const props = { ...raw };
+    const boundEntries: Record<string, unknown> = {};
+
     if ("__ignoreMap" in props) {
         delete props.__ignoreMap;
+    }
+
+    for (const key of Object.keys(props)) {
+        if (key.startsWith(":") && key.length > 1) {
+            const targetKey = key.slice(1);
+            const value = props[key];
+
+            if (typeof value === "string") {
+                try {
+                    boundEntries[targetKey] = JSON.parse(value);
+                } catch (error) {
+                    console.warn(
+                        "[content-layer] Failed to parse bound prop JSON:",
+                        targetKey,
+                        error,
+                    );
+                    boundEntries[targetKey] = value;
+                }
+            } else {
+                boundEntries[targetKey] = value;
+            }
+
+            delete props[key];
+        }
     }
 
     if ("className" in props && !("class" in props)) {
@@ -116,6 +142,10 @@ function normalizeProps(raw: Record<string, unknown>) {
     }
 
     delete props.className;
+
+    if (Object.keys(boundEntries).length > 0) {
+        Object.assign(props, boundEntries);
+    }
 
     return props;
 }
