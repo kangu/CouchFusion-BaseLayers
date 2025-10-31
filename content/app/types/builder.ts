@@ -67,12 +67,23 @@ export interface ComponentPropSchema {
   fields?: ComponentObjectField[];
 }
 
+export interface ComponentSlotSchema {
+  name: string;
+  label: string;
+}
+
+export type ComponentFlowItem =
+  | { type: 'prop'; key: string }
+  | { type: 'slot'; name: string };
+
 export interface ComponentDefinition {
   id: string; // used internally by registry
   label: string; // display name in UI
   description?: string;
   icon?: string;
   props?: ComponentPropSchema[];
+  slots?: ComponentSlotSchema[];
+  flow?: ComponentFlowItem[];
   allowChildren?: boolean;
   childHint?: string;
 }
