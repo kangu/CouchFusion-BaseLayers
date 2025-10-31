@@ -12,9 +12,15 @@ import {
 import { storeToRefs } from "pinia";
 import { normalizePagePath } from "#content/utils/page";
 import { createDocumentFromTree } from "#content/app/utils/contentBuilder";
-import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
+import type {
+    MinimalContentDocument,
+    MinimalContentEntry,
+} from "#content/app/utils/contentBuilder";
 import {
+    clonePlain,
+    contentIdFromPath,
     contentToMinimalDocument,
+    deriveStem,
     minimalToContentDocument,
 } from "#content/utils/page-documents";
 import type {
@@ -76,6 +82,8 @@ const emit = defineEmits<{
     (e: "save-error", error: Error): void;
     (e: "delete-success", page: ContentPageSummary): void;
     (e: "delete-error", error: Error): void;
+    (e: "duplicate-success", page: ContentPageSummary): void;
+    (e: "duplicate-error", error: Error): void;
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "unsaved-state-change", hasChanges: boolean): void;
 }>();
@@ -127,6 +135,9 @@ const lastSavedSnapshot = ref<string | null>(null);
 const isCreateModalOpen = ref(false);
 const isCreatingPage = ref(false);
 const createPageError = ref<string | null>(null);
+const isDuplicateModalOpen = ref(false);
+const isDuplicatePending = ref(false);
+const duplicatePageError = ref<string | null>(null);
 
 const newPageForm = reactive({
     path: "/",
@@ -135,6 +146,25 @@ const newPageForm = reactive({
     seoDescription: "",
     meta: "{}",
 });
+
+const duplicatePageForm = reactive({
+    path: "/",
+    title: "",
+    seoTitle: "",
+    seoDescription: "",
+    meta: "{}",
+});
+
+type DuplicateNodeEntry = {
+    key: string;
+    label: string;
+    component: string;
+    path: number[];
+    selected: boolean;
+};
+
+const duplicateNodes = ref<DuplicateNodeEntry[]>([]);
+const duplicateSourceDocument = ref<MinimalContentDocument | null>(null);
 
 const editorCardRef = ref<HTMLElement | null>(null);
 const headerRef = ref<HTMLElement | null>(null);
@@ -512,6 +542,226 @@ function parseMetaField(value: string): Record<string, any> {
     return JSON.parse(trimmed);
 }
 
+function serialiseMetaField(
+    value: Record<string, any> | null | undefined,
+): string {
+    if (!value || Object.keys(value).length === 0) {
+        return "{}";
+    }
+
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch (error) {
+        console.debug(
+            "[content-admin-workbench] failed to serialise meta",
+            error,
+        );
+        return "{}";
+    }
+}
+
+function deriveDuplicatePath(sourcePath: string | null | undefined): string {
+    const normalized = normalizePagePath(sourcePath ?? "/");
+    if (normalized === "/") {
+        return "/copy";
+    }
+    if (normalized.endsWith("-copy")) {
+        return `${normalized}-copy`;
+    }
+    return `${normalized}-copy`;
+}
+
+function resetDuplicatePageForm(
+    document: MinimalContentDocument | null,
+): void {
+    const summary = selectedSummary.value;
+    const sourceDoc = document ?? null;
+
+    const sourcePath = sourceDoc?.path ?? summary?.path ?? "/";
+    duplicatePageForm.path = deriveDuplicatePath(sourcePath);
+    duplicatePageForm.title =
+        sourceDoc?.title ?? summary?.title ?? "Page title";
+    duplicatePageForm.seoTitle =
+        sourceDoc?.seo?.title ??
+        summary?.seoTitle ??
+        sourceDoc?.title ??
+        summary?.title ??
+        "Page title";
+    duplicatePageForm.seoDescription =
+        sourceDoc?.seo?.description ??
+        summary?.seoDescription ??
+        "SEO description.";
+    duplicatePageForm.meta = serialiseMetaField(
+        sourceDoc?.meta ?? summary?.meta ?? {},
+    );
+    duplicatePageError.value = null;
+}
+
+function closeDuplicateModal(): void {
+    isDuplicateModalOpen.value = false;
+    duplicateNodes.value = [];
+    duplicateSourceDocument.value = null;
+    duplicatePageError.value = null;
+}
+
+const collectDuplicateNodes = (
+    entries: MinimalContentEntry[] | undefined,
+    basePath: number[] = [],
+    ancestors: string[] = [],
+): DuplicateNodeEntry[] => {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    const collected: DuplicateNodeEntry[] = [];
+
+    entries.forEach((entry, index) => {
+        if (!Array.isArray(entry) || typeof entry[0] !== "string") {
+            return;
+        }
+
+        const componentId = entry[0];
+        const currentPath = [...basePath, index];
+        const labelParts = [...ancestors, componentId];
+        const label = labelParts.join(" › ");
+
+        collected.push({
+            key: currentPath.join("."),
+            label,
+            component: componentId,
+            path: currentPath,
+            selected: true,
+        });
+
+        const children = entry.slice(2) as MinimalContentEntry[];
+        collected.push(
+            ...collectDuplicateNodes(children, currentPath, labelParts),
+        );
+    });
+
+    return collected;
+};
+
+const buildDuplicateNodes = (
+    document: MinimalContentDocument | null,
+): DuplicateNodeEntry[] => {
+    if (!document) {
+        return [];
+    }
+
+    const entries = document.body?.value ?? [];
+    return collectDuplicateNodes(entries);
+};
+
+const filterComponentEntries = (
+    entries: MinimalContentEntry[] | undefined,
+    basePath: number[],
+    allowed: Set<string>,
+): MinimalContentEntry[] => {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    const filtered: MinimalContentEntry[] = [];
+
+    entries.forEach((entry, index) => {
+        const currentPath = [...basePath, index];
+
+        if (!Array.isArray(entry) || typeof entry[0] !== "string") {
+            filtered.push(entry);
+            return;
+        }
+
+        const key = currentPath.join(".");
+        const children = entry.slice(2) as MinimalContentEntry[];
+        const filteredChildren = filterComponentEntries(
+            children,
+            currentPath,
+            allowed,
+        );
+
+        if (!allowed.has(key)) {
+            return;
+        }
+
+        const rawProps = entry[1];
+        const props =
+            rawProps && typeof rawProps === "object"
+                ? clonePlain(rawProps as Record<string, any>)
+                : {};
+
+        const rebuilt: MinimalContentEntry = [
+            entry[0],
+            props,
+            ...filteredChildren,
+        ];
+
+        filtered.push(rebuilt);
+    });
+
+    return filtered;
+};
+
+const getDuplicateNodeIndent = (node: DuplicateNodeEntry): string => {
+    const depth = Math.max(node.path.length - 1, 0);
+    return `${depth * 0.75}rem`;
+};
+
+const setDuplicateNodeSelection = (key: string, selected: boolean): void => {
+    const prefix = `${key}.`;
+
+    duplicateNodes.value.forEach((entry) => {
+        if (entry.key === key || entry.key.startsWith(prefix)) {
+            entry.selected = selected;
+        }
+    });
+
+    if (!selected) {
+        return;
+    }
+
+    const segments = key.split(".");
+    while (segments.length > 1) {
+        segments.pop();
+        const parentKey = segments.join(".");
+        const parent = duplicateNodes.value.find(
+            (entry) => entry.key === parentKey,
+        );
+        if (parent && !parent.selected) {
+            parent.selected = true;
+        }
+    }
+};
+
+const handleDuplicateNodeToggle = (key: string, event: Event): void => {
+    const target = event.target as HTMLInputElement | null;
+    if (!target) {
+        return;
+    }
+    setDuplicateNodeSelection(key, target.checked);
+};
+
+function showDuplicateModal(): void {
+    if (!selectedSummary.value) {
+        return;
+    }
+
+    const builder = builderRef.value;
+    if (!builder) {
+        const wrapped = new Error("Builder not ready.");
+        duplicatePageError.value = wrapped.message;
+        feedback.value.error?.(wrapped.message);
+        return;
+    }
+
+    const serialized = builder.getSerializedDocument();
+    duplicateSourceDocument.value = clonePlain(serialized);
+    duplicateNodes.value = buildDuplicateNodes(duplicateSourceDocument.value);
+    resetDuplicatePageForm(duplicateSourceDocument.value);
+    duplicatePageError.value = null;
+    isDuplicateModalOpen.value = true;
+}
+
 async function handleCreatePage(): Promise<void> {
     if (isCreatingPage.value) {
         return;
@@ -566,6 +816,107 @@ async function handleCreatePage(): Promise<void> {
         feedback.value.error?.(wrapped.message);
     } finally {
         isCreatingPage.value = false;
+    }
+}
+
+async function handleDuplicatePage(): Promise<void> {
+    if (isDuplicatePending.value || !selectedSummary.value) {
+        return;
+    }
+
+    const builder = builderRef.value;
+    if (!builder) {
+        const wrapped = new Error("Builder not ready.");
+        duplicatePageError.value = wrapped.message;
+        emit("duplicate-error", wrapped);
+        feedback.value.error?.(wrapped.message);
+        return;
+    }
+
+    const normalizedPath = normalizePagePath(duplicatePageForm.path);
+    if (!normalizedPath) {
+        duplicatePageError.value = "Path is required.";
+        return;
+    }
+
+    if (!duplicatePageForm.title.trim()) {
+        duplicatePageError.value = "Title is required.";
+        return;
+    }
+
+    let metaPayload: Record<string, any>;
+    try {
+        metaPayload = parseMetaField(duplicatePageForm.meta);
+    } catch (error: any) {
+        duplicatePageError.value = error?.message || "Meta must be valid JSON.";
+        return;
+    }
+
+    try {
+        isDuplicatePending.value = true;
+        duplicatePageError.value = null;
+
+        const baseDocument = duplicateSourceDocument.value
+            ? clonePlain(duplicateSourceDocument.value)
+            : clonePlain(builder.getSerializedDocument());
+        const selectedComponentKeys = new Set(
+            duplicateNodes.value
+                .filter((entry) => entry.selected)
+                .map((entry) => entry.key),
+        );
+        const filteredBody = filterComponentEntries(
+            baseDocument.body?.value,
+            [],
+            selectedComponentKeys,
+        );
+
+        const duplicatedMinimal: MinimalContentDocument = {
+            ...baseDocument,
+            id: contentIdFromPath(normalizedPath),
+            path: normalizedPath,
+            title: duplicatePageForm.title,
+            seo: {
+                title: duplicatePageForm.seoTitle || duplicatePageForm.title,
+                description:
+                    duplicatePageForm.seoDescription || "SEO description.",
+            },
+            meta: metaPayload,
+            stem: deriveStem(normalizedPath),
+            body: {
+                type: baseDocument.body?.type ?? "minimal",
+                value: filteredBody,
+            },
+        };
+
+        const contentDocument = minimalToContentDocument(duplicatedMinimal);
+        const duplicatedSummary = await contentStore.saveDocument(
+            contentDocument,
+            { method: "POST" },
+        );
+
+        await contentStore.fetchIndex(true);
+        closeDuplicateModal();
+        updateUnsavedState(false);
+        lastSavedSnapshot.value = null;
+        await openPageForEditing(duplicatedSummary.path, true);
+        emit("duplicate-success", duplicatedSummary);
+        feedback.value.success?.(
+            `Page "${duplicatedSummary.title}" duplicated.`,
+            {
+                label: "Edit Page",
+                href: duplicatedSummary.path,
+            },
+        );
+    } catch (error: any) {
+        const wrapped =
+            error instanceof Error
+                ? error
+                : new Error(error?.message || "Failed to duplicate page.");
+        duplicatePageError.value = wrapped.message;
+        emit("duplicate-error", wrapped);
+        feedback.value.error?.(wrapped.message);
+    } finally {
+        isDuplicatePending.value = false;
     }
 }
 
@@ -955,6 +1306,25 @@ defineExpose({
                         </svg>
                         <span>Delete</span>
                     </button>
+                    <button
+                        type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--muted"
+                        :class="ui.cancelButton"
+                        :disabled="isDuplicatePending || !selectedSummary"
+                        @click="showDuplicateModal"
+                    >
+                        <svg
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M7 4h9a2 2 0 0 1 2 2v1h-2V6H7v12h9v-1h2v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm5 4h8v2h-8Zm0 4h8v2h-8Zm0 4h5v2h-5Z"
+                            />
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -1256,6 +1626,207 @@ defineExpose({
                                     </svg>
                                     <span>{{
                                         isCreatingPage ? "Saving…" : "Save Page"
+                                    }}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <Teleport to="body">
+            <Transition name="fade">
+                <div
+                    v-if="isDuplicateModalOpen"
+                    class="content-admin-workbench__modal"
+                >
+                    <div class="modal__backdrop" @click="closeDuplicateModal" />
+                    <div class="modal__panel" role="dialog" aria-modal="true">
+                        <div class="modal__header">
+                            <div>
+                                <h2 class="modal__title">Duplicate Page</h2>
+                                <p class="modal__subtitle">
+                                    Adjust the metadata for the duplicated page.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="modal__close"
+                                aria-label="Close"
+                                @click="closeDuplicateModal"
+                            >
+                                <svg
+                                    class="h-5 w-5"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12Z"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <form
+                            class="modal__form"
+                            @submit.prevent="handleDuplicatePage"
+                        >
+                            <div class="modal__field">
+                                <label for="duplicate-page-path"
+                                    >Page path</label
+                                >
+                                <input
+                                    id="duplicate-page-path"
+                                    v-model="duplicatePageForm.path"
+                                    type="text"
+                                    required
+                                    placeholder="/about-copy"
+                                />
+                            </div>
+
+                            <div class="modal__field">
+                                <label for="duplicate-page-title">Title</label>
+                                <input
+                                    id="duplicate-page-title"
+                                    v-model="duplicatePageForm.title"
+                                    type="text"
+                                    required
+                                />
+                            </div>
+
+                            <div class="modal__field-grid">
+                                <div class="modal__field">
+                                    <label for="duplicate-page-seo-title"
+                                        >SEO title</label
+                                    >
+                                    <input
+                                        id="duplicate-page-seo-title"
+                                        v-model="duplicatePageForm.seoTitle"
+                                        type="text"
+                                    />
+                                </div>
+                                <div class="modal__field">
+                                    <label for="duplicate-page-seo-description"
+                                        >SEO description</label
+                                    >
+                                    <input
+                                        id="duplicate-page-seo-description"
+                                        v-model="
+                                            duplicatePageForm.seoDescription
+                                        "
+                                        type="text"
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="modal__field">
+                                <label for="duplicate-page-meta"
+                                    >Meta JSON (optional)</label
+                                >
+                                <textarea
+                                    id="duplicate-page-meta"
+                                    v-model="duplicatePageForm.meta"
+                                    rows="3"
+                                ></textarea>
+                            </div>
+
+                            <div class="modal__components-block">
+                                <div class="modal__components-header">
+                                    <span class="modal__section-title"
+                                        >Components to duplicate</span
+                                    >
+                                    <p class="modal__section-subtitle">
+                                        Uncheck components to exclude them from
+                                        the cloned page.
+                                    </p>
+                                </div>
+                                <div
+                                    v-if="duplicateNodes.length"
+                                    class="modal__components-list"
+                                >
+                                    <label
+                                        v-for="node in duplicateNodes"
+                                        :key="node.key"
+                                        class="modal__components-item"
+                                        :style="{
+                                            '--component-indent': getDuplicateNodeIndent(
+                                                node,
+                                            ),
+                                        }"
+                                    >
+                                        <input
+                                            class="modal__components-checkbox"
+                                            type="checkbox"
+                                            :checked="node.selected"
+                                            @change="
+                                                handleDuplicateNodeToggle(
+                                                    node.key,
+                                                    $event,
+                                                )
+                                            "
+                                        />
+                                        <span class="modal__components-label">
+                                            {{ node.label }}
+                                        </span>
+                                        <code class="modal__components-code">
+                                            {{ node.component }}
+                                        </code>
+                                    </label>
+                                </div>
+                                <p v-else class="modal__components-empty">
+                                    This page does not contain any components.
+                                </p>
+                            </div>
+
+                            <div v-if="duplicatePageError" class="modal__error">
+                                <svg
+                                    class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm1-5h-2v-2h2Zm0-4h-2V7h2Z"
+                                    />
+                                </svg>
+                                <span>{{ duplicatePageError }}</span>
+                            </div>
+
+                            <div class="modal__actions">
+                                <button
+                                    type="button"
+                                    class="content-admin-workbench__button content-admin-workbench__button--muted"
+                                    :class="ui.modalCancelButton"
+                                    @click="closeDuplicateModal"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="content-admin-workbench__button content-admin-workbench__button--primary"
+                                    :class="ui.modalSaveButton"
+                                    :disabled="isDuplicatePending"
+                                >
+                                    <svg
+                                        v-if="isDuplicatePending"
+                                        class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            fill="currentColor"
+                                            d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                                        />
+                                    </svg>
+                                    <span>{{
+                                        isDuplicatePending
+                                            ? "Duplicating…"
+                                            : "Duplicate page"
                                     }}</span>
                                 </button>
                             </div>
@@ -1917,6 +2488,72 @@ defineExpose({
 .modal__field textarea:focus {
     border-color: #2563eb;
     box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
+}
+
+.modal__components-block {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.modal__components-header {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.modal__section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.modal__section-subtitle {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.modal__components-list {
+    border-radius: 0.5rem;
+    border: 1px solid #e5e7eb;
+    background-color: #f9fafb;
+    max-height: 14rem;
+    overflow-y: auto;
+}
+
+.modal__components-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    padding-left: calc(0.75rem + var(--component-indent, 0rem));
+    font-size: 0.875rem;
+    color: #1f2937;
+    border-top: 1px solid rgba(229, 231, 235, 0.8);
+}
+
+.modal__components-item:first-child {
+    border-top: none;
+}
+
+.modal__components-checkbox {
+    flex-shrink: 0;
+}
+
+.modal__components-label {
+    flex: 1 1 auto;
+    word-break: break-word;
+}
+
+.modal__components-code {
+    font-size: 0.75rem;
+    background-color: #e5e7eb;
+    color: #111827;
+    border-radius: 0.375rem;
+    padding: 0.125rem 0.5rem;
+}
+
+.modal__components-empty {
+    font-size: 0.75rem;
+    color: #6b7280;
 }
 
 .modal__field-grid {
