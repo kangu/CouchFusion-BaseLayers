@@ -18,9 +18,11 @@ function extractAuthSessionCookie(cookieHeader: string | undefined): string | nu
 }
 
 /**
- * Ensure the current request belongs to an admin user. Returns the session when valid.
+ * Resolve the CouchDB session for the current request and ensure the user has at least one of the required roles.
  */
-export async function requireAdminSession(event: H3Event) {
+export async function requireRoleSession(event: H3Event, roles: string | string[]) {
+    const expectedRoles = Array.isArray(roles) ? roles : [roles]
+
     const cookieHeader = getHeader(event, 'cookie')
     const sessionCookie = extractAuthSessionCookie(cookieHeader)
 
@@ -32,8 +34,11 @@ export async function requireAdminSession(event: H3Event) {
     }
 
     const session = await getSession({ authSessionCookie: sessionCookie })
+    const userRoles = session?.userCtx?.roles ?? []
 
-    if (!session?.userCtx?.roles?.includes('admin')) {
+    const hasRole = expectedRoles.some((role) => userRoles.includes(role))
+
+    if (!hasRole) {
         throw createError({
             statusCode: 404,
             statusMessage: 'Not found'
@@ -41,4 +46,18 @@ export async function requireAdminSession(event: H3Event) {
     }
 
     return session
+}
+
+/**
+ * Ensure the current request belongs to an admin user. Returns the session when valid.
+ */
+export async function requireAdminSession(event: H3Event) {
+    return requireRoleSession(event, 'admin')
+}
+
+/**
+ * Ensure the current request belongs to a user with the `auth` role.
+ */
+export async function requireAuthRoleSession(event: H3Event) {
+    return requireRoleSession(event, ['auth', 'admin'])
 }
