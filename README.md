@@ -90,3 +90,9 @@ Automated suites live inside `content/tests`, powered by Vitest and a shared Cou
 - **Missing env vars** → The harness throws “CouchDB admin credentials missing.” Double-check your `.env`.
 - **Connection failures** (`fetch failed` / `EPERM`) → Ensure CouchDB is running and accessible at `COUCHDB_URL`.
 - **Port conflicts during tests** → Investigate the CouchDB logs; each test run creates temporary databases prefixed with `test-content-*` and drops them during teardown.
+
+## ⚙️ Used By
+
+This library is used by:
+
+- [CouchFusion](https://github.com/kangu/CouchFusion)
