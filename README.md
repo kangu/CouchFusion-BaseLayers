@@ -58,3 +58,35 @@ Consult individual layer READMEs or docs for feature-specific guidance and envir
 3. When creating new layers, mirror this directory structure, add documentation, and update any bootstrap tooling (`couchfusion` config) so the layer is selectable during app scaffolding.
 
 For more detail on the CLI bootstrap process, review `couchfusion/docs/specs/cli_bootstrap_prd.md` and the sample configuration in `couchfusion/README.md`.
+
+## Running Tests
+
+Automated suites live inside `content/tests`, powered by Vitest and a shared CouchDB harness. Follow these steps to execute them locally:
+
+1. **Create a `.env` file** in the `layers/` directory with CouchDB credentials and URL. Example:
+   ```ini
+   COUCHDB_URL=http://localhost:5984
+   COUCHDB_ADMIN_AUTH=$(printf 'admin:password' | base64)
+   ```
+   Ensure the referenced CouchDB instance is reachable and allows the configured admin user.
+
+2. **Start CouchDB** (if you don’t already have one running). A quick option is Docker:
+   ```bash
+   docker run --rm -p 5984:5984 -e COUCHDB_USER=admin -e COUCHDB_PASSWORD=password couchdb:3
+   ```
+
+3. **Install dependencies** in the `layers/` workspace (if not already done):
+   ```bash
+   bun install
+   ```
+
+4. **Run the Vitest suite** from the `layers/` directory:
+   ```bash
+   bunx vitest --run
+   ```
+   Without `--run`, Vitest stays in watch mode. The config at `layers/vitest.config.ts` automatically loads `.env`, sets up the CouchDB harness, and discovers tests under `content/tests`.
+
+### Troubleshooting
+- **Missing env vars** → The harness throws “CouchDB admin credentials missing.” Double-check your `.env`.
+- **Connection failures** (`fetch failed` / `EPERM`) → Ensure CouchDB is running and accessible at `COUCHDB_URL`.
+- **Port conflicts during tests** → Investigate the CouchDB logs; each test run creates temporary databases prefixed with `test-content-*` and drops them during teardown.
