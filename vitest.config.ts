@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { loadEnv } from "vite";
+import vue from "@vitejs/plugin-vue";
 
 console.log("[vitest] loading config from layers/vitest.config.ts");
 
@@ -18,10 +19,11 @@ for (const [key, value] of Object.entries(loadedEnv)) {
 
 export default defineConfig({
   root: "./",
+  plugins: [vue()],
   test: {
     environment: "node",
     setupFiles: ["./_tests/setup/content.ts"],
-    include: ["content/tests/**/*.spec.ts", "content/tests/**/*.test.ts"],
+    include: ["**/*.spec.ts", "**/*.test.ts"],
     globals: true,
   },
   resolve: {

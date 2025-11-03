@@ -40,6 +40,7 @@
   - [ ] `/api/content/local-images` upload/list/delete, using a tmp directory wired via `process.cwd()` override or dependency injection, asserting file lifecycle.
   - [ ] `/api/sitemap.xml` XML generation with seeded routes, excluded prefixes, and navigation flags.
 - [x] Stubbed Nuxt/H3 primitives (`#imports`, `h3`) to allow direct invocation of handlers within Vitest while reusing CouchDB seed helpers.
+- [x] Added jsdom-powered `<Content>` runtime tests (`content/tests/runtime/document.spec.ts`) covering plain markup and custom component rendering via stubbed registries.
 
 ## Phase 4 – Playwright Scenarios
 - Extend existing Playwright config to spin up CouchDB alongside the Nuxt dev server (`bun run dev`, default port 3000 unless overridden), waiting for both health checks before executing specs.
