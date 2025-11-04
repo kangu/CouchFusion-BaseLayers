@@ -12,6 +12,8 @@ import type {InvoiceResponse} from '../types/lightning'
 export interface ProductInfo {
     memo: string;
     sats: number;
+    valid_days?: number;
+    [key: string]: unknown;
 }
 
 export interface OrderDocument {
@@ -156,20 +158,25 @@ export async function getProductPrice(product: string, databaseName: string): Pr
     const productData = productsDoc[product]
 
     // Check if product has the expected structure
-    if (!productData || typeof productData !== 'object' ||
-        typeof productData.memo !== 'string' ||
-        typeof productData.sats !== 'number') {
-        throw new Error(`Product "${product}" has invalid structure: expected {memo: string, sats: number}`)
+    if (!productData || typeof productData !== 'object') {
+        throw new Error(`Product "${product}" has invalid structure: expected object with memo and sats`)
     }
 
-    const { memo, sats } = productData
+    const { memo, sats } = productData as {
+        memo?: unknown;
+        sats?: unknown;
+    }
+
+    if (typeof memo !== 'string' || typeof sats !== 'number') {
+        throw new Error(`Product "${product}" has invalid structure: expected memo (string) and sats (number)`)
+    }
 
     // Validate that price is positive
     if (sats <= 0) {
         throw new Error(`Product "${product}" has invalid price: must be positive`)
     }
 
-    return { memo, sats }
+    return productData as ProductInfo
 }
 
 /**

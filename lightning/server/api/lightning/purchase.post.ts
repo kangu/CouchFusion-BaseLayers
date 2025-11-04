@@ -1,7 +1,74 @@
-import { defineEventHandler, readBody, createError } from 'h3'
+import { defineEventHandler, readBody, createError, getHeader } from 'h3'
 import { useLightning } from '../../composables/useLightning'
 import type { LightningConfig } from '../../../types/lightning'
 import { createOrder, getProductPrice, saveInvoiceToDatabase, replaceMemoTemplate } from '../../../utils/orders'
+import { getDocument, getSession } from '#database/utils/couchdb'
+
+function extractAuthSessionCookie(cookieHeader: string | undefined): string | null {
+    if (!cookieHeader) {
+        return null
+    }
+
+    const cookies = cookieHeader.split(';')
+    for (const cookie of cookies) {
+        const trimmed = cookie.trim()
+        if (trimmed.startsWith('AuthSession=')) {
+            return trimmed.substring('AuthSession='.length)
+        }
+    }
+
+    return null
+}
+
+async function resolveStartingDate(
+    event: any,
+    productKey: string
+): Promise<Date> {
+    const cookieHeader = getHeader(event, 'cookie')
+    const authSessionCookie = extractAuthSessionCookie(cookieHeader)
+
+    if (!authSessionCookie) {
+        return new Date()
+    }
+
+    try {
+        const sessionResponse = await getSession({ authSessionCookie })
+        const userName = sessionResponse?.userCtx?.name
+
+        if (!userName) {
+            return new Date()
+        }
+
+        const userDocId = `org.couchdb.user:${userName}`
+        const userDoc = await getDocument('_users', userDocId) as Record<string, unknown> | null
+
+        if (!userDoc) {
+            return new Date()
+        }
+
+        const subscriptionKey = `${productKey}_valid_until`
+        const currentValue = userDoc[subscriptionKey]
+
+        if (typeof currentValue !== 'string') {
+            return new Date()
+        }
+
+        const currentDate = new Date(currentValue)
+        if (Number.isNaN(currentDate.getTime())) {
+            return new Date()
+        }
+
+        const now = Date.now()
+        if (currentDate.getTime() > now) {
+            return currentDate
+        }
+
+        return new Date()
+    } catch (error) {
+        console.warn('Failed to resolve user subscription start date:', error)
+        return new Date()
+    }
+}
 
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
@@ -38,7 +105,7 @@ export default defineEventHandler(async (event) => {
         const ordersDatabase = `${dbLoginPrefix}-orders`
 
         // Get product info from products document
-        let productInfo: { memo: string; sats: number }
+        let productInfo: Awaited<ReturnType<typeof getProductPrice>>
         try {
             productInfo = await getProductPrice(body.product, ordersDatabase)
         } catch (error: any) {
@@ -48,11 +115,24 @@ export default defineEventHandler(async (event) => {
             })
         }
 
-        const { memo, sats } = productInfo
+        const { memo, sats, valid_days } = productInfo
+
+        let validUntil: string | undefined
+        if (typeof valid_days === 'number' && Number.isFinite(valid_days) && valid_days > 0) {
+            const startingDate = await resolveStartingDate(event, body.product)
+            const expirationDate = new Date(startingDate.getTime())
+            expirationDate.setUTCDate(expirationDate.getUTCDate() + Math.floor(valid_days))
+            validUntil = expirationDate.toISOString()
+        }
+
+        const orderPayload: Record<string, unknown> = { ...body, sats }
+        if (validUntil) {
+            orderPayload.validUntil = validUntil
+        }
 
         // Create order document with product and resolved sats
         const orderId = await createOrder({
-            payload: { ...body, sats }, // Include resolved sats in order
+            payload: orderPayload, // Include resolved sats and optional validity window in order
             event,
             databaseName: ordersDatabase
         })
