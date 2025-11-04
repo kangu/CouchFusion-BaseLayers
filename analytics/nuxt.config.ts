@@ -14,6 +14,11 @@ export default defineNuxtConfig({
   plugins: [fileURLToPath(new URL("./plugins/umami.client", import.meta.url))],
 
   runtimeConfig: {
+    analytics: {
+      umami: {
+        proxyHost: "https://analytics.umami.is",
+      },
+    },
     public: {
       analytics: {
         umami: {
