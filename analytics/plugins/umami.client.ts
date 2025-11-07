@@ -1,4 +1,4 @@
-import { readonly, ref, watch } from "vue";
+import { readonly, ref } from "vue";
 import type { DirectiveBinding } from "vue";
 import type { Router } from "vue-router";
 
@@ -22,6 +22,144 @@ interface UmamiElement extends HTMLElement {
   __umamiCleanup__?: () => void;
 }
 
+type ReadyCallback = () => void;
+
+const CLIENT_READY_RETRY_DELAY = 75;
+
+const log = (...args: unknown[]) => {
+  // console.info("[analytics]", ...args);
+};
+
+const readyState: {
+  callbacks: ReadyCallback[];
+  timer: ReturnType<typeof setTimeout> | null;
+} = {
+  callbacks: [],
+  timer: null,
+};
+
+const isUmamiClientReady = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const client = (globalThis as any).umami;
+  return Boolean(client && typeof client.track === "function");
+};
+
+const flushReadyCallbacks = () => {
+  const pending = [...readyState.callbacks];
+  readyState.callbacks.length = 0;
+  for (const callback of pending) {
+    try {
+      callback();
+    } catch (error) {
+      console.error("[analytics] ready callback failed", error);
+    }
+  }
+};
+
+const markClientReady = (isLoaded: { value: boolean }) => {
+  if (isLoaded.value) {
+    flushReadyCallbacks();
+    return;
+  }
+
+  isLoaded.value = true;
+  log("Umami client ready");
+
+  if (readyState.timer) {
+    clearTimeout(readyState.timer);
+    readyState.timer = null;
+  }
+
+  flushReadyCallbacks();
+};
+
+const queueUntilReady = (
+  callback: ReadyCallback,
+  isLoaded: { value: boolean },
+) => {
+  if (isLoaded.value) {
+    callback();
+    return;
+  }
+
+  readyState.callbacks.push(callback);
+};
+
+const ensureClientReadyPolling = (isLoaded: { value: boolean }) => {
+  if (!process.client) {
+    return;
+  }
+
+  if (isUmamiClientReady()) {
+    markClientReady(isLoaded);
+    return;
+  }
+
+  if (readyState.timer !== null) {
+    return;
+  }
+
+  const poll = () => {
+    if (isUmamiClientReady()) {
+      markClientReady(isLoaded);
+      return;
+    }
+
+    readyState.timer = setTimeout(poll, CLIENT_READY_RETRY_DELAY);
+  };
+
+  readyState.timer = setTimeout(poll, CLIENT_READY_RETRY_DELAY);
+};
+
+const ensureClientReadiness = (isLoaded: { value: boolean }) => {
+  if (isUmamiClientReady()) {
+    markClientReady(isLoaded);
+  } else {
+    ensureClientReadyPolling(isLoaded);
+  }
+};
+
+const toAbsoluteUrl = (path: string | undefined): string | undefined => {
+  if (!path) {
+    return undefined;
+  }
+
+  if (typeof window === "undefined") {
+    return path;
+  }
+
+  try {
+    return new URL(path, window.location.origin).toString();
+  } catch {
+    return path;
+  }
+};
+
+const invokeTrackView = (
+  client: Record<string, any>,
+  url?: string,
+  referrer?: string,
+) => {
+  if (typeof client.trackView === "function") {
+    client.trackView(url, referrer);
+    return;
+  }
+
+  if (typeof client.track === "function") {
+    client.track((base: Record<string, any>) => ({
+      ...base,
+      ...(url ? { url } : {}),
+      ...(referrer ? { referrer } : {}),
+    }));
+    return;
+  }
+
+  log("Unable to send manual page view; Umami client missing track methods.");
+};
+
 export default defineNuxtPlugin((nuxtApp) => {
   const runtimeConfig = useRuntimeConfig();
   const options: RuntimeUmamiConfig =
@@ -30,18 +168,30 @@ export default defineNuxtPlugin((nuxtApp) => {
   const websiteId = options.websiteId?.trim();
   const hostUrl = options.hostUrl?.trim() || DEFAULT_HOST;
   const scriptPath = options.scriptPath?.trim() || DEFAULT_SCRIPT_PATH;
-  const scriptUrl = `${hostUrl.replace(/\/$/, "")}${scriptPath.startsWith("/") ? scriptPath : `/${scriptPath}`}`;
+  const scriptUrl = `${hostUrl.replace(/\/$/, "")}${
+    scriptPath.startsWith("/") ? scriptPath : `/${scriptPath}`
+  }`;
   const excludedPaths = normalizeExcludedPaths(options.excludedPaths);
-  const isLoaded = ref(
-    typeof window !== "undefined" &&
-      typeof (globalThis as any).umami === "object",
-  );
+  const isLoaded = ref(process.client && isUmamiClientReady());
   let manualTracking = false;
   let manualTrackingRouter: Router | null = null;
+  const manualTrackingState = {
+    lastTrackedUrl: null as string | null,
+    pendingFullPath: null as string | null,
+  };
 
   if (process.client) {
     if (websiteId) {
       manualTracking = shouldManualTrack(excludedPaths, options.autoTrack);
+
+      log("Initializing Umami", {
+        websiteId,
+        hostUrl,
+        scriptPath,
+        manualTracking,
+        autoTrack: options.autoTrack,
+        excludedPaths,
+      });
 
       ensureScriptLoaded(
         websiteId,
@@ -54,18 +204,14 @@ export default defineNuxtPlugin((nuxtApp) => {
       if (manualTracking) {
         manualTrackingRouter = nuxtApp.$router;
         if (!manualTrackingRouter && process.dev) {
-          console.warn(
-            "[analytics] Router instance not available; manual tracking disabled.",
-          );
+          log("Router instance not available; manual tracking disabled.");
         } else if (process.dev) {
-          console.info(
-            "[analytics] Manual page tracking enabled with excluded paths",
-          );
+          log("Manual page tracking enabled", { excludedPaths });
         }
       }
     } else {
-      console.warn(
-        "[analytics] runtimeConfig.public.analytics.umami.websiteId is missing. Umami analytics is disabled.",
+      log(
+        "runtimeConfig.public.analytics.umami.websiteId is missing. Analytics disabled.",
       );
     }
   }
@@ -75,30 +221,28 @@ export default defineNuxtPlugin((nuxtApp) => {
   const track: UmamiClient["track"] = (event, data) => {
     const client = getInstance();
     if (!client || typeof client.track !== "function") {
-      if (process.dev) {
-        console.warn("[analytics] umami.track called before script loaded", {
-          event,
-        });
-      }
+      log("umami.track not ready", { event });
       return;
     }
 
+    log("umami.track", { event, data });
     client.track(event, data);
   };
 
   const trackView: UmamiClient["trackView"] = (url, referrer) => {
     const client = getInstance();
-    if (!client || typeof client.trackView !== "function") {
-      if (process.dev) {
-        console.warn(
-          "[analytics] umami.trackView called before script loaded",
-          { url, referrer },
-        );
-      }
+    if (!client || typeof client.track !== "function") {
+      log("umami.trackView not ready", { url, referrer });
       return;
     }
 
-    client.trackView(url, referrer);
+    const normalizedUrl = toAbsoluteUrl(url);
+    const normalizedReferrer = toAbsoluteUrl(referrer);
+    log("umami.trackView", {
+      url: normalizedUrl,
+      referrer: normalizedReferrer,
+    });
+    invokeTrackView(client, normalizedUrl, normalizedReferrer);
   };
 
   const client: UmamiClient = {
@@ -118,6 +262,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       clientRef,
       excludedPaths,
       isLoaded,
+      manualTrackingState,
     );
   }
 
@@ -141,10 +286,10 @@ function ensureScriptLoaded(
   manualTracking: boolean,
   isLoaded: { value: boolean },
 ) {
-  if (document.getElementById(SCRIPT_ID)) {
-    if (typeof (globalThis as any).umami === "object") {
-      isLoaded.value = true;
-    }
+  const existingScript = document.getElementById(SCRIPT_ID);
+  if (existingScript) {
+    log("Existing Umami script detected, reusing tag.");
+    ensureClientReadiness(isLoaded);
     return;
   }
 
@@ -169,9 +314,8 @@ function ensureScriptLoaded(
   }
 
   script.addEventListener("load", () => {
-    if (typeof (globalThis as any).umami === "object") {
-      isLoaded.value = true;
-    }
+    log("Umami script loaded");
+    ensureClientReadiness(isLoaded);
   });
 
   script.addEventListener("error", (event) => {
@@ -181,6 +325,7 @@ function ensureScriptLoaded(
     );
   });
 
+  log("Injecting Umami script", { scriptUrl, manualTracking, autoTrack });
   document.head.appendChild(script);
 }
 
@@ -306,37 +451,61 @@ function setupManualPageTracking(
   client: UmamiClient,
   excludedPaths: string[],
   isLoaded: { value: boolean },
+  state: { lastTrackedUrl: string | null; pendingFullPath: string | null },
 ) {
   const isExcludedPath = createExclusionMatcher(excludedPaths);
 
   const emitView = (fullPath: string, path: string) => {
     if (isExcludedPath(path)) {
+      log("Skipping manual page view for excluded path", { path });
       return;
     }
 
-    const send = () => client.trackView(fullPath);
+    if (state.pendingFullPath === fullPath && !isLoaded.value) {
+      log("Manual page view already queued for", { fullPath });
+      return;
+    }
+
+    const absoluteUrl = toAbsoluteUrl(fullPath) ?? fullPath;
+    const referrer =
+      state.lastTrackedUrl ??
+      (typeof document !== "undefined" ? document.referrer : undefined);
+
+    if (
+      isLoaded.value &&
+      absoluteUrl === state.lastTrackedUrl &&
+      referrer === absoluteUrl
+    ) {
+      log("Ignoring duplicate manual page view for", { fullPath });
+      return;
+    }
+    const send = () => {
+      log("Tracking manual page view", { url: absoluteUrl, referrer });
+      client.trackView(absoluteUrl, referrer);
+      state.lastTrackedUrl = absoluteUrl;
+      state.pendingFullPath = null;
+    };
 
     if (isLoaded.value) {
       send();
       return;
     }
 
-    const stop = watch(
-      () => isLoaded.value,
-      (ready) => {
-        if (ready) {
-          send();
-          stop();
-        }
-      },
-    );
+    log("Queueing manual page view until client ready", { fullPath });
+    state.pendingFullPath = fullPath;
+    queueUntilReady(send, isLoaded);
   };
 
   // initial navigation
   const currentRoute = router.currentRoute.value;
+  log("Emitting initial manual page view", {
+    fullPath: currentRoute.fullPath,
+    path: currentRoute.path,
+  });
   emitView(currentRoute.fullPath, currentRoute.path);
 
   router.afterEach((to) => {
+    log("Route change detected", { fullPath: to.fullPath, path: to.path });
     emitView(to.fullPath, to.path);
   });
 }
