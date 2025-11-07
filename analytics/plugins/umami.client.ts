@@ -16,6 +16,7 @@ interface RuntimeUmamiConfig {
   dataDomains?: string;
   autoTrack?: boolean;
   excludedPaths?: string | string[];
+  scriptProxyUrl?: string;
 }
 
 interface UmamiElement extends HTMLElement {
@@ -160,7 +161,7 @@ const invokeTrackView = (
   log("Unable to send manual page view; Umami client missing track methods.");
 };
 
-export default defineNuxtPlugin((nuxtApp) => {
+export default defineNuxtPlugin(async (nuxtApp) => {
   const runtimeConfig = useRuntimeConfig();
   const options: RuntimeUmamiConfig =
     runtimeConfig.public?.analytics?.umami ?? {};
@@ -171,6 +172,40 @@ export default defineNuxtPlugin((nuxtApp) => {
   const scriptUrl = `${hostUrl.replace(/\/$/, "")}${
     scriptPath.startsWith("/") ? scriptPath : `/${scriptPath}`
   }`;
+  const isAbsoluteScriptUrl = /^https?:/i.test(scriptUrl);
+  const proxySourceUrl = options.scriptProxyUrl?.trim() ||
+    (!isAbsoluteScriptUrl ? `${DEFAULT_HOST}${DEFAULT_SCRIPT_PATH}` : undefined);
+  let inlineProxyScript: string | null = null;
+
+  if (proxySourceUrl) {
+    if (process.server) {
+      try {
+        const resolvedProxyUrl = /^https?:/i.test(proxySourceUrl)
+          ? proxySourceUrl
+          : `${hostUrl.replace(/\/$/, "")}${proxySourceUrl.startsWith("/") ? proxySourceUrl : `/${proxySourceUrl}`}`;
+        const proxyResponse = await fetch(resolvedProxyUrl, {
+          headers: {
+            Accept: "text/javascript,application/javascript;q=0.9,*/*;q=0.1",
+          },
+        });
+        if (proxyResponse.ok) {
+          inlineProxyScript = await proxyResponse.text();
+          (nuxtApp.payload as any).umamiProxyScript = inlineProxyScript;
+        } else {
+          console.error(
+            `[analytics] Failed to fetch proxied Umami script (status ${proxyResponse.status}).`
+          );
+        }
+      } catch (error) {
+        console.error("[analytics] Unable to fetch proxied Umami script on server.", error);
+      }
+    } else if (process.client) {
+      inlineProxyScript =
+        ((nuxtApp.payload as any).umamiProxyScript as string | undefined) ??
+        ((window as any).__NUXT__?.payload?.umamiProxyScript as string | undefined) ??
+        null;
+    }
+  }
   const excludedPaths = normalizeExcludedPaths(options.excludedPaths);
   const isLoaded = ref(process.client && isUmamiClientReady());
   let manualTracking = false;
@@ -199,6 +234,10 @@ export default defineNuxtPlugin((nuxtApp) => {
         options,
         manualTracking,
         isLoaded,
+        {
+          sourceUrl: proxySourceUrl,
+          inlineCode: inlineProxyScript,
+        },
       );
 
       if (manualTracking) {
@@ -285,6 +324,10 @@ function ensureScriptLoaded(
   options: RuntimeUmamiConfig,
   manualTracking: boolean,
   isLoaded: { value: boolean },
+  proxy?: {
+    sourceUrl?: string;
+    inlineCode?: string | null;
+  },
 ) {
   const existingScript = document.getElementById(SCRIPT_ID);
   if (existingScript) {
@@ -297,7 +340,6 @@ function ensureScriptLoaded(
   script.id = SCRIPT_ID;
   script.async = true;
   script.defer = true;
-  script.src = scriptUrl;
   script.dataset.websiteId = websiteId;
   script.dataset.umami = "true";
 
@@ -313,20 +355,93 @@ function ensureScriptLoaded(
     script.setAttribute("data-domains", options.dataDomains);
   }
 
+  let proxiedObjectUrl: string | null = null;
+
   script.addEventListener("load", () => {
-    log("Umami script loaded");
+    if (proxiedObjectUrl) {
+      URL.revokeObjectURL(proxiedObjectUrl);
+      proxiedObjectUrl = null;
+      log("Umami script loaded (proxied)");
+    } else {
+      log("Umami script loaded");
+    }
     ensureClientReadiness(isLoaded);
   });
 
   script.addEventListener("error", (event) => {
+    if (proxiedObjectUrl) {
+      URL.revokeObjectURL(proxiedObjectUrl);
+      proxiedObjectUrl = null;
+    }
     console.error(
-      `[analytics] Failed to load Umami analytics script from ${scriptUrl}`,
+      `[analytics] Failed to load Umami analytics script from ${script.src}`,
       event,
     );
   });
 
-  log("Injecting Umami script", { scriptUrl, manualTracking, autoTrack });
-  document.head.appendChild(script);
+  const attachScript = (resolvedSrc: string, proxied: boolean) => {
+    log("Injecting Umami script", {
+      scriptUrl: resolvedSrc,
+      manualTracking,
+      autoTrack,
+      proxied,
+    });
+    script.src = resolvedSrc;
+    document.head.appendChild(script);
+  };
+
+  const attachInlineScript = (code: string) => {
+    proxiedObjectUrl = URL.createObjectURL(
+      new Blob([code], { type: "text/javascript" }),
+    );
+    attachScript(proxiedObjectUrl, true);
+  };
+
+  if (proxy?.inlineCode) {
+    attachInlineScript(proxy.inlineCode);
+    return;
+  }
+
+  if (proxy?.sourceUrl && typeof window !== "undefined") {
+    const resolvedProxyUrl = (() => {
+      try {
+        return new URL(proxy.sourceUrl, window.location.origin);
+      } catch {
+        return null;
+      }
+    })();
+
+    if (resolvedProxyUrl && resolvedProxyUrl.origin === window.location.origin) {
+      log("Fetching Umami script via same-origin proxy", {
+        proxySourceUrl: resolvedProxyUrl.href,
+      });
+      fetch(resolvedProxyUrl.href, { cache: "no-cache", credentials: "omit" })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Proxy fetch failed with status ${response.status}`);
+          }
+          return response.text();
+        })
+        .then((code) => {
+          attachInlineScript(code);
+        })
+        .catch((error) => {
+          console.error(
+            "[analytics] Unable to proxy Umami script; falling back to direct source.",
+            error,
+          );
+          attachScript(scriptUrl, false);
+        });
+      return;
+    }
+
+    log(
+      "Proxy source URL is cross-origin. Expecting inline proxy payload from server; falling back to direct script.",
+      { proxySourceUrl: proxy.sourceUrl },
+    );
+  }
+
+  attachScript(scriptUrl, false);
 }
 
 function shouldManualTrack(
