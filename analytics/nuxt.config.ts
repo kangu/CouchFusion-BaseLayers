@@ -16,7 +16,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     analytics: {
       umami: {
-        proxyHost: "https://analytics.umami.is",
+        proxyHost: "https://cloud.umami.is",
       },
     },
     public: {

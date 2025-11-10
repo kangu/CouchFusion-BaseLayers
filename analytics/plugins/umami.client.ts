@@ -6,7 +6,7 @@ import { useRuntimeConfig } from "#imports";
 import type { UmamiBindingValue, UmamiClient } from "../types/umami";
 
 const SCRIPT_ID = "umami-tracker";
-const DEFAULT_HOST = "https://analytics.umami.is";
+const DEFAULT_HOST = "https://cloud.umami.is";
 const DEFAULT_SCRIPT_PATH = "/script.js";
 
 interface RuntimeUmamiConfig {
@@ -173,8 +173,11 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     scriptPath.startsWith("/") ? scriptPath : `/${scriptPath}`
   }`;
   const isAbsoluteScriptUrl = /^https?:/i.test(scriptUrl);
-  const proxySourceUrl = options.scriptProxyUrl?.trim() ||
-    (!isAbsoluteScriptUrl ? `${DEFAULT_HOST}${DEFAULT_SCRIPT_PATH}` : undefined);
+  const proxySourceUrl =
+    options.scriptProxyUrl?.trim() ||
+    (!isAbsoluteScriptUrl
+      ? `${DEFAULT_HOST}${DEFAULT_SCRIPT_PATH}`
+      : undefined);
   let inlineProxyScript: string | null = null;
 
   if (proxySourceUrl) {
@@ -193,16 +196,21 @@ export default defineNuxtPlugin(async (nuxtApp) => {
           (nuxtApp.payload as any).umamiProxyScript = inlineProxyScript;
         } else {
           console.error(
-            `[analytics] Failed to fetch proxied Umami script (status ${proxyResponse.status}).`
+            `[analytics] Failed to fetch proxied Umami script (status ${proxyResponse.status}).`,
           );
         }
       } catch (error) {
-        console.error("[analytics] Unable to fetch proxied Umami script on server.", error);
+        console.error(
+          "[analytics] Unable to fetch proxied Umami script on server.",
+          error,
+        );
       }
     } else if (process.client) {
       inlineProxyScript =
         ((nuxtApp.payload as any).umamiProxyScript as string | undefined) ??
-        ((window as any).__NUXT__?.payload?.umamiProxyScript as string | undefined) ??
+        ((window as any).__NUXT__?.payload?.umamiProxyScript as
+          | string
+          | undefined) ??
         null;
     }
   }
@@ -344,7 +352,7 @@ function ensureScriptLoaded(
   script.dataset.umami = "true";
 
   if (options.hostUrl) {
-    script.setAttribute("data-host-url", options.hostUrl);
+    script.setAttribute("data-host-url", DEFAULT_HOST);
   }
   const autoTrack = manualTracking ? false : (options.autoTrack ?? true);
 
@@ -411,14 +419,19 @@ function ensureScriptLoaded(
       }
     })();
 
-    if (resolvedProxyUrl && resolvedProxyUrl.origin === window.location.origin) {
+    if (
+      resolvedProxyUrl &&
+      resolvedProxyUrl.origin === window.location.origin
+    ) {
       log("Fetching Umami script via same-origin proxy", {
         proxySourceUrl: resolvedProxyUrl.href,
       });
       fetch(resolvedProxyUrl.href, { cache: "no-cache", credentials: "omit" })
         .then((response) => {
           if (!response.ok) {
-            throw new Error(`Proxy fetch failed with status ${response.status}`);
+            throw new Error(
+              `Proxy fetch failed with status ${response.status}`,
+            );
           }
           return response.text();
         })
