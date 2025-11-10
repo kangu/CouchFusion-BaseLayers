@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { normalize } from "node:path";
 
 export default defineNuxtConfig({
   alias: {
@@ -27,31 +28,10 @@ export default defineNuxtConfig({
         import.meta.url,
       ),
     ),
+    fileURLToPath(
+      new URL("./app/plugins/register-runtime-content-components", import.meta.url),
+    ),
   ],
-
-  components: {
-    dirs: [
-      /* global component import comes from the implementing app */
-      {
-        path: fileURLToPath(
-          new URL("./app/components/builder", import.meta.url),
-        ),
-        // path: './components/builder',
-        global: true,
-        pathPrefix: false,
-        extensions: ["vue"],
-      },
-      {
-        path: fileURLToPath(
-          new URL("./app/components/runtime", import.meta.url),
-        ),
-        // path: './components/runtime',
-        global: true,
-        pathPrefix: false,
-        extensions: ["vue"],
-      },
-    ],
-  },
 
   runtimeConfig: {
     public: {
@@ -80,6 +60,42 @@ runtimeConfig: {
 }
                 `.trim(),
         );
+      }
+    },
+    "components:dirs": (dirs) => {
+      const layerComponentsRoot = normalize(
+        fileURLToPath(new URL("./app/components", import.meta.url)),
+      );
+      for (let index = 0; index < dirs.length; index += 1) {
+        const entry = dirs[index];
+        const entryObject =
+          typeof entry === "string"
+            ? { path: entry }
+            : { ...entry };
+        if (
+          entryObject.path &&
+          normalize(entryObject.path).startsWith(layerComponentsRoot)
+        ) {
+          entryObject.extensions = ["vue"];
+          dirs[index] = entryObject;
+        }
+      }
+    },
+    "components:extend": (components) => {
+      const runtimeDir = normalize(
+        fileURLToPath(new URL("./app/components/runtime", import.meta.url)),
+      );
+      const builderDir = normalize(
+        fileURLToPath(new URL("./app/components/builder", import.meta.url)),
+      );
+      for (let index = components.length - 1; index >= 0; index -= 1) {
+        const filePath = normalize(components[index].filePath);
+        if (
+          filePath.startsWith(runtimeDir) ||
+          filePath.startsWith(builderDir)
+        ) {
+          components.splice(index, 1);
+        }
       }
     },
   },
