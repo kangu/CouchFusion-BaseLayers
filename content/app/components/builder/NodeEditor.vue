@@ -644,6 +644,219 @@
                                             />
                                         </template>
                                         <template
+                                            v-else-if="
+                                                field.type === 'stringarray'
+                                            "
+                                        >
+                                            <div
+                                                class="node-panel__array node-panel__array--nested"
+                                                :data-collapsed="
+                                                    isNestedArrayCollapsed(
+                                                        prop.key,
+                                                        index,
+                                                        field.key,
+                                                    )
+                                                "
+                                            >
+                                                <div
+                                                    class="node-panel__array-header node-panel__array-header--nested"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        class="node-panel__array-toggle"
+                                                        :data-state="
+                                                            isNestedArrayCollapsed(
+                                                                prop.key,
+                                                                index,
+                                                                field.key,
+                                                            )
+                                                                ? 'collapsed'
+                                                                : 'expanded'
+                                                        "
+                                                        @click="
+                                                            toggleNestedArray(
+                                                                prop.key,
+                                                                index,
+                                                                field.key,
+                                                            )
+                                                        "
+                                                    >
+                                                        {{
+                                                            isNestedArrayCollapsed(
+                                                                prop.key,
+                                                                index,
+                                                                field.key,
+                                                            )
+                                                                ? 'Expand'
+                                                                : 'Collapse'
+                                                        }}
+                                                        ({{ 
+                                                            getArrayItemStringArrayItems(
+                                                                prop.key,
+                                                                index,
+                                                                field,
+                                                            ).length
+                                                        }})
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="node-panel__array-add"
+                                                        @click="
+                                                            addArrayItemStringArrayItem(
+                                                                prop.key,
+                                                                index,
+                                                                field,
+                                                            )
+                                                        "
+                                                    >
+                                                        <span
+                                                            class="node-panel__array-add-icon"
+                                                            aria-hidden="true"
+                                                            >+</span
+                                                        >
+                                                    </button>
+                                                </div>
+                                                <div
+                                                    v-for="(
+                                                        nestedValue,
+                                                        nestedIndex
+                                                    ) in getArrayItemStringArrayItems(
+                                                        prop.key,
+                                                        index,
+                                                        field,
+                                                    )"
+                                                    :key="`${prop.key}-${index}-${field.key}-string-${nestedIndex}`"
+                                                    class="node-panel__array-item node-panel__array-item--nested"
+                                                    v-show="
+                                                        !isNestedArrayCollapsed(
+                                                            prop.key,
+                                                            index,
+                                                            field.key,
+                                                        )
+                                                    "
+                                                >
+                                                    <label
+                                                        class="node-panel__field node-panel__field--nested"
+                                                    >
+                                                        <span
+                                                            >{{
+                                                                field.label
+                                                            }}
+                                                            {{
+                                                                nestedIndex + 1
+                                                            }}</span
+                                                        >
+                                                        <component
+                                                            v-if="
+                                                                field
+                                                                    .ui
+                                                                    ?.component
+                                                            "
+                                                            :is="
+                                                                field.ui
+                                                                    .component
+                                                            "
+                                                            :model-value="
+                                                                nestedValue
+                                                            "
+                                                            :prop-definition="
+                                                                field
+                                                            "
+                                                            :field-context="{
+                                                                propKey:
+                                                                    prop.key,
+                                                                arrayIndex:
+                                                                    index,
+                                                                nestedFieldKey:
+                                                                    field.key,
+                                                            }"
+                                                            @update:modelValue="
+                                                                (
+                                                                    value: unknown,
+                                                                ) =>
+                                                                    handleArrayItemStringArrayChange(
+                                                                        prop.key,
+                                                                        index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        value,
+                                                                        {
+                                                                            debounce: true,
+                                                                        },
+                                                                    )
+                                                            "
+                                                        />
+                                                        <input
+                                                            v-else
+                                                            :value="
+                                                                nestedValue
+                                                            "
+                                                            type="text"
+                                                            @input="
+                                                                (
+                                                                    event: Event,
+                                                                ) =>
+                                                                    handleArrayItemStringArrayChange(
+                                                                        prop.key,
+                                                                        index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        (
+                                                                            event.target as HTMLInputElement
+                                                                        ).value,
+                                                                        {
+                                                                            debounce: true,
+                                                                        },
+                                                                    )
+                                                            "
+                                                            @change="
+                                                                (
+                                                                    event: Event,
+                                                                ) =>
+                                                                    handleArrayItemStringArrayChange(
+                                                                        prop.key,
+                                                                        index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        (
+                                                                            event.target as HTMLInputElement
+                                                                        ).value,
+                                                                    )
+                                                            "
+                                                            @blur="
+                                                                (
+                                                                    event: Event,
+                                                                ) =>
+                                                                    handleArrayItemStringArrayChange(
+                                                                        prop.key,
+                                                                        index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        (
+                                                                            event.target as HTMLInputElement
+                                                                        ).value,
+                                                                    )
+                                                            "
+                                                        />
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        class="node-panel__array-remove"
+                                                        @click="
+                                                            removeArrayItemStringArrayItem(
+                                                                prop.key,
+                                                                index,
+                                                                field,
+                                                                nestedIndex,
+                                                            )
+                                                        "
+                                                    >
+                                                        Remove item
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template
                                             v-else-if="field.ui?.component"
                                         >
                                             <component
@@ -949,6 +1162,245 @@
                                                                             )
                                                                     "
                                                                 />
+                                                            </template>
+                                                            <template
+                                                                v-else-if="
+                                                                    nestedField
+                                                                        .type ===
+                                                                    'stringarray'
+                                                                "
+                                                            >
+                                                                <div
+                                                                    class="node-panel__array node-panel__array--nested"
+                                                                    :data-collapsed="
+                                                                        isNestedArrayCollapsed(
+                                                                            prop.key,
+                                                                            index,
+                                                                            `${field.key}-${nestedField.key}`,
+                                                                            nestedIndex,
+                                                                        )
+                                                                    "
+                                                                >
+                                                                    <div
+                                                                        class="node-panel__array-header node-panel__array-header--nested"
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            class="node-panel__array-toggle"
+                                                                            :data-state="
+                                                                                isNestedArrayCollapsed(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    `${field.key}-${nestedField.key}`,
+                                                                                    nestedIndex,
+                                                                                )
+                                                                                    ? 'collapsed'
+                                                                                    : 'expanded'
+                                                                            "
+                                                                            @click="
+                                                                                toggleNestedArray(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    `${field.key}-${nestedField.key}`,
+                                                                                    nestedIndex,
+                                                                                )
+                                                                            "
+                                                                        >
+                                                                            {{
+                                                                                isNestedArrayCollapsed(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    `${field.key}-${nestedField.key}`,
+                                                                                    nestedIndex,
+                                                                                )
+                                                                                    ? 'Expand'
+                                                                                    : 'Collapse'
+                                                                            }}
+                                                                            ({{ 
+                                                                                getNestedArrayItemStringArrayItems(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    field,
+                                                                                    nestedIndex,
+                                                                                    nestedField,
+                                                                                ).length
+                                                                            }})
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            class="node-panel__array-add"
+                                                                            @click="
+                                                                                addNestedArrayItemStringArrayItem(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    field,
+                                                                                    nestedIndex,
+                                                                                    nestedField,
+                                                                                )
+                                                                            "
+                                                                        >
+                                                                            <span
+                                                                                class="node-panel__array-add-icon"
+                                                                                aria-hidden="true"
+                                                                                >+</span
+                                                                            >
+                                                                        </button>
+                                                                    </div>
+                                                                    <div
+                                                                        v-for="(
+                                                                            optionValue,
+                                                                            optionIndex
+                                                                        ) in getNestedArrayItemStringArrayItems(
+                                                                            prop.key,
+                                                                            index,
+                                                                            field,
+                                                                            nestedIndex,
+                                                                            nestedField,
+                                                                        )"
+                                                                        :key="`${prop.key}-${index}-${field.key}-${nestedIndex}-${nestedField.key}-string-${optionIndex}`"
+                                                                        class="node-panel__array-item node-panel__array-item--nested"
+                                                                        v-show="
+                                                                            !isNestedArrayCollapsed(
+                                                                                prop.key,
+                                                                                index,
+                                                                                `${field.key}-${nestedField.key}`,
+                                                                                nestedIndex,
+                                                                            )
+                                                                        "
+                                                                    >
+                                                                        <label
+                                                                            class="node-panel__field node-panel__field--nested"
+                                                                        >
+                                                                            <span
+                                                                                >{{
+                                                                                    nestedField.label
+                                                                                }}
+                                                                                {{
+                                                                                    optionIndex +
+                                                                                    1
+                                                                                }}</span
+                                                                            >
+                                                                            <component
+                                                                                v-if="
+                                                                                    nestedField
+                                                                                        .ui
+                                                                                        ?.component
+                                                                                "
+                                                                                :is="
+                                                                                    nestedField
+                                                                                        .ui
+                                                                                        .component
+                                                                                "
+                                                                                :model-value="
+                                                                                    optionValue
+                                                                                "
+                                                                                :prop-definition="
+                                                                                    nestedField
+                                                                                "
+                                                                                :field-context="{
+                                                                                    propKey:
+                                                                                        prop.key,
+                                                                                    arrayIndex:
+                                                                                        index,
+                                                                                    nestedFieldKey:
+                                                                                        nestedField.key,
+                                                                                    nestedIndex,
+                                                                                }"
+                                                                                @update:modelValue="
+                                                                                    (
+                                                                                        value: unknown,
+                                                                                    ) =>
+                                                                                        handleNestedArrayItemStringArrayChange(
+                                                                                            prop.key,
+                                                                                            index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                            optionIndex,
+                                                                                            value,
+                                                                                            {
+                                                                                                debounce: true,
+                                                                                            },
+                                                                                        )
+                                                                                "
+                                                                            />
+                                                                            <input
+                                                                                v-else
+                                                                                :value="
+                                                                                    optionValue
+                                                                                "
+                                                                                type="text"
+                                                                                @input="
+                                                                                    (
+                                                                                        event: Event,
+                                                                                    ) =>
+                                                                                        handleNestedArrayItemStringArrayChange(
+                                                                                            prop.key,
+                                                                                            index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                            optionIndex,
+                                                                                            (
+                                                                                                event.target as HTMLInputElement
+                                                                                            ).value,
+                                                                                            {
+                                                                                                debounce: true,
+                                                                                            },
+                                                                                        )
+                                                                                "
+                                                                                @change="
+                                                                                    (
+                                                                                        event: Event,
+                                                                                    ) =>
+                                                                                        handleNestedArrayItemStringArrayChange(
+                                                                                            prop.key,
+                                                                                            index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                            optionIndex,
+                                                                                            (
+                                                                                                event.target as HTMLInputElement
+                                                                                            ).value,
+                                                                                        )
+                                                                                "
+                                                                                @blur="
+                                                                                    (
+                                                                                        event: Event,
+                                                                                    ) =>
+                                                                                        handleNestedArrayItemStringArrayChange(
+                                                                                            prop.key,
+                                                                                            index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                            optionIndex,
+                                                                                            (
+                                                                                                event.target as HTMLInputElement
+                                                                                            ).value,
+                                                                                        )
+                                                                                "
+                                                                            />
+                                                                        </label>
+                                                                        <button
+                                                                            type="button"
+                                                                            class="node-panel__array-remove"
+                                                                            @click="
+                                                                                removeNestedArrayItemStringArrayItem(
+                                                                                    prop.key,
+                                                                                    index,
+                                                                                    field,
+                                                                                    nestedIndex,
+                                                                                    nestedField,
+                                                                                    optionIndex,
+                                                                                )
+                                                                            "
+                                                                        >
+                                                                            Remove item
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </template>
                                                             <template
                                                                 v-else-if="
@@ -1693,7 +2145,11 @@ const nestedArrayKey = (
     propKey: string,
     parentIndex: number,
     fieldKey: string,
-) => `${propKey}:${parentIndex}:${fieldKey}`;
+    childKey?: number | string,
+) =>
+    typeof childKey === "undefined"
+        ? `${propKey}:${parentIndex}:${fieldKey}`
+        : `${propKey}:${parentIndex}:${fieldKey}:${childKey}`;
 
 const PROP_UPDATE_DEBOUNCE_MS = 500;
 const propUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -2100,12 +2556,225 @@ const setNestedArrayItems = (
     commitPropChange(propKey, next, "jsonarray", options);
 };
 
+const ensureNestedStringArrayValue = (
+    parent: Record<string, any>,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+) => {
+    const storageKey = `:${field.key}`;
+    if (!(field.key in parent) && storageKey in parent) {
+        parent[field.key] = ensureStringArray(parent[storageKey]);
+        delete parent[storageKey];
+        return parent[field.key] as string[];
+    }
+    parent[field.key] = ensureStringArray(parent[field.key]);
+    delete parent[storageKey];
+    return parent[field.key] as string[];
+};
+
+const getArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+) => {
+    if (!Array.isArray(propDraft[propKey])) {
+        propDraft[propKey] = [];
+    }
+    if (!propDraft[propKey][parentIndex]) {
+        propDraft[propKey][parentIndex] = {};
+    }
+    const parent = propDraft[propKey][parentIndex] as Record<string, any>;
+    return ensureNestedStringArrayValue(parent, field);
+};
+
+const setArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    items: string[],
+    options: { debounce?: boolean } = {},
+) => {
+    const current = ensureArrayValue(propDraft[propKey]);
+    const next = current.map((entry) => cloneValue(entry));
+    if (!next[parentIndex]) {
+        next[parentIndex] = {};
+    }
+    delete next[parentIndex][`:${field.key}`];
+    next[parentIndex][field.key] = items.map((value) => String(value ?? ""));
+    propDraft[propKey] = next;
+    commitPropChange(propKey, next, "jsonarray", options);
+};
+
+const handleArrayItemStringArrayChange = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    itemIndex: number,
+    rawValue: unknown,
+    options: { debounce?: boolean } = {},
+) => {
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    const next = items.map((entry, index) =>
+        index === itemIndex ? String(rawValue ?? "") : entry,
+    );
+    setArrayItemStringArrayItems(propKey, parentIndex, field, next, options);
+};
+
+const addArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+) => {
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    const next = [...items, ""];
+    collapsedNestedArrays[nestedArrayKey(propKey, parentIndex, field.key)] =
+        false;
+    setArrayItemStringArrayItems(propKey, parentIndex, field, next);
+};
+
+const removeArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    itemIndex: number,
+) => {
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    const next = items.filter((_, index) => index !== itemIndex);
+    setArrayItemStringArrayItems(propKey, parentIndex, field, next);
+};
+
+const getNestedArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+) => {
+    const nestedItems = getNestedArrayItems(propKey, parentIndex, field);
+    if (!nestedItems[nestedIndex]) {
+        nestedItems[nestedIndex] = createEmptyArrayItem(field.items || []);
+    }
+    const target = nestedItems[nestedIndex] as Record<string, any>;
+    return ensureNestedStringArrayValue(target, nestedField);
+};
+
+const setNestedArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    items: string[],
+    options: { debounce?: boolean } = {},
+) => {
+    const nestedItems = getNestedArrayItems(propKey, parentIndex, field);
+    const nextItems = nestedItems.map((entry) => cloneValue(entry));
+    if (!nextItems[nestedIndex]) {
+        nextItems[nestedIndex] = createEmptyArrayItem(field.items || []);
+    }
+    delete nextItems[nestedIndex][`:${nestedField.key}`];
+    nextItems[nestedIndex][nestedField.key] = items.map((value) =>
+        String(value ?? ""),
+    );
+    setNestedArrayItems(propKey, parentIndex, field, nextItems, options);
+};
+
+const handleNestedArrayItemStringArrayChange = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    itemIndex: number,
+    rawValue: unknown,
+    options: { debounce?: boolean } = {},
+) => {
+    const items = getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    );
+    const next = items.map((entry, index) =>
+        index === itemIndex ? String(rawValue ?? "") : entry,
+    );
+    setNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+        next,
+        options,
+    );
+};
+
+const addNestedArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+) => {
+    const items = getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    );
+    const next = [...items, ""];
+    collapsedNestedArrays[
+        nestedArrayKey(
+            propKey,
+            parentIndex,
+            `${field.key}-${nestedField.key}`,
+            nestedIndex,
+        )
+    ] = false;
+    setNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+        next,
+    );
+};
+
+const removeNestedArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    itemIndex: number,
+) => {
+    const items = getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    );
+    const next = items.filter((_, index) => index !== itemIndex);
+    setNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+        next,
+    );
+};
+
 const isNestedArrayCollapsed = (
     propKey: string,
     parentIndex: number,
     fieldKey: string,
+    childKey?: number | string,
 ) => {
-    const key = nestedArrayKey(propKey, parentIndex, fieldKey);
+    const key = nestedArrayKey(propKey, parentIndex, fieldKey, childKey);
     if (!(key in collapsedNestedArrays)) {
         collapsedNestedArrays[key] = true;
     }
@@ -2116,8 +2785,9 @@ const toggleNestedArray = (
     propKey: string,
     parentIndex: number,
     fieldKey: string,
+    childKey?: number | string,
 ) => {
-    const key = nestedArrayKey(propKey, parentIndex, fieldKey);
+    const key = nestedArrayKey(propKey, parentIndex, fieldKey, childKey);
     collapsedNestedArrays[key] = !(collapsedNestedArrays[key] ?? true);
 };
 
