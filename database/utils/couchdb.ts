@@ -3,7 +3,9 @@
  * Server-side only - provides authenticated CouchDB operations
  */
 
-import crypto from 'crypto'
+import { hmac } from '@noble/hashes/hmac'
+import { sha1 } from '@noble/hashes/sha1'
+import { sha256 } from '@noble/hashes/sha256'
 
 // Type definitions
 export interface CouchDBError {
@@ -151,6 +153,32 @@ export interface CouchDBConfig {
 }
 
 const DEFAULT_COUCHDB_URL = 'http://localhost:5984';
+
+const textEncoder = new TextEncoder();
+
+const timingSafeEqual = (a: Uint8Array | Buffer, b: Uint8Array | Buffer): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    result |= a[index] ^ b[index];
+  }
+
+  return result === 0;
+};
+
+const computeHmac = (algorithm: string, key: Uint8Array, data: Uint8Array): Uint8Array | null => {
+  switch (algorithm.toLowerCase()) {
+    case 'sha1':
+      return hmac(sha1, key, data);
+    case 'sha256':
+      return hmac(sha256, key, data);
+    default:
+      return null;
+  }
+};
 
 /**
  * Get CouchDB configuration from environment or parameters
@@ -948,13 +976,18 @@ export function generateAuthSessionCookie(username, couchSecret, userSalt, timeo
     // Create HMAC key (couch secret + user salt)
     const hmacKey = couchSecret + userSalt;
 
-    // Generate HMAC-SHA1 signature
-    const hmac = crypto.createHmac('sha1', hmacKey);
-    hmac.update(message);
-    const signature = hmac.digest();
+    const messageBytes = textEncoder.encode(message);
+    const keyBytes = textEncoder.encode(hmacKey);
+    const signatureBytes = computeHmac('sha1', keyBytes, messageBytes);
+
+    if (!signatureBytes) {
+        throw new Error('Unsupported HMAC algorithm: sha1');
+    }
+
+    const signature = Buffer.from(signatureBytes);
 
     // Construct cookie value
-    const cookieData = `${username}:${hexExpiration}:${signature.toString('binary')}`;
+    const cookieData = `${username}:${hexExpiration}:${signature.toString('latin1')}`;
 
     // Base64 encode (URL-safe without padding)
     const base64Cookie = Buffer.from(cookieData, 'binary')
@@ -995,8 +1028,12 @@ export function verifyAuthSessionValue ({
     const key = Buffer.concat([Buffer.from(serverSecret, 'utf8'), Buffer.from(userSaltHex, 'hex')])
 
     for (const algo of hmacAlgos) {
-        const calc = crypto.createHmac(algo, key).update(msg, 'utf8').digest()
-        if (crypto.timingSafeEqual(calc, macBytes)) {
+        const calcBytes = computeHmac(algo, new Uint8Array(key), textEncoder.encode(msg))
+        if (!calcBytes) {
+            continue
+        }
+
+        if (timingSafeEqual(calcBytes, macBytes)) {
             const exp = parseInt(hex, 16)
             const nowSec = Math.floor((now instanceof Date ? now.getTime() : now) / 1000)
             if (Number.isNaN(exp)) return { ok: false, reason: 'bad hex' }
