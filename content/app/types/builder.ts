@@ -33,7 +33,7 @@ export interface ComponentArrayItemFieldBase {
 }
 
 export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
-  type: Exclude<ComponentFieldType, 'jsonarray' | 'stringarray' | 'select'>;
+  type: Exclude<ComponentFieldType, 'jsonarray' | 'stringarray' | 'select' | 'jsonobject'>;
 }
 
 export interface ComponentArrayNestedField extends ComponentArrayItemFieldBase {
@@ -45,10 +45,16 @@ export interface ComponentArrayPrimitiveListField extends ComponentArrayItemFiel
   type: 'stringarray';
 }
 
+export interface ComponentArrayObjectField extends ComponentArrayItemFieldBase {
+  type: 'jsonobject';
+  fields?: ComponentArrayItemField[];
+}
+
 export type ComponentArrayItemField =
   | ComponentArrayPrimitiveField
   | ComponentArrayNestedField
-  | ComponentArrayPrimitiveListField;
+  | ComponentArrayPrimitiveListField
+  | ComponentArrayObjectField;
 
 export type ComponentObjectField = ComponentArrayItemField;
 
