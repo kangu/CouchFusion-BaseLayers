@@ -687,10 +687,10 @@
                                                                 index,
                                                                 field.key,
                                                             )
-                                                                ? 'Expand'
-                                                                : 'Collapse'
+                                                                ? "Expand"
+                                                                : "Collapse"
                                                         }}
-                                                        ({{ 
+                                                        ({{
                                                             getArrayItemStringArrayItems(
                                                                 prop.key,
                                                                 index,
@@ -718,8 +718,7 @@
                                                 </div>
                                                 <div
                                                     v-for="(
-                                                        nestedValue,
-                                                        nestedIndex
+                                                        nestedValue, nestedIndex
                                                     ) in getArrayItemStringArrayItems(
                                                         prop.key,
                                                         index,
@@ -739,17 +738,14 @@
                                                         class="node-panel__field node-panel__field--nested"
                                                     >
                                                         <span
-                                                            >{{
-                                                                field.label
-                                                            }}
+                                                            >{{ field.label }}
                                                             {{
                                                                 nestedIndex + 1
                                                             }}</span
                                                         >
                                                         <component
                                                             v-if="
-                                                                field
-                                                                    .ui
+                                                                field.ui
                                                                     ?.component
                                                             "
                                                             :is="
@@ -788,9 +784,7 @@
                                                         />
                                                         <input
                                                             v-else
-                                                            :value="
-                                                                nestedValue
-                                                            "
+                                                            :value="nestedValue"
                                                             type="text"
                                                             @input="
                                                                 (
@@ -839,20 +833,40 @@
                                                             "
                                                         />
                                                     </label>
-                                                    <button
-                                                        type="button"
-                                                        class="node-panel__array-remove"
-                                                        @click="
-                                                            removeArrayItemStringArrayItem(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                nestedIndex,
-                                                            )
-                                                        "
+                                                    <div
+                                                        class="node-panel__array-actions"
                                                     >
-                                                        Remove item
-                                                    </button>
+                                                        <button
+                                                            type="button"
+                                                            class="node-panel__array-remove"
+                                                            @click="
+                                                                removeArrayItemStringArrayItem(
+                                                                    prop.key,
+                                                                    index,
+                                                                    field,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                        >
+                                                            Remove item
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="node-panel__array-reorder-link"
+                                                            @click="
+                                                                openArrayItemStringArrayReorderDialog(
+                                                                    prop.key,
+                                                                    index,
+                                                                    field,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                        >
+                                                            Move (#{{
+                                                                nestedIndex + 1
+                                                            }})
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </template>
@@ -1165,8 +1179,7 @@
                                                             </template>
                                                             <template
                                                                 v-else-if="
-                                                                    nestedField
-                                                                        .type ===
+                                                                    nestedField.type ===
                                                                     'stringarray'
                                                                 "
                                                             >
@@ -1213,17 +1226,18 @@
                                                                                     `${field.key}-${nestedField.key}`,
                                                                                     nestedIndex,
                                                                                 )
-                                                                                    ? 'Expand'
-                                                                                    : 'Collapse'
+                                                                                    ? "Expand"
+                                                                                    : "Collapse"
                                                                             }}
-                                                                            ({{ 
+                                                                            ({{
                                                                                 getNestedArrayItemStringArrayItems(
                                                                                     prop.key,
                                                                                     index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
-                                                                                ).length
+                                                                                )
+                                                                                    .length
                                                                             }})
                                                                         </button>
                                                                         <button
@@ -1343,7 +1357,8 @@
                                                                                             optionIndex,
                                                                                             (
                                                                                                 event.target as HTMLInputElement
-                                                                                            ).value,
+                                                                                            )
+                                                                                                .value,
                                                                                             {
                                                                                                 debounce: true,
                                                                                             },
@@ -1362,7 +1377,8 @@
                                                                                             optionIndex,
                                                                                             (
                                                                                                 event.target as HTMLInputElement
-                                                                                            ).value,
+                                                                                            )
+                                                                                                .value,
                                                                                         )
                                                                                 "
                                                                                 @blur="
@@ -1378,27 +1394,53 @@
                                                                                             optionIndex,
                                                                                             (
                                                                                                 event.target as HTMLInputElement
-                                                                                            ).value,
+                                                                                            )
+                                                                                                .value,
                                                                                         )
                                                                                 "
                                                                             />
                                                                         </label>
-                                                                        <button
-                                                                            type="button"
-                                                                            class="node-panel__array-remove"
-                                                                            @click="
-                                                                                removeNestedArrayItemStringArrayItem(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    optionIndex,
-                                                                                )
-                                                                            "
+                                                                        <div
+                                                                            class="node-panel__array-actions"
                                                                         >
-                                                                            Remove item
-                                                                        </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                class="node-panel__array-remove"
+                                                                                @click="
+                                                                                    removeNestedArrayItemStringArrayItem(
+                                                                                        prop.key,
+                                                                                        index,
+                                                                                        field,
+                                                                                        nestedIndex,
+                                                                                        nestedField,
+                                                                                        optionIndex,
+                                                                                    )
+                                                                                "
+                                                                            >
+                                                                                Remove
+                                                                                item
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                class="node-panel__array-reorder-link"
+                                                                                @click="
+                                                                                    openNestedStringArrayReorderDialog(
+                                                                                        prop.key,
+                                                                                        index,
+                                                                                        field,
+                                                                                        nestedIndex,
+                                                                                        nestedField,
+                                                                                        optionIndex,
+                                                                                    )
+                                                                                "
+                                                                            >
+                                                                                Move
+                                                                                (#{{
+                                                                                    optionIndex +
+                                                                                    1
+                                                                                }})
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </template>
@@ -1509,20 +1551,40 @@
                                                             </template>
                                                         </label>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        class="node-panel__array-remove"
-                                                        @click="
-                                                            removeNestedArrayItem(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                nestedIndex,
-                                                            )
-                                                        "
+                                                    <div
+                                                        class="node-panel__array-actions"
                                                     >
-                                                        Remove item
-                                                    </button>
+                                                        <button
+                                                            type="button"
+                                                            class="node-panel__array-remove"
+                                                            @click="
+                                                                removeNestedArrayItem(
+                                                                    prop.key,
+                                                                    index,
+                                                                    field,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                        >
+                                                            Remove item
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="node-panel__array-reorder-link"
+                                                            @click="
+                                                                openNestedJsonArrayReorderDialog(
+                                                                    prop.key,
+                                                                    index,
+                                                                    field,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                        >
+                                                            Move (#{{
+                                                                nestedIndex + 1
+                                                            }})
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </template>
@@ -1564,13 +1626,30 @@
                                         </template>
                                     </label>
                                 </div>
-                                <button
-                                    type="button"
-                                    class="node-panel__array-remove"
-                                    @click="removeArrayItem(prop.key, index)"
-                                >
-                                    Remove item
-                                </button>
+                                <div class="node-panel__array-actions">
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-remove"
+                                        @click="
+                                            removeArrayItem(prop.key, index)
+                                        "
+                                    >
+                                        Remove item
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-reorder-link"
+                                        @click="
+                                            openTopLevelArrayReorderDialog(
+                                                prop.key,
+                                                'jsonarray',
+                                                index,
+                                            )
+                                        "
+                                    >
+                                        Move (#{{ index + 1 }})
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -1714,15 +1793,33 @@
                                         "
                                     />
                                 </label>
-                                <button
-                                    type="button"
-                                    class="node-panel__array-remove"
-                                    @click="
-                                        removeStringArrayItem(prop.key, index)
-                                    "
-                                >
-                                    Remove item
-                                </button>
+                                <div class="node-panel__array-actions">
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-remove"
+                                        @click="
+                                            removeStringArrayItem(
+                                                prop.key,
+                                                index,
+                                            )
+                                        "
+                                    >
+                                        Remove item
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-reorder-link"
+                                        @click="
+                                            openTopLevelArrayReorderDialog(
+                                                prop.key,
+                                                'stringarray',
+                                                index,
+                                            )
+                                        "
+                                    >
+                                        Move (#{{ index + 1 }})
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -2055,6 +2152,57 @@
                 </ul>
             </div>
         </div>
+        <div v-if="reorderDialog.visible" class="node-panel__insert-dialog">
+            <div
+                class="node-panel__insert-backdrop"
+                @click="closeReorderDialog"
+            ></div>
+            <div
+                class="node-panel__insert-content node-panel__insert-content--small"
+            >
+                <header class="node-panel__insert-header">
+                    <h3>Move item</h3>
+                    <button
+                        type="button"
+                        class="node-panel__insert-close"
+                        @click="closeReorderDialog"
+                    >
+                        ×
+                    </button>
+                </header>
+                <p class="node-panel__insert-subtitle">
+                    Set a new position (1-{{ reorderDialog.maxIndex }}) for this
+                    entry.
+                </p>
+                <div class="node-panel__reorder-input">
+                    <label>
+                        New position
+                        <input
+                            v-model.number="reorderDialog.newIndex"
+                            type="number"
+                            min="1"
+                            :max="reorderDialog.maxIndex"
+                        />
+                    </label>
+                </div>
+                <div class="node-panel__insert-actions">
+                    <button
+                        type="button"
+                        class="node-panel__insert-confirm"
+                        @click="confirmReorderDialog"
+                    >
+                        Move item
+                    </button>
+                    <button
+                        type="button"
+                        class="node-panel__insert-cancel"
+                        @click="closeReorderDialog"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -2131,6 +2279,35 @@ const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null);
 const collapsedNodes = reactive<Record<string, boolean>>({});
 const collapsedArrays = reactive<Record<string, boolean>>({});
 const collapsedNestedArrays = reactive<Record<string, boolean>>({});
+type ReorderDialogContext =
+    | {
+          kind: "top-level";
+          propKey: string;
+          arrayType: "jsonarray" | "stringarray";
+      }
+    | {
+          kind: "array-field-stringarray";
+          propKey: string;
+          parentIndex: number;
+          field: Extract<ComponentArrayItemField, { type: "stringarray" }>;
+      }
+    | {
+          kind: "nested-jsonarray";
+          propKey: string;
+          parentIndex: number;
+          field: Extract<ComponentArrayItemField, { type: "jsonarray" }>;
+      }
+    | {
+          kind: "nested-stringarray";
+          propKey: string;
+          parentIndex: number;
+          field: Extract<ComponentArrayItemField, { type: "jsonarray" }>;
+          nestedIndex: number;
+          nestedField: Extract<
+              ComponentArrayItemField,
+              { type: "stringarray" }
+          >;
+      };
 const insertDialog = reactive<{
     key: string | null;
     type: "jsonarray" | "stringarray" | null;
@@ -2139,6 +2316,19 @@ const insertDialog = reactive<{
     key: null,
     type: null,
     schema: null,
+});
+const reorderDialog = reactive<{
+    visible: boolean;
+    context: ReorderDialogContext | null;
+    currentIndex: number;
+    newIndex: number;
+    maxIndex: number;
+}>({
+    visible: false,
+    context: null,
+    currentIndex: 0,
+    newIndex: 1,
+    maxIndex: 1,
 });
 
 const nestedArrayKey = (
@@ -2664,6 +2854,28 @@ const removeArrayItemStringArrayItem = (
     setArrayItemStringArrayItems(propKey, parentIndex, field, next);
 };
 
+const moveArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    fromIndex: number,
+    toIndex: number,
+) => {
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    if (
+        fromIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex < 0 ||
+        toIndex >= items.length
+    ) {
+        return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setArrayItemStringArrayItems(propKey, parentIndex, field, next);
+};
+
 const getNestedArrayItemStringArrayItems = (
     propKey: string,
     parentIndex: number,
@@ -2780,6 +2992,68 @@ const removeNestedArrayItemStringArrayItem = (
         nestedField,
     );
     const next = items.filter((_, index) => index !== itemIndex);
+    setNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+        next,
+    );
+};
+
+const moveNestedArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    fromIndex: number,
+    toIndex: number,
+) => {
+    const items = getNestedArrayItems(propKey, parentIndex, field);
+    if (
+        fromIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex < 0 ||
+        toIndex >= items.length
+    ) {
+        return;
+    }
+    const next = items.map((entry) => cloneValue(entry));
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setNestedArrayItems(propKey, parentIndex, field, next);
+};
+
+const moveNestedArrayItemStringArrayItem = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    fromIndex: number,
+    toIndex: number,
+) => {
+    if (fromIndex === toIndex) {
+        return;
+    }
+    const items = getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    );
+    if (
+        fromIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex < 0 ||
+        toIndex >= items.length
+    ) {
+        return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
     setNestedArrayItemStringArrayItems(
         propKey,
         parentIndex,
@@ -3536,6 +3810,155 @@ const handleInsertAt = (index: number) => {
     closeInsertDialog();
 };
 
+const openTopLevelArrayReorderDialog = (
+    propKey: string,
+    arrayType: "jsonarray" | "stringarray",
+    currentIndex: number,
+) => {
+    const length =
+        arrayType === "jsonarray"
+            ? ensureArrayValue(propDraft[propKey]).length
+            : ensureStringArray(propDraft[propKey]).length;
+    reorderDialog.visible = true;
+    reorderDialog.context = { kind: "top-level", propKey, arrayType };
+    reorderDialog.currentIndex = currentIndex;
+    reorderDialog.newIndex = currentIndex + 1;
+    reorderDialog.maxIndex = Math.max(length, 1);
+};
+
+const openArrayItemStringArrayReorderDialog = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    currentIndex: number,
+) => {
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    reorderDialog.visible = true;
+    reorderDialog.context = {
+        kind: "array-field-stringarray",
+        propKey,
+        parentIndex,
+        field,
+    };
+    reorderDialog.currentIndex = currentIndex;
+    reorderDialog.newIndex = currentIndex + 1;
+    reorderDialog.maxIndex = Math.max(items.length, 1);
+};
+
+const openNestedJsonArrayReorderDialog = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    currentIndex: number,
+) => {
+    const items = getNestedArrayItems(propKey, parentIndex, field);
+    reorderDialog.visible = true;
+    reorderDialog.context = {
+        kind: "nested-jsonarray",
+        propKey,
+        parentIndex,
+        field,
+    };
+    reorderDialog.currentIndex = currentIndex;
+    reorderDialog.newIndex = currentIndex + 1;
+    reorderDialog.maxIndex = Math.max(items.length, 1);
+};
+
+const openNestedStringArrayReorderDialog = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    currentIndex: number,
+) => {
+    const items = getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    );
+    reorderDialog.visible = true;
+    reorderDialog.context = {
+        kind: "nested-stringarray",
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        nestedField,
+    };
+    reorderDialog.currentIndex = currentIndex;
+    reorderDialog.newIndex = currentIndex + 1;
+    reorderDialog.maxIndex = Math.max(items.length, 1);
+};
+
+const closeReorderDialog = () => {
+    reorderDialog.visible = false;
+    reorderDialog.context = null;
+    reorderDialog.currentIndex = 0;
+    reorderDialog.newIndex = 1;
+    reorderDialog.maxIndex = 1;
+};
+
+const confirmReorderDialog = () => {
+    if (!reorderDialog.visible || !reorderDialog.context) {
+        return;
+    }
+    const rawIndex = Number(reorderDialog.newIndex);
+    if (!Number.isFinite(rawIndex)) {
+        return;
+    }
+    const clamped = Math.min(
+        Math.max(Math.floor(rawIndex), 1),
+        reorderDialog.maxIndex,
+    );
+    const destinationIndex = clamped - 1;
+    const context = reorderDialog.context;
+    switch (context.kind) {
+        case "top-level":
+            reorderArrayItems(
+                context.propKey,
+                reorderDialog.currentIndex,
+                destinationIndex,
+                context.arrayType,
+            );
+            break;
+        case "array-field-stringarray":
+            moveArrayItemStringArrayItem(
+                context.propKey,
+                context.parentIndex,
+                context.field,
+                reorderDialog.currentIndex,
+                destinationIndex,
+            );
+            break;
+        case "nested-jsonarray":
+            moveNestedArrayItem(
+                context.propKey,
+                context.parentIndex,
+                context.field,
+                reorderDialog.currentIndex,
+                destinationIndex,
+            );
+            break;
+        case "nested-stringarray":
+            moveNestedArrayItemStringArrayItem(
+                context.propKey,
+                context.parentIndex,
+                context.field,
+                context.nestedIndex,
+                context.nestedField,
+                reorderDialog.currentIndex,
+                destinationIndex,
+            );
+            break;
+        default:
+            break;
+    }
+    closeReorderDialog();
+};
+
 const handleAddChildComponent = () => {
     if (!selectedChildComponent.value) {
         return;
@@ -3918,6 +4341,27 @@ const applyTextValue = () => {
     margin-left: 12px;
 }
 
+.node-panel__array-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.node-panel__array-reorder-link {
+    margin-left: 8px;
+    background: none;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    transition: color 120ms ease;
+}
+
+.node-panel__array-reorder-link:hover,
+.node-panel__array-reorder-link:focus-visible {
+    color: #1d4ed8;
+}
+
 .node-panel__array-fields {
     display: grid;
     gap: 8px;
@@ -4073,6 +4517,10 @@ const applyTextValue = () => {
     overflow: hidden;
 }
 
+.node-panel__insert-content--small {
+    width: min(360px, 90vw);
+}
+
 .node-panel__insert-header {
     display: flex;
     align-items: center;
@@ -4140,6 +4588,63 @@ const applyTextValue = () => {
 .node-panel__insert-options button:hover {
     border-color: #2563eb;
     background: #eff6ff;
+}
+
+.node-panel__reorder-input label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.node-panel__reorder-input input {
+    border: 1px solid #cbd5f5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+}
+
+.node-panel__insert-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.node-panel__insert-confirm,
+.node-panel__insert-cancel {
+    border-radius: 6px;
+    border: 1px solid transparent;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease;
+}
+
+.node-panel__insert-confirm {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.node-panel__insert-confirm:hover,
+.node-panel__insert-confirm:focus-visible {
+    background: #1d4ed8;
+}
+
+.node-panel__insert-cancel {
+    background: transparent;
+    border-color: #cbd5f5;
+    color: #0f172a;
+}
+
+.node-panel__insert-cancel:hover,
+.node-panel__insert-cancel:focus-visible {
+    border-color: #94a3b8;
 }
 
 @keyframes node-panel__insert-fade {
