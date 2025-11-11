@@ -2561,14 +2561,36 @@ const ensureNestedStringArrayValue = (
     field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
 ) => {
     const storageKey = `:${field.key}`;
-    if (!(field.key in parent) && storageKey in parent) {
-        parent[field.key] = ensureStringArray(parent[storageKey]);
-        delete parent[storageKey];
+    const hasStorage = storageKey in parent;
+
+    if (!(field.key in parent)) {
+        if (hasStorage) {
+            const normalized = ensureStringArray(parent[storageKey]);
+            parent[field.key] = normalized;
+            delete parent[storageKey];
+            return normalized;
+        }
+        parent[field.key] = [];
         return parent[field.key] as string[];
     }
-    parent[field.key] = ensureStringArray(parent[field.key]);
-    delete parent[storageKey];
-    return parent[field.key] as string[];
+
+    const current = parent[field.key];
+    if (
+        Array.isArray(current) &&
+        current.every((entry) => typeof entry === "string")
+    ) {
+        if (hasStorage) {
+            delete parent[storageKey];
+        }
+        return current as string[];
+    }
+
+    const normalized = ensureStringArray(current);
+    parent[field.key] = normalized;
+    if (hasStorage) {
+        delete parent[storageKey];
+    }
+    return normalized;
 };
 
 const getArrayItemStringArrayItems = (
