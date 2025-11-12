@@ -255,6 +255,16 @@ onBeforeUnmount(() => {
     min-height: 150px;
     outline: none;
     white-space: pre-wrap;
+    ol {
+        padding-left: 1.25rem;
+        list-style-position: outside;
+        list-style-type: decimal;
+    }
+    ul {
+        padding-left: 1.25rem;
+        list-style-position: outside;
+        list-style-type: disc;
+    }
 }
 
 .rich-text-field__content :deep(.ProseMirror p),
