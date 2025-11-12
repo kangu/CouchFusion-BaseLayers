@@ -65,11 +65,13 @@
             v-show="!collapsedNodes[node.uid]"
         >
             <div v-if="componentDef?.props?.length" class="node-panel__props">
-                <label
+                <component
                     v-for="prop in componentDef.props"
+                    :is="fieldWrapperTag(prop)"
                     :key="prop.key"
                     class="node-panel__field"
                     :class="{ 'is-row': prop.type === 'boolean' }"
+                    :role="fieldWrapperRole(prop)"
                 >
                     <span>{{ prop.label }}</span>
                     <template v-if="prop.type === 'textarea'">
@@ -2896,7 +2898,7 @@
                     <small v-if="prop.description">{{
                         prop.description
                     }}</small>
-                </label>
+                </component>
             </div>
 
             <div v-if="extraPropEntries.length" class="node-panel__props">
@@ -3275,6 +3277,12 @@ type PropInputType =
     | "jsonobject"
     | "stringarray"
     | "number";
+
+const fieldWrapperTag = (schema: ComponentPropSchema) =>
+    schema.ui?.component ? "div" : "label";
+
+const fieldWrapperRole = (schema: ComponentPropSchema) =>
+    schema.ui?.component ? "group" : undefined;
 
 const props = defineProps<{
     node: BuilderNodeChild;
