@@ -3,9 +3,9 @@
  * Server-side only - provides authenticated CouchDB operations
  */
 
-import { hmac } from '@noble/hashes/hmac'
-import { sha1 } from '@noble/hashes/sha1'
-import { sha256 } from '@noble/hashes/sha256'
+import { hmac } from "@noble/hashes/hmac";
+import { sha1 } from "@noble/hashes/sha1";
+import { sha256 } from "@noble/hashes/sha256";
 
 // Type definitions
 export interface CouchDBError {
@@ -14,8 +14,8 @@ export interface CouchDBError {
 }
 
 export interface CouchDBLoginResult {
-    ok: boolean
-    setCookie?: string | null;
+  ok: boolean;
+  setCookie?: string | null;
 }
 
 export interface CouchDBResponse {
@@ -121,7 +121,7 @@ export interface CouchDBViewResponse {
 export interface CouchDBUserDocument extends CouchDBDocument {
   name: string;
   password?: string;
-  type: 'user';
+  type: "user";
   roles: string[];
   derived_key?: string;
   password_scheme?: string;
@@ -152,11 +152,14 @@ export interface CouchDBConfig {
   adminAuth?: string;
 }
 
-const DEFAULT_COUCHDB_URL = 'http://localhost:5984';
+const DEFAULT_COUCHDB_URL = "http://localhost:5984";
 
 const textEncoder = new TextEncoder();
 
-const timingSafeEqual = (a: Uint8Array | Buffer, b: Uint8Array | Buffer): boolean => {
+const timingSafeEqual = (
+  a: Uint8Array | Buffer,
+  b: Uint8Array | Buffer,
+): boolean => {
   if (a.length !== b.length) {
     return false;
   }
@@ -169,11 +172,15 @@ const timingSafeEqual = (a: Uint8Array | Buffer, b: Uint8Array | Buffer): boolea
   return result === 0;
 };
 
-const computeHmac = (algorithm: string, key: Uint8Array, data: Uint8Array): Uint8Array | null => {
+const computeHmac = (
+  algorithm: string,
+  key: Uint8Array,
+  data: Uint8Array,
+): Uint8Array | null => {
   switch (algorithm.toLowerCase()) {
-    case 'sha1':
+    case "sha1":
       return hmac(sha1, key, data);
-    case 'sha256':
+    case "sha256":
       return hmac(sha256, key, data);
     default:
       return null;
@@ -184,11 +191,14 @@ const computeHmac = (algorithm: string, key: Uint8Array, data: Uint8Array): Uint
  * Get CouchDB configuration from environment or parameters
  */
 function getCouchDBConfig(config?: CouchDBConfig): Required<CouchDBConfig> {
-  const baseUrl = config?.baseUrl || process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL;
+  const baseUrl =
+    config?.baseUrl || process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL;
   const adminAuth = config?.adminAuth || process.env.COUCHDB_ADMIN_AUTH;
 
   if (!adminAuth) {
-    throw new Error('COUCHDB_ADMIN_AUTH environment variable is required but not set');
+    throw new Error(
+      "COUCHDB_ADMIN_AUTH environment variable is required but not set",
+    );
   }
 
   return { baseUrl, adminAuth };
@@ -200,19 +210,19 @@ function getCouchDBConfig(config?: CouchDBConfig): Required<CouchDBConfig> {
 export async function couchDBRequest(
   url: string,
   options: RequestInit = {},
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<Response> {
   const { adminAuth } = getCouchDBConfig(config);
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    'Authorization': `Basic ${adminAuth}`,
-    ...options.headers
+    "Content-Type": "application/json",
+    Authorization: `Basic ${adminAuth}`,
+    ...options.headers,
   };
 
   return fetch(url, {
     ...options,
-    headers
+    headers,
   });
 }
 
@@ -221,11 +231,15 @@ export async function couchDBRequest(
  */
 export async function testDatabaseConnection(
   databaseName: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<boolean> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
-    const response = await couchDBRequest(`${baseUrl}/${databaseName}`, {}, config);
+    const response = await couchDBRequest(
+      `${baseUrl}/${databaseName}`,
+      {},
+      config,
+    );
     return response.ok;
   } catch (error) {
     console.warn(`Failed to connect to database ${databaseName}:`, error);
@@ -238,14 +252,14 @@ export async function testDatabaseConnection(
  */
 export async function createDatabase(
   databaseName: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<boolean> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}`,
-      { method: 'PUT' },
-      config
+      { method: "PUT" },
+      config,
     );
 
     if (response.status === 201) {
@@ -256,7 +270,9 @@ export async function createDatabase(
       return true;
     } else {
       const errorData: CouchDBError = await response.json();
-      throw new Error(`CouchDB database creation error: ${errorData.error} - ${errorData.reason}`);
+      throw new Error(
+        `CouchDB database creation error: ${errorData.error} - ${errorData.reason}`,
+      );
     }
   } catch (error) {
     console.error(`Failed to create database ${databaseName}:`, error);
@@ -271,12 +287,12 @@ export function getDefaultDatabaseSecurity(): CouchDBSecurityObject {
   return {
     admins: {
       names: [],
-      roles: ['_admin']
+      roles: ["_admin"],
     },
     members: {
       names: [],
-      roles: [] // Open read/write for all authenticated users
-    }
+      roles: [], // Open read/write for all authenticated users
+    },
   };
 }
 
@@ -286,27 +302,32 @@ export function getDefaultDatabaseSecurity(): CouchDBSecurityObject {
 export async function setDatabaseSecurity(
   databaseName: string,
   securityObject: CouchDBSecurityObject,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<void> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}/_security`,
       {
-        method: 'PUT',
-        body: JSON.stringify(securityObject)
+        method: "PUT",
+        body: JSON.stringify(securityObject),
       },
-      config
+      config,
     );
 
     if (!response.ok) {
       const errorData: CouchDBError = await response.json();
-      throw new Error(`CouchDB security update error: ${errorData.error} - ${errorData.reason}`);
+      throw new Error(
+        `CouchDB security update error: ${errorData.error} - ${errorData.reason}`,
+      );
     }
 
     console.log(`🔒 Security settings updated for database: ${databaseName}`);
   } catch (error) {
-    console.error(`Failed to set security for database ${databaseName}:`, error);
+    console.error(
+      `Failed to set security for database ${databaseName}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -317,18 +338,18 @@ export async function setDatabaseSecurity(
 export async function getDocument<T extends CouchDBDocument = CouchDBDocument>(
   databaseName: string,
   documentId: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<T | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}`,
       {},
-      config
+      config,
     );
 
     if (response.ok) {
-      return await response.json() as T;
+      return (await response.json()) as T;
     }
 
     return null;
@@ -347,32 +368,28 @@ export async function getDocument<T extends CouchDBDocument = CouchDBDocument>(
  * @param config - Optional CouchDB configuration overrides
  */
 export async function getDocumentWithAttachments<
-  T extends CouchDBDocumentWithAttachments = CouchDBDocumentWithAttachments
+  T extends CouchDBDocumentWithAttachments = CouchDBDocumentWithAttachments,
 >(
   databaseName: string,
   documentId: string,
   includeAttachmentData = false,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<T | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
     const query = new URLSearchParams();
     if (includeAttachmentData) {
-      query.set('attachments', 'true');
-      query.set('att_encoding_info', 'true');
+      query.set("attachments", "true");
+      query.set("att_encoding_info", "true");
     }
 
     const queryString = query.toString();
-    const url = `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}${queryString ? `?${queryString}` : ''}`;
+    const url = `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}${queryString ? `?${queryString}` : ""}`;
 
-    const response = await couchDBRequest(
-      url,
-      {},
-      config
-    );
+    const response = await couchDBRequest(url, {}, config);
 
     if (response.ok) {
-      return await response.json() as T;
+      return (await response.json()) as T;
     }
 
     if (response.status === 404) {
@@ -380,9 +397,14 @@ export async function getDocumentWithAttachments<
     }
 
     const error: CouchDBError = await response.json();
-    throw new Error(`CouchDB document fetch error: ${error.error} - ${error.reason}`);
+    throw new Error(
+      `CouchDB document fetch error: ${error.error} - ${error.reason}`,
+    );
   } catch (error) {
-    console.warn(`Failed to get document with attachments: ${documentId}`, error);
+    console.warn(
+      `Failed to get document with attachments: ${documentId}`,
+      error,
+    );
     return null;
   }
 }
@@ -415,11 +437,11 @@ export async function getView(
   designDocName: string,
   viewName: string,
   queryParams?: CouchDBViewQueryParams,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBViewResponse | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
-    const cleanDesignDocName = designDocName.startsWith('_design/')
+    const cleanDesignDocName = designDocName.startsWith("_design/")
       ? designDocName.slice(8)
       : designDocName;
 
@@ -428,14 +450,14 @@ export async function getView(
     const response = await couchDBRequest(
       url,
       {
-        method: 'POST',
-        body: queryParams ? JSON.stringify(queryParams) : '{}'
+        method: "POST",
+        body: queryParams ? JSON.stringify(queryParams) : "{}",
       },
-      config
+      config,
     );
 
     if (response.ok) {
-      return await response.json() as CouchDBViewResponse;
+      return (await response.json()) as CouchDBViewResponse;
     }
 
     if (response.status === 404) {
@@ -443,9 +465,14 @@ export async function getView(
     }
 
     const error: CouchDBError = await response.json();
-    throw new Error(`CouchDB view query error: ${error.error} - ${error.reason}`);
+    throw new Error(
+      `CouchDB view query error: ${error.error} - ${error.reason}`,
+    );
   } catch (error) {
-    if (error instanceof Error && error.message.includes('CouchDB view query error')) {
+    if (
+      error instanceof Error &&
+      error.message.includes("CouchDB view query error")
+    ) {
       throw error;
     }
     console.warn(`Failed to query view: ${designDocName}/${viewName}`, error);
@@ -488,7 +515,7 @@ export async function getView(
 export async function getAllDocs(
   databaseName: string,
   queryParams?: CouchDBViewQueryParams,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBViewResponse | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
@@ -497,14 +524,14 @@ export async function getAllDocs(
     const response = await couchDBRequest(
       url,
       {
-        method: 'POST',
-        body: queryParams ? JSON.stringify(queryParams) : '{}'
+        method: "POST",
+        body: queryParams ? JSON.stringify(queryParams) : "{}",
       },
-      config
+      config,
     );
 
     if (response.ok) {
-      return await response.json() as CouchDBViewResponse;
+      return (await response.json()) as CouchDBViewResponse;
     }
 
     if (response.status === 404) {
@@ -512,12 +539,20 @@ export async function getAllDocs(
     }
 
     const error: CouchDBError = await response.json();
-    throw new Error(`CouchDB _all_docs query error: ${error.error} - ${error.reason}`);
+    throw new Error(
+      `CouchDB _all_docs query error: ${error.error} - ${error.reason}`,
+    );
   } catch (error) {
-    if (error instanceof Error && error.message.includes('CouchDB _all_docs query error')) {
+    if (
+      error instanceof Error &&
+      error.message.includes("CouchDB _all_docs query error")
+    ) {
       throw error;
     }
-    console.warn(`Failed to query _all_docs for database: ${databaseName}`, error);
+    console.warn(
+      `Failed to query _all_docs for database: ${databaseName}`,
+      error,
+    );
     return null;
   }
 }
@@ -549,7 +584,7 @@ export async function createUser(
   password: string,
   payload?: CreateUserPayload,
   roles?: string[],
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
   const { baseUrl } = getCouchDBConfig(config);
 
@@ -557,29 +592,31 @@ export async function createUser(
     _id: `org.couchdb.user:${username}`,
     name: username,
     password,
-    type: 'user',
+    type: "user",
     roles: roles || [],
     iterations: 10,
-    pbkdf2_prf: 'sha',
-    password_scheme: 'simple',
-    ...payload
+    pbkdf2_prf: "sha",
+    password_scheme: "simple",
+    ...payload,
   };
 
   const response = await couchDBRequest(
     `${baseUrl}/_users/${encodeURIComponent(userDoc._id)}`,
     {
-      method: 'PUT',
-      body: JSON.stringify(userDoc)
+      method: "PUT",
+      body: JSON.stringify(userDoc),
     },
-    config
+    config,
   );
 
   if (!response.ok) {
     const error: CouchDBError = await response.json();
-    throw new Error(`CouchDB user creation error: ${error.error} - ${error.reason}`);
+    throw new Error(
+      `CouchDB user creation error: ${error.error} - ${error.reason}`,
+    );
   }
 
-  return await response.json() as CouchDBResponse;
+  return (await response.json()) as CouchDBResponse;
 }
 
 /**
@@ -588,17 +625,17 @@ export async function createUser(
 export async function putDocument<T extends CouchDBDocument>(
   databaseName: string,
   document: T,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
   const { baseUrl } = getCouchDBConfig(config);
 
   const response = await couchDBRequest(
     `${baseUrl}/${databaseName}/${encodeURIComponent(document._id)}`,
     {
-      method: 'PUT',
-      body: JSON.stringify(document)
+      method: "PUT",
+      body: JSON.stringify(document),
     },
-    config
+    config,
   );
 
   if (!response.ok) {
@@ -606,7 +643,7 @@ export async function putDocument<T extends CouchDBDocument>(
     throw new Error(`CouchDB error: ${error.error} - ${error.reason}`);
   }
 
-  return await response.json() as CouchDBResponse;
+  return (await response.json()) as CouchDBResponse;
 }
 
 /**
@@ -616,24 +653,24 @@ export async function deleteDocument(
   databaseName: string,
   documentId: string,
   revision: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
-  const { baseUrl } = getCouchDBConfig(config)
+  const { baseUrl } = getCouchDBConfig(config);
 
   const response = await couchDBRequest(
     `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}?rev=${encodeURIComponent(revision)}`,
     {
-      method: 'DELETE'
+      method: "DELETE",
     },
-    config
-  )
+    config,
+  );
 
   if (!response.ok) {
-    const error: CouchDBError = await response.json()
-    throw new Error(`CouchDB delete error: ${error.error} - ${error.reason}`)
+    const error: CouchDBError = await response.json();
+    throw new Error(`CouchDB delete error: ${error.error} - ${error.reason}`);
   }
 
-  return await response.json() as CouchDBResponse
+  return (await response.json()) as CouchDBResponse;
 }
 
 /**
@@ -642,31 +679,34 @@ export async function deleteDocument(
 export async function bulkDocs<T extends CouchDBDocument>(
   databaseName: string,
   documents: T[],
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBBulkDocsResponse[]> {
-  const { baseUrl } = getCouchDBConfig(config)
+  const { baseUrl } = getCouchDBConfig(config);
 
   const response = await couchDBRequest(
     `${baseUrl}/${databaseName}/_bulk_docs`,
     {
-      method: 'POST',
-      body: JSON.stringify({ docs: documents })
+      method: "POST",
+      body: JSON.stringify({ docs: documents }),
     },
-    config
-  )
+    config,
+  );
 
   if (!response.ok) {
-    const error: CouchDBError = await response.json()
-    throw new Error(`CouchDB bulkDocs error: ${error.error} - ${error.reason}`)
+    const error: CouchDBError = await response.json();
+    throw new Error(`CouchDB bulkDocs error: ${error.error} - ${error.reason}`);
   }
 
-  return await response.json() as CouchDBBulkDocsResponse[]
+  return (await response.json()) as CouchDBBulkDocsResponse[];
 }
 
 /**
  * Compare two CouchDB documents for equality, excluding _rev field
  */
-function documentsAreIdentical(doc1: CouchDBDocument, doc2: CouchDBDocument): boolean {
+function documentsAreIdentical(
+  doc1: CouchDBDocument,
+  doc2: CouchDBDocument,
+): boolean {
   // Create copies without _rev field for comparison
   const doc1Copy = { ...doc1 };
   const doc2Copy = { ...doc2 };
@@ -683,7 +723,7 @@ function documentsAreIdentical(doc1: CouchDBDocument, doc2: CouchDBDocument): bo
 export async function createOrUpdateDesignDocument(
   databaseName: string,
   designDocument: CouchDBDesignDocument,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
   console.log(`📄 Processing design document: ${designDocument._id}`);
 
@@ -692,32 +732,41 @@ export async function createOrUpdateDesignDocument(
     const existingDoc = await getDocument<CouchDBDesignDocument>(
       databaseName,
       designDocument._id,
-      config
+      config,
     );
 
     if (existingDoc) {
       // Check if documents are identical (excluding _rev)
       if (documentsAreIdentical(existingDoc, designDocument)) {
-        console.log(`📄 Design document identical, no need for update: ${designDocument._id}`);
+        console.log(
+          `📄 Design document identical, no need for update: ${designDocument._id}`,
+        );
         return {
           ok: true,
           id: designDocument._id,
-          rev: existingDoc._rev
+          rev: existingDoc._rev,
         };
       }
 
       designDocument._rev = existingDoc._rev;
-      console.log(`📄 Updating existing design document: ${designDocument._id}`);
+      console.log(
+        `📄 Updating existing design document: ${designDocument._id}`,
+      );
     } else {
       console.log(`📄 Creating new design document: ${designDocument._id}`);
     }
 
     const result = await putDocument(databaseName, designDocument, config);
-    console.log(`✅ Design document processed successfully: ${designDocument._id}`);
+    console.log(
+      `✅ Design document processed successfully: ${designDocument._id}`,
+    );
 
     return result;
   } catch (error) {
-    console.error(`❌ Failed to create/update design document ${designDocument._id}:`, error);
+    console.error(
+      `❌ Failed to create/update design document ${designDocument._id}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -728,7 +777,7 @@ export async function createOrUpdateDesignDocument(
 export async function initializeDatabase(
   databaseName: string,
   designDocuments: CouchDBDesignDocument[],
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<void> {
   console.log(`🔧 Initializing database: ${databaseName}`);
 
@@ -743,7 +792,11 @@ export async function initializeDatabase(
 
       // Step 3: Set default security settings
       console.log(`🔒 Setting security for database: ${databaseName}`);
-      await setDatabaseSecurity(databaseName, getDefaultDatabaseSecurity(), config);
+      await setDatabaseSecurity(
+        databaseName,
+        getDefaultDatabaseSecurity(),
+        config,
+      );
     } else {
       console.log(`ℹ️ Database already exists: ${databaseName}`);
     }
@@ -755,7 +808,10 @@ export async function initializeDatabase(
 
     console.log(`🎉 Database initialization completed: ${databaseName}`);
   } catch (error) {
-    console.error(`💥 Database initialization failed for ${databaseName}:`, error);
+    console.error(
+      `💥 Database initialization failed for ${databaseName}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -764,64 +820,66 @@ export async function initializeDatabase(
  * Validate CouchDB environment configuration
  */
 export interface CouchDBEnvironmentOptions {
-  adminAuth?: string | null
-  cookieSecret?: string | null
-  strict?: boolean
+  adminAuth?: string | null;
+  cookieSecret?: string | null;
+  strict?: boolean;
 }
 
-export function validateCouchDBEnvironment(options: CouchDBEnvironmentOptions = {}): void {
+export function validateCouchDBEnvironment(
+  options: CouchDBEnvironmentOptions = {},
+): void {
   const adminAuth =
     options.adminAuth ??
     process.env.NUXT_COUCHDB_ADMIN_AUTH ??
-    process.env.COUCHDB_ADMIN_AUTH
+    process.env.COUCHDB_ADMIN_AUTH;
 
   if (!adminAuth) {
     const message = `
 🚨 CouchDB Configuration Warning:
 COUCHDB_ADMIN_AUTH (or NUXT_COUCHDB_ADMIN_AUTH) is not defined. Database initialization will be skipped.
-    `.trim()
+    `.trim();
 
     if (options.strict) {
-      throw new Error(message)
+      throw new Error(message);
     } else {
-      console.warn(message)
-      return
+      console.warn(message);
+      return;
     }
   }
 
   try {
-    const decoded = Buffer.from(adminAuth, 'base64').toString('utf-8')
-    if (!decoded.includes(':')) {
-      throw new Error('Invalid format')
+    const decoded = Buffer.from(adminAuth, "base64").toString("utf-8");
+    if (!decoded.includes(":")) {
+      throw new Error("Invalid format");
     }
   } catch (error) {
     const message = `
 🚨 CouchDB Configuration Error:
 COUCHDB_ADMIN_AUTH must be base64("username:password").
-    `.trim()
+    `.trim();
 
     if (options.strict) {
-      throw new Error(message)
+      throw new Error(message);
     } else {
-      console.warn(message)
+      console.warn(message);
     }
   }
 
   const cookieSecret =
     options.cookieSecret ??
     process.env.NUXT_COUCHDB_COOKIE_SECRET ??
-    process.env.COUCHDB_COOKIE_SECRET
+    process.env.COUCHDB_COOKIE_SECRET;
 
   if (!cookieSecret) {
     const message = `
 🚨 CouchDB Configuration Warning:
 COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Session generation may fail at runtime.
-    `.trim()
+    `.trim();
 
     if (options.strict) {
-      throw new Error(message)
+      throw new Error(message);
     } else {
-      console.warn(message)
+      console.warn(message);
     }
   }
 }
@@ -848,32 +906,32 @@ COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Session ge
 export async function authenticate(
   username: string,
   password: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBLoginResult> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
 
     // Create form data for authentication
     const formData = new URLSearchParams();
-    formData.append('name', username);
-    formData.append('password', password);
-    console.log('Authorize request for', username, 'with password')
+    formData.append("name", username);
+    formData.append("password", password);
+    // console.log('Authorize request for', username, 'with password')
 
     const response = await fetch(`${baseUrl}/_session`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: formData.toString()
+      body: formData.toString(),
     });
 
-    console.log('_session response:', response);
+    console.log("_session response:", response);
     if (response.ok) {
       // Extract AuthSession cookie from Set-Cookie header
       // not anymore
       // just return the it so it can be set
-      return { ok: true, setCookie: response.headers.get('set-cookie') }
-/*
+      return { ok: true, setCookie: response.headers.get("set-cookie") };
+      /*
       // keep this code here commented as I might want to use it later
       const setCookieHeader = response.headers.get('set-cookie');
       if (setCookieHeader) {
@@ -894,7 +952,7 @@ export async function authenticate(
 
     return { ok: false };
   } catch (error) {
-    console.warn('Authentication failed:', error);
+    console.warn("Authentication failed:", error);
     return { ok: false };
   }
 }
@@ -924,40 +982,40 @@ export async function authenticate(
  */
 export async function getSession(
   authOptions: { authSessionCookie: string } | { basicAuthToken: string },
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBSessionResponse | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
 
     // Build headers based on auth type
     const headers: HeadersInit = {
-      'Content-Type': 'application/json'
+      "Content-Type": "application/json",
     };
 
-    if ('authSessionCookie' in authOptions) {
+    if ("authSessionCookie" in authOptions) {
       // Smart detection: extract cookie value if full "AuthSession=value" format is passed
       let cookieValue = authOptions.authSessionCookie;
-      if (cookieValue.startsWith('AuthSession=')) {
-        cookieValue = cookieValue.substring('AuthSession='.length);
+      if (cookieValue.startsWith("AuthSession=")) {
+        cookieValue = cookieValue.substring("AuthSession=".length);
       }
-      headers['Cookie'] = `AuthSession=${cookieValue}`;
-    } else if ('basicAuthToken' in authOptions) {
-      headers['Authorization'] = `Basic ${authOptions.basicAuthToken}`;
+      headers["Cookie"] = `AuthSession=${cookieValue}`;
+    } else if ("basicAuthToken" in authOptions) {
+      headers["Authorization"] = `Basic ${authOptions.basicAuthToken}`;
     }
 
     // console.log('Fetching', `${baseUrl}/_session`, headers)
     const response = await fetch(`${baseUrl}/_session`, {
-      method: 'GET',
-      headers
+      method: "GET",
+      headers,
     });
 
     if (response.ok) {
-      return await response.json() as CouchDBSessionResponse;
+      return (await response.json()) as CouchDBSessionResponse;
     }
 
     return null;
   } catch (error) {
-    console.warn('Get session failed:', error);
+    console.warn("Get session failed:", error);
     return null;
   }
 }
@@ -965,83 +1023,98 @@ export async function getSession(
 /**
  * Generate a CouchDB AuthSession cookie value.
  */
-export function generateAuthSessionCookie(username, couchSecret, userSalt, timeoutSeconds = 600) {
-    // Calculate expiration timestamp
-    const expirationTime = Math.floor(Date.now() / 1000) + timeoutSeconds;
-    const hexExpiration = expirationTime.toString(16).toUpperCase();
+export function generateAuthSessionCookie(
+  username,
+  couchSecret,
+  userSalt,
+  timeoutSeconds = 600,
+) {
+  // Calculate expiration timestamp
+  const expirationTime = Math.floor(Date.now() / 1000) + timeoutSeconds;
+  const hexExpiration = expirationTime.toString(16).toUpperCase();
 
-    // Create message to sign
-    const message = `${username}:${hexExpiration}`;
+  // Create message to sign
+  const message = `${username}:${hexExpiration}`;
 
-    // Create HMAC key (couch secret + user salt)
-    const hmacKey = couchSecret + userSalt;
+  // Create HMAC key (couch secret + user salt)
+  const hmacKey = couchSecret + userSalt;
 
-    const messageBytes = textEncoder.encode(message);
-    const keyBytes = textEncoder.encode(hmacKey);
-    const signatureBytes = computeHmac('sha1', keyBytes, messageBytes);
+  const messageBytes = textEncoder.encode(message);
+  const keyBytes = textEncoder.encode(hmacKey);
+  const signatureBytes = computeHmac("sha1", keyBytes, messageBytes);
 
-    if (!signatureBytes) {
-        throw new Error('Unsupported HMAC algorithm: sha1');
-    }
+  if (!signatureBytes) {
+    throw new Error("Unsupported HMAC algorithm: sha1");
+  }
 
-    const signature = Buffer.from(signatureBytes);
+  const signature = Buffer.from(signatureBytes);
 
-    // Construct cookie value
-    const cookieData = `${username}:${hexExpiration}:${signature.toString('latin1')}`;
+  // Construct cookie value
+  const cookieData = `${username}:${hexExpiration}:${signature.toString("latin1")}`;
 
-    // Base64 encode (URL-safe without padding)
-    const base64Cookie = Buffer.from(cookieData, 'binary')
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=/g, '');
+  // Base64 encode (URL-safe without padding)
+  const base64Cookie = Buffer.from(cookieData, "binary")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 
-    // For development, skip Secure flag when not using HTTPS
-    const isProduction = process.env.NODE_ENV === 'production'
-    const secureFlag = isProduction ? '; Secure' : ''
+  // For development, skip Secure flag when not using HTTPS
+  const isProduction = process.env.NODE_ENV === "production";
+  const secureFlag = isProduction ? "; Secure" : "";
 
-    return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
+  return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
 }
 
-export function verifyAuthSessionValue ({
-                                            value,
-                                            serverSecret,
-                                            userSaltHex,
-                                            hmacAlgos = ['sha256','sha1'], // try your list in order
-                                            now = Date.now()
-                                        }) {
-    if (!value) return { ok: false, reason: 'missing value' }
-    const b = value.replace(/-/g, '+').replace(/_/g, '/')
-    const raw = Buffer.from(b + '='.repeat((4 - (b.length % 4)) % 4), 'base64')
+export function verifyAuthSessionValue({
+  value,
+  serverSecret,
+  userSaltHex,
+  hmacAlgos = ["sha256", "sha1"], // try your list in order
+  now = Date.now(),
+}) {
+  if (!value) return { ok: false, reason: "missing value" };
+  const b = value.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = Buffer.from(b + "=".repeat((4 - (b.length % 4)) % 4), "base64");
 
-    // Split "user:hex:macBytes"
-    const firstColon = raw.indexOf(':'.charCodeAt(0))
-    if (firstColon < 0) return { ok: false, reason: 'bad format' }
-    const secondColon = raw.indexOf(':'.charCodeAt(0), firstColon + 1)
-    if (secondColon < 0) return { ok: false, reason: 'bad format' }
+  // Split "user:hex:macBytes"
+  const firstColon = raw.indexOf(":".charCodeAt(0));
+  if (firstColon < 0) return { ok: false, reason: "bad format" };
+  const secondColon = raw.indexOf(":".charCodeAt(0), firstColon + 1);
+  if (secondColon < 0) return { ok: false, reason: "bad format" };
 
-    const user = raw.slice(0, firstColon).toString('utf8')
-    const hex = raw.slice(firstColon + 1, secondColon).toString('utf8')
-    const macBytes = raw.slice(secondColon + 1)
+  const user = raw.slice(0, firstColon).toString("utf8");
+  const hex = raw.slice(firstColon + 1, secondColon).toString("utf8");
+  const macBytes = raw.slice(secondColon + 1);
 
-    const msg = `${user}:${hex}`
-    const key = Buffer.concat([Buffer.from(serverSecret, 'utf8'), Buffer.from(userSaltHex, 'hex')])
+  const msg = `${user}:${hex}`;
+  const key = Buffer.concat([
+    Buffer.from(serverSecret, "utf8"),
+    Buffer.from(userSaltHex, "hex"),
+  ]);
 
-    for (const algo of hmacAlgos) {
-        const calcBytes = computeHmac(algo, new Uint8Array(key), textEncoder.encode(msg))
-        if (!calcBytes) {
-            continue
-        }
-
-        if (timingSafeEqual(calcBytes, macBytes)) {
-            const exp = parseInt(hex, 16)
-            const nowSec = Math.floor((now instanceof Date ? now.getTime() : now) / 1000)
-            if (Number.isNaN(exp)) return { ok: false, reason: 'bad hex' }
-            if (nowSec > exp) return { ok: false, username: user, exp, reason: 'expired' }
-            return { ok: true, username: user, exp }
-        }
+  for (const algo of hmacAlgos) {
+    const calcBytes = computeHmac(
+      algo,
+      new Uint8Array(key),
+      textEncoder.encode(msg),
+    );
+    if (!calcBytes) {
+      continue;
     }
-    return { ok: false, reason: 'HMAC mismatch' }
+
+    if (timingSafeEqual(calcBytes, macBytes)) {
+      const exp = parseInt(hex, 16);
+      const nowSec = Math.floor(
+        (now instanceof Date ? now.getTime() : now) / 1000,
+      );
+      if (Number.isNaN(exp)) return { ok: false, reason: "bad hex" };
+      if (nowSec > exp)
+        return { ok: false, username: user, exp, reason: "expired" };
+      return { ok: true, username: user, exp };
+    }
+  }
+  return { ok: false, reason: "HMAC mismatch" };
 }
 
 /**
@@ -1086,16 +1159,16 @@ export async function putAttachment(
   data: Buffer | Uint8Array | string,
   contentType: string,
   rev: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
 
     // Convert base64 string to Buffer if needed
     let attachmentData: Buffer | Uint8Array;
-    if (typeof data === 'string') {
+    if (typeof data === "string") {
       // Assume it's base64 encoded
-      attachmentData = Buffer.from(data, 'base64');
+      attachmentData = Buffer.from(data, "base64");
     } else {
       attachmentData = data;
     }
@@ -1103,24 +1176,29 @@ export async function putAttachment(
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}/${encodeURIComponent(attachmentName)}?rev=${rev}`,
       {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': contentType,
-          'Authorization': `Basic ${getCouchDBConfig(config).adminAuth}`
+          "Content-Type": contentType,
+          Authorization: `Basic ${getCouchDBConfig(config).adminAuth}`,
         },
-        body: attachmentData
+        body: attachmentData,
       },
-      config
+      config,
     );
 
     if (!response.ok) {
       const error: CouchDBError = await response.json();
-      throw new Error(`CouchDB attachment upload error: ${error.error} - ${error.reason}`);
+      throw new Error(
+        `CouchDB attachment upload error: ${error.error} - ${error.reason}`,
+      );
     }
 
-    return await response.json() as CouchDBResponse;
+    return (await response.json()) as CouchDBResponse;
   } catch (error) {
-    console.error(`Failed to upload attachment: ${attachmentName} to document: ${documentId}`, error);
+    console.error(
+      `Failed to upload attachment: ${attachmentName} to document: ${documentId}`,
+      error,
+    );
     throw error;
   }
 }
@@ -1148,7 +1226,7 @@ export async function getAttachment(
   databaseName: string,
   documentId: string,
   attachmentName: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<{ data: Buffer; contentType: string } | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
@@ -1156,20 +1234,24 @@ export async function getAttachment(
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}/${encodeURIComponent(attachmentName)}`,
       {
-        method: 'GET'
+        method: "GET",
       },
-      config
+      config,
     );
 
     if (response.ok) {
       const data = Buffer.from(await response.arrayBuffer());
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const contentType =
+        response.headers.get("content-type") || "application/octet-stream";
       return { data, contentType };
     }
 
     return null;
   } catch (error) {
-    console.warn(`Failed to get attachment: ${attachmentName} from document: ${documentId}`, error);
+    console.warn(
+      `Failed to get attachment: ${attachmentName} from document: ${documentId}`,
+      error,
+    );
     return null;
   }
 }
@@ -1194,7 +1276,7 @@ export async function deleteAttachment(
   documentId: string,
   attachmentName: string,
   rev: string,
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<CouchDBResponse> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
@@ -1202,19 +1284,24 @@ export async function deleteAttachment(
     const response = await couchDBRequest(
       `${baseUrl}/${databaseName}/${encodeURIComponent(documentId)}/${encodeURIComponent(attachmentName)}?rev=${rev}`,
       {
-        method: 'DELETE'
+        method: "DELETE",
       },
-      config
+      config,
     );
 
     if (!response.ok) {
       const error: CouchDBError = await response.json();
-      throw new Error(`CouchDB attachment deletion error: ${error.error} - ${error.reason}`);
+      throw new Error(
+        `CouchDB attachment deletion error: ${error.error} - ${error.reason}`,
+      );
     }
 
-    return await response.json() as CouchDBResponse;
+    return (await response.json()) as CouchDBResponse;
   } catch (error) {
-    console.error(`Failed to delete attachment: ${attachmentName} from document: ${documentId}`, error);
+    console.error(
+      `Failed to delete attachment: ${attachmentName} from document: ${documentId}`,
+      error,
+    );
     throw error;
   }
 }
@@ -1244,47 +1331,47 @@ export async function deleteAttachment(
  */
 export async function logout(
   authOptions: { authSessionCookie: string } | { basicAuthToken: string },
-  config?: CouchDBConfig
+  config?: CouchDBConfig,
 ): Promise<{ ok: boolean; setCookie?: string } | null> {
   try {
     const { baseUrl } = getCouchDBConfig(config);
 
     // Build headers based on auth type
     const headers: HeadersInit = {
-      'Content-Type': 'application/json'
+      "Content-Type": "application/json",
     };
 
-    if ('authSessionCookie' in authOptions) {
+    if ("authSessionCookie" in authOptions) {
       // Smart detection: extract cookie value if full "AuthSession=value" format is passed
       let cookieValue = authOptions.authSessionCookie;
-      if (cookieValue.startsWith('AuthSession=')) {
-        cookieValue = cookieValue.substring('AuthSession='.length);
+      if (cookieValue.startsWith("AuthSession=")) {
+        cookieValue = cookieValue.substring("AuthSession=".length);
       }
-      headers['Cookie'] = `AuthSession=${cookieValue}`;
-    } else if ('basicAuthToken' in authOptions) {
-      headers['Authorization'] = `Basic ${authOptions.basicAuthToken}`;
+      headers["Cookie"] = `AuthSession=${cookieValue}`;
+    } else if ("basicAuthToken" in authOptions) {
+      headers["Authorization"] = `Basic ${authOptions.basicAuthToken}`;
     }
 
     const response = await fetch(`${baseUrl}/_session`, {
-      method: 'DELETE',
-      headers
+      method: "DELETE",
+      headers,
     });
 
     if (response.ok) {
       const result = await response.json();
 
       // Extract Set-Cookie header that clears the AuthSession cookie
-      const setCookieHeader = response.headers.get('set-cookie');
+      const setCookieHeader = response.headers.get("set-cookie");
 
       return {
         ok: result.ok || true,
-        setCookie: setCookieHeader || undefined
+        setCookie: setCookieHeader || undefined,
       };
     }
 
     return null;
   } catch (error) {
-    console.warn('Logout failed:', error);
+    console.warn("Logout failed:", error);
     return null;
   }
 }
