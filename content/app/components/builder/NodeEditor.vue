@@ -3267,6 +3267,22 @@ const isObjectField = (
 ): field is Extract<ComponentArrayItemField, { type: "jsonobject" }> =>
     field.type === "jsonobject";
 
+const normalizedDefinitions = new WeakSet<ComponentDefinition>();
+
+const normalizeSchemaUiWidget = (
+    schema: ComponentPropSchema | ComponentArrayItemField,
+) => {
+    if (schema.ui?.widget === "textarea" && schema.type === "text") {
+        schema.type = "textarea";
+    }
+    if ("fields" in schema && Array.isArray(schema.fields)) {
+        schema.fields.forEach((field) => normalizeSchemaUiWidget(field));
+    }
+    if ("items" in schema && Array.isArray(schema.items)) {
+        schema.items.forEach((item) => normalizeSchemaUiWidget(item));
+    }
+};
+
 type PropInputType =
     | "text"
     | "textarea"
@@ -3304,6 +3320,18 @@ const componentDef = computed(() =>
     props.node.type === "component"
         ? props.registry.lookup[props.node.component]
         : undefined,
+);
+
+watch(
+    () => componentDef.value,
+    (definition) => {
+        if (!definition || normalizedDefinitions.has(definition)) {
+            return;
+        }
+        definition.props?.forEach((prop) => normalizeSchemaUiWidget(prop));
+        normalizedDefinitions.add(definition);
+    },
+    { immediate: true },
 );
 
 const propDraft = reactive<Record<string, any>>({});
