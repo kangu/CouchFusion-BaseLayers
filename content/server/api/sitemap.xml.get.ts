@@ -198,10 +198,7 @@ export default defineEventHandler(async (event) => {
   try {
     const runtimeConfig = useRuntimeConfig();
     const appConfig = useAppConfig();
-    const ignoredPrefixes = resolveIgnoredPrefixes(appConfig?.content, {
-      includeAuto: false,
-      includeMerged: false,
-    });
+    const ignoredPrefixes = resolveIgnoredPrefixes(appConfig?.content);
 
     const entriesMap = new Map<string, SitemapEntry>();
 
