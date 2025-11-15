@@ -11,7 +11,10 @@ export default defineNuxtConfig({
     dirs: [fileURLToPath(new URL("./composables", import.meta.url))],
   },
 
-  plugins: [fileURLToPath(new URL("./plugins/umami.client", import.meta.url))],
+  plugins: [
+    // fileURLToPath(new URL("./plugins/umami.client", import.meta.url)),
+    fileURLToPath(new URL("./plugins/analytics.client", import.meta.url)),
+  ],
 
   runtimeConfig: {
     analytics: {
