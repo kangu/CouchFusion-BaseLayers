@@ -65,8 +65,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { type, payload } = body as {
-    type?: string;
+  const { payload } = body as {
     payload?: Record<string, any>;
   };
 
@@ -98,13 +97,6 @@ export default defineEventHandler(async (event) => {
     return { ok: true };
   }
 
-  if (!type || !["event", "pageview"].includes(type)) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Invalid payload: unsupported type",
-    });
-  }
-
   // Preserve client signals
   const ua = getRequestHeader(event, "user-agent") || "unknown";
   const acceptLang = getRequestHeader(event, "accept-language") || undefined;
@@ -125,7 +117,7 @@ export default defineEventHandler(async (event) => {
       ...(acceptLang ? { "Accept-Language": acceptLang } : {}),
       ...(clientIp ? { "X-Forwarded-For": clientIp } : {}),
     },
-    body: JSON.stringify({ type, payload: normalizedPayload }),
+    body: JSON.stringify({ type: "event", payload: normalizedPayload }),
   });
 
   const text = await res.text();

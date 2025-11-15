@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: AnalyticsClientConfig = {
   debug: false,
 };
 
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -61,7 +62,7 @@ export function createAnalyticsClient(
   };
   const isLoaded = ref(true);
 
-  async function send(type: "event" | "pageview", payload: Record<string, any>) {
+  async function sendPayload(payload: Record<string, any>) {
     if (typeof fetch === "undefined") return;
     try {
       const res = await fetch(config.endpoint, {
@@ -69,7 +70,7 @@ export function createAnalyticsClient(
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ type, payload, sentAt: nowIso() }),
+        body: JSON.stringify({ type: "event", payload, sentAt: nowIso() }),
       });
       if (!res.ok && config.debug) {
         const text = await res.text().catch(() => "");
@@ -109,7 +110,7 @@ export function createAnalyticsClient(
   // Simulate full pageview
   async function trackPageview(extra = {}) {
     const payload = buildBasePayload(extra);
-    await send("pageview", payload);
+    await sendPayload(payload);
   }
 
   // Arbitrary events
@@ -120,7 +121,7 @@ export function createAnalyticsClient(
       data,
       ...extra,
     });
-    await send("event", payload);
+    await sendPayload(payload);
   }
 
   async function track(name, data = {}, extra = {}) {
