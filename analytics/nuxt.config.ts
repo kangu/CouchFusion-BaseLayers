@@ -11,7 +11,10 @@ export default defineNuxtConfig({
     dirs: [fileURLToPath(new URL("./composables", import.meta.url))],
   },
 
-  plugins: [fileURLToPath(new URL("./plugins/umami.client", import.meta.url))],
+  plugins: [
+    fileURLToPath(new URL("./plugins/analytics.client", import.meta.url)),
+    fileURLToPath(new URL("./plugins/analytics.server", import.meta.url)),
+  ],
 
   runtimeConfig: {
     analytics: {
@@ -21,6 +24,7 @@ export default defineNuxtConfig({
     },
     public: {
       analytics: {
+        endpoint: "/api/stats",
         umami: {
           websiteId: "",
           hostUrl: "/",
@@ -28,6 +32,10 @@ export default defineNuxtConfig({
           dataDomains: "",
           autoTrack: true,
           excludedPaths: [] as string[] | string,
+          includeTitle: true,
+          sendReferrer: true,
+          debug: false,
+          appName: undefined as string | undefined,
         },
       },
     },

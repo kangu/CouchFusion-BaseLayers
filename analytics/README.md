@@ -4,9 +4,9 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 
 ## Features
 - Auto-loads the Umami tracker script using runtime configuration.
-- `useUmami()` composable exposes `track`, `trackView`, and `isLoaded`.
-- `v-umami` directive attaches event handlers that fire Umami events declaratively.
-- Works entirely on the client; no SSR side effects.
+- `useAnalytics()` composable exposes `trackEvent`, `trackPageview`, and router helpers.
+- `v-analytics` directive attaches event handlers that fire Umami-backed events declaratively.
+- Ships SSR-safe directive registration so server rendering never errors on pages that include analytics bindings.
 
 ## Installation
 1. Add the layer to your Nuxt app:
@@ -24,15 +24,14 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
    ```ts
    export default defineNuxtConfig({
      runtimeConfig: {
-       public: {
-         analytics: {
-           umami: {
-             websiteId: process.env.UMAMI_WEBSITE_ID,
-             hostUrl: process.env.UMAMI_HOST_URL, // optional, defaults to https://analytics.umami.is
-             scriptPath: '/script.js',             // optional
-             dataDomains: 'example.com',           // optional CSV
-             autoTrack: true,                      // set false to disable auto tracking
-           },
+       analytics: {
+         umami: {
+           websiteId: process.env.UMAMI_WEBSITE_ID,
+           excludedPaths: process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS
+            ? process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS.split(',')
+                  .map((path) => path.trim())
+                  .filter(Boolean)
+            : []
          },
        },
      },
@@ -42,10 +41,10 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 3. Use the composable:
    ```vue
    <script setup lang="ts">
-   const umami = useUmami();
+   const analytics = useAnalytics();
 
    const trackSignup = () => {
-     umami.track('signup-click', { plan: 'pro' });
+     analytics.trackEvent('signup-click', { plan: 'pro' });
    };
    </script>
    ```
@@ -53,7 +52,7 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 4. Or use the directive:
    ```vue
    <template>
-     <button v-umami="{ event: 'cta-click', data: { location: 'hero' } }">
+     <button v-analytics="{ event: 'cta-click', data: { location: 'hero' } }">
        Try it now
      </button>
    </template>
@@ -61,10 +60,9 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 
 ## Runtime Config Notes
 - `websiteId` **must** be supplied; otherwise the layer warns and exits quietly.
-- `hostUrl` + `scriptPath` let you self-host Umami. By default the public cloud endpoint is used.
-- `dataDomains` controls domain filtering as per Umami docs.
-- Set `autoTrack: false` if you want to trigger every page view manually via `trackView`.
 - Provide `excludedPaths` (array or CSV string) to skip tracking for sensitive routes such as `/login` or `/admin/*`. When exclusions are set, the layer disables Umami's auto-tracking and manually emits page views for allowed routes.
+- Override `public.analytics.endpoint` if your frontend should post analytics to a different proxy route than `/api/stats`.
+- Toggle `includeTitle`, `sendReferrer`, or `debug` under `public.analytics.umami` to adjust payload metadata without touching code.
 
 ### Environment Examples
 Create a `.env` (auto-loaded by Nuxt/bun dev server) with a development website ID:
@@ -89,30 +87,17 @@ NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS=/internal-preview/*,/admin/*
 When running locally, `bun run dev` automatically reads `.env`. For production builds (e.g., `bun run build` on deploy), ensure these variables are present in the environment before starting the server.
 
 ## Directive API
-`v-umami`
+`v-analytics`
 - Value can be a string event name or an object `{ event, data?, trigger? }`.
-- `trigger` defaults to `"click"`; `v-umami:mouseover="'event'"` also works.
+- `trigger` defaults to `"click"`; `v-analytics:mouseover="'event'"` also works.
 - Automatically removes listeners when the component unmounts.
 
 ## Composable API
-`const { track, trackView, isLoaded } = useUmami();`
-- `track(event, data?)` – send a custom event.
-- `trackView(url?, referrer?)` – track a page view.
-- `isLoaded` – `ref<boolean>` indicating whether the tracker script is ready.
-- `getInstance()` – access the underlying global Umami object if needed.
+`const { trackEvent, trackPageview, trackRouterNavigation, track, trackView } = useAnalytics();`
+- `trackEvent(name, data?, extra?)` – send a custom event payload (also available as `track`).
+- `trackPageview(extra?)` – track a page view (also exposed as `trackView(url?, referrer?)`).
+- `trackRouterNavigation(to, from)` – helper wired to the Nuxt router's `afterEach` hook.
 
 ## Extending
-- You can override the directive by registering another `v-umami` directive in the consuming app.
+- You can override the directive by registering another `v-analytics` directive in the consuming app.
 - The layer exposes `#analytics` alias pointing to its root for custom imports if necessary.
-
-## Caddy routing
-
-@umamijs {
-    path /script.js
-    path /api/send
-}
-
-reverse_proxy @umamijs https://cloud.umami.is {
-    # Ensure the Host header is correct
-    header_up Host cloud.umami.is
-}
