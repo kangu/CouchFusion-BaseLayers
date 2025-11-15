@@ -72,6 +72,7 @@
                     class="node-panel__field"
                     :class="{ 'is-row': prop.type === 'boolean' }"
                     :role="fieldWrapperRole(prop)"
+                    v-on="fieldWrapperListeners(prop)"
                 >
                     <span>{{ prop.label }}</span>
                     <template v-if="prop.type === 'textarea'">
@@ -3267,6 +3268,22 @@ const isObjectField = (
 ): field is Extract<ComponentArrayItemField, { type: "jsonobject" }> =>
     field.type === "jsonobject";
 
+const normalizedDefinitions = new WeakSet<ComponentDefinition>();
+
+const normalizeSchemaUiWidget = (
+    schema: ComponentPropSchema | ComponentArrayItemField,
+) => {
+    if (schema.ui?.widget === "textarea" && schema.type === "text") {
+        schema.type = "textarea";
+    }
+    if ("fields" in schema && Array.isArray(schema.fields)) {
+        schema.fields.forEach((field) => normalizeSchemaUiWidget(field));
+    }
+    if ("items" in schema && Array.isArray(schema.items)) {
+        schema.items.forEach((item) => normalizeSchemaUiWidget(item));
+    }
+};
+
 type PropInputType =
     | "text"
     | "textarea"
@@ -3283,6 +3300,21 @@ const fieldWrapperTag = (schema: ComponentPropSchema) =>
 
 const fieldWrapperRole = (schema: ComponentPropSchema) =>
     schema.ui?.component ? "group" : undefined;
+
+const preventFieldWrapperActivation = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+};
+
+const fieldWrapperListeners = (schema: ComponentPropSchema) => {
+    if (schema.ui?.component) {
+        return {
+            onMousedown: preventFieldWrapperActivation,
+            onClick: preventFieldWrapperActivation,
+        };
+    }
+    return {};
+};
 
 const props = defineProps<{
     node: BuilderNodeChild;
@@ -3304,6 +3336,18 @@ const componentDef = computed(() =>
     props.node.type === "component"
         ? props.registry.lookup[props.node.component]
         : undefined,
+);
+
+watch(
+    () => componentDef.value,
+    (definition) => {
+        if (!definition || normalizedDefinitions.has(definition)) {
+            return;
+        }
+        definition.props?.forEach((prop) => normalizeSchemaUiWidget(prop));
+        normalizedDefinitions.add(definition);
+    },
+    { immediate: true },
 );
 
 const propDraft = reactive<Record<string, any>>({});
