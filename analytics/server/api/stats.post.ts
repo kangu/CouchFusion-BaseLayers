@@ -58,21 +58,50 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event).catch(() => null);
-  const { type, payload } = body || {};
-  payload.website = websiteId;
-
-  // handle exclusions
-  if (payload.url) {
-    if (isExcludedPath(payload.url)) {
-      // still return success to not give away that the route is ignored
-      return { ok: true };
-    }
-  }
-
-  if (!type || !payload || !payload.website) {
+  if (!body || typeof body !== "object") {
     throw createError({
       statusCode: 400,
-      statusMessage: "Invalid payload: { type, payload.website } required",
+      statusMessage: "Invalid payload: expected JSON body",
+    });
+  }
+
+  const { type, payload } = body as {
+    type?: string;
+    payload?: Record<string, any>;
+  };
+
+  if (!payload || typeof payload !== "object") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid payload: payload object is required",
+    });
+  }
+
+  const normalizedPayload = { ...payload, website: websiteId };
+
+  // handle exclusions
+  if (!normalizedPayload.website) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Analytics websiteId missing",
+    });
+  }
+
+  const pathForExclusion =
+    typeof normalizedPayload.pathname === "string" &&
+    normalizedPayload.pathname.length > 0
+      ? normalizedPayload.pathname
+      : normalizedPayload.url;
+
+  if (pathForExclusion && isExcludedPath(pathForExclusion)) {
+    // still return success to not give away that the route is ignored
+    return { ok: true };
+  }
+
+  if (!type || !["event", "pageview"].includes(type)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid payload: unsupported type",
     });
   }
 
@@ -86,7 +115,7 @@ export default defineEventHandler(async (event) => {
   const xff = getRequestHeader(event, "x-forwarded-for");
   const xffFirst = xff ? xff.split(",")[0].trim() : undefined;
   const clientIp = cfIp || xRealIp || xffFirst;
-  console.log("Sending payload from backend", clientIp, payload);
+  console.log("Sending payload from backend", clientIp, normalizedPayload);
 
   const res = await fetch(new URL("/api/send", umamiBase).toString(), {
     method: "POST",
@@ -96,7 +125,7 @@ export default defineEventHandler(async (event) => {
       ...(acceptLang ? { "Accept-Language": acceptLang } : {}),
       ...(clientIp ? { "X-Forwarded-For": clientIp } : {}),
     },
-    body: JSON.stringify({ type, payload }),
+    body: JSON.stringify({ type, payload: normalizedPayload }),
   });
 
   const text = await res.text();

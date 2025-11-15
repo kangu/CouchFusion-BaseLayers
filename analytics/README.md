@@ -61,6 +61,8 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 ## Runtime Config Notes
 - `websiteId` **must** be supplied; otherwise the layer warns and exits quietly.
 - Provide `excludedPaths` (array or CSV string) to skip tracking for sensitive routes such as `/login` or `/admin/*`. When exclusions are set, the layer disables Umami's auto-tracking and manually emits page views for allowed routes.
+- Override `public.analytics.endpoint` if your frontend should post analytics to a different proxy route than `/api/stats`.
+- Toggle `includeTitle`, `sendReferrer`, or `debug` under `public.analytics.umami` to adjust payload metadata without touching code.
 
 ### Environment Examples
 Create a `.env` (auto-loaded by Nuxt/bun dev server) with a development website ID:
@@ -91,9 +93,9 @@ When running locally, `bun run dev` automatically reads `.env`. For production b
 - Automatically removes listeners when the component unmounts.
 
 ## Composable API
-`const { trackEvent, trackPageview, trackRouterNavigation } = useAnalytics();`
-- `trackEvent(name, data?, extra?)` – send a custom event payload.
-- `trackPageview(extra?)` – track a page view.
+`const { trackEvent, trackPageview, trackRouterNavigation, track, trackView } = useAnalytics();`
+- `trackEvent(name, data?, extra?)` – send a custom event payload (also available as `track`).
+- `trackPageview(extra?)` – track a page view (also exposed as `trackView(url?, referrer?)`).
 - `trackRouterNavigation(to, from)` – helper wired to the Nuxt router's `afterEach` hook.
 
 ## Extending

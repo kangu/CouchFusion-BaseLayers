@@ -1,8 +1,19 @@
-let _config = {
-  websiteId: "", // REQUIRED: your Umami website UUID
+import { ref } from "vue";
+import { useNuxtApp } from "#app";
+
+export interface AnalyticsClientConfig {
+  websiteId: string;
+  endpoint: string;
+  appName?: string;
+  includeTitle: boolean;
+  sendReferrer: boolean;
+  debug: boolean;
+}
+
+const DEFAULT_CONFIG: AnalyticsClientConfig = {
+  websiteId: "",
   endpoint: "/api/stats",
-  // optional defaults
-  appName: undefined, // e.g. 'my-frontend', appears in UA if you want
+  appName: undefined,
   includeTitle: true,
   sendReferrer: true,
   debug: false,
@@ -35,30 +46,46 @@ function getClientInfo() {
   };
 }
 
-async function sendToBackend({ type, payload }) {
-  try {
-    const res = await fetch(_config.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // DO NOT set X-Forwarded-For here; the browser can’t set it reliably.
-        // The backend will take care of IP + UA preservation.
-      },
-      body: JSON.stringify({ type, payload, sentAt: nowIso() }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      if (_config.debug)
-        console.warn("[umami] backend error", res.status, text);
-    }
-  } catch (e) {
-    if (_config.debug) console.warn("[umami] network error", e);
-  }
+function normalizeEndpoint(value?: string) {
+  if (!value) return DEFAULT_CONFIG.endpoint;
+  return value.trim().length > 0 ? value : DEFAULT_CONFIG.endpoint;
 }
 
-export function useAnalytics() {
-  function init(opts = {}) {
-    _config = { ..._config, ...opts };
+export function createAnalyticsClient(
+  initialConfig: Partial<AnalyticsClientConfig> = {},
+) {
+  let config: AnalyticsClientConfig = {
+    ...DEFAULT_CONFIG,
+    ...initialConfig,
+    endpoint: normalizeEndpoint(initialConfig.endpoint),
+  };
+  const isLoaded = ref(true);
+
+  async function send(type: "event" | "pageview", payload: Record<string, any>) {
+    if (typeof fetch === "undefined") return;
+    try {
+      const res = await fetch(config.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type, payload, sentAt: nowIso() }),
+      });
+      if (!res.ok && config.debug) {
+        const text = await res.text().catch(() => "");
+        console.warn("[analytics] backend error", res.status, text);
+      }
+    } catch (error) {
+      if (config.debug) console.warn("[analytics] network error", error);
+    }
+  }
+
+  function init(opts: Partial<AnalyticsClientConfig> = {}) {
+    config = {
+      ...config,
+      ...opts,
+      endpoint: normalizeEndpoint(opts.endpoint ?? config.endpoint),
+    };
   }
 
   function buildBasePayload(overrides = {}) {
@@ -71,8 +98,10 @@ export function useAnalytics() {
       timezone: c.timezone,
     };
 
-    if (_config.sendReferrer && c.referrer) payload.referrer = c.referrer;
-    if (_config.includeTitle && c.title) payload.title = c.title;
+    if (config.sendReferrer && c.referrer) payload.referrer = c.referrer;
+    if (config.includeTitle && c.title) payload.title = c.title;
+    if (config.appName) payload.appName = config.appName;
+    if (config.websiteId) payload.website = config.websiteId;
 
     return { ...payload, ...overrides };
   }
@@ -80,7 +109,7 @@ export function useAnalytics() {
   // Simulate full pageview
   async function trackPageview(extra = {}) {
     const payload = buildBasePayload(extra);
-    await sendToBackend({ type: "event", payload });
+    await send("pageview", payload);
   }
 
   // Arbitrary events
@@ -91,7 +120,18 @@ export function useAnalytics() {
       data,
       ...extra,
     });
-    await sendToBackend({ type: "event", payload });
+    await send("event", payload);
+  }
+
+  async function track(name, data = {}, extra = {}) {
+    return trackEvent(name, data, extra);
+  }
+
+  async function trackView(url?: string, referrer?: string) {
+    const overrides: Record<string, any> = {};
+    if (url) overrides.url = url;
+    if (referrer) overrides.referrer = referrer;
+    return trackPageview(overrides);
   }
 
   // Helper for SPA route changes (use afterEach in router)
@@ -107,5 +147,14 @@ export function useAnalytics() {
     trackPageview,
     trackEvent,
     trackRouterNavigation,
+    track,
+    trackView,
+    isLoaded,
+    getInstance: () => null,
   };
+}
+
+export function useAnalytics() {
+  const nuxtApp = useNuxtApp();
+  return nuxtApp.$analytics ?? createAnalyticsClient();
 }

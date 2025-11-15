@@ -1,8 +1,9 @@
 import type { DirectiveBinding } from "vue";
-import { useAnalytics } from "../composables/useAnalytics";
+import { useRuntimeConfig } from "#imports";
+import { createAnalyticsClient } from "../composables/useAnalytics";
 import type { UmamiBindingValue } from "../types/umami";
 
-type AnalyticsClient = ReturnType<typeof useAnalytics>;
+type AnalyticsClient = ReturnType<typeof createAnalyticsClient>;
 
 interface AnalyticsElement extends HTMLElement {
   __analyticsCleanup__?: () => void;
@@ -82,10 +83,25 @@ function normalizeBinding(
 }
 
 export default defineNuxtPlugin(async (nuxtApp) => {
-  const tracker = useAnalytics();
+  const tracker = createAnalyticsClient();
   const router = useRouter();
-
-  tracker.init({});
+  const runtimeConfig = useRuntimeConfig();
+  const publicAnalytics = runtimeConfig.public?.analytics ?? {};
+  const umamiConfig = publicAnalytics.umami ?? {};
+  tracker.init({
+    endpoint: publicAnalytics.endpoint ?? undefined,
+    websiteId: umamiConfig.websiteId ?? "",
+    appName: umamiConfig.appName,
+    includeTitle:
+      typeof umamiConfig.includeTitle === "boolean"
+        ? umamiConfig.includeTitle
+        : true,
+    sendReferrer:
+      typeof umamiConfig.sendReferrer === "boolean"
+        ? umamiConfig.sendReferrer
+        : true,
+    debug: Boolean(umamiConfig.debug),
+  });
   nuxtApp.provide("analytics", tracker);
   nuxtApp.provide("umami", tracker);
 

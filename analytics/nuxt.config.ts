@@ -24,6 +24,7 @@ export default defineNuxtConfig({
     },
     public: {
       analytics: {
+        endpoint: "/api/stats",
         umami: {
           websiteId: "",
           hostUrl: "/",
@@ -31,6 +32,10 @@ export default defineNuxtConfig({
           dataDomains: "",
           autoTrack: true,
           excludedPaths: [] as string[] | string,
+          includeTitle: true,
+          sendReferrer: true,
+          debug: false,
+          appName: undefined as string | undefined,
         },
       },
     },
