@@ -1,5 +1,5 @@
 <template>
-    <div class="rich-text-field">
+    <div class="rich-text-field" @click.stop.prevent="absorbPointerEvent">
         <div class="rich-text-field__toolbar">
             <button
                 v-for="action in toolbarActions"
@@ -51,6 +51,11 @@ const placeholder = computed(
 const description = computed(() => props.propDefinition?.description);
 
 let updateTimer: ReturnType<typeof setTimeout> | null = null;
+
+const absorbPointerEvent = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+};
 
 const emitSanitizedChange = (value: string) => {
     const sanitized = sanitizeRichTextHtml(value);

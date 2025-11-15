@@ -72,6 +72,7 @@
                     class="node-panel__field"
                     :class="{ 'is-row': prop.type === 'boolean' }"
                     :role="fieldWrapperRole(prop)"
+                    v-on="fieldWrapperListeners(prop)"
                 >
                     <span>{{ prop.label }}</span>
                     <template v-if="prop.type === 'textarea'">
@@ -3299,6 +3300,21 @@ const fieldWrapperTag = (schema: ComponentPropSchema) =>
 
 const fieldWrapperRole = (schema: ComponentPropSchema) =>
     schema.ui?.component ? "group" : undefined;
+
+const preventFieldWrapperActivation = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+};
+
+const fieldWrapperListeners = (schema: ComponentPropSchema) => {
+    if (schema.ui?.component) {
+        return {
+            onMousedown: preventFieldWrapperActivation,
+            onClick: preventFieldWrapperActivation,
+        };
+    }
+    return {};
+};
 
 const props = defineProps<{
     node: BuilderNodeChild;
