@@ -24,15 +24,14 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
    ```ts
    export default defineNuxtConfig({
      runtimeConfig: {
-       public: {
-         analytics: {
-           umami: {
-             websiteId: process.env.UMAMI_WEBSITE_ID,
-             hostUrl: process.env.UMAMI_HOST_URL, // optional, defaults to https://analytics.umami.is
-             scriptPath: '/script.js',             // optional
-             dataDomains: 'example.com',           // optional CSV
-             autoTrack: true,                      // set false to disable auto tracking
-           },
+       analytics: {
+         umami: {
+           websiteId: process.env.UMAMI_WEBSITE_ID,
+           excludedPaths: process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS
+            ? process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS.split(',')
+                  .map((path) => path.trim())
+                  .filter(Boolean)
+            : []
          },
        },
      },
@@ -61,9 +60,6 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 
 ## Runtime Config Notes
 - `websiteId` **must** be supplied; otherwise the layer warns and exits quietly.
-- `hostUrl` + `scriptPath` let you self-host Umami. By default the public cloud endpoint is used.
-- `dataDomains` controls domain filtering as per Umami docs.
-- Set `autoTrack: false` if you want to trigger every page view manually via `trackView`.
 - Provide `excludedPaths` (array or CSV string) to skip tracking for sensitive routes such as `/login` or `/admin/*`. When exclusions are set, the layer disables Umami's auto-tracking and manually emits page views for allowed routes.
 
 ### Environment Examples
@@ -103,15 +99,3 @@ When running locally, `bun run dev` automatically reads `.env`. For production b
 ## Extending
 - You can override the directive by registering another `v-analytics` directive in the consuming app.
 - The layer exposes `#analytics` alias pointing to its root for custom imports if necessary.
-
-## Caddy routing
-
-@umamijs {
-    path /script.js
-    path /api/send
-}
-
-reverse_proxy @umamijs https://cloud.umami.is {
-    # Ensure the Host header is correct
-    header_up Host cloud.umami.is
-}
