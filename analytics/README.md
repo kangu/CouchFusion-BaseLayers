@@ -4,9 +4,9 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 
 ## Features
 - Auto-loads the Umami tracker script using runtime configuration.
-- `useUmami()` composable exposes `track`, `trackView`, and `isLoaded`.
-- `v-umami` directive attaches event handlers that fire Umami events declaratively.
-- Works entirely on the client; no SSR side effects.
+- `useAnalytics()` composable exposes `trackEvent`, `trackPageview`, and router helpers.
+- `v-analytics` directive attaches event handlers that fire Umami-backed events declaratively.
+- Ships SSR-safe directive registration so server rendering never errors on pages that include analytics bindings.
 
 ## Installation
 1. Add the layer to your Nuxt app:
@@ -42,10 +42,10 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 3. Use the composable:
    ```vue
    <script setup lang="ts">
-   const umami = useUmami();
+   const analytics = useAnalytics();
 
    const trackSignup = () => {
-     umami.track('signup-click', { plan: 'pro' });
+     analytics.trackEvent('signup-click', { plan: 'pro' });
    };
    </script>
    ```
@@ -53,7 +53,7 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 4. Or use the directive:
    ```vue
    <template>
-     <button v-umami="{ event: 'cta-click', data: { location: 'hero' } }">
+     <button v-analytics="{ event: 'cta-click', data: { location: 'hero' } }">
        Try it now
      </button>
    </template>
@@ -89,20 +89,19 @@ NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS=/internal-preview/*,/admin/*
 When running locally, `bun run dev` automatically reads `.env`. For production builds (e.g., `bun run build` on deploy), ensure these variables are present in the environment before starting the server.
 
 ## Directive API
-`v-umami`
+`v-analytics`
 - Value can be a string event name or an object `{ event, data?, trigger? }`.
-- `trigger` defaults to `"click"`; `v-umami:mouseover="'event'"` also works.
+- `trigger` defaults to `"click"`; `v-analytics:mouseover="'event'"` also works.
 - Automatically removes listeners when the component unmounts.
 
 ## Composable API
-`const { track, trackView, isLoaded } = useUmami();`
-- `track(event, data?)` – send a custom event.
-- `trackView(url?, referrer?)` – track a page view.
-- `isLoaded` – `ref<boolean>` indicating whether the tracker script is ready.
-- `getInstance()` – access the underlying global Umami object if needed.
+`const { trackEvent, trackPageview, trackRouterNavigation } = useAnalytics();`
+- `trackEvent(name, data?, extra?)` – send a custom event payload.
+- `trackPageview(extra?)` – track a page view.
+- `trackRouterNavigation(to, from)` – helper wired to the Nuxt router's `afterEach` hook.
 
 ## Extending
-- You can override the directive by registering another `v-umami` directive in the consuming app.
+- You can override the directive by registering another `v-analytics` directive in the consuming app.
 - The layer exposes `#analytics` alias pointing to its root for custom imports if necessary.
 
 ## Caddy routing

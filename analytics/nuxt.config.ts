@@ -12,8 +12,8 @@ export default defineNuxtConfig({
   },
 
   plugins: [
-    // fileURLToPath(new URL("./plugins/umami.client", import.meta.url)),
     fileURLToPath(new URL("./plugins/analytics.client", import.meta.url)),
+    fileURLToPath(new URL("./plugins/analytics.server", import.meta.url)),
   ],
 
   runtimeConfig: {

@@ -1,13 +1,17 @@
+import type { DirectiveBinding } from "vue";
 import { useAnalytics } from "../composables/useAnalytics";
+import type { UmamiBindingValue } from "../types/umami";
 
-interface UmamiElement extends HTMLElement {
-  __umamiCleanup__?: () => void;
+type AnalyticsClient = ReturnType<typeof useAnalytics>;
+
+interface AnalyticsElement extends HTMLElement {
+  __analyticsCleanup__?: () => void;
 }
 
 function bindDirective(
-  el: UmamiElement,
+  el: AnalyticsElement,
   binding: DirectiveBinding<UmamiBindingValue>,
-  client: UmamiClient,
+  client: AnalyticsClient,
 ) {
   cleanupDirective(el);
 
@@ -20,20 +24,20 @@ function bindDirective(
   const handler = () => client.trackEvent(event, data);
 
   el.addEventListener(trigger, handler);
-  el.dataset.umamiEvent = event;
+  el.dataset.analyticsEvent = event;
 
-  el.__umamiCleanup__ = () => {
+  el.__analyticsCleanup__ = () => {
     el.removeEventListener(trigger, handler);
-    if (el.dataset.umamiEvent === event) {
-      delete el.dataset.umamiEvent;
+    if (el.dataset.analyticsEvent === event) {
+      delete el.dataset.analyticsEvent;
     }
   };
 }
 
-function cleanupDirective(el: UmamiElement) {
-  if (typeof el.__umamiCleanup__ === "function") {
-    el.__umamiCleanup__();
-    delete el.__umamiCleanup__;
+function cleanupDirective(el: AnalyticsElement) {
+  if (typeof el.__analyticsCleanup__ === "function") {
+    el.__analyticsCleanup__();
+    delete el.__analyticsCleanup__;
   }
 }
 
@@ -82,17 +86,19 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   const router = useRouter();
 
   tracker.init({});
+  nuxtApp.provide("analytics", tracker);
+  nuxtApp.provide("umami", tracker);
 
   // initialize v-analytics directive
-  nuxtApp.vueApp.directive("umami", {
+  nuxtApp.vueApp.directive("analytics", {
     mounted(el, binding) {
-      bindDirective(el as UmamiElement, binding, tracker);
+      bindDirective(el as AnalyticsElement, binding, tracker);
     },
     updated(el, binding) {
-      bindDirective(el as UmamiElement, binding, tracker);
+      bindDirective(el as AnalyticsElement, binding, tracker);
     },
     beforeUnmount(el) {
-      cleanupDirective(el as UmamiElement);
+      cleanupDirective(el as AnalyticsElement);
     },
   });
 
