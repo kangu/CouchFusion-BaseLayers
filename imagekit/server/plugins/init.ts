@@ -5,6 +5,7 @@ interface ImageKitRuntimeConfig {
     publicKey?: string
     privateKey?: string
     urlEndpoint?: string
+    folder?: string
   }
 }
 

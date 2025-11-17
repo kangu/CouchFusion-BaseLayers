@@ -23,11 +23,13 @@ export default defineNuxtConfig({
       publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
       privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
       urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+      folder: process.env.NUXT_IMAGEKIT_FOLDER,
     },
     public: {
       imagekit: {
         publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
         urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+        folder: process.env.NUXT_IMAGEKIT_FOLDER,
       },
     },
   },

@@ -310,14 +310,31 @@ const libraryTotal = ref(0);
 const localUploadPending = ref(false);
 const localDeletePending = ref<string | null>(null);
 
+const normalizeFolderName = (value?: string | null) => {
+    if (!value) {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed ? trimmed.replace(/^\/+/, "") : undefined;
+};
+
+const defaultFolder = computed(() => {
+    const publicFolder = normalizeFolderName(runtimeConfig.public?.imagekit?.folder);
+    const privateFolder = normalizeFolderName(
+        (runtimeConfig as Record<string, any>)?.imagekit?.folder,
+    );
+    return publicFolder ?? privateFolder;
+});
+
 const folderHint = computed(() => {
     const candidate =
         props.propDefinition?.ui && typeof props.propDefinition.ui === "object"
             ? (props.propDefinition.ui as Record<string, unknown>).folder
             : undefined;
-    return typeof candidate === "string" && candidate.trim()
-        ? candidate.trim()
-        : "content-editor";
+    const fromUi = normalizeFolderName(
+        typeof candidate === "string" ? candidate : undefined,
+    );
+    return fromUi ?? defaultFolder.value ?? "content-editor";
 });
 
 const placeholder = computed(
@@ -646,9 +663,7 @@ watch(isLibraryOpen, (isOpen) => {
     if (!isOpen) {
         return;
     }
-    if (!libraryItems.value.length) {
-        void fetchLibrary({ limit: DEFAULT_LIBRARY_LIMIT });
-    }
+    void fetchLibrary({ limit: DEFAULT_LIBRARY_LIMIT });
 });
 
 const selectFromLibrary = (item: LibraryItem) => {
