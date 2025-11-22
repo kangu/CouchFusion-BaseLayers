@@ -87,7 +87,7 @@ export default defineEventHandler(async (event) => {
     method: "POST",
     body: JSON.stringify(doc),
   });
-  console.log("Saved token document", resp);
+  // console.log("Saved token document", resp);
 
   // send out the corresponding email
   // email is now sent through couchdb-monitor watching login tokens being created

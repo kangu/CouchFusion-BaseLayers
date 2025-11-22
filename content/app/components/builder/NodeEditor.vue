@@ -65,15 +65,17 @@
             v-show="!collapsedNodes[node.uid]"
         >
             <div v-if="componentDef?.props?.length" class="node-panel__props">
-                <component
-                    v-for="prop in componentDef.props"
-                    :is="fieldWrapperTag(prop)"
+                <template
+                    v-for="prop in filterVisibleFields(componentDef?.props, propDraft)"
                     :key="prop.key"
-                    class="node-panel__field"
-                    :class="{ 'is-row': prop.type === 'boolean' }"
-                    :role="fieldWrapperRole(prop)"
-                    v-on="fieldWrapperListeners(prop)"
                 >
+                    <component
+                        :is="fieldWrapperTag(prop)"
+                        class="node-panel__field"
+                        :class="{ 'is-row': prop.type === 'boolean' }"
+                        :role="fieldWrapperRole(prop)"
+                        v-on="fieldWrapperListeners(prop)"
+                    >
                     <span>{{ prop.label }}</span>
                     <template v-if="prop.type === 'textarea'">
                         <textarea
@@ -191,7 +193,7 @@
                     >
                         <div class="node-panel__object">
                             <label
-                                v-for="field in prop.fields || []"
+                                v-for="field in filterVisibleFields(prop.fields, propDraft[prop.key])"
                                 :key="`${prop.key}-${field.key}`"
                                 class="node-panel__field node-panel__field--nested"
                             >
@@ -476,9 +478,9 @@
                                 </button>
                             </div>
                             <div
-                                v-for="(item, index) in propDraft[prop.key]"
-                                :key="`${prop.key}-${index}`"
-                                class="node-panel__array-item"
+                        v-for="(item, index) in propDraft[prop.key]"
+                        :key="`${prop.key}-${index}`"
+                        class="node-panel__array-item"
                                 :class="{
                                     'node-panel__array-item--drag-over':
                                         dragOverArrayItem?.propKey ===
@@ -523,7 +525,7 @@
                             >
                                 <div class="node-panel__array-fields">
                                     <label
-                                        v-for="field in prop.items || []"
+                                        v-for="field in filterVisibleFields(prop.items, item)"
                                         :key="field.key"
                                         class="node-panel__field node-panel__field--nested"
                                     >
@@ -878,11 +880,11 @@
                                         >
                                             <div class="node-panel__object node-panel__object--nested">
                                                 <template v-if="field.fields?.length">
-                                                    <label
-                                                        v-for="nestedObjectField in field.fields || []"
-                                                        :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
-                                                        class="node-panel__field node-panel__field--nested"
-                                                    >
+                                                <label
+                                                    v-for="nestedObjectField in filterVisibleFields(field.fields, item[field.key])"
+                                                    :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
+                                                    class="node-panel__field node-panel__field--nested"
+                                                >
                                                         <span>{{ nestedObjectField.label }}</span>
                                                         <template v-if="nestedObjectField.type === 'textarea'">
                                                             <textarea
@@ -1202,6 +1204,16 @@
                                                 <template v-if="field.fields?.length">
                                                     <label
                                                         v-for="nestedObjectField in field.fields || []"
+                                                        v-if="
+                                                            isFieldVisible(
+                                                                nestedObjectField,
+                                                                getArrayItemObjectValue(
+                                                                    prop.key,
+                                                                    index,
+                                                                    field,
+                                                                ),
+                                                            )
+                                                        "
                                                         :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
                                                         class="node-panel__field node-panel__field--nested"
                                                     >
@@ -1637,8 +1649,7 @@
                                                         class="node-panel__array-fields node-panel__array-fields--nested"
                                                     >
                                                         <label
-                                                            v-for="nestedField in field.items ||
-                                                            []"
+                                                            v-for="nestedField in filterVisibleFields(field.items, nestedItem)"
                                                             :key="`${field.key}-${nestedField.key}-${nestedIndex}`"
                                                             class="node-panel__field node-panel__field--nested"
                                                         >
@@ -2100,7 +2111,7 @@
                                                                 <div class="node-panel__object node-panel__object--nested">
                                                                     <template v-if="nestedField.fields?.length">
                                                                         <label
-                                                                            v-for="objectField in nestedField.fields || []"
+                                                                            v-for="objectField in filterVisibleFields(nestedField.fields, getNestedArrayItemObjectValue(prop.key, index, field, nestedIndex, nestedField))"
                                                                             :key="`${prop.key}-${index}-${nestedField.key}-${objectField.key}-${nestedIndex}`"
                                                                             class="node-panel__field node-panel__field--nested"
                                                                         >
@@ -2900,6 +2911,7 @@
                         prop.description
                     }}</small>
                 </component>
+                </template>
             </div>
 
             <div v-if="extraPropEntries.length" class="node-panel__props">
@@ -3356,6 +3368,31 @@ const jsonErrors = reactive<Record<string, string | null>>({});
 const objectFieldErrors = reactive<
     Record<string, Record<string, string | null>>
 >({});
+type VisibleWhenRule = { prop: string; equals: unknown };
+const isFieldVisible = (
+    schema: { visibleWhen?: VisibleWhenRule | VisibleWhenRule[] } | undefined,
+    context: Record<string, any> | undefined,
+) => {
+    if (!schema?.visibleWhen) {
+        return true;
+    }
+    const rules = Array.isArray(schema.visibleWhen)
+        ? schema.visibleWhen
+        : [schema.visibleWhen];
+    return rules.some((rule) => {
+        if (!rule || typeof rule !== "object") {
+            return true;
+        }
+        return context?.[rule.prop] === rule.equals;
+    });
+};
+const filterVisibleFields = (
+    fields: Array<{ visibleWhen?: VisibleWhenRule | VisibleWhenRule[] }> | undefined,
+    context: Record<string, any> | undefined,
+) => {
+    if (!fields) return [];
+    return fields.filter((field) => isFieldVisible(field, context));
+};
 const textDraft = ref(props.node.type === "text" ? props.node.value : "");
 const selectedChildComponent = ref("");
 const newPropKey = ref("");
