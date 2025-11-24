@@ -648,6 +648,31 @@
                                                 "
                                             />
                                         </template>
+                                        <template v-else-if="field.type === 'select'">
+                                            <select
+                                                v-model="item[field.key]"
+                                                @change="
+                                                    () =>
+                                                        handleArrayItemFieldChange(
+                                                            prop.key,
+                                                            index,
+                                                            field,
+                                                            item[field.key],
+                                                        )
+                                                "
+                                            >
+                                                <option disabled value="">
+                                                    Select
+                                                </option>
+                                                <option
+                                                    v-for="option in field.options || []"
+                                                    :key="option.value"
+                                                    :value="option.value"
+                                                >
+                                                    {{ option.label }}
+                                                </option>
+                                            </select>
+                                        </template>
                                         <template
                                             v-else-if="
                                                 field.type === 'stringarray'
@@ -2101,6 +2126,46 @@
                                                                         </div>
                                                                     </div>
                                                                 </div>
+                                                            </template>
+                                                            <template
+                                                                v-else-if="
+                                                                    nestedField.type ===
+                                                                    'select'
+                                                                "
+                                                            >
+                                                                <select
+                                                                    v-model="
+                                                                        nestedItem[
+                                                                            nestedField
+                                                                                .key
+                                                                        ]
+                                                                    "
+                                                                    @change="
+                                                                        () =>
+                                                                            updateNestedArrayItemField(
+                                                                                prop.key,
+                                                                                index,
+                                                                                field,
+                                                                                nestedIndex,
+                                                                                nestedField,
+                                                                                nestedItem[
+                                                                                    nestedField
+                                                                                        .key
+                                                                                ],
+                                                                            )
+                                                                    "
+                                                                >
+                                                                    <option disabled value="">
+                                                                        Select
+                                                                    </option>
+                                                                    <option
+                                                                        v-for="option in nestedField.options || []"
+                                                                        :key="option.value"
+                                                                        :value="option.value"
+                                                                    >
+                                                                        {{ option.label }}
+                                                                    </option>
+                                                                </select>
                                                             </template>
                                                             <template
                                                                 v-else-if="
