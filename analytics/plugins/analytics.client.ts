@@ -119,6 +119,9 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   });
 
   router.afterEach(async (to, from) => {
-    await tracker.trackRouterNavigation(to, from);
+    void tracker.trackRouterNavigation(to, from).catch((err) => {
+      // report if we are in dev mode
+      if (import.meta.dev) console.warn("[analytics] nav track failed", err);
+    });
   });
 });

@@ -8,7 +8,7 @@
                 :class="{ 'is-active': action.isActive?.() }"
                 type="button"
                 :title="action.label"
-                :disabled="!editor"
+                :disabled="!editorInstance"
                 @click="action.command"
             >
                 {{ action.label }}
@@ -16,7 +16,12 @@
         </div>
 
         <div class="rich-text-field__surface" :data-placeholder="placeholder">
-            <EditorContent class="rich-text-field__content" :editor="editor" />
+            <component
+                v-if="EditorContentComponent"
+                :is="EditorContentComponent"
+                class="rich-text-field__content"
+                :editor="editorInstance"
+            />
         </div>
 
         <p v-if="description" class="rich-text-field__description">
@@ -26,9 +31,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { EditorContent, useEditor } from "@tiptap/vue-3";
-import StarterKit from "@tiptap/starter-kit";
+import {
+    computed,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    shallowRef,
+    watch,
+} from "vue";
 import type { ComponentPropSchema } from "~/types/builder";
 import { sanitizeRichTextHtml } from "~/utils/rich-text";
 
@@ -43,6 +53,15 @@ const props = defineProps<{
 const emit = defineEmits<{
     (event: "update:modelValue", value: string): void;
 }>();
+
+const editorModules = shallowRef<{
+    EditorContent: any;
+    Editor: any;
+    StarterKit: any;
+} | null>(null);
+const EditorContentComponent = shallowRef<any>(null);
+const editor = shallowRef<any>(null);
+const editorInstance = computed(() => editor.value);
 
 const lastEmitted = ref(sanitizeRichTextHtml(props.modelValue ?? ""));
 const placeholder = computed(
@@ -71,31 +90,11 @@ const emitSanitizedChange = (value: string) => {
     }, UPDATE_DEBOUNCE_MS);
 };
 
-const editor = useEditor({
-    content: lastEmitted.value || "<p></p>",
-    extensions: [
-        StarterKit.configure({
-            heading: {
-                levels: [1, 2, 3],
-            },
-        }),
-    ],
-    editorProps: {
-        attributes: {
-            class: "ProseMirror-focused-target",
-            spellcheck: "true",
-        },
-    },
-    onUpdate: ({ editor }) => {
-        emitSanitizedChange(editor.getHTML());
-    },
-});
-
 const syncExternalValue = (value: string | undefined) => {
     const sanitized = sanitizeRichTextHtml(value ?? "");
     lastEmitted.value = sanitized;
-    if (editor.value && editor.value.getHTML() !== sanitized) {
-        editor.value.commands.setContent(sanitized || "<p></p>", false, {
+    if (editorInstance.value && editorInstance.value.getHTML() !== sanitized) {
+        editorInstance.value.commands.setContent(sanitized || "<p></p>", false, {
             preserveWhitespace: false,
         });
     }
@@ -109,13 +108,13 @@ watch(
 );
 
 const runEditorCommand = (
-    fn: (editor: NonNullable<typeof editor.value>) => void,
+    fn: (editor: NonNullable<typeof editorInstance.value>) => void,
 ) => {
-    if (!editor.value) {
+    if (!editorInstance.value) {
         return;
     }
-    fn(editor.value);
-    emitSanitizedChange(editor.value.getHTML());
+    fn(editorInstance.value);
+    emitSanitizedChange(editorInstance.value.getHTML());
 };
 
 const toolbarActions = computed(() => [
@@ -124,21 +123,21 @@ const toolbarActions = computed(() => [
         label: "B",
         command: () =>
             runEditorCommand((ed) => ed.chain().focus().toggleBold().run()),
-        isActive: () => editor.value?.isActive("bold"),
+        isActive: () => editorInstance.value?.isActive("bold"),
     },
     {
         key: "italic",
         label: "I",
         command: () =>
             runEditorCommand((ed) => ed.chain().focus().toggleItalic().run()),
-        isActive: () => editor.value?.isActive("italic"),
+        isActive: () => editorInstance.value?.isActive("italic"),
     },
     {
         key: "strike",
         label: "S",
         command: () =>
             runEditorCommand((ed) => ed.chain().focus().toggleStrike().run()),
-        isActive: () => editor.value?.isActive("strike"),
+        isActive: () => editorInstance.value?.isActive("strike"),
     },
     {
         key: "heading2",
@@ -147,7 +146,7 @@ const toolbarActions = computed(() => [
             runEditorCommand((ed) =>
                 ed.chain().focus().toggleHeading({ level: 2 }).run(),
             ),
-        isActive: () => editor.value?.isActive("heading", { level: 2 }),
+        isActive: () => editorInstance.value?.isActive("heading", { level: 2 }),
     },
     {
         key: "bullet",
@@ -156,7 +155,7 @@ const toolbarActions = computed(() => [
             runEditorCommand((ed) =>
                 ed.chain().focus().toggleBulletList().run(),
             ),
-        isActive: () => editor.value?.isActive("bulletList"),
+        isActive: () => editorInstance.value?.isActive("bulletList"),
     },
     {
         key: "ordered",
@@ -165,7 +164,7 @@ const toolbarActions = computed(() => [
             runEditorCommand((ed) =>
                 ed.chain().focus().toggleOrderedList().run(),
             ),
-        isActive: () => editor.value?.isActive("orderedList"),
+        isActive: () => editorInstance.value?.isActive("orderedList"),
     },
     {
         key: "quote",
@@ -174,7 +173,7 @@ const toolbarActions = computed(() => [
             runEditorCommand((ed) =>
                 ed.chain().focus().toggleBlockquote().run(),
             ),
-        isActive: () => editor.value?.isActive("blockquote"),
+        isActive: () => editorInstance.value?.isActive("blockquote"),
     },
     {
         key: "code",
@@ -183,15 +182,59 @@ const toolbarActions = computed(() => [
             runEditorCommand((ed) =>
                 ed.chain().focus().toggleCodeBlock().run(),
             ),
-        isActive: () => editor.value?.isActive("codeBlock"),
+        isActive: () => editorInstance.value?.isActive("codeBlock"),
     },
 ]);
+
+const createEditor = () => {
+    const mods = editorModules.value;
+    if (!mods || editor.value) {
+        return;
+    }
+
+    editor.value = new mods.Editor({
+        content: lastEmitted.value || "<p></p>",
+        extensions: [
+            mods.StarterKit.configure({
+                heading: {
+                    levels: [1, 2, 3],
+                },
+            }),
+        ],
+        editorProps: {
+            attributes: {
+                class: "ProseMirror-focused-target",
+                spellcheck: "true",
+            },
+        },
+        onUpdate: ({ editor }) => {
+            emitSanitizedChange(editor.getHTML());
+        },
+    });
+};
+
+onMounted(async () => {
+    if (editorModules.value) {
+        createEditor();
+        return;
+    }
+
+    const [{ EditorContent, Editor }, { default: StarterKit }] = await Promise.all([
+        import("@tiptap/vue-3"),
+        import("@tiptap/starter-kit"),
+    ]);
+
+    editorModules.value = { EditorContent, Editor, StarterKit };
+    EditorContentComponent.value = EditorContent;
+    createEditor();
+});
 
 onBeforeUnmount(() => {
     if (updateTimer) {
         clearTimeout(updateTimer);
     }
     editor.value?.destroy();
+    editor.value = null;
 });
 </script>
 

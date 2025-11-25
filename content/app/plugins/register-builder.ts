@@ -1,11 +1,14 @@
-import BuilderWorkbench from "../components/builder/Workbench.vue";
-import ContentAdminWorkbench from "../components/admin/ContentAdminWorkbench.vue";
-import ContentImageField from "../components/admin/ContentImageField.vue";
-import ContentRichTextField from "../components/admin/ContentRichTextField.vue";
-
 export default defineNuxtPlugin(({ vueApp }) => {
-  vueApp.component("BuilderWorkbench", BuilderWorkbench);
-  vueApp.component("ContentAdminWorkbench", ContentAdminWorkbench);
-  vueApp.component("ContentImageField", ContentImageField);
-  vueApp.component("ContentRichTextField", ContentRichTextField);
+  // Register content-builder/admin components lazily so heavy editor/builder code
+  // does not inflate the main bundle.
+  const components = {
+    BuilderWorkbench: () => import("../components/builder/Workbench.vue"),
+    ContentAdminWorkbench: () => import("../components/admin/ContentAdminWorkbench.vue"),
+    ContentImageField: () => import("../components/admin/ContentImageField.vue"),
+    ContentRichTextField: () => import("../components/admin/ContentRichTextField.vue"),
+  };
+
+  for (const [name, loader] of Object.entries(components)) {
+    vueApp.component(name, defineAsyncComponent(loader));
+  }
 });
