@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
     computed,
+    defineAsyncComponent,
     nextTick,
     onBeforeUnmount,
     onMounted,
@@ -28,6 +29,9 @@ import type {
     ContentPageHistoryEntry,
 } from "#content/types/content-page";
 import { useContentPagesStore } from "#content/app/stores/pages";
+const BuilderWorkbench = defineAsyncComponent(
+    () => import("../builder/Workbench.vue"),
+);
 
 type FeedbackLink = {
     label?: string;

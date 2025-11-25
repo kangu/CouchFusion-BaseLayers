@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
     computed,
+    defineAsyncComponent,
     nextTick,
     onBeforeUnmount,
     onMounted,
@@ -8,7 +9,6 @@ import {
     watch,
 } from "vue";
 import { normalizePagePath } from "#content/utils/page";
-import ContentAdminWorkbench from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type { ContentPageSummary } from "#content/types/content-page";
 import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
@@ -23,6 +23,10 @@ const props = defineProps<{
     iframeTitle?: string;
     workbench?: Partial<ContentAdminWorkbenchProps>;
 }>();
+
+const ContentAdminWorkbench = defineAsyncComponent(() =>
+    import("#content/app/components/admin/ContentAdminWorkbench.vue"),
+);
 
 const runtimeConfig = useRuntimeConfig();
 const route = useRoute();
