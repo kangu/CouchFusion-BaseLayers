@@ -3448,7 +3448,11 @@ const isFieldVisible = (
         if (!rule || typeof rule !== "object") {
             return true;
         }
-        return context?.[rule.prop] === rule.equals;
+        const target = context?.[rule.prop];
+        if (Array.isArray(rule.equals)) {
+            return rule.equals.includes(target);
+        }
+        return target === rule.equals;
     });
 };
 const filterVisibleFields = (
