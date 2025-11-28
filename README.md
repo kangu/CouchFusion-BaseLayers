@@ -85,6 +85,7 @@ Automated suites live inside `content/tests`, powered by Vitest and a shared Cou
    bunx vitest --run
    ```
    Without `--run`, Vitest stays in watch mode. The config at `layers/vitest.config.ts` automatically loads `.env`, sets up the CouchDB harness, and discovers tests under `content/tests`.
+   Optionally you can use `--ui` to open the Vitest UI.
 
 ### Troubleshooting
 - **Missing env vars** → The harness throws “CouchDB admin credentials missing.” Double-check your `.env`.
