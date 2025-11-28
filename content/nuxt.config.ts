@@ -12,6 +12,7 @@ export default defineNuxtConfig({
     fileURLToPath(new URL("./utils/ignored-prefixes.server", import.meta.url)),
     fileURLToPath(new URL("./utils/sitemap-routes.server", import.meta.url)),
     fileURLToPath(new URL("./utils/register-builder-page", import.meta.url)),
+    fileURLToPath(new URL("./utils/component-registry-watch", import.meta.url)),
   ],
 
   imports: {

@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "bin": {
+    "content-registry": "./scripts/generate-component-registry.mjs",
+    "content-registry-watch": "./scripts/watch-component-registry.mjs"
+  },
   "exports": {
     ".": "./nuxt.config.ts"
   },
