@@ -87,10 +87,15 @@ export default defineEventHandler(async (event) => {
     // check to see if email is new or existing
     // use design document
     // generate random id for new users
-    const existingDocs = await getView("_users", "auth", "has_account", {
-      key: body.email,
-    });
-    console.log("Existing docs:", existingDocs.rows);
+    const existingDocs = await getView(
+      "_users",
+      "auth",
+      "has_account_case_insensitive",
+      {
+        key: body.email.toLowerCase(),
+      },
+    );
+    console.log("Existing docs for", body.email, ": ", existingDocs.rows);
 
     let affiliateFriendCode =
       typeof resp.affiliate_friend_code === "string"
@@ -157,7 +162,7 @@ export default defineEventHandler(async (event) => {
     // mark token as used
     resp.used = true;
     const tokenUpdateResp = await putDocument(DB, resp);
-    console.log("Token update", tokenUpdateResp);
+    // console.log("Token update", tokenUpdateResp);
 
     return {
       resp,
