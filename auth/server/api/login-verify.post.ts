@@ -135,6 +135,7 @@ export default defineEventHandler(async (event) => {
         email: body.email,
         funnel: resp.funnel,
         allow_affiliate: false,
+        created_date: new Date().toISOString(),
       };
 
       if (affiliateAllowed && affiliateFriendCode) {
