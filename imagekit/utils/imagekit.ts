@@ -162,6 +162,7 @@ class ImageKitService {
     file: UploadableFile,
     fileName: string,
     folder = 'bucket',
+    options: { useUniqueFileName?: boolean } = {},
   ): Promise<ImageKitServiceResponse<ImageKitUploadResult>> {
     if (!this.client) {
       return {
@@ -175,7 +176,7 @@ class ImageKitService {
         file,
         fileName,
         folder,
-        useUniqueFileName: true,
+        useUniqueFileName: options.useUniqueFileName ?? true,
         tags: ['user-upload'],
       })
 
