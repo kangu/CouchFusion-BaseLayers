@@ -3,7 +3,7 @@ import { useRuntimeConfig } from '#imports'
 import { assertAdminSession } from '#auth/server/utils/assert-admin-session'
 import imageKitService from '#imagekit/utils/imagekit'
 
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024 // 15MB ceiling for uploads
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024 // 200MB ceiling for uploads
 
 const normalizeFolderName = (value?: string | null): string | undefined => {
   if (!value) {
@@ -38,17 +38,19 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (filePart.type && !filePart.type.startsWith('image/')) {
+  const isAllowedType = !filePart.type || filePart.type.startsWith('image/') || filePart.type.startsWith('video/')
+
+  if (!isAllowedType) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Only image uploads are supported',
+      statusMessage: 'Only image or video uploads are supported',
     })
   }
 
-  if (filePart.data.length > MAX_IMAGE_BYTES) {
+  if (filePart.data.length > MAX_UPLOAD_BYTES) {
     throw createError({
       statusCode: 413,
-      statusMessage: 'Image exceeds maximum size (15MB)',
+      statusMessage: 'File exceeds maximum size (200MB)',
     })
   }
 
