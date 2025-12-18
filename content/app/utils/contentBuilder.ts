@@ -274,7 +274,29 @@ const serializeChildren = (nodes: BuilderNodeChild[]): MinimalContentEntry[] => 
     .filter((child): child is MinimalContentEntry => Boolean(child))
 }
 
-export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | null => {
+interface SerializeOptions {
+  annotateBuilderUids?: boolean;
+  builderUidAttr?: string;
+}
+
+const defaultSerializeOptions: Required<SerializeOptions> = {
+  annotateBuilderUids: false,
+  builderUidAttr: 'data-builder-uid'
+};
+
+const serializeChildrenWithOptions = (
+  nodes: BuilderNodeChild[],
+  options: SerializeOptions = defaultSerializeOptions
+): MinimalContentEntry[] => {
+  return nodes
+    .map((child) => serializeNode(child, options))
+    .filter((child): child is MinimalContentEntry => child !== null)
+};
+
+export const serializeNode = (
+  node: BuilderNodeChild,
+  options: SerializeOptions = defaultSerializeOptions
+): MinimalContentEntry | null => {
   if (isTextNode(node)) {
     return node.value
   }
@@ -283,9 +305,16 @@ export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | nul
     return null
   }
 
+  const resolvedOptions = { ...defaultSerializeOptions, ...options }
+
   const componentName = normalizeComponentId(node.component)
   const props = serializeProps(node, componentName)
-  const children = serializeChildren(node.children)
+
+  if (resolvedOptions.annotateBuilderUids && node.uid) {
+    props[resolvedOptions.builderUidAttr] = node.uid
+  }
+
+  const children = serializeChildrenWithOptions(node.children, resolvedOptions)
   const baseEntry: MinimalContentEntry =
     children.length > 0
       ? [componentName, Object.keys(props).length ? props : {}, ...children]
@@ -301,9 +330,12 @@ export const serializeNode = (node: BuilderNodeChild): MinimalContentEntry | nul
   return ['content-margin-wrapper', wrapperProps, baseEntry]
 }
 
-export const serializeTree = (tree: BuilderTree): MinimalContentEntry[] => {
+export const serializeTree = (
+  tree: BuilderTree,
+  options: SerializeOptions = defaultSerializeOptions
+): MinimalContentEntry[] => {
   return tree
-    .map((node) => serializeNode(node))
+    .map((node) => serializeNode(node, options))
     .filter((node): node is MinimalContentEntry => node !== null)
 }
 
@@ -337,7 +369,8 @@ const pathToStem = (path: string): string => {
 export const createDocumentFromTree = (
   tree: BuilderTree,
   config: PageConfigInput,
-  layout?: MinimalContentDocument['layout']
+  layout?: MinimalContentDocument['layout'],
+  options: SerializeOptions = defaultSerializeOptions
 ): MinimalContentDocument => {
   const normalizedPath = normalizePath(config.path)
   const idSegment = pathToIdSegment(normalizedPath)
@@ -348,7 +381,7 @@ export const createDocumentFromTree = (
     ...(layout ? { layout } : {}),
     body: {
       type: 'minimal',
-      value: serializeTree(tree)
+      value: serializeTree(tree, options)
     },
     extension: config.extension,
     meta: config.meta ?? {},

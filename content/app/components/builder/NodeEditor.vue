@@ -1,5 +1,10 @@
 <template>
-    <div class="node-panel" :style="{ marginLeft: depth * 16 + 'px' }">
+    <div
+        class="node-panel"
+        :style="{ marginLeft: depth * 16 + 'px' }"
+        @focusin="notifyFocus"
+        @click="notifyFocus"
+    >
         <div v-if="node.type === 'component'" class="node-panel__header">
             <div class="node-panel__header-main">
                 <div class="node-panel__header-text">
@@ -15,6 +20,24 @@
                         @click="toggleNode(node.uid)"
                     >
                         {{ collapsedNodes[node.uid] ? "Expand" : "Collapse" }}
+                    </button>
+                    <button
+                        class="node-panel__toggle node-panel__toggle--icon"
+                        type="button"
+                        @click="triggerFocus"
+                        aria-label="Focus preview"
+                        title="Focus preview"
+                    >
+                        <svg
+                            class="node-panel__toggle-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 2a1 1 0 0 1 1 1v2.05A7.002 7.002 0 0 1 18.95 11H21a1 1 0 1 1 0 2h-2.05A7.002 7.002 0 0 1 13 18.95V21a1 1 0 1 1-2 0v-2.05A7.002 7.002 0 0 1 5.05 13H3a1 1 0 1 1 0-2h2.05A7.002 7.002 0 0 1 11 5.05V3a1 1 0 0 1 1-1Zm0 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
+                            />
+                        </svg>
                     </button>
                     <button
                         class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--clone"
@@ -3887,6 +3910,7 @@ const props = defineProps<{
     onRemove: (uid: string) => void;
     onClone: (uid: string) => void;
     onToggleExpanded?: (uid: string, expanded: boolean) => void;
+    onFocusNode?: (uid: string) => void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
@@ -3896,6 +3920,16 @@ const componentDef = computed(() =>
         ? props.registry.lookup[props.node.component]
         : undefined,
 );
+
+const notifyFocus = () => {
+    if (props.onFocusNode) {
+        props.onFocusNode(props.node.uid);
+    }
+};
+
+const triggerFocus = () => {
+    notifyFocus();
+};
 
 watch(
     () => componentDef.value,

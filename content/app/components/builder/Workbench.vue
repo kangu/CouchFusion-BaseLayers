@@ -139,6 +139,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
+    (e: "document-preview-change", document: MinimalContentDocument): void;
+    (e: "node-focus", payload: { uid: string; path: string }): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
@@ -685,6 +687,10 @@ const handleDrop = (uid: string | null) => {
     handleDragEnd();
 };
 
+const handleNodeFocus = (uid: string) => {
+    emit("node-focus", { uid, path: pageConfig.path });
+};
+
 const serializedDocument = computed(() =>
     createDocumentFromTree(
         builderTree.value,
@@ -696,7 +702,20 @@ const serializedDocument = computed(() =>
     ),
 );
 
+const previewDocument = computed(() =>
+    createDocumentFromTree(
+        builderTree.value,
+        {
+            ...pageConfig,
+            meta: pageConfig.meta ?? {},
+        },
+        { spacing: layout.spacing },
+        { annotateBuilderUids: true },
+    ),
+);
+
 let documentEmitTimeout: ReturnType<typeof setTimeout> | null = null;
+let previewDocumentEmitTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const scheduleDocumentEmit = (document: MinimalContentDocument) => {
     if (documentEmitTimeout) {
@@ -716,6 +735,24 @@ const scheduleDocumentEmit = (document: MinimalContentDocument) => {
     }, 200);
 };
 
+const schedulePreviewDocumentEmit = (document: MinimalContentDocument) => {
+    if (previewDocumentEmitTimeout) {
+        clearTimeout(previewDocumentEmitTimeout);
+    }
+
+    previewDocumentEmitTimeout = setTimeout(() => {
+        previewDocumentEmitTimeout = null;
+        try {
+            const cloned = cloneDocument(document);
+            if (cloned) {
+                emit("document-preview-change", cloned);
+            }
+        } catch (error) {
+            console.error("Failed to emit preview document change", error);
+        }
+    }, 200);
+};
+
 watch(
     serializedDocument,
     (value) => {
@@ -727,10 +764,25 @@ watch(
     { deep: true, immediate: true },
 );
 
+watch(
+    previewDocument,
+    (value) => {
+        if (!value) {
+            return;
+        }
+        schedulePreviewDocumentEmit(value);
+    },
+    { deep: true, immediate: true },
+);
+
 onBeforeUnmount(() => {
     if (documentEmitTimeout) {
         clearTimeout(documentEmitTimeout);
         documentEmitTimeout = null;
+    }
+    if (previewDocumentEmitTimeout) {
+        clearTimeout(previewDocumentEmitTimeout);
+        previewDocumentEmitTimeout = null;
     }
 });
 
@@ -941,6 +993,7 @@ const handleSaveDebugClick = () => {
                     :on-remove="removeNode"
                     :on-clone="cloneNode"
                     :on-toggle-expanded="handleRootExpansion"
+                    :on-focus-node="handleNodeFocus"
                 />
             </div>
             <div

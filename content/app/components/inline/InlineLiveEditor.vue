@@ -34,6 +34,7 @@ const route = useRoute();
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const isIframeReady = ref(false);
 const latestDocument = ref<MinimalContentDocument | null>(null);
+const latestPreviewDocument = ref<MinimalContentDocument | null>(null);
 const selectedSummary = ref<ContentPageSummary | null>(null);
 const cacheBuster = ref(Date.now());
 const resolvedBaseUrl = ref<string>("");
@@ -48,6 +49,7 @@ const activePath = ref(initialPath.value);
 const workbenchInstanceKey = ref(0);
 const hasUnsavedChanges = ref(false);
 const sidebarWidth = ref(420);
+const pendingFocusTarget = ref<{ uid: string; path: string } | null>(null);
 const dividerRef = ref<HTMLDivElement | null>(null);
 const isDraggingDivider = ref(false);
 const pendingDividerDrag = ref(false);
@@ -216,20 +218,31 @@ const getClonedDocument = (
     return JSON.parse(JSON.stringify(document)) as MinimalContentDocument;
 };
 
-const sendLiveUpdate = (document: MinimalContentDocument) => {
+const getPreviewPayload = (): MinimalContentDocument | null => {
+    return latestPreviewDocument.value ?? latestDocument.value;
+};
+
+const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
+    const sourceDocument = document ?? getPreviewPayload();
+    if (!sourceDocument) {
+        return;
+    }
+
     if (!iframeRef.value?.contentWindow) {
         return;
     }
 
-    const normalizedPath = normalizePagePath(document.path ?? activePath.value);
-    const payload = getClonedDocument({
-        ...document,
+    const normalizedPath = normalizePagePath(
+        sourceDocument.path ?? activePath.value,
+    );
+    const cloned = getClonedDocument({
+        ...sourceDocument,
         path: normalizedPath,
     });
 
     console.debug("[inline-live-editor] sending live update", {
         path: normalizedPath,
-        document: payload,
+        document: cloned,
     });
 
     iframeRef.value.contentWindow.postMessage(
@@ -237,7 +250,27 @@ const sendLiveUpdate = (document: MinimalContentDocument) => {
             type: "live_updates",
             payload: {
                 path: normalizedPath,
-                document: payload,
+                document: cloned,
+            },
+        },
+        previewOrigin.value,
+    );
+};
+
+const sendFocusMessage = (uid: string, path: string) => {
+    if (!iframeRef.value?.contentWindow || !isIframeReady.value) {
+        pendingFocusTarget.value = { uid, path };
+        return;
+    }
+
+    pendingFocusTarget.value = null;
+
+    iframeRef.value.contentWindow.postMessage(
+        {
+            type: "builder_focus",
+            payload: {
+                path,
+                uid,
             },
         },
         previewOrigin.value,
@@ -269,8 +302,32 @@ const handleDocumentChange = (document: MinimalContentDocument) => {
         isIframeReady.value = false;
     }
     if (isIframeReady.value) {
-        sendLiveUpdate(normalized);
+        sendLiveUpdate();
     }
+};
+
+const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
+    const normalized = getClonedDocument(document);
+    normalized.path = normalizePagePath(normalized.path ?? activePath.value);
+    latestPreviewDocument.value = normalized;
+    if (activePath.value !== normalized.path) {
+        activePath.value = normalized.path;
+        isIframeReady.value = false;
+    }
+    if (isIframeReady.value) {
+        sendLiveUpdate();
+    }
+};
+
+const handleNodeFocus = (payload: { uid: string; path: string }) => {
+    const normalizedPath = normalizePagePath(
+        payload.path || activePath.value || "/",
+    );
+    if (activePath.value !== normalizedPath) {
+        activePath.value = normalizedPath;
+        isIframeReady.value = false;
+    }
+    sendFocusMessage(payload.uid, normalizedPath);
 };
 
 const handleSaveSuccess = () => {
@@ -372,9 +429,15 @@ const beginDividerDrag = (event: PointerEvent) => {
 
 const handleIframeLoad = () => {
     isIframeReady.value = true;
-    if (latestDocument.value) {
-        nextTick(() => sendLiveUpdate(latestDocument.value!));
-    }
+    nextTick(() => {
+        sendLiveUpdate();
+        if (pendingFocusTarget.value) {
+            sendFocusMessage(
+                pendingFocusTarget.value.uid,
+                pendingFocusTarget.value.path,
+            );
+        }
+    });
 };
 
 watch(
@@ -536,6 +599,8 @@ onBeforeRouteLeave(() => {
                 :hide-preview="true"
                 @page-selected="handlePageSelected"
                 @document-change="handleDocumentChange"
+                @document-preview-change="handlePreviewDocumentChange"
+                @node-focus="handleNodeFocus"
                 @save-success="handleSaveSuccess"
                 @unsaved-state-change="handleUnsavedStateChange"
             />

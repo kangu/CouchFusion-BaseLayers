@@ -89,7 +89,9 @@ const emit = defineEmits<{
     (e: "duplicate-success", page: ContentPageSummary): void;
     (e: "duplicate-error", error: Error): void;
     (e: "document-change", document: MinimalContentDocument): void;
+    (e: "document-preview-change", document: MinimalContentDocument): void;
     (e: "unsaved-state-change", hasChanges: boolean): void;
+    (e: "node-focus", payload: { uid: string; path: string }): void;
 }>();
 
 const title = computed(() => props.title ?? "Content Builder");
@@ -939,6 +941,14 @@ function handleDocumentChange(document: MinimalContentDocument): void {
     emit("document-change", document);
 }
 
+function handleDocumentPreviewChange(document: MinimalContentDocument): void {
+    emit("document-preview-change", document);
+}
+
+function handleNodeFocus(payload: { uid: string; path: string }): void {
+    emit("node-focus", payload);
+}
+
 async function handleSaveDocument(): Promise<void> {
     if (isSavePending.value || !selectedSummary.value) {
         return;
@@ -1489,6 +1499,10 @@ defineExpose({
                                 :hide-preview="hidePreview"
                                 :key="selectedDocument.id"
                                 @document-change="handleDocumentChange"
+                                @document-preview-change="
+                                    handleDocumentPreviewChange
+                                "
+                                @node-focus="handleNodeFocus"
                             />
                         </div>
                     </div>
