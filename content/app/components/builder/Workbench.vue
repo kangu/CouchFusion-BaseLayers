@@ -687,8 +687,12 @@ const handleDrop = (uid: string | null) => {
     handleDragEnd();
 };
 
-const handleNodeFocus = (uid: string) => {
-    emit("node-focus", { uid, path: pageConfig.path });
+const handleNodeFocus = (payload: { uid: string; mode?: "flash" | "lock" | "clear" }) => {
+    emit("node-focus", {
+        uid: payload.uid,
+        path: pageConfig.path,
+        mode: payload.mode ?? "flash",
+    });
 };
 
 const serializedDocument = computed(() =>

@@ -3910,7 +3910,7 @@ const props = defineProps<{
     onRemove: (uid: string) => void;
     onClone: (uid: string) => void;
     onToggleExpanded?: (uid: string, expanded: boolean) => void;
-    onFocusNode?: (uid: string) => void;
+    onFocusNode?: (payload: { uid: string; mode: "flash" | "lock" | "clear" }) => void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
@@ -3921,14 +3921,14 @@ const componentDef = computed(() =>
         : undefined,
 );
 
-const notifyFocus = () => {
+const notifyFocus = (mode: "flash" | "lock" | "clear" = "flash") => {
     if (props.onFocusNode) {
-        props.onFocusNode(props.node.uid);
+        props.onFocusNode({ uid: props.node.uid, mode });
     }
 };
 
 const triggerFocus = () => {
-    notifyFocus();
+    notifyFocus("flash");
 };
 
 watch(
@@ -5621,6 +5621,7 @@ const toggleNode = (uid: string) => {
     if (typeof props.onToggleExpanded === "function") {
         props.onToggleExpanded(uid, !nextCollapsed);
     }
+    notifyFocus(nextCollapsed ? "clear" : "lock");
 };
 
 const openInsertDialog = (schema: ComponentPropSchema) => {

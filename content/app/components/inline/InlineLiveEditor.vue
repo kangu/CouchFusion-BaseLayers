@@ -49,7 +49,11 @@ const activePath = ref(initialPath.value);
 const workbenchInstanceKey = ref(0);
 const hasUnsavedChanges = ref(false);
 const sidebarWidth = ref(420);
-const pendingFocusTarget = ref<{ uid: string; path: string } | null>(null);
+const pendingFocusTarget = ref<{
+    uid: string;
+    path: string;
+    mode?: "flash" | "lock" | "clear";
+} | null>(null);
 const dividerRef = ref<HTMLDivElement | null>(null);
 const isDraggingDivider = ref(false);
 const pendingDividerDrag = ref(false);
@@ -257,9 +261,13 @@ const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
     );
 };
 
-const sendFocusMessage = (uid: string, path: string) => {
+const sendFocusMessage = (
+    uid: string,
+    path: string,
+    mode: "flash" | "lock" | "clear" = "flash",
+) => {
     if (!iframeRef.value?.contentWindow || !isIframeReady.value) {
-        pendingFocusTarget.value = { uid, path };
+        pendingFocusTarget.value = { uid, path, mode };
         return;
     }
 
@@ -271,6 +279,7 @@ const sendFocusMessage = (uid: string, path: string) => {
             payload: {
                 path,
                 uid,
+                mode,
             },
         },
         previewOrigin.value,
@@ -319,7 +328,16 @@ const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
     }
 };
 
-const handleNodeFocus = (payload: { uid: string; path: string }) => {
+const handleNodeFocus = (payload: {
+    uid?: string;
+    path?: string;
+    mode?: "flash" | "lock" | "clear";
+    propKey?: string;
+} | Event) => {
+    if (!payload || typeof payload !== "object" || payload instanceof Event) {
+        return;
+    }
+
     const normalizedPath = normalizePagePath(
         payload.path || activePath.value || "/",
     );
@@ -327,7 +345,16 @@ const handleNodeFocus = (payload: { uid: string; path: string }) => {
         activePath.value = normalizedPath;
         isIframeReady.value = false;
     }
-    sendFocusMessage(payload.uid, normalizedPath);
+    if (typeof payload.uid !== "string") {
+        return;
+    }
+
+    sendFocusMessage(
+        payload.uid,
+        normalizedPath,
+        payload.mode ?? "flash",
+        payload.propKey,
+    );
 };
 
 const handleSaveSuccess = () => {
@@ -435,6 +462,7 @@ const handleIframeLoad = () => {
             sendFocusMessage(
                 pendingFocusTarget.value.uid,
                 pendingFocusTarget.value.path,
+                pendingFocusTarget.value.mode ?? "flash",
             );
         }
     });

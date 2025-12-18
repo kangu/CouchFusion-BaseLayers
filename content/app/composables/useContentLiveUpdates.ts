@@ -16,6 +16,7 @@ interface LiveUpdateMessage {
 interface BuilderFocusPayload {
   path: string
   uid: string
+  mode?: 'flash' | 'lock' | 'clear'
 }
 
 interface BuilderFocusMessage {
@@ -107,6 +108,49 @@ const clearHighlight = () => {
   if (highlightOverlay) {
     highlightOverlay.style.opacity = '0'
   }
+}
+
+const applyElementShadow = (
+  element: HTMLElement,
+  mode: 'flash' | 'lock' | 'clear' = 'flash'
+) => {
+  const flashClass = 'builder-highlight-flash'
+  const lockClass = 'builder-highlight-lock'
+
+  element.classList.remove(flashClass)
+  element.classList.remove(lockClass)
+
+  if (mode === 'clear') {
+    return
+  }
+
+  if (mode === 'lock') {
+    element.classList.add(lockClass)
+    return
+  }
+
+  // flash
+  element.classList.add(flashClass)
+  // remove after animation
+  window.setTimeout(() => element.classList.remove(flashClass), 900)
+}
+
+const ensureHighlightStyles = () => {
+  if (document.getElementById('builder-highlight-styles')) {
+    return
+  }
+  const style = document.createElement('style')
+  style.id = 'builder-highlight-styles'
+  style.textContent = `
+.builder-highlight-flash {
+  box-shadow: inset 0 0 0 3px rgba(37, 99, 235, 0.85), 0 0 0 2px rgba(37, 99, 235, 0.25);
+  transition: box-shadow 0.2s ease;
+}
+.builder-highlight-lock {
+  box-shadow: inset 0 0 0 3px rgba(37, 99, 235, 0.85), 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+  `
+  document.head.appendChild(style)
 }
 
 export const useContentLiveUpdates = (): void => {
@@ -212,6 +256,7 @@ export const useContentLiveUpdates = (): void => {
         }
 
         const uid = data.payload!.uid
+        const mode = data.payload!.mode ?? 'flash'
         const target = document.querySelector<HTMLElement>(
           `[data-builder-uid="${uid}"]`
         )
@@ -222,6 +267,8 @@ export const useContentLiveUpdates = (): void => {
         }
 
         target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        ensureHighlightStyles()
+        applyElementShadow(target, mode)
         showHighlight(target)
       } catch (error) {
         console.error('Failed to highlight builder node:', error)

@@ -945,8 +945,24 @@ function handleDocumentPreviewChange(document: MinimalContentDocument): void {
     emit("document-preview-change", document);
 }
 
-function handleNodeFocus(payload: { uid: string; path: string }): void {
-    emit("node-focus", payload);
+function handleNodeFocus(
+    payload: { uid?: string; path?: string; mode?: string; propKey?: string } | Event,
+): void {
+    if (!payload || typeof payload !== "object" || payload instanceof Event) {
+        return;
+    }
+    if (typeof payload.uid !== "string" || typeof payload.path !== "string") {
+        return;
+    }
+    emit("node-focus", {
+        uid: payload.uid,
+        path: payload.path,
+        mode:
+            payload.mode === "flash" || payload.mode === "lock" || payload.mode === "clear"
+                ? payload.mode
+                : undefined,
+        propKey: typeof payload.propKey === "string" ? payload.propKey : undefined,
+    });
 }
 
 async function handleSaveDocument(): Promise<void> {
