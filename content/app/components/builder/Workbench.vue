@@ -467,7 +467,11 @@ const findNode = (
 const findNodeEntry = (
     nodes: BuilderNodeChild[],
     uid: string,
-): { parent: BuilderNodeChild[]; index: number; node: BuilderNodeChild } | null => {
+): {
+    parent: BuilderNodeChild[];
+    index: number;
+    node: BuilderNodeChild;
+} | null => {
     for (let index = 0; index < nodes.length; index += 1) {
         const candidate = nodes[index];
         if (candidate.uid === uid) {
@@ -1083,13 +1087,13 @@ const handleSaveDebugClick = () => {
 }
 
 .builder-tree {
-    padding: 16px;
+    padding: 4px;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #fff;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 2px;
 }
 
 .builder-empty {
@@ -1102,7 +1106,7 @@ const handleSaveDebugClick = () => {
     align-items: flex-start;
     border: 1px dashed transparent;
     border-radius: 8px;
-    padding: 8px;
+    padding: 0;
 }
 
 .builder-root-item[data-dragging="true"] {

@@ -575,9 +575,7 @@ function deriveDuplicatePath(sourcePath: string | null | undefined): string {
     return `${normalized}-copy`;
 }
 
-function resetDuplicatePageForm(
-    document: MinimalContentDocument | null,
-): void {
+function resetDuplicatePageForm(document: MinimalContentDocument | null): void {
     const summary = selectedSummary.value;
     const sourceDoc = document ?? null;
 
@@ -1243,7 +1241,6 @@ defineExpose({
             >
                 <div class="editor-header__left">
                     <div class="editor-header__meta">
-                        <span class="editor-header__meta-label">Editing</span>
                         <span class="editor-header__meta-value">
                             {{
                                 selectedSummary?.title ||
@@ -1251,6 +1248,9 @@ defineExpose({
                                 "No page selected"
                             }}
                         </span>
+                    </div>
+                    <div class="editor-header__status">
+                        {{ selectedSummary?.path }}
                     </div>
                     <div class="editor-header__status">
                         <span
@@ -1756,9 +1756,8 @@ defineExpose({
                                         :key="node.key"
                                         class="modal__components-item"
                                         :style="{
-                                            '--component-indent': getDuplicateNodeIndent(
-                                                node,
-                                            ),
+                                            '--component-indent':
+                                                getDuplicateNodeIndent(node),
                                         }"
                                     >
                                         <input
