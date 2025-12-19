@@ -81,11 +81,11 @@ const ensureHighlightOverlay = (): HTMLDivElement => {
   const overlay = document.createElement('div')
   overlay.setAttribute('data-builder-highlight', 'true')
   overlay.style.position = 'absolute'
-  overlay.style.border = '2px solid #2563eb'
+  overlay.style.border = '6px solid #2563eb'
   overlay.style.background = 'rgba(37, 99, 235, 0.08)'
   overlay.style.pointerEvents = 'none'
   overlay.style.zIndex = '9999'
-  overlay.style.boxShadow = '0 0 0 2px rgba(37, 99, 235, 0.25)'
+  overlay.style.boxShadow = '0 0 0 6px rgba(37, 99, 235, 0.25)'
   overlay.style.transition = 'opacity 120ms ease'
   overlay.style.opacity = '0'
   document.body.appendChild(overlay)
@@ -143,11 +143,11 @@ const ensureHighlightStyles = () => {
   style.id = 'builder-highlight-styles'
   style.textContent = `
 .builder-highlight-flash {
-  box-shadow: inset 0 0 0 3px rgba(37, 99, 235, 0.85), 0 0 0 2px rgba(37, 99, 235, 0.25);
+  box-shadow: inset 0 0 0 9px rgba(37, 99, 235, 0.85), 0 0 0 6px rgba(37, 99, 235, 0.25);
   transition: box-shadow 0.2s ease;
 }
 .builder-highlight-lock {
-  box-shadow: inset 0 0 0 3px rgba(37, 99, 235, 0.85), 0 0 0 2px rgba(37, 99, 235, 0.25);
+  box-shadow: inset 0 0 0 9px rgba(37, 99, 235, 0.85), 0 0 0 6px rgba(37, 99, 235, 0.25);
 }
   `
   document.head.appendChild(style)

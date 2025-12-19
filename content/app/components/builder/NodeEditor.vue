@@ -82,14 +82,8 @@
             class="node-panel__body"
             v-show="!collapsedNodes[node.uid]"
         >
-            <div v-if="componentDef?.props?.length" class="node-panel__props">
-                <template
-                    v-for="prop in filterVisibleFields(
-                        componentDef?.props,
-                        propDraft,
-                    )"
-                    :key="prop.key"
-                >
+            <div v-if="visibleProps.length" class="node-panel__props">
+                <template v-for="prop in visibleProps" :key="prop.key">
                     <component
                         :is="fieldWrapperTag(prop)"
                         class="node-panel__field"
@@ -522,21 +516,24 @@
                                     </button>
                                 </div>
                                 <div
-                                    v-for="(item, index) in propDraft[prop.key]"
-                                    :key="`${prop.key}-${index}`"
+                                    v-for="arrayItemEntry in getFilteredJsonArrayItems(
+                                        prop.key,
+                                    )"
+                                    :key="`${prop.key}-${arrayItemEntry.index}`"
                                     class="node-panel__array-item"
                                     :class="{
                                         'node-panel__array-item--drag-over':
                                             dragOverArrayItem?.propKey ===
                                                 prop.key &&
-                                            dragOverArrayItem.index === index,
+                                            dragOverArrayItem.index ===
+                                                arrayItemEntry.index,
                                     }"
                                     draggable="true"
                                     @dragstart.stop="
                                         (event) =>
                                             handleArrayItemDragStart(
                                                 prop.key,
-                                                index,
+                                                arrayItemEntry.index,
                                                 'jsonarray',
                                                 event,
                                             )
@@ -545,14 +542,14 @@
                                         () =>
                                             handleArrayItemDragEnter(
                                                 prop.key,
-                                                index,
+                                                arrayItemEntry.index,
                                             )
                                     "
                                     @dragover.stop.prevent="
                                         () =>
                                             handleArrayItemDragEnter(
                                                 prop.key,
-                                                index,
+                                                arrayItemEntry.index,
                                             )
                                     "
                                     @dragleave.stop="handleArrayItemDragLeave"
@@ -560,7 +557,7 @@
                                         () =>
                                             handleArrayItemDrop(
                                                 prop.key,
-                                                index,
+                                                arrayItemEntry.index,
                                                 'jsonarray',
                                             )
                                     "
@@ -571,7 +568,7 @@
                                         <label
                                             v-for="field in filterVisibleFields(
                                                 prop.items,
-                                                item,
+                                                arrayItemEntry.value,
                                             )"
                                             :key="field.key"
                                             class="node-panel__field node-panel__field--nested"
@@ -581,15 +578,22 @@
                                                 v-if="field.type === 'textarea'"
                                             >
                                                 <textarea
-                                                    v-model="item[field.key]"
+                                                    v-model="
+                                                        arrayItemEntry.value[
+                                                            field.key
+                                                        ]
+                                                    "
                                                     rows="3"
                                                     @input="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                                 {
                                                                     debounce: true,
                                                                 },
@@ -599,18 +603,24 @@
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                     @blur="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                 />
@@ -628,14 +638,17 @@
                                                         class="node-panel__checkbox-input"
                                                         :checked="
                                                             Boolean(
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                         "
                                                         @change="
                                                             (event: Event) =>
                                                                 handleArrayItemFieldChange(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field,
                                                                     (
                                                                         event.target as HTMLInputElement
@@ -670,16 +683,21 @@
                                             >
                                                 <input
                                                     v-model.number="
-                                                        item[field.key]
+                                                        arrayItemEntry.value[
+                                                            field.key
+                                                        ]
                                                     "
                                                     type="number"
                                                     @input="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                                 {
                                                                     debounce: true,
                                                                 },
@@ -689,18 +707,24 @@
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                     @blur="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                 />
@@ -711,14 +735,21 @@
                                                 "
                                             >
                                                 <select
-                                                    v-model="item[field.key]"
+                                                    v-model="
+                                                        arrayItemEntry.value[
+                                                            field.key
+                                                        ]
+                                                    "
                                                     @change="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                 >
@@ -745,7 +776,7 @@
                                                     :data-collapsed="
                                                         isNestedArrayCollapsed(
                                                             prop.key,
-                                                            index,
+                                                            arrayItemEntry.index,
                                                             field.key,
                                                         )
                                                     "
@@ -759,7 +790,7 @@
                                                             :data-state="
                                                                 isNestedArrayCollapsed(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                                     ? 'collapsed'
@@ -768,7 +799,7 @@
                                                             @click="
                                                                 toggleNestedArray(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                             "
@@ -776,7 +807,7 @@
                                                             {{
                                                                 isNestedArrayCollapsed(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                                     ? "Expand"
@@ -785,7 +816,7 @@
                                                             ({{
                                                                 getArrayItemStringArrayItems(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field,
                                                                 ).length
                                                             }})
@@ -796,7 +827,7 @@
                                                             @click="
                                                                 addArrayItemStringArrayItem(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field,
                                                                 )
                                                             "
@@ -809,20 +840,17 @@
                                                         </button>
                                                     </div>
                                                     <div
-                                                        v-for="(
-                                                            nestedValue,
-                                                            nestedIndex
-                                                        ) in getArrayItemStringArrayItems(
+                                                        v-for="nestedEntry in getFilteredArrayItemStringArrayItems(
                                                             prop.key,
-                                                            index,
+                                                            arrayItemEntry.index,
                                                             field,
                                                         )"
-                                                        :key="`${prop.key}-${index}-${field.key}-string-${nestedIndex}`"
+                                                        :key="`${prop.key}-${arrayItemEntry.index}-${field.key}-string-${nestedEntry.index}`"
                                                         class="node-panel__array-item node-panel__array-item--nested"
                                                         v-show="
                                                             !isNestedArrayCollapsed(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field.key,
                                                             )
                                                         "
@@ -835,7 +863,7 @@
                                                                     field.label
                                                                 }}
                                                                 {{
-                                                                    nestedIndex +
+                                                                    nestedEntry.index +
                                                                     1
                                                                 }}</span
                                                             >
@@ -849,7 +877,7 @@
                                                                         .component
                                                                 "
                                                                 :model-value="
-                                                                    nestedValue
+                                                                    nestedEntry.value
                                                                 "
                                                                 :prop-definition="
                                                                     field
@@ -858,7 +886,7 @@
                                                                     propKey:
                                                                         prop.key,
                                                                     arrayIndex:
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                     nestedFieldKey:
                                                                         field.key,
                                                                 }"
@@ -868,9 +896,9 @@
                                                                     ) =>
                                                                         handleArrayItemStringArrayChange(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
-                                                                            nestedIndex,
+                                                                            nestedEntry.index,
                                                                             value,
                                                                             {
                                                                                 debounce: true,
@@ -881,7 +909,7 @@
                                                             <input
                                                                 v-else
                                                                 :value="
-                                                                    nestedValue
+                                                                    nestedEntry.value
                                                                 "
                                                                 type="text"
                                                                 @input="
@@ -890,9 +918,9 @@
                                                                     ) =>
                                                                         handleArrayItemStringArrayChange(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
-                                                                            nestedIndex,
+                                                                            nestedEntry.index,
                                                                             (
                                                                                 event.target as HTMLInputElement
                                                                             )
@@ -908,9 +936,9 @@
                                                                     ) =>
                                                                         handleArrayItemStringArrayChange(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
-                                                                            nestedIndex,
+                                                                            nestedEntry.index,
                                                                             (
                                                                                 event.target as HTMLInputElement
                                                                             )
@@ -923,9 +951,9 @@
                                                                     ) =>
                                                                         handleArrayItemStringArrayChange(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
-                                                                            nestedIndex,
+                                                                            nestedEntry.index,
                                                                             (
                                                                                 event.target as HTMLInputElement
                                                                             )
@@ -943,9 +971,9 @@
                                                                 @click="
                                                                     removeArrayItemStringArrayItem(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
-                                                                        nestedIndex,
+                                                                        nestedEntry.index,
                                                                     )
                                                                 "
                                                             >
@@ -957,14 +985,14 @@
                                                                 @click="
                                                                     openArrayItemStringArrayReorderDialog(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
-                                                                        nestedIndex,
+                                                                        nestedEntry.index,
                                                                     )
                                                                 "
                                                             >
                                                                 Move (#{{
-                                                                    nestedIndex +
+                                                                    nestedEntry.index +
                                                                     1
                                                                 }})
                                                             </button>
@@ -988,9 +1016,13 @@
                                                         <label
                                                             v-for="nestedObjectField in filterVisibleFields(
                                                                 field.fields,
-                                                                item[field.key],
+                                                                getArrayItemObjectValue(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    field,
+                                                                ),
                                                             )"
-                                                            :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
+                                                            :key="`${prop.key}-${arrayItemEntry.index}-${field.key}-${nestedObjectField.key}`"
                                                             class="node-panel__field node-panel__field--nested"
                                                         >
                                                             <span>{{
@@ -1006,7 +1038,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1018,12 +1050,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1038,12 +1070,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1055,12 +1087,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1079,34 +1111,34 @@
                                                                 <span
                                                                     class="node-panel__checkbox"
                                                                 >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        class="node-panel__checkbox-input"
-                                                                        :checked="
-                                                                            Boolean(
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                <input
+                                                                    type="checkbox"
+                                                                    class="node-panel__checkbox-input"
+                                                                    :checked="
+                                                                        Boolean(
+                                                                            getArrayItemObjectValue(
+                                                                                prop.key,
+                                                                                arrayItemEntry.index,
+                                                                                field,
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                         "
                                                                         @change="
                                                                             (
                                                                                 event: Event,
                                                                             ) =>
-                                                                                handleArrayItemObjectFieldChange(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedObjectField,
-                                                                                    (
-                                                                                        event.target as HTMLInputElement
-                                                                                    )
-                                                                                        .checked,
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            (
+                                                                                event.target as HTMLInputElement
+                                                                            )
+                                                                                .checked,
                                                                                 )
                                                                         "
                                                                     />
@@ -1140,7 +1172,7 @@
                                                                     v-model.number="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1150,19 +1182,19 @@
                                                                     type="number"
                                                                     @input="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                                 {
                                                                                     debounce: true,
                                                                                 },
@@ -1170,36 +1202,36 @@
                                                                     "
                                                                     @change="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                     "
                                                                     @blur="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                     "
                                                                 />
@@ -1214,7 +1246,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1223,19 +1255,19 @@
                                                                     "
                                                                     @change="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                     "
                                                                 >
@@ -1277,7 +1309,7 @@
                                                                     :model-value="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1291,7 +1323,7 @@
                                                                         propKey:
                                                                             prop.key,
                                                                         arrayIndex:
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                     }"
                                                                     @update:modelValue="
                                                                         (
@@ -1299,7 +1331,7 @@
                                                                         ) =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 value,
@@ -1315,7 +1347,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1325,19 +1357,19 @@
                                                                     type="text"
                                                                     @input="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                                 {
                                                                                     debounce: true,
                                                                                 },
@@ -1345,36 +1377,36 @@
                                                                     "
                                                                     @change="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                     "
                                                                     @blur="
                                                                         () =>
-                                                                            handleArrayItemObjectFieldChange(
+                                                                        handleArrayItemObjectFieldChange(
+                                                                            prop.key,
+                                                                            arrayItemEntry.index,
+                                                                            field,
+                                                                            nestedObjectField,
+                                                                            getArrayItemObjectValue(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
+                                                                            )[
+                                                                                nestedObjectField
+                                                                                    .key
+                                                                            ],
                                                                             )
                                                                     "
                                                                 />
@@ -1389,7 +1421,7 @@
                                                                 formatJsonValue(
                                                                     getArrayItemObjectValue(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                     ),
                                                                 )
@@ -1400,7 +1432,7 @@
                                                                 ) =>
                                                                     handleArrayItemObjectJsonChange(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         (
                                                                             event.target as HTMLTextAreaElement
@@ -1413,7 +1445,7 @@
                                                                 ) =>
                                                                     handleArrayItemObjectJsonChange(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         (
                                                                             event.target as HTMLTextAreaElement
@@ -1438,19 +1470,15 @@
                                                         "
                                                     >
                                                         <label
-                                                            v-for="nestedObjectField in field.fields ||
-                                                            []"
-                                                            v-if="
-                                                                isFieldVisible(
-                                                                    nestedObjectField,
-                                                                    getArrayItemObjectValue(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                    ),
-                                                                )
-                                                            "
-                                                            :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
+                                                            v-for="nestedObjectField in filterVisibleFields(
+                                                                field.fields,
+                                                                getArrayItemObjectValue(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    field,
+                                                                ),
+                                                            )"
+                                                            :key="`${prop.key}-${arrayItemEntry.index}-${field.key}-${nestedObjectField.key}`"
                                                             class="node-panel__field node-panel__field--nested"
                                                         >
                                                             <span>{{
@@ -1466,7 +1494,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1478,12 +1506,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1498,12 +1526,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1515,12 +1543,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1546,7 +1574,7 @@
                                                                             Boolean(
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1560,7 +1588,7 @@
                                                                             ) =>
                                                                                 handleArrayItemObjectFieldChange(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedObjectField,
                                                                                     (
@@ -1600,7 +1628,7 @@
                                                                     v-model.number="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1612,12 +1640,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1632,12 +1660,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1649,12 +1677,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1674,7 +1702,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1685,12 +1713,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1737,7 +1765,7 @@
                                                                     :model-value="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1751,7 +1779,7 @@
                                                                         propKey:
                                                                             prop.key,
                                                                         arrayIndex:
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                     }"
                                                                     @update:modelValue="
                                                                         (
@@ -1759,7 +1787,7 @@
                                                                         ) =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 value,
@@ -1775,7 +1803,7 @@
                                                                     v-model="
                                                                         getArrayItemObjectValue(
                                                                             prop.key,
-                                                                            index,
+                                                                            arrayItemEntry.index,
                                                                             field,
                                                                         )[
                                                                             nestedObjectField
@@ -1787,12 +1815,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1807,12 +1835,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1824,12 +1852,12 @@
                                                                         () =>
                                                                             handleArrayItemObjectFieldChange(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedObjectField,
                                                                                 getArrayItemObjectValue(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                 )[
                                                                                     nestedObjectField
@@ -1849,7 +1877,7 @@
                                                                 formatJsonValue(
                                                                     getArrayItemObjectValue(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                     ),
                                                                 )
@@ -1860,7 +1888,7 @@
                                                                 ) =>
                                                                     handleArrayItemObjectJsonChange(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         (
                                                                             event.target as HTMLTextAreaElement
@@ -1873,7 +1901,7 @@
                                                                 ) =>
                                                                     handleArrayItemObjectJsonChange(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         (
                                                                             event.target as HTMLTextAreaElement
@@ -1890,18 +1918,21 @@
                                                 <component
                                                     :is="field.ui.component"
                                                     :model-value="
-                                                        item[field.key]
+                                                        arrayItemEntry.value[
+                                                            field.key
+                                                        ]
                                                     "
                                                     :prop-definition="field"
                                                     :field-context="{
                                                         propKey: prop.key,
-                                                        arrayIndex: index,
+                                                        arrayIndex:
+                                                            arrayItemEntry.index,
                                                     }"
                                                     @update:modelValue="
                                                         (value: unknown) =>
                                                             handleCustomArrayFieldUpdate(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
                                                                 value,
                                                                 {
@@ -1921,7 +1952,7 @@
                                                     :data-collapsed="
                                                         isNestedArrayCollapsed(
                                                             prop.key,
-                                                            index,
+                                                            arrayItemEntry.index,
                                                             field.key,
                                                         )
                                                     "
@@ -1935,7 +1966,7 @@
                                                             :data-state="
                                                                 isNestedArrayCollapsed(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                                     ? 'collapsed'
@@ -1944,7 +1975,7 @@
                                                             @click="
                                                                 toggleNestedArray(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                             "
@@ -1952,7 +1983,7 @@
                                                             {{
                                                                 isNestedArrayCollapsed(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field.key,
                                                                 )
                                                                     ? "Expand"
@@ -1961,7 +1992,7 @@
                                                             ({{
                                                                 getNestedArrayItems(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field,
                                                                 ).length
                                                             }})
@@ -1972,7 +2003,7 @@
                                                             @click="
                                                                 addNestedArrayItem(
                                                                     prop.key,
-                                                                    index,
+                                                                    arrayItemEntry.index,
                                                                     field,
                                                                 )
                                                             "
@@ -1990,17 +2021,21 @@
                                                             nestedIndex
                                                         ) in getNestedArrayItems(
                                                             prop.key,
-                                                            index,
+                                                            arrayItemEntry.index,
                                                             field,
                                                         )"
-                                                        :key="`${prop.key}-${index}-${field.key}-${nestedIndex}`"
+                                                        :key="`${prop.key}-${arrayItemEntry.index}-${field.key}-${nestedIndex}`"
                                                         class="node-panel__array-item node-panel__array-item--nested"
                                                         v-show="
                                                             !isNestedArrayCollapsed(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field.key,
-                                                            )
+                                                            ) &&
+                                                                (!isSearchActive ||
+                                                                    matchesSearch(
+                                                                        nestedItem,
+                                                                    ))
                                                         "
                                                     >
                                                         <div
@@ -2035,7 +2070,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2052,7 +2087,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2066,7 +2101,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2104,7 +2139,7 @@
                                                                                 ) =>
                                                                                     updateNestedArrayItemField(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         field,
                                                                                         nestedIndex,
                                                                                         nestedField,
@@ -2153,7 +2188,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2170,7 +2205,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2184,7 +2219,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2207,7 +2242,7 @@
                                                                         :data-collapsed="
                                                                             isNestedArrayCollapsed(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 `${field.key}-${nestedField.key}`,
                                                                                 nestedIndex,
                                                                             )
@@ -2222,7 +2257,7 @@
                                                                                 :data-state="
                                                                                     isNestedArrayCollapsed(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         `${field.key}-${nestedField.key}`,
                                                                                         nestedIndex,
                                                                                     )
@@ -2232,7 +2267,7 @@
                                                                                 @click="
                                                                                     toggleNestedArray(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         `${field.key}-${nestedField.key}`,
                                                                                         nestedIndex,
                                                                                     )
@@ -2241,7 +2276,7 @@
                                                                                 {{
                                                                                     isNestedArrayCollapsed(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         `${field.key}-${nestedField.key}`,
                                                                                         nestedIndex,
                                                                                     )
@@ -2251,7 +2286,7 @@
                                                                                 ({{
                                                                                     getNestedArrayItemStringArrayItems(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         field,
                                                                                         nestedIndex,
                                                                                         nestedField,
@@ -2265,7 +2300,7 @@
                                                                                 @click="
                                                                                     addNestedArrayItemStringArrayItem(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         field,
                                                                                         nestedIndex,
                                                                                         nestedField,
@@ -2285,20 +2320,24 @@
                                                                                 optionIndex
                                                                             ) in getNestedArrayItemStringArrayItems(
                                                                                 prop.key,
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                                 field,
                                                                                 nestedIndex,
                                                                                 nestedField,
                                                                             )"
-                                                                            :key="`${prop.key}-${index}-${field.key}-${nestedIndex}-${nestedField.key}-string-${optionIndex}`"
+                                                                            :key="`${prop.key}-${arrayItemEntry.index}-${field.key}-${nestedIndex}-${nestedField.key}-string-${optionIndex}`"
                                                                             class="node-panel__array-item node-panel__array-item--nested"
                                                                             v-show="
                                                                                 !isNestedArrayCollapsed(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     `${field.key}-${nestedField.key}`,
                                                                                     nestedIndex,
-                                                                                )
+                                                                                ) &&
+                                                                                    (!isSearchActive ||
+                                                                                        matchesSearch(
+                                                                                            optionValue,
+                                                                                        ))
                                                                             "
                                                                         >
                                                                             <label
@@ -2334,7 +2373,7 @@
                                                                                         propKey:
                                                                                             prop.key,
                                                                                         arrayIndex:
-                                                                                            index,
+                                                                                            arrayItemEntry.index,
                                                                                         nestedFieldKey:
                                                                                             nestedField.key,
                                                                                         nestedIndex,
@@ -2345,7 +2384,7 @@
                                                                                         ) =>
                                                                                             handleNestedArrayItemStringArrayChange(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2369,7 +2408,7 @@
                                                                                         ) =>
                                                                                             handleNestedArrayItemStringArrayChange(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2389,7 +2428,7 @@
                                                                                         ) =>
                                                                                             handleNestedArrayItemStringArrayChange(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2406,7 +2445,7 @@
                                                                                         ) =>
                                                                                             handleNestedArrayItemStringArrayChange(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2428,7 +2467,7 @@
                                                                                     @click="
                                                                                         removeNestedArrayItemStringArrayItem(
                                                                                             prop.key,
-                                                                                            index,
+                                                                                            arrayItemEntry.index,
                                                                                             field,
                                                                                             nestedIndex,
                                                                                             nestedField,
@@ -2445,7 +2484,7 @@
                                                                                     @click="
                                                                                         openNestedStringArrayReorderDialog(
                                                                                             prop.key,
-                                                                                            index,
+                                                                                            arrayItemEntry.index,
                                                                                             field,
                                                                                             nestedIndex,
                                                                                             nestedField,
@@ -2480,7 +2519,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -2534,13 +2573,13 @@
                                                                                     nestedField.fields,
                                                                                     getNestedArrayItemObjectValue(
                                                                                         prop.key,
-                                                                                        index,
+                                                                                        arrayItemEntry.index,
                                                                                         field,
                                                                                         nestedIndex,
                                                                                         nestedField,
                                                                                     ),
                                                                                 )"
-                                                                                :key="`${prop.key}-${index}-${nestedField.key}-${objectField.key}-${nestedIndex}`"
+                                                                                :key="`${prop.key}-${arrayItemEntry.index}-${nestedField.key}-${objectField.key}-${nestedIndex}`"
                                                                                 class="node-panel__field node-panel__field--nested"
                                                                             >
                                                                                 <span
@@ -2558,7 +2597,7 @@
                                                                                         v-model="
                                                                                             getNestedArrayItemObjectValue(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2570,23 +2609,23 @@
                                                                                         rows="3"
                                                                                         @input="
                                                                                             () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
+                                                                                            handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                     {
                                                                                                         debounce: true,
                                                                                                     },
@@ -2594,44 +2633,44 @@
                                                                                         "
                                                                                         @change="
                                                                                             () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
+                                                                                            handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                         @blur="
                                                                                             () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
+                                                                                            handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                     />
@@ -2648,18 +2687,18 @@
                                                                                         <input
                                                                                             type="checkbox"
                                                                                             class="node-panel__checkbox-input"
-                                                                                            :checked="
-                                                                                                Boolean(
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                    :checked="
+                                                                                        Boolean(
+                                                                                            getNestedArrayItemObjectValue(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                            )[
+                                                                                                objectField
+                                                                                                    .key
+                                                                                            ],
                                                                                                 )
                                                                                             "
                                                                                             @change="
@@ -2667,16 +2706,16 @@
                                                                                                     event: Event,
                                                                                                 ) =>
                                                                                                     handleNestedArrayItemObjectFieldChange(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                        objectField,
-                                                                                                        (
-                                                                                                            event.target as HTMLInputElement
-                                                                                                        )
-                                                                                                            .checked,
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                (
+                                                                                                    event.target as HTMLInputElement
+                                                                                                )
+                                                                                                    .checked,
                                                                                                     )
                                                                                             "
                                                                                         />
@@ -2707,38 +2746,38 @@
                                                                                     "
                                                                                 >
                                                                                     <input
-                                                                                        v-model.number="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
+                                                                                    v-model.number="
+                                                                                        getNestedArrayItemObjectValue(
+                                                                                            prop.key,
+                                                                                            arrayItemEntry.index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                        )[
+                                                                                            objectField
+                                                                                                .key
+                                                                                        ]
                                                                                         "
                                                                                         type="number"
                                                                                         @input="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                     {
                                                                                                         debounce: true,
                                                                                                     },
@@ -2747,43 +2786,43 @@
                                                                                         @change="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                         @blur="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                     />
@@ -2795,37 +2834,37 @@
                                                                                     "
                                                                                 >
                                                                                     <select
-                                                                                        v-model="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
+                                                                                    v-model="
+                                                                                        getNestedArrayItemObjectValue(
+                                                                                            prop.key,
+                                                                                            arrayItemEntry.index,
+                                                                                            field,
+                                                                                            nestedIndex,
+                                                                                            nestedField,
+                                                                                        )[
+                                                                                            objectField
+                                                                                                .key
+                                                                                        ]
                                                                                         "
                                                                                         @change="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                     >
@@ -2867,7 +2906,7 @@
                                                                                         :model-value="
                                                                                             getNestedArrayItemObjectValue(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2883,7 +2922,7 @@
                                                                                             propKey:
                                                                                                 prop.key,
                                                                                             arrayIndex:
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                             nestedFieldKey:
                                                                                                 nestedField.key,
                                                                                             nestedIndex,
@@ -2894,7 +2933,7 @@
                                                                                             ) =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
@@ -2914,7 +2953,7 @@
                                                                                         v-model="
                                                                                             getNestedArrayItemObjectValue(
                                                                                                 prop.key,
-                                                                                                index,
+                                                                                                arrayItemEntry.index,
                                                                                                 field,
                                                                                                 nestedIndex,
                                                                                                 nestedField,
@@ -2927,22 +2966,22 @@
                                                                                         @input="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                     {
                                                                                                         debounce: true,
                                                                                                     },
@@ -2951,36 +2990,36 @@
                                                                                         @change="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
+                                                                                                prop.key,
+                                                                                                arrayItemEntry.index,
+                                                                                                field,
+                                                                                                nestedIndex,
+                                                                                                nestedField,
+                                                                                                objectField,
+                                                                                                getNestedArrayItemObjectValue(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
+                                                                                                )[
+                                                                                                    objectField
+                                                                                                        .key
+                                                                                                ],
                                                                                                 )
                                                                                         "
                                                                                         @blur="
                                                                                             () =>
                                                                                                 handleNestedArrayItemObjectFieldChange(
                                                                                                     prop.key,
-                                                                                                    index,
+                                                                                                    arrayItemEntry.index,
                                                                                                     field,
                                                                                                     nestedIndex,
                                                                                                     nestedField,
                                                                                                     objectField,
                                                                                                     getNestedArrayItemObjectValue(
                                                                                                         prop.key,
-                                                                                                        index,
+                                                                                                        arrayItemEntry.index,
                                                                                                         field,
                                                                                                         nestedIndex,
                                                                                                         nestedField,
@@ -3004,7 +3043,7 @@
                                                                                     formatJsonValue(
                                                                                         getNestedArrayItemObjectValue(
                                                                                             prop.key,
-                                                                                            index,
+                                                                                            arrayItemEntry.index,
                                                                                             field,
                                                                                             nestedIndex,
                                                                                             nestedField,
@@ -3017,7 +3056,7 @@
                                                                                     ) =>
                                                                                         handleNestedArrayItemObjectJsonChange(
                                                                                             prop.key,
-                                                                                            index,
+                                                                                            arrayItemEntry.index,
                                                                                             field,
                                                                                             nestedIndex,
                                                                                             nestedField,
@@ -3030,14 +3069,14 @@
                                                                                 @blur="
                                                                                     (
                                                                                         event: Event,
-                                                                                    ) =>
-                                                                                        handleNestedArrayItemObjectJsonChange(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                            (
+                                                                                ) =>
+                                                                                    handleNestedArrayItemObjectJsonChange(
+                                                                                        prop.key,
+                                                                                        arrayItemEntry.index,
+                                                                                        field,
+                                                                                        nestedIndex,
+                                                                                        nestedField,
+                                                                                        (
                                                                                                 event.target as HTMLTextAreaElement
                                                                                             )
                                                                                                 .value,
@@ -3073,7 +3112,7 @@
                                                                             propKey:
                                                                                 prop.key,
                                                                             arrayIndex:
-                                                                                index,
+                                                                                arrayItemEntry.index,
                                                                             nestedFieldKey:
                                                                                 nestedField.key,
                                                                             nestedIndex,
@@ -3084,7 +3123,7 @@
                                                                             ) =>
                                                                                 updateCustomNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -3111,7 +3150,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -3128,7 +3167,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -3142,7 +3181,7 @@
                                                                             () =>
                                                                                 updateNestedArrayItemField(
                                                                                     prop.key,
-                                                                                    index,
+                                                                                    arrayItemEntry.index,
                                                                                     field,
                                                                                     nestedIndex,
                                                                                     nestedField,
@@ -3165,7 +3204,7 @@
                                                                 @click="
                                                                     removeNestedArrayItem(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         nestedIndex,
                                                                     )
@@ -3179,7 +3218,7 @@
                                                                 @click="
                                                                     openNestedJsonArrayReorderDialog(
                                                                         prop.key,
-                                                                        index,
+                                                                        arrayItemEntry.index,
                                                                         field,
                                                                         nestedIndex,
                                                                     )
@@ -3196,15 +3235,22 @@
                                             </template>
                                             <template v-else>
                                                 <input
-                                                    v-model="item[field.key]"
+                                                    v-model="
+                                                        arrayItemEntry.value[
+                                                            field.key
+                                                        ]
+                                                    "
                                                     type="text"
                                                     @input="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                                 {
                                                                     debounce: true,
                                                                 },
@@ -3214,18 +3260,24 @@
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                     @blur="
                                                         () =>
                                                             handleArrayItemFieldChange(
                                                                 prop.key,
-                                                                index,
+                                                                arrayItemEntry.index,
                                                                 field,
-                                                                item[field.key],
+                                                                arrayItemEntry
+                                                                    .value[
+                                                                    field.key
+                                                                ],
                                                             )
                                                     "
                                                 />
@@ -3237,7 +3289,10 @@
                                             type="button"
                                             class="node-panel__array-remove"
                                             @click="
-                                                removeArrayItem(prop.key, index)
+                                                removeArrayItem(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                )
                                             "
                                         >
                                             Remove item
@@ -3249,11 +3304,11 @@
                                                 openTopLevelArrayReorderDialog(
                                                     prop.key,
                                                     'jsonarray',
-                                                    index,
+                                                    arrayItemEntry.index,
                                                 )
                                             "
                                         >
-                                            Move (#{{ index + 1 }})
+                                            Move (#{{ arrayItemEntry.index + 1 }})
                                         </button>
                                     </div>
                                 </div>
@@ -3296,23 +3351,24 @@
                                     </button>
                                 </div>
                                 <div
-                                    v-for="(value, index) in propDraft[
-                                        prop.key
-                                    ]"
-                                    :key="`${prop.key}-${index}`"
+                                    v-for="stringEntry in getFilteredStringArrayItems(
+                                        prop.key,
+                                    )"
+                                    :key="`${prop.key}-${stringEntry.index}`"
                                     class="node-panel__array-item"
                                     :class="{
                                         'node-panel__array-item--drag-over':
                                             dragOverArrayItem?.propKey ===
                                                 prop.key &&
-                                            dragOverArrayItem.index === index,
+                                            dragOverArrayItem.index ===
+                                                stringEntry.index,
                                     }"
                                     draggable="true"
                                     @dragstart.stop="
                                         (event) =>
                                             handleArrayItemDragStart(
                                                 prop.key,
-                                                index,
+                                                stringEntry.index,
                                                 'stringarray',
                                                 event,
                                             )
@@ -3321,14 +3377,14 @@
                                         () =>
                                             handleArrayItemDragEnter(
                                                 prop.key,
-                                                index,
+                                                stringEntry.index,
                                             )
                                     "
                                     @dragover.stop.prevent="
                                         () =>
                                             handleArrayItemDragEnter(
                                                 prop.key,
-                                                index,
+                                                stringEntry.index,
                                             )
                                     "
                                     @dragleave.stop="handleArrayItemDragLeave"
@@ -3336,7 +3392,7 @@
                                         () =>
                                             handleArrayItemDrop(
                                                 prop.key,
-                                                index,
+                                                stringEntry.index,
                                                 'stringarray',
                                             )
                                     "
@@ -3346,24 +3402,26 @@
                                     <label class="node-panel__field">
                                         <span
                                             >{{ prop.label }}
-                                            {{ index + 1 }}</span
+                                            {{ stringEntry.index + 1 }}</span
                                         >
                                         <component
                                             v-if="prop.ui?.component"
                                             :is="prop.ui.component"
                                             :model-value="
-                                                propDraft[prop.key][index]
+                                                propDraft[prop.key][
+                                                    stringEntry.index
+                                                ]
                                             "
                                             :prop-definition="prop"
                                             :field-context="{
                                                 propKey: prop.key,
-                                                arrayIndex: index,
+                                                arrayIndex: stringEntry.index,
                                             }"
                                             @update:modelValue="
                                                 (value: unknown) =>
                                                     handleStringArrayChange(
                                                         prop.key,
-                                                        index,
+                                                        stringEntry.index,
                                                         value,
                                                         { debounce: true },
                                                     )
@@ -3371,15 +3429,19 @@
                                         />
                                         <input
                                             v-else
-                                            v-model="propDraft[prop.key][index]"
+                                            v-model="
+                                                propDraft[prop.key][
+                                                    stringEntry.index
+                                                ]
+                                            "
                                             type="text"
                                             @input="
                                                 () =>
                                                     handleStringArrayChange(
                                                         prop.key,
-                                                        index,
+                                                        stringEntry.index,
                                                         propDraft[prop.key][
-                                                            index
+                                                            stringEntry.index
                                                         ],
                                                         {
                                                             debounce: true,
@@ -3390,9 +3452,9 @@
                                                 () =>
                                                     handleStringArrayChange(
                                                         prop.key,
-                                                        index,
+                                                        stringEntry.index,
                                                         propDraft[prop.key][
-                                                            index
+                                                            stringEntry.index
                                                         ],
                                                     )
                                             "
@@ -3400,9 +3462,9 @@
                                                 () =>
                                                     handleStringArrayChange(
                                                         prop.key,
-                                                        index,
+                                                        stringEntry.index,
                                                         propDraft[prop.key][
-                                                            index
+                                                            stringEntry.index
                                                         ],
                                                     )
                                             "
@@ -3415,7 +3477,7 @@
                                             @click="
                                                 removeStringArrayItem(
                                                     prop.key,
-                                                    index,
+                                                    stringEntry.index,
                                                 )
                                             "
                                         >
@@ -3428,11 +3490,11 @@
                                                 openTopLevelArrayReorderDialog(
                                                     prop.key,
                                                     'stringarray',
-                                                    index,
+                                                    stringEntry.index,
                                                 )
                                             "
                                         >
-                                            Move (#{{ index + 1 }})
+                                            Move (#{{ stringEntry.index + 1 }})
                                         </button>
                                     </div>
                                 </div>
@@ -3484,9 +3546,12 @@
                 </template>
             </div>
 
-            <div v-if="extraPropEntries.length" class="node-panel__props">
+            <div
+                v-if="filteredExtraPropEntries.length"
+                class="node-panel__props"
+            >
                 <label
-                    v-for="entry in extraPropEntries"
+                    v-for="entry in filteredExtraPropEntries"
                     :key="entry.key"
                     class="node-panel__field"
                 >
@@ -3663,11 +3728,12 @@
                     {{ componentDef.childHint }}
                 </p>
                 <NodeEditor
-                    v-for="child in node.children"
+                    v-for="child in filteredChildren"
                     :key="child.uid"
                     :node="child"
                     :registry="registry"
                     :component-options="componentOptions"
+                    :search-query="normalizedSearchQuery"
                     :depth="depth + 1"
                     :on-update-prop="onUpdateProp"
                     :on-update-text="onUpdateText"
@@ -3834,6 +3900,11 @@ import type {
     ComponentPropSchema,
     ComponentRegistry,
 } from "~/types/builder";
+import {
+    filterNodesBySearch,
+    matchesSearchValue,
+    normalizeSearchQuery,
+} from "../../utils/builderSearch";
 
 const isNestedArrayField = (
     field: ComponentArrayItemField,
@@ -3902,6 +3973,7 @@ const props = defineProps<{
     node: BuilderNodeChild;
     registry: ComponentRegistry;
     componentOptions: ComponentDefinition[];
+    searchQuery?: string;
     depth?: number;
     onUpdateProp: (uid: string, key: string, value: unknown) => void;
     onUpdateText: (uid: string, value: string) => void;
@@ -3914,12 +3986,28 @@ const props = defineProps<{
 }>();
 
 const depth = computed(() => props.depth ?? 0);
+const normalizedSearchQuery = computed(() =>
+    normalizeSearchQuery(props.searchQuery),
+);
+const isSearchActive = computed(() => normalizedSearchQuery.value.length > 0);
+const matchesSearch = (value: unknown) =>
+    matchesSearchValue(value, normalizedSearchQuery.value);
 
 const componentDef = computed(() =>
     props.node.type === "component"
         ? props.registry.lookup[props.node.component]
         : undefined,
 );
+
+const filteredChildren = computed(() => {
+    if (props.node.type !== "component") {
+        return [] as BuilderNodeChild[];
+    }
+    return filterNodesBySearch(
+        props.node.children || [],
+        normalizedSearchQuery.value,
+    );
+});
 
 const notifyFocus = (mode: "flash" | "lock" | "clear" = "flash") => {
     if (props.onFocusNode) {
@@ -3971,14 +4059,62 @@ const isFieldVisible = (
         return target === rule.equals;
     });
 };
-const filterVisibleFields = (
-    fields:
-        | Array<{ visibleWhen?: VisibleWhenRule | VisibleWhenRule[] }>
-        | undefined,
+const filterVisibleFields = <
+    T extends { key: string; visibleWhen?: VisibleWhenRule | VisibleWhenRule[] },
+>(
+    fields: T[] | undefined,
     context: Record<string, any> | undefined,
+): T[] => {
+    if (!fields) {
+        return [];
+    }
+    return fields.filter((field) => {
+        if (!isFieldVisible(field, context)) {
+            return false;
+        }
+        if (!isSearchActive.value) {
+            return true;
+        }
+        if (!context) {
+            return false;
+        }
+        return matchesSearch(context[field.key]);
+    });
+};
+const visibleProps = computed(() =>
+    filterVisibleFields(componentDef.value?.props, propDraft),
+);
+
+type IndexedEntry<T> = { value: T; index: number };
+
+const toIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> =>
+    values.map((value, index) => ({ value, index }));
+
+const filterIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> => {
+    const entries = toIndexedEntries(values);
+    if (!isSearchActive.value) {
+        return entries;
+    }
+    return entries.filter((entry) => matchesSearch(entry.value));
+};
+
+const getFilteredJsonArrayItems = (propKey: string) => {
+    const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
+    return filterIndexedEntries(items);
+};
+
+const getFilteredStringArrayItems = (propKey: string) => {
+    const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
+    return filterIndexedEntries(items);
+};
+
+const getFilteredArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
 ) => {
-    if (!fields) return [];
-    return fields.filter((field) => isFieldVisible(field, context));
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    return filterIndexedEntries(items);
 };
 const textDraft = ref(props.node.type === "text" ? props.node.value : "");
 const selectedChildComponent = ref("");
@@ -4182,6 +4318,19 @@ const extraPropEntries = computed(() => {
     return Object.entries(props.node.props)
         .filter(([key]) => !definedPropKeys.value.has(key))
         .map(([key, value]) => ({ key, value }));
+});
+const filteredExtraPropEntries = computed(() => {
+    const entries = extraPropEntries.value;
+    if (!isSearchActive.value) {
+        return entries;
+    }
+    return entries.filter((entry) => {
+        const draftValue =
+            entry.key in extraPropsDraft
+                ? extraPropsDraft[entry.key]
+                : entry.value;
+        return matchesSearch(draftValue);
+    });
 });
 
 const getPropSchema = (key: string) =>

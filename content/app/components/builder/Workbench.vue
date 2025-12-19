@@ -2,6 +2,10 @@
 import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
 import NodeEditor from "./NodeEditor.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
+import {
+    filterNodesBySearch,
+    normalizeSearchQuery,
+} from "../../utils/builderSearch";
 import type {
     BuilderNode,
     BuilderNodeChild,
@@ -165,6 +169,14 @@ const previewSpacingClass = computed(
 );
 
 const expandedRootNodes = reactive<Record<string, boolean>>({});
+
+const searchQuery = ref("");
+const normalizedSearchQuery = computed(() =>
+    normalizeSearchQuery(searchQuery.value),
+);
+const filteredBuilderTree = computed(() =>
+    filterNodesBySearch(builderTree.value, normalizedSearchQuery.value),
+);
 
 const selectedRootComponent = ref(componentOptions.value[0]?.id || "");
 const draggingUid = ref<string | null>(null);
@@ -966,12 +978,23 @@ const handleSaveDebugClick = () => {
             </div>
         </section>
 
+        <section class="builder-search">
+            <label>
+                <span>Search components</span>
+                <input
+                    v-model="searchQuery"
+                    type="search"
+                    placeholder="Search prop values..."
+                />
+            </label>
+        </section>
+
         <section class="builder-tree">
             <p v-if="!builderTree.length" class="builder-empty">
                 No components added yet.
             </p>
             <div
-                v-for="node in builderTree"
+                v-for="node in filteredBuilderTree"
                 :key="node.uid"
                 class="builder-root-item"
                 :draggable="!isRootExpanded(node.uid)"
@@ -990,6 +1013,7 @@ const handleSaveDebugClick = () => {
                     :node="node"
                     :registry="registry"
                     :component-options="componentOptions"
+                    :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
                     :on-update-text="updateTextNode"
                     :on-add-child-component="addChildComponent"
@@ -1001,7 +1025,7 @@ const handleSaveDebugClick = () => {
                 />
             </div>
             <div
-                v-if="builderTree.length"
+                v-if="filteredBuilderTree.length"
                 class="builder-root-dropzone"
                 @dragover.prevent="handleDragOver(null)"
                 @drop.prevent="handleDrop(null)"
@@ -1042,6 +1066,28 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #f8fafc;
+}
+
+.builder-search {
+    display: grid;
+    gap: 6px;
+    padding: 12px 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.builder-search label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.builder-search input {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #cbd5f5;
+    font: inherit;
 }
 
 .builder-config {

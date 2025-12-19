@@ -4,8 +4,8 @@ import InlineLiveEditor from "#content/app/components/inline/InlineLiveEditor.vu
 
 definePageMeta({
     layout: false,
-    // temporarily disabled for testing
-    // middleware: ["auth"],
+    // temporarily disable this for testing with mcp server
+    middleware: ["auth"],
 });
 
 const runtimeConfig = useRuntimeConfig();
