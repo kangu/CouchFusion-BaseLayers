@@ -12,3 +12,4 @@
 - [x] Filter prop fields and array/object entries by search value (jsonarray/jsonobject/stringarray).
 - [x] Filter extra props and text nodes as part of the search scope.
 - [x] Keep the search input sticky above the scrollable component list.
+- [x] Highlight matching text in inputs/textarea and flag matching select fields.

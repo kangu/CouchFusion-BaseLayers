@@ -699,7 +699,10 @@ const handleDrop = (uid: string | null) => {
     handleDragEnd();
 };
 
-const handleNodeFocus = (payload: { uid: string; mode?: "flash" | "lock" | "clear" }) => {
+const handleNodeFocus = (payload: {
+    uid: string;
+    mode?: "flash" | "lock" | "clear";
+}) => {
     emit("node-focus", {
         uid: payload.uid,
         path: pageConfig.path,
@@ -1205,6 +1208,7 @@ const handleSaveDebugClick = () => {
     top: 0;
     z-index: 2;
     margin-bottom: 8px;
+    background: #fff;
 }
 
 .builder-empty {
