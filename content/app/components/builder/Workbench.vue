@@ -978,18 +978,17 @@ const handleSaveDebugClick = () => {
             </div>
         </section>
 
-        <section class="builder-search">
-            <label>
-                <span>Search components</span>
-                <input
-                    v-model="searchQuery"
-                    type="search"
-                    placeholder="Search prop values..."
-                />
-            </label>
-        </section>
-
         <section class="builder-tree">
+            <div class="builder-search builder-tree__search">
+                <label>
+                    <span>Search components</span>
+                    <input
+                        v-model="searchQuery"
+                        type="search"
+                        placeholder="Search prop values..."
+                    />
+                </label>
+            </div>
             <p v-if="!builderTree.length" class="builder-empty">
                 No components added yet.
             </p>
@@ -1197,6 +1196,15 @@ const handleSaveDebugClick = () => {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    max-height: var(--builder-tree-max-height, 70vh);
+    overflow-y: auto;
+}
+
+.builder-tree__search {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin-bottom: 8px;
 }
 
 .builder-empty {

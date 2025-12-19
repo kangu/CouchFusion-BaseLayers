@@ -11,3 +11,4 @@
 - [x] Filter component tree nodes (root + nested) based on prop/text matches.
 - [x] Filter prop fields and array/object entries by search value (jsonarray/jsonobject/stringarray).
 - [x] Filter extra props and text nodes as part of the search scope.
+- [x] Keep the search input sticky above the scrollable component list.
