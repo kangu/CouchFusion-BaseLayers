@@ -2279,10 +2279,35 @@ const applyTextValue = () => {
     justify-content: space-between;
 }
 
-.node-panel :deep(.node-panel__margins-header h4) {
+.node-panel :deep(.node-panel__margins-title) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
     font-size: 0.9rem;
     font-weight: 600;
     color: #1e293b;
+    cursor: pointer;
+}
+
+.node-panel :deep(.node-panel__margins-title.is-active) {
+    color: #2563eb;
+}
+
+.node-panel :deep(.node-panel__margins-chevron) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    color: #64748b;
+    transition: transform 140ms ease;
+}
+
+.node-panel :deep(.node-panel__margins-chevron[data-state="expanded"]) {
+    transform: rotate(180deg);
+    color: #2563eb;
 }
 
 .node-panel :deep(.node-panel__margins-actions) {

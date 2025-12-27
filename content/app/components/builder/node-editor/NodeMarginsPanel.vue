@@ -1,8 +1,22 @@
 <template>
     <div class="node-panel__margins">
         <div class="node-panel__margins-header">
-            <h4>Margins</h4>
-            <div class="node-panel__margins-actions">
+            <button
+                type="button"
+                class="node-panel__margins-title"
+                :class="{ 'is-active': hasMargins }"
+                @click="toggleExpanded"
+            >
+                <span>Margins</span>
+                <span
+                    class="node-panel__margins-chevron"
+                    :data-state="expanded ? 'expanded' : 'collapsed'"
+                    aria-hidden="true"
+                >
+                    ⌄⌄
+                </span>
+            </button>
+            <div v-if="expanded" class="node-panel__margins-actions">
                 <button
                     type="button"
                     class="node-panel__margins-toggle"
@@ -23,7 +37,7 @@
                 </button>
             </div>
         </div>
-        <div class="node-panel__margins-grid">
+        <div v-if="expanded" class="node-panel__margins-grid">
             <label
                 v-for="side in marginSides"
                 :key="`base-${side.key}`"
@@ -52,7 +66,7 @@
         </div>
         <Transition name="fade">
             <div
-                v-if="showResponsiveMargins"
+                v-if="showResponsiveMargins && expanded"
                 class="node-panel__margins-responsive"
             >
                 <div
@@ -101,6 +115,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from "vue";
+
 type MarginSide = "top" | "right" | "bottom" | "left";
 type BreakpointKey = "base" | "sm" | "md" | "lg" | "xl";
 
@@ -133,6 +149,34 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
     (event: "update:showResponsiveMargins", value: boolean): void;
 }>();
+
+const expanded = ref(false);
+
+const hasMargins = computed(() => {
+    for (const side of Object.values(props.marginDraft)) {
+        for (const value of Object.values(side)) {
+            if (String(value) !== "0") {
+                return true;
+            }
+        }
+    }
+    return false;
+});
+
+watch(
+    hasMargins,
+    (value) => {
+        if (!value) {
+            return;
+        }
+        expanded.value = true;
+    },
+    { immediate: true },
+);
+
+const toggleExpanded = () => {
+    expanded.value = !expanded.value;
+};
 
 const toggleResponsiveMargins = () => {
     emit("update:showResponsiveMargins", !props.showResponsiveMargins);
