@@ -8,7 +8,11 @@
         <div v-if="node.type === 'component'" class="node-panel__header">
             <div class="node-panel__header-main">
                 <div class="node-panel__header-text">
-                    <strong>{{ componentDef?.label || node.component }}</strong>
+                    <strong v-if="slotDisplayName">
+                        <span>{{ slotDisplayName }}</span>
+                        <span class="node-panel__slot-suffix">(Slot)</span>
+                    </strong>
+                    <strong v-else>{{ componentDef?.label || node.component }}</strong>
                 </div>
                 <div class="node-panel__header-actions">
                     <button
@@ -421,6 +425,19 @@ const { filterVisibleFields } = useNodeEditorFieldVisibility({
 const visibleProps = computed(() =>
     filterVisibleFields(componentDef.value?.props, propDraft),
 );
+const slotDisplayName = computed(() => {
+    if (props.node.type !== "component") {
+        return null;
+    }
+    if (componentDef.value?.label !== "Template (Slot)") {
+        return null;
+    }
+    const rawValue =
+        propDraft.slot ??
+        (props.node.props ? props.node.props["slot"] : undefined);
+    const slotName = typeof rawValue === "string" ? rawValue.trim() : "";
+    return slotName || "Unnamed slot";
+});
 
 type IndexedEntry<T> = { value: T; index: number };
 
@@ -2153,6 +2170,12 @@ const applyTextValue = () => {
 .node-panel__header-text {
     display: flex;
     flex-direction: column;
+}
+
+.node-panel__slot-suffix {
+    margin-left: 6px;
+    color: #94a3b8;
+    font-weight: 500;
 }
 
 .node-panel__header-actions {
