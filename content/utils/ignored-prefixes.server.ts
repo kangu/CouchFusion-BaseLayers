@@ -106,7 +106,10 @@ export default async function contentLayerIgnoredPrefixesModule(_moduleOptions: 
     }
   }
 
-  nuxt.options.appConfig.content = applyContentConfig(nuxt.options.appConfig.content)
+  // Avoid clobbering consumer-defined manual prefixes before app config is resolved
+  if (nuxt.options.appConfig?.content) {
+    nuxt.options.appConfig.content = applyContentConfig(nuxt.options.appConfig.content)
+  }
 
   nuxt.hook('app:config', (appConfig: any) => {
     appConfig.content = applyContentConfig(appConfig.content)
