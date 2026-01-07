@@ -13,10 +13,11 @@ import {
 } from "#content/utils/content-route";
 
 const buildIgnoredPrefixes = (): string[] => {
-  const appConfig = useAppConfig();
-  console.log("appConfig?.content", appConfig?.content);
-  const prefixes = resolveIgnoredPrefixes(appConfig?.content);
-
+  const runtimeConfig = useRuntimeConfig();
+  const prefixes = resolveIgnoredPrefixes({
+    manualIgnoredPrefixes: runtimeConfig.content?.ignore,
+  });
+  // console.log("ignored prefixes", prefixes);
   return prefixes;
 };
 

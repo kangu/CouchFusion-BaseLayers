@@ -22,6 +22,9 @@ export default defineNuxtConfig({
         proxyHost: "https://cloud.umami.is",
       },
     },
+    content: {
+      ignore: ["/redir"],
+    },
     public: {
       analytics: {
         endpoint: "/api/stats",

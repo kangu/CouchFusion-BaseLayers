@@ -56,12 +56,6 @@ export const resolveIgnoredPrefixes = (
 
   const combined = new Set<string>(RESERVED_CONTENT_PREFIXES);
 
-  console.log(
-    "Include manual",
-    includeManual,
-    appConfigContent?.manualIgnoredPrefixes,
-    appConfigContent?.manualPrefixes,
-  );
   if (includeManual) {
     const manual = normalisePrefixList(
       appConfigContent?.manualIgnoredPrefixes ??
