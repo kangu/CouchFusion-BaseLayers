@@ -13,11 +13,19 @@ import {
 } from "#content/utils/content-route";
 
 const buildIgnoredPrefixes = (): string[] => {
+  if (import.meta.client) {
+    return [];
+  }
   const runtimeConfig = useRuntimeConfig();
+
+  const runtimeIgnore = Array.isArray(runtimeConfig.content?.ignore)
+    ? runtimeConfig.content!.ignore
+    : [];
+
   const prefixes = resolveIgnoredPrefixes({
-    manualIgnoredPrefixes: runtimeConfig.content?.ignore,
+    ignore: runtimeIgnore,
   });
-  // console.log("ignored prefixes", prefixes);
+
   return prefixes;
 };
 
@@ -39,6 +47,11 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     await store.fetchPage(to.path);
   } catch (error: any) {
     if (error?.statusCode === 404) {
+      if (import.meta.client) {
+        // On client navigation, allow the normal route handling to continue for ignored or non-content pages.
+        return;
+      }
+
       console.warn("Content page not found, triggering 404:", to.path);
       return abortNavigation(
         createError({

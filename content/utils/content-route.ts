@@ -56,6 +56,11 @@ export const resolveIgnoredPrefixes = (
 
   const combined = new Set<string>(RESERVED_CONTENT_PREFIXES);
 
+  const runtimeIgnored = normalisePrefixList(appConfigContent?.ignore ?? []);
+  for (const prefix of runtimeIgnored) {
+    combined.add(prefix);
+  }
+
   if (includeManual) {
     const manual = normalisePrefixList(
       appConfigContent?.manualIgnoredPrefixes ??
