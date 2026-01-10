@@ -1,9 +1,9 @@
 <template>
-    <div class="preview-frame-container" :style="{ width: width + 'px', height: height + 'px' }">
+    <div class="preview-frame-container" :style="{ width: typeof width === 'number' ? width + 'px' : width, height: typeof height === 'number' ? height + 'px' : height }">
         <iframe
             ref="iframeRef"
             class="preview-iframe"
-            :style="{ width: width + 'px', height: height + 'px' }"
+            :style="{ width: typeof width === 'number' ? width + 'px' : width, height: typeof height === 'number' ? height + 'px' : height }"
         ></iframe>
         <Teleport v-if="mounted && iframeBody" :to="iframeBody">
             <div class="preview-content">
@@ -14,16 +14,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue';
+import { ref, onMounted, watch, nextTick, computed } from 'vue';
 
 const props = defineProps<{
-    width: number;
-    height: number;
+    width: number | string;
+    height: number | string;
 }>();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const mounted = ref(false);
 const iframeBody = ref<HTMLElement | null>(null);
+
+const formatSize = (val: number | string) => typeof val === 'number' ? `${val}px` : val;
 
 const initIframe = () => {
     const iframe = iframeRef.value;
@@ -49,14 +51,14 @@ const initIframe = () => {
         body { 
             margin: 0; 
             padding: 0;
-            overflow: hidden;
-            width: ${props.width}px;
-            height: ${props.height}px;
+            overflow-y: auto; /* Allow vertical scrolling */
+            width: ${formatSize(props.width)};
+            height: ${formatSize(props.height)};
             background-color: white;
         }
         #app {
             width: 100%;
-            height: 100%;
+            min-height: 100%;
         }
     `;
     doc.head.appendChild(style);

@@ -118,8 +118,8 @@
                 <div class="expanded-content" :class="expandedDevice">
                     <div class="expanded-frame-wrapper" :style="{ width: expandedDevice === 'mobile' ? '375px' : '100%' }">
                          <PreviewFrame 
-                            :width="expandedDevice === 'mobile' ? 375 : 1280" 
-                            :height="800"
+                            :width="expandedDevice === 'mobile' ? 375 : '100%'" 
+                            :height="'100%'"
                             class="full-size-frame"
                         >
                             <component :is="expandedComp.id" v-bind="getDefaultProps(expandedComp)" />
