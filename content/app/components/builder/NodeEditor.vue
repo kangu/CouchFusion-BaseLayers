@@ -175,7 +175,6 @@
 
             <NodeChildrenPanel
                 :allow-children="Boolean(componentDef?.allowChildren)"
-                v-model="selectedChildComponent"
                 :component-options="componentOptions"
                 :node-uid="node.uid"
                 :child-hint="componentDef?.childHint"
@@ -471,7 +470,7 @@ const getFilteredArrayItemStringArrayItems = (
     return filterIndexedEntries(items);
 };
 const textDraft = ref(props.node.type === "text" ? props.node.value : "");
-const selectedChildComponent = ref("");
+// selectedChildComponent is no longer needed
 const newPropKey = ref("");
 const newPropValue = ref("");
 const draggingArrayItem = ref<{
@@ -2113,12 +2112,8 @@ const {
     moveNestedArrayItemStringArrayItem,
 });
 
-const handleAddChildComponent = () => {
-    if (!selectedChildComponent.value) {
-        return;
-    }
-    props.onAddChildComponent(props.node.uid, selectedChildComponent.value);
-    selectedChildComponent.value = "";
+const handleAddChildComponent = (componentId: string) => {
+    props.onAddChildComponent(props.node.uid, componentId);
 };
 
 const handleAddCustomProp = () => {

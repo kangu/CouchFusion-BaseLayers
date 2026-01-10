@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
 import NodeEditor from "./NodeEditor.vue";
+import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
 import {
     filterNodesBySearch,
@@ -178,7 +179,7 @@ const filteredBuilderTree = computed(() =>
     filterNodesBySearch(builderTree.value, normalizedSearchQuery.value),
 );
 
-const selectedRootComponent = ref(componentOptions.value[0]?.id || "");
+const isRootPickerOpen = ref(false);
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
 
@@ -550,11 +551,8 @@ const cloneBuilderNode = (source: BuilderNodeChild): BuilderNodeChild => {
     return cloned;
 };
 
-const addRootComponent = () => {
-    if (!selectedRootComponent.value) {
-        return;
-    }
-    builderTree.value.push(createNode(selectedRootComponent.value));
+const addRootComponent = (componentId: string) => {
+    builderTree.value.push(createNode(componentId));
 };
 
 const addRootText = () => {
@@ -933,19 +931,15 @@ const handleSaveDebugClick = () => {
             </div>
 
             <div class="builder-add">
-                <select v-model="selectedRootComponent">
-                    <option disabled value="">Select component</option>
-                    <option
-                        v-for="component in componentOptions"
-                        :key="component.id"
-                        :value="component.id"
-                    >
-                        {{ component.label }}
-                    </option>
-                </select>
-                <button type="button" @click="addRootComponent">
-                    Add top-level component
+                <button type="button" @click="isRootPickerOpen = true">
+                    Add component
                 </button>
+                <ComponentPickerDialog
+                    :is-open="isRootPickerOpen"
+                    :component-options="componentOptions"
+                    @close="isRootPickerOpen = false"
+                    @select="addRootComponent"
+                />
                 <button type="button" @click="addRootText">
                     Add text node
                 </button>
