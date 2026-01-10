@@ -1,4 +1,3 @@
-
 <template>
     <div v-if="isOpen" class="component-picker-overlay" @click.self="close">
         <div class="component-picker-modal">
@@ -42,16 +41,20 @@
                     <div class="component-card-preview" @click="select(comp.id)">
                         <div class="preview-desktop">
                             <div class="preview-scaler">
-                                <PreviewFrame :width="1024" :height="800">
-                                    <component :is="comp.id" v-bind="getDefaultProps(comp)" />
-                                </PreviewFrame>
+                                <LazyLoader min-height="200px">
+                                    <PreviewFrame :width="1024" :height="800">
+                                        <component :is="comp.id" v-bind="getDefaultProps(comp)" />
+                                    </PreviewFrame>
+                                </LazyLoader>
                             </div>
                         </div>
                         <div class="preview-mobile">
                             <div class="preview-scaler">
-                                <PreviewFrame :width="375" :height="800">
-                                    <component :is="comp.id" v-bind="getDefaultProps(comp)" />
-                                </PreviewFrame>
+                                <LazyLoader min-height="200px">
+                                    <PreviewFrame :width="375" :height="800">
+                                        <component :is="comp.id" v-bind="getDefaultProps(comp)" />
+                                    </PreviewFrame>
+                                </LazyLoader>
                             </div>
                         </div>
                         <button class="expand-preview-btn" @click.stop="expandComponent(comp)" title="Expand Preview">
@@ -135,6 +138,7 @@
 import { ref, computed, nextTick, watch } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
+import LazyLoader from "./LazyLoader.vue";
 
 const props = defineProps<{
     isOpen: boolean;
