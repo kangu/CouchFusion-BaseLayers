@@ -80,6 +80,6 @@ onMounted(() => {
 .preview-iframe {
     border: none;
     display: block;
-    pointer-events: none; /* Interact via parent or disable interaction */
+    pointer-events: auto; /* Interact via parent or disable interaction */
 }
 </style>
