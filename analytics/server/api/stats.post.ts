@@ -107,12 +107,12 @@ export default defineEventHandler(async (event) => {
   const xff = getRequestHeader(event, "x-forwarded-for");
   const xffFirst = xff ? xff.split(",")[0].trim() : undefined;
   const clientIp = cfIp || xRealIp || xffFirst;
-  console.log(
-    "Sending payload from backend",
-    umamiBase,
-    clientIp,
-    normalizedPayload,
-  );
+  // console.log(
+  //   "Sending analytics payload from backend",
+  //   umamiBase,
+  //   clientIp,
+  //   normalizedPayload,
+  // );
 
   const res = await fetch(new URL("/api/send", umamiBase).toString(), {
     method: "POST",
@@ -126,7 +126,7 @@ export default defineEventHandler(async (event) => {
   });
 
   const text = await res.text();
-  console.log("Analytics result", text);
+  // console.log("Analytics result", text);
 
   if (!res.ok) {
     throw createError({
