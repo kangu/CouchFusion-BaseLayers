@@ -58,6 +58,7 @@ const editorModules = shallowRef<{
     EditorContent: any;
     Editor: any;
     StarterKit: any;
+    Link: any;
 } | null>(null);
 const EditorContentComponent = shallowRef<any>(null);
 const editor = shallowRef<any>(null);
@@ -184,6 +185,27 @@ const toolbarActions = computed(() => [
             ),
         isActive: () => editorInstance.value?.isActive("codeBlock"),
     },
+    {
+        key: "link",
+        label: "Link",
+        command: () => {
+            if (!editorInstance.value) return;
+            const previousUrl =
+                editorInstance.value.getAttributes("link")?.href ?? "";
+            const url = window.prompt("Enter URL", previousUrl);
+            if (url === null) {
+                return;
+            }
+            runEditorCommand((ed) => {
+                if (url === "") {
+                    ed.chain().focus().extendMarkRange("link").unsetLink().run();
+                } else {
+                    ed.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+                }
+            });
+        },
+        isActive: () => editorInstance.value?.isActive("link"),
+    },
 ]);
 
 const createEditor = () => {
@@ -199,6 +221,11 @@ const createEditor = () => {
                 heading: {
                     levels: [1, 2, 3],
                 },
+            }),
+            mods.Link.configure({
+                openOnClick: false,
+                autolink: false,
+                linkOnPaste: false,
             }),
         ],
         editorProps: {
@@ -219,12 +246,13 @@ onMounted(async () => {
         return;
     }
 
-    const [{ EditorContent, Editor }, { default: StarterKit }] = await Promise.all([
+    const [{ EditorContent, Editor }, { default: StarterKit }, { Link }] = await Promise.all([
         import("@tiptap/vue-3"),
         import("@tiptap/starter-kit"),
+        import("@tiptap/extension-link"),
     ]);
 
-    editorModules.value = { EditorContent, Editor, StarterKit };
+    editorModules.value = { EditorContent, Editor, StarterKit, Link };
     EditorContentComponent.value = EditorContent;
     createEditor();
 });
