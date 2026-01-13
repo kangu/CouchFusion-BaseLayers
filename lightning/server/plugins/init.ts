@@ -12,6 +12,54 @@ import { createStrikeProvider } from "../../providers/strike";
 import type { LightningConfig } from "../../types/lightning";
 
 /**
+ * Initialize Boltz webhook configuration validation
+ */
+async function initializeBoltzWebhook(runtimeConfig: any): Promise<void> {
+  console.log("🔔 Validating Boltz webhook configuration...");
+
+  try {
+    // Validate required environment variables
+    if (!process.env.NUXT_PUBLIC_SITE_URL) {
+      console.warn(
+        "⚠️ NUXT_PUBLIC_SITE_URL not set, Boltz webhooks may not work properly",
+      );
+      return;
+    }
+
+    const lightningConfig = runtimeConfig.lightning as LightningConfig;
+
+    // Validate Boltz configuration
+    if (!lightningConfig.providers?.boltz) {
+      console.warn(
+        "⚠️ Boltz provider configuration not found, skipping webhook validation",
+      );
+      return;
+    }
+
+    const boltzConfig = lightningConfig.providers.boltz;
+
+    if (!boltzConfig.liquidAddress) {
+      console.warn(
+        "⚠️ Boltz liquidAddress not configured, webhooks may not work properly",
+      );
+      return;
+    }
+
+    // Construct expected webhook URL
+    const expectedWebhookUrl = `${process.env.NUXT_PUBLIC_SITE_URL}/api/webhooks/boltz`;
+    console.log(`✅ Boltz webhook URL configured: ${expectedWebhookUrl}`);
+    console.log(`ℹ️ Boltz webhooks are configured per-swap, not globally`);
+
+  } catch (error) {
+    console.error(
+      "💥 Boltz webhook configuration validation failed:",
+      error,
+    );
+    // Don't throw here to prevent server startup failure
+  }
+}
+
+/**
  * Initialize Strike webhook subscription
  */
 async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
@@ -96,9 +144,11 @@ async function initializeLightningLayer(): Promise<void> {
       "🎉 CouchDB lightning layer initialization completed successfully",
     );
 
-    // initialize strike webhook if it's set as the active provider
+    // initialize provider-specific webhook setup
     if (runtimeConfig.lightning.defaultProvider === "strike") {
       await initializeStrikeWebhook(runtimeConfig);
+    } else if (runtimeConfig.lightning.defaultProvider === "boltz") {
+      await initializeBoltzWebhook(runtimeConfig);
     }
   } catch (error) {
     console.error("💥 CouchDB lightning layer initialization failed:", error);
