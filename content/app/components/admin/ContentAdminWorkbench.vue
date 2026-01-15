@@ -946,7 +946,9 @@ function handleDocumentPreviewChange(document: MinimalContentDocument): void {
 }
 
 function handleNodeFocus(
-    payload: { uid?: string; path?: string; mode?: string; propKey?: string } | Event,
+    payload:
+        | { uid?: string; path?: string; mode?: string; propKey?: string }
+        | Event,
 ): void {
     if (!payload || typeof payload !== "object" || payload instanceof Event) {
         return;
@@ -958,10 +960,13 @@ function handleNodeFocus(
         uid: payload.uid,
         path: payload.path,
         mode:
-            payload.mode === "flash" || payload.mode === "lock" || payload.mode === "clear"
+            payload.mode === "flash" ||
+            payload.mode === "lock" ||
+            payload.mode === "clear"
                 ? payload.mode
                 : undefined,
-        propKey: typeof payload.propKey === "string" ? payload.propKey : undefined,
+        propKey:
+            typeof payload.propKey === "string" ? payload.propKey : undefined,
     });
 }
 
@@ -1378,9 +1383,6 @@ defineExpose({
                             for="condensed-history-select"
                         >
                             <span class="sidebar__title">History</span>
-                            <span class="sidebar__subtitle"
-                                >Restore recent revisions.</span
-                            >
                         </label>
                     </div>
 

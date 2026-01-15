@@ -919,7 +919,7 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
             </div>
-            <div class="builder-derived">
+            <!-- <div class="builder-derived">
                 <div>
                     <span>Computed ID</span>
                     <code>{{ serializedDocument.id }}</code>
@@ -928,7 +928,7 @@ const handleSaveDebugClick = () => {
                     <span>Stem</span>
                     <code>{{ serializedDocument.stem }}</code>
                 </div>
-            </div>
+            </div> -->
 
             <div class="builder-add">
                 <button type="button" @click="isRootPickerOpen = true">
@@ -940,9 +940,9 @@ const handleSaveDebugClick = () => {
                     @close="isRootPickerOpen = false"
                     @select="addRootComponent"
                 />
-                <button type="button" @click="addRootText">
+                <!-- <button type="button" @click="addRootText">
                     Add text node
-                </button>
+                </button> -->
                 <!-- <button type="button" class="builder-load" @click="handleLoadDebugClick">
           Load Debug Data
         </button>
@@ -959,7 +959,7 @@ const handleSaveDebugClick = () => {
                 />
             </div>
 
-            <div class="builder-layout">
+            <!-- <div class="builder-layout">
                 <label>
                     <span>Spacing preset (dummy for now)</span>
                     <select v-model="layout.spacing">
@@ -972,7 +972,7 @@ const handleSaveDebugClick = () => {
                         </option>
                     </select>
                 </label>
-            </div>
+            </div> -->
         </section>
 
         <section class="builder-tree">
@@ -1153,7 +1153,14 @@ const handleSaveDebugClick = () => {
     padding: 8px 12px;
     border-radius: 4px;
     border: 1px solid #cbd5f5;
-    background: #fff;
+    background: #2563eb;
+    color: #ffffff;
+    width: 100%;
+    cursor: pointer;
+}
+
+.builder-add button:hover {
+    background: #1d4ed8;
 }
 
 .builder-load {
