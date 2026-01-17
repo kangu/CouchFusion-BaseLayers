@@ -39,6 +39,14 @@ Use inline discrete spinners for loading status on each of the tables.
 - [x] Fetch local database info from runtimeConfig.couchUrl and compare against remote values.
 - [x] Stack local + remote values in the Docs and Update Seq columns and highlight mismatches.
 
+## New tasks
+- Add a Replicate Down button per row to trigger remote → local replication using CouchDB _replicator.
+- Surface replication progress and errors/warnings by polling _active_tasks.
+
+## Progress
+- [x] Create replication endpoints for creating jobs and checking status with _active_tasks polling.
+- [x] Add per-row Replicate Down actions with status feedback in the UI.
+
 ## New task
 When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
 

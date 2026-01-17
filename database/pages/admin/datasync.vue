@@ -28,6 +28,17 @@ interface DbInfoState {
   info: DbInfoPayload | null;
 }
 
+interface ReplicationStatus {
+  state?: string;
+  error?: string | null;
+  warning?: string | null;
+  task?: {
+    progress?: number;
+    changes_done?: number;
+    total_changes?: number;
+  } | null;
+}
+
 /**
  * Admin data sync page for database tooling.
  */
@@ -51,6 +62,9 @@ const isClient = ref(false);
 const dbInfoMap = ref<Record<string, DbInfoState>>({});
 const isDetailsLoading = ref(false);
 const isEditing = ref(false);
+const replicationStatusMap = ref<Record<string, ReplicationStatus>>({});
+const replicationLoadingMap = ref<Record<string, boolean>>({});
+const replicationPollers = ref<Record<string, ReturnType<typeof setInterval>>>({});
 
 // == computed ==
 const trimmedHost = computed(() => host.value.trim());
@@ -62,13 +76,27 @@ const isReady = computed(
     Boolean(password.value),
 );
 const hasCredentials = computed(
-  () => Boolean(trimmedHost.value) && Boolean(username.value) && Boolean(password.value),
+  () =>
+    isClient.value &&
+    Boolean(trimmedHost.value) &&
+    Boolean(username.value) &&
+    Boolean(password.value),
 );
 const sortedDatabases = computed(() => [...databases.value].sort());
 
 // == lifecycle ==
 onMounted(() => {
   isClient.value = true;
+  if (hasCredentials.value) {
+    fetchDatabases();
+  }
+});
+
+onUnmounted(() => {
+  for (const poller of Object.values(replicationPollers.value)) {
+    clearInterval(poller);
+  }
+  replicationPollers.value = {};
 });
 
 // == watchers ==
@@ -158,6 +186,168 @@ const fetchDbInfo = async (dbName: string): Promise<DbInfoState> => {
       info: null,
     };
   }
+};
+
+const fetchReplicationStatus = async (dbName: string) => {
+  try {
+    const status = await $fetch<ReplicationStatus>(
+      `/api/datasync/replication-status/${encodeURIComponent(dbName)}`,
+    );
+    replicationStatusMap.value[dbName] = status;
+    if (status?.state === "completed") {
+      stopReplicationPolling(dbName);
+      await refreshDbInfoForDb(dbName);
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load replication status.";
+    replicationStatusMap.value[dbName] = {
+      state: "error",
+      error: message,
+    };
+  }
+};
+
+const startReplicationPolling = (dbName: string) => {
+  if (replicationPollers.value[dbName]) {
+    return;
+  }
+
+  fetchReplicationStatus(dbName);
+  replicationPollers.value[dbName] = setInterval(() => {
+    fetchReplicationStatus(dbName);
+  }, 4000);
+};
+
+const stopReplicationPolling = (dbName: string) => {
+  const poller = replicationPollers.value[dbName];
+  if (poller) {
+    clearInterval(poller);
+    delete replicationPollers.value[dbName];
+  }
+};
+
+const refreshDbInfoForDb = async (dbName: string) => {
+  const nextState = await fetchDbInfo(dbName);
+  dbInfoMap.value = {
+    ...dbInfoMap.value,
+    [dbName]: nextState,
+  };
+};
+
+const isReplicationActive = (status?: ReplicationStatus | null): boolean => {
+  if (!status) {
+    return false;
+  }
+
+  if (status.state === "completed" || status.state === "not_found") {
+    return false;
+  }
+
+  if (status.error) {
+    return false;
+  }
+
+  return true;
+};
+
+const getDocsCellStatusClass = (dbName: string): string => {
+  if (isReplicationActive(replicationStatusMap.value[dbName])) {
+    return "bg-amber-50/40";
+  }
+
+  const info = dbInfoMap.value[dbName]?.info;
+  if (!info) {
+    return "";
+  }
+
+  if (!info.local) {
+    return "bg-red-50/40";
+  }
+
+  const localCount = info.local.doc_count;
+  const remoteCount = info.remote?.doc_count;
+
+  if (typeof localCount === "number" && typeof remoteCount === "number") {
+    if (localCount === remoteCount) {
+      return "bg-green-50/40";
+    }
+
+    if (localCount > remoteCount) {
+      return "bg-teal-50/40";
+    }
+
+    if (remoteCount > localCount) {
+      return "bg-orange-50/40";
+    }
+  }
+
+  return "";
+};
+
+const triggerReplication = async (dbName: string) => {
+  if (!isReady.value || replicationLoadingMap.value[dbName]) {
+    return;
+  }
+
+  replicationLoadingMap.value[dbName] = true;
+  replicationStatusMap.value[dbName] = {
+    state: "starting",
+  };
+
+  try {
+    await $fetch("/api/datasync/replicate", {
+      method: "POST",
+      body: {
+        host: trimmedHost.value,
+        username: username.value,
+        password: password.value,
+        dbName,
+      },
+    });
+
+    startReplicationPolling(dbName);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to start replication.";
+    replicationStatusMap.value[dbName] = {
+      state: "error",
+      error: message,
+    };
+  } finally {
+    replicationLoadingMap.value[dbName] = false;
+  }
+};
+
+const getReplicationProgressLabel = (status?: ReplicationStatus | null) => {
+  if (!status) {
+    return "Idle";
+  }
+
+  if (status.error) {
+    return "Error";
+  }
+
+  if (status.state === "not_found") {
+    return "Not started";
+  }
+
+  if (status.task?.progress != null) {
+    return `${status.task.progress}%`;
+  }
+
+  if (
+    status.task?.changes_done != null &&
+    status.task?.total_changes != null
+  ) {
+    return `${status.task.changes_done}/${status.task.total_changes}`;
+  }
+
+  return status.state || "Idle";
 };
 
 /**
@@ -400,22 +590,31 @@ const handleEdit = () => {
               >
                 Update seq
               </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
             <tr v-if="!sortedDatabases.length">
-              <td class="px-4 py-4 text-sm text-gray-500" colspan="4">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="5">
                 No databases loaded yet.
               </td>
             </tr>
             <tr v-else-if="isDetailsLoading">
-              <td class="px-4 py-4 text-sm text-gray-500" colspan="4">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="5">
                 Loading database details…
               </td>
             </tr>
             <tr v-for="db in sortedDatabases" :key="db">
               <td class="px-4 py-3 text-sm text-gray-700">{{ db }}</td>
-              <td class="px-4 py-3 text-sm text-gray-700">
+              <td
+                class="px-4 py-3 text-sm text-gray-700"
+                :class="getDocsCellStatusClass(db)"
+              >
                 <span v-if="dbInfoMap[db]?.error" class="text-red-500">
                   Error
                 </span>
@@ -516,6 +715,40 @@ const handleEdit = () => {
                       ) ?? "-"
                     }}
                   </span>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <div class="space-y-1">
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    :disabled="replicationLoadingMap[db]"
+                  @click="triggerReplication(db)"
+                >
+                  <span v-if="replicationLoadingMap[db]">Starting…</span>
+                  <span v-else>Replicate Down</span>
+                </button>
+                <div class="text-xs text-gray-500">
+                  {{ getReplicationProgressLabel(replicationStatusMap[db]) }}
+                </div>
+                <div
+                  v-show="isReplicationActive(replicationStatusMap[db])"
+                  class="text-[11px] text-orange-500"
+                >
+                  Replication in progress…
+                </div>
+                <div
+                  v-show="replicationStatusMap[db]?.error"
+                  class="text-xs text-red-500"
+                >
+                  {{ replicationStatusMap[db]?.error }}
+                </div>
+                <div
+                  v-show="!replicationStatusMap[db]?.error && replicationStatusMap[db]?.warning"
+                  class="text-xs text-orange-500"
+                >
+                  {{ replicationStatusMap[db]?.warning }}
+                </div>
                 </div>
               </td>
             </tr>

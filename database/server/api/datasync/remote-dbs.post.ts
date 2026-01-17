@@ -35,7 +35,10 @@ export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as RemoteDbsPayload | null;
 
   if (!body) {
-    throw createError({ statusCode: 400, statusMessage: "Missing request body." });
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Missing request body.",
+    });
   }
 
   const host = typeof body.host === "string" ? body.host : "";
@@ -90,7 +93,8 @@ export default defineEventHandler(async (event) => {
       return true;
     }
 
-    return dbLoginPrefix ? name.startsWith(dbLoginPrefix) : false;
+    // use an extra "-" to account for any staging names colliding
+    return dbLoginPrefix ? name.startsWith(dbLoginPrefix + "-") : false;
   });
 
   return {
