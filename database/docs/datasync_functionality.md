@@ -33,3 +33,7 @@ Use inline discrete spinners for loading status on each of the tables.
 
 ## New task
 When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
+
+## Progress
+- [x] Show a compact configured-host banner with Refresh + Edit controls.
+- [x] Collapse the full input form until Edit is clicked; Refresh re-runs the full data fetch.

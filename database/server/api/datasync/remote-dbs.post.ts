@@ -26,6 +26,12 @@ const normalizeHost = (value: string): string => {
 export default defineEventHandler(async (event) => {
   await assertAdminSession(event);
 
+  const runtimeConfig = useRuntimeConfig();
+  const dbLoginPrefix =
+    typeof runtimeConfig.dbLoginPrefix === "string"
+      ? runtimeConfig.dbLoginPrefix
+      : "";
+
   const body = (await readBody(event)) as RemoteDbsPayload | null;
 
   if (!body) {
@@ -79,7 +85,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const filtered = payload.filter((name: string) => {
+    if (name === "_users") {
+      return true;
+    }
+
+    return dbLoginPrefix ? name.startsWith(dbLoginPrefix) : false;
+  });
+
   return {
-    databases: payload,
+    databases: filtered,
   };
 });
