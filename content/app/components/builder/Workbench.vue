@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
 import NodeEditor from "./NodeEditor.vue";
+import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
+import {
+    filterNodesBySearch,
+    normalizeSearchQuery,
+} from "../../utils/builderSearch";
 import type {
     BuilderNode,
     BuilderNodeChild,
@@ -139,6 +144,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
+    (e: "document-preview-change", document: MinimalContentDocument): void;
+    (e: "node-focus", payload: { uid: string; path: string }): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
@@ -164,7 +171,15 @@ const previewSpacingClass = computed(
 
 const expandedRootNodes = reactive<Record<string, boolean>>({});
 
-const selectedRootComponent = ref(componentOptions.value[0]?.id || "");
+const searchQuery = ref("");
+const normalizedSearchQuery = computed(() =>
+    normalizeSearchQuery(searchQuery.value),
+);
+const filteredBuilderTree = computed(() =>
+    filterNodesBySearch(builderTree.value, normalizedSearchQuery.value),
+);
+
+const isRootPickerOpen = ref(false);
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
 
@@ -536,11 +551,8 @@ const cloneBuilderNode = (source: BuilderNodeChild): BuilderNodeChild => {
     return cloned;
 };
 
-const addRootComponent = () => {
-    if (!selectedRootComponent.value) {
-        return;
-    }
-    builderTree.value.push(createNode(selectedRootComponent.value));
+const addRootComponent = (componentId: string) => {
+    builderTree.value.push(createNode(componentId));
 };
 
 const addRootText = () => {
@@ -685,6 +697,17 @@ const handleDrop = (uid: string | null) => {
     handleDragEnd();
 };
 
+const handleNodeFocus = (payload: {
+    uid: string;
+    mode?: "flash" | "lock" | "clear";
+}) => {
+    emit("node-focus", {
+        uid: payload.uid,
+        path: pageConfig.path,
+        mode: payload.mode ?? "flash",
+    });
+};
+
 const serializedDocument = computed(() =>
     createDocumentFromTree(
         builderTree.value,
@@ -696,7 +719,20 @@ const serializedDocument = computed(() =>
     ),
 );
 
+const previewDocument = computed(() =>
+    createDocumentFromTree(
+        builderTree.value,
+        {
+            ...pageConfig,
+            meta: pageConfig.meta ?? {},
+        },
+        { spacing: layout.spacing },
+        { annotateBuilderUids: true },
+    ),
+);
+
 let documentEmitTimeout: ReturnType<typeof setTimeout> | null = null;
+let previewDocumentEmitTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const scheduleDocumentEmit = (document: MinimalContentDocument) => {
     if (documentEmitTimeout) {
@@ -716,6 +752,24 @@ const scheduleDocumentEmit = (document: MinimalContentDocument) => {
     }, 200);
 };
 
+const schedulePreviewDocumentEmit = (document: MinimalContentDocument) => {
+    if (previewDocumentEmitTimeout) {
+        clearTimeout(previewDocumentEmitTimeout);
+    }
+
+    previewDocumentEmitTimeout = setTimeout(() => {
+        previewDocumentEmitTimeout = null;
+        try {
+            const cloned = cloneDocument(document);
+            if (cloned) {
+                emit("document-preview-change", cloned);
+            }
+        } catch (error) {
+            console.error("Failed to emit preview document change", error);
+        }
+    }, 200);
+};
+
 watch(
     serializedDocument,
     (value) => {
@@ -727,10 +781,25 @@ watch(
     { deep: true, immediate: true },
 );
 
+watch(
+    previewDocument,
+    (value) => {
+        if (!value) {
+            return;
+        }
+        schedulePreviewDocumentEmit(value);
+    },
+    { deep: true, immediate: true },
+);
+
 onBeforeUnmount(() => {
     if (documentEmitTimeout) {
         clearTimeout(documentEmitTimeout);
         documentEmitTimeout = null;
+    }
+    if (previewDocumentEmitTimeout) {
+        clearTimeout(previewDocumentEmitTimeout);
+        previewDocumentEmitTimeout = null;
     }
 });
 
@@ -850,7 +919,7 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
             </div>
-            <div class="builder-derived">
+            <!-- <div class="builder-derived">
                 <div>
                     <span>Computed ID</span>
                     <code>{{ serializedDocument.id }}</code>
@@ -859,25 +928,21 @@ const handleSaveDebugClick = () => {
                     <span>Stem</span>
                     <code>{{ serializedDocument.stem }}</code>
                 </div>
-            </div>
+            </div> -->
 
             <div class="builder-add">
-                <select v-model="selectedRootComponent">
-                    <option disabled value="">Select component</option>
-                    <option
-                        v-for="component in componentOptions"
-                        :key="component.id"
-                        :value="component.id"
-                    >
-                        {{ component.label }}
-                    </option>
-                </select>
-                <button type="button" @click="addRootComponent">
-                    Add top-level component
+                <button type="button" @click="isRootPickerOpen = true">
+                    Add component
                 </button>
-                <button type="button" @click="addRootText">
+                <ComponentPickerDialog
+                    :is-open="isRootPickerOpen"
+                    :component-options="componentOptions"
+                    @close="isRootPickerOpen = false"
+                    @select="addRootComponent"
+                />
+                <!-- <button type="button" @click="addRootText">
                     Add text node
-                </button>
+                </button> -->
                 <!-- <button type="button" class="builder-load" @click="handleLoadDebugClick">
           Load Debug Data
         </button>
@@ -894,7 +959,7 @@ const handleSaveDebugClick = () => {
                 />
             </div>
 
-            <div class="builder-layout">
+            <!-- <div class="builder-layout">
                 <label>
                     <span>Spacing preset (dummy for now)</span>
                     <select v-model="layout.spacing">
@@ -907,15 +972,25 @@ const handleSaveDebugClick = () => {
                         </option>
                     </select>
                 </label>
-            </div>
+            </div> -->
         </section>
 
         <section class="builder-tree">
+            <div class="builder-search builder-tree__search">
+                <label>
+                    <span>Search components</span>
+                    <input
+                        v-model="searchQuery"
+                        type="search"
+                        placeholder="Search prop values..."
+                    />
+                </label>
+            </div>
             <p v-if="!builderTree.length" class="builder-empty">
                 No components added yet.
             </p>
             <div
-                v-for="node in builderTree"
+                v-for="node in filteredBuilderTree"
                 :key="node.uid"
                 class="builder-root-item"
                 :draggable="!isRootExpanded(node.uid)"
@@ -934,6 +1009,7 @@ const handleSaveDebugClick = () => {
                     :node="node"
                     :registry="registry"
                     :component-options="componentOptions"
+                    :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
                     :on-update-text="updateTextNode"
                     :on-add-child-component="addChildComponent"
@@ -941,10 +1017,11 @@ const handleSaveDebugClick = () => {
                     :on-remove="removeNode"
                     :on-clone="cloneNode"
                     :on-toggle-expanded="handleRootExpansion"
+                    :on-focus-node="handleNodeFocus"
                 />
             </div>
             <div
-                v-if="builderTree.length"
+                v-if="filteredBuilderTree.length"
                 class="builder-root-dropzone"
                 @dragover.prevent="handleDragOver(null)"
                 @drop.prevent="handleDrop(null)"
@@ -985,6 +1062,28 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #f8fafc;
+}
+
+.builder-search {
+    display: grid;
+    gap: 6px;
+    padding: 12px 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.builder-search label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.builder-search input {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #cbd5f5;
+    font: inherit;
 }
 
 .builder-config {
@@ -1054,7 +1153,14 @@ const handleSaveDebugClick = () => {
     padding: 8px 12px;
     border-radius: 4px;
     border: 1px solid #cbd5f5;
-    background: #fff;
+    background: #2563eb;
+    color: #ffffff;
+    width: 100%;
+    cursor: pointer;
+}
+
+.builder-add button:hover {
+    background: #1d4ed8;
 }
 
 .builder-load {
@@ -1094,6 +1200,16 @@ const handleSaveDebugClick = () => {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    max-height: var(--builder-tree-max-height, 70vh);
+    overflow-y: auto;
+}
+
+.builder-tree__search {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin-bottom: 8px;
+    background: #fff;
 }
 
 .builder-empty {

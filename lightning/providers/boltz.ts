@@ -3,8 +3,8 @@ import type { LightningProvider, BoltzConfig, InvoiceRequest, InvoiceResponse, W
 
 export function createBoltzProvider(config: BoltzConfig): LightningProvider {
   const baseUrl = config.apiUrl || 'https://api.boltz.exchange'
-  const webhookUrl = process.env.NUXT_PUBLIC_BASE_URL ? 
-    `${process.env.NUXT_PUBLIC_BASE_URL}/api/webhooks/boltz` : 
+  const webhookUrl = process.env.NUXT_PUBLIC_SITE_URL ?
+    `${process.env.NUXT_PUBLIC_SITE_URL}/api/webhooks/boltz` :
     undefined
   
   const makeRequest = async (endpoint: string, options: RequestInit = {}) => {
@@ -134,10 +134,34 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
     }
   }
 
+  const setupWebhookSubscription = async (webhookUrl: string): Promise<any> => {
+    // Boltz handles webhooks per-swap, not globally
+    // Webhook URL is validated during swap creation
+    console.log(`🔄 Boltz webhook subscription requested for: ${webhookUrl}`)
+    console.log(`ℹ️ Boltz webhooks are configured per-swap, not globally`)
+    return { success: true, note: 'Boltz webhooks configured per-swap' }
+  }
+
+  const listWebhookSubscriptions = async (): Promise<any> => {
+    // Boltz doesn't have global webhook subscriptions
+    console.log(`📋 Boltz webhook subscriptions: Boltz uses per-swap webhooks`)
+    return []
+  }
+
+  const deleteWebhookSubscription = async (subscriptionId: string): Promise<any> => {
+    // Boltz doesn't have global webhook subscriptions to delete
+    console.log(`🗑️ Boltz webhook deletion requested for: ${subscriptionId}`)
+    console.log(`ℹ️ Boltz webhooks are managed per-swap, not globally`)
+    return { success: true, note: 'No global subscriptions to delete' }
+  }
+
   return {
     createInvoice,
     getInvoiceStatus,
     validateWebhook,
-    processWebhook
+    processWebhook,
+    setupWebhookSubscription,
+    listWebhookSubscriptions,
+    deleteWebhookSubscription
   }
 }

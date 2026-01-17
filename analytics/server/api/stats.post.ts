@@ -108,7 +108,7 @@ export default defineEventHandler(async (event) => {
   const xffFirst = xff ? xff.split(",")[0].trim() : undefined;
   const clientIp = cfIp || xRealIp || xffFirst;
   // console.log(
-  //   "Sending payload from backend",
+  //   "Sending analytics payload from backend",
   //   umamiBase,
   //   clientIp,
   //   normalizedPayload,
@@ -126,6 +126,7 @@ export default defineEventHandler(async (event) => {
   });
 
   const text = await res.text();
+  // console.log("Analytics result", text);
 
   if (!res.ok) {
     throw createError({

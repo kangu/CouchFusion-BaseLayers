@@ -1,114 +1,150 @@
-import { promises as fs, Dirent } from 'node:fs'
-import { extname, join } from 'node:path'
+import { promises as fs, Dirent } from "node:fs";
+import { extname, join } from "node:path";
 
-const PAGE_FILE_EXTENSIONS = new Set(['.vue', '.ts', '.js', '.jsx', '.tsx', '.mjs', '.cjs'])
+const PAGE_FILE_EXTENSIONS = new Set([
+  ".vue",
+  ".ts",
+  ".js",
+  ".jsx",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+]);
 
 const normalizePrefix = (value: string | null | undefined): string | null => {
-  if (!value || typeof value !== 'string') {
-    return null
+  if (!value || typeof value !== "string") {
+    return null;
   }
 
-  const trimmed = value.trim()
+  const trimmed = value.trim();
 
-  if (!trimmed.startsWith('/')) {
-    return null
+  if (!trimmed.startsWith("/")) {
+    return null;
   }
 
-  if (trimmed === '/') {
-    return null
+  if (trimmed === "/") {
+    return null;
   }
 
-  return trimmed.replace(/\/+$/, '')
-}
+  return trimmed.replace(/\/+$/, "");
+};
 
 const getPagesDir = (nuxt: any) => {
-  const pagesDir = nuxt.options.dir?.pages || 'pages'
-  return join(nuxt.options.srcDir, pagesDir)
-}
+  const pagesDir = nuxt.options.dir?.pages || "pages";
+  return join(nuxt.options.srcDir, pagesDir);
+};
 
-const collectStaticPagePrefixes = async (directory: string): Promise<string[]> => {
-  let entries: Dirent[]
+const collectStaticPagePrefixes = async (
+  directory: string,
+): Promise<string[]> => {
+  let entries: Dirent[];
   try {
-    entries = await fs.readdir(directory, { withFileTypes: true })
+    entries = await fs.readdir(directory, { withFileTypes: true });
   } catch (error: any) {
-    if (error?.code === 'ENOENT') {
-      return []
+    if (error?.code === "ENOENT") {
+      return [];
     }
 
-    console.warn('[content-layer] Failed to read pages directory:', error)
-    return []
+    console.warn("[content-layer] Failed to read pages directory:", error);
+    return [];
   }
 
-  const prefixes = new Set<string>()
+  const prefixes = new Set<string>();
 
   for (const entry of entries) {
-    const name = entry.name
+    const name = entry.name;
 
-    if (!name || name.startsWith('_') || name.startsWith('[') || name.startsWith('.')) {
-      continue
+    if (
+      !name ||
+      name.startsWith("_") ||
+      name.startsWith("[") ||
+      name.startsWith(".")
+    ) {
+      continue;
     }
 
     if (entry.isDirectory()) {
-      prefixes.add(`/${name}`)
-      continue
+      prefixes.add(`/${name}`);
+      continue;
     }
 
     if (!entry.isFile()) {
-      continue
+      continue;
     }
 
-    const extension = extname(name)
+    const extension = extname(name);
     if (!PAGE_FILE_EXTENSIONS.has(extension)) {
-      continue
+      continue;
     }
 
-    const base = name.slice(0, -extension.length)
-    if (!base || base === 'index' || base.startsWith('[') || base === 'error') {
-      continue
+    const base = name.slice(0, -extension.length);
+    if (!base || base === "index" || base.startsWith("[") || base === "error") {
+      continue;
     }
 
-    prefixes.add(`/${base}`)
+    prefixes.add(`/${base}`);
   }
 
-  return Array.from(prefixes)
-}
+  return Array.from(prefixes);
+};
 
 const normalisePrefixList = (input: any): string[] =>
   Array.isArray(input)
     ? input
         .map((prefix) => normalizePrefix(prefix))
         .filter((value): value is string => Boolean(value))
-    : []
+    : [];
 
-export default async function contentLayerIgnoredPrefixesModule(_moduleOptions: any, nuxt: any) {
-  nuxt.options.appConfig = nuxt.options.appConfig || {}
-  const pagesDir = getPagesDir(nuxt)
-  const autoPrefixes = await collectStaticPagePrefixes(pagesDir)
-  const autoNormalised = normalisePrefixList(autoPrefixes)
+export default async function contentLayerIgnoredPrefixesModule(
+  _moduleOptions: any,
+  nuxt: any,
+) {
+  nuxt.options.appConfig = nuxt.options.appConfig || {};
+  const pagesDir = getPagesDir(nuxt);
+  const autoPrefixes = await collectStaticPagePrefixes(pagesDir);
+  const autoNormalised = normalisePrefixList(autoPrefixes);
 
-  const applyContentConfig = (contentConfig: Record<string, any> | undefined | null) => {
+  const applyContentConfig = (
+    contentConfig: Record<string, any> | undefined | null,
+  ) => {
     const manualPrefixesInput =
       contentConfig?.manualIgnoredPrefixes ??
       contentConfig?.manualPrefixes ??
-      []
+      [];
 
-    const manualNormalised = normalisePrefixList(manualPrefixesInput)
+    const manualNormalised = normalisePrefixList(manualPrefixesInput);
 
     const merged = Array.from(
-      new Set<string>([...autoNormalised, ...manualNormalised])
-    ).sort((a, b) => a.localeCompare(b))
+      new Set<string>([...autoNormalised, ...manualNormalised]),
+    ).sort((a, b) => a.localeCompare(b));
 
     return {
       ...contentConfig,
       autoIgnoredPrefixes: autoNormalised,
       manualIgnoredPrefixes: manualNormalised,
-      ignoredPrefixes: merged
-    }
-  }
+      ignoredPrefixes: merged,
+    };
+  };
 
-  nuxt.options.appConfig.content = applyContentConfig(nuxt.options.appConfig.content)
+  // Expose the merged ignores to runtimeConfig.content.ignore so server consumers can append them
+  nuxt.options.runtimeConfig = nuxt.options.runtimeConfig || {};
+  const runtimeContent = nuxt.options.runtimeConfig.content || {};
+  const runtimeIgnore = Array.isArray(runtimeContent.ignore)
+    ? runtimeContent.ignore
+    : [];
+  const mergedRuntimeIgnore = Array.from(
+    new Set<string>([
+      ...runtimeIgnore,
+      ...autoNormalised,
+      ...(nuxt.options.appConfig?.content?.manualIgnoredPrefixes || []),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
+  nuxt.options.runtimeConfig.content = {
+    ...runtimeContent,
+    ignore: mergedRuntimeIgnore,
+  };
 
-  nuxt.hook('app:config', (appConfig: any) => {
-    appConfig.content = applyContentConfig(appConfig.content)
-  })
+  nuxt.hook("app:config", (appConfig: any) => {
+    appConfig.content = applyContentConfig(appConfig.content);
+  });
 }

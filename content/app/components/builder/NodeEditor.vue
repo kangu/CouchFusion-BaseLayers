@@ -1,9 +1,18 @@
 <template>
-    <div class="node-panel" :style="{ marginLeft: depth * 16 + 'px' }">
+    <div
+        class="node-panel"
+        :style="{ marginLeft: depth * 16 + 'px' }"
+        @focusin="notifyFocus"
+        @click="notifyFocus"
+    >
         <div v-if="node.type === 'component'" class="node-panel__header">
             <div class="node-panel__header-main">
                 <div class="node-panel__header-text">
-                    <strong>{{ componentDef?.label || node.component }}</strong>
+                    <strong v-if="slotDisplayName">
+                        <span>{{ slotDisplayName }}</span>
+                        <span class="node-panel__slot-suffix">(Slot)</span>
+                    </strong>
+                    <strong v-else>{{ componentDef?.label || node.component }}</strong>
                 </div>
                 <div class="node-panel__header-actions">
                     <button
@@ -15,6 +24,24 @@
                         @click="toggleNode(node.uid)"
                     >
                         {{ collapsedNodes[node.uid] ? "Expand" : "Collapse" }}
+                    </button>
+                    <button
+                        class="node-panel__toggle node-panel__toggle--icon"
+                        type="button"
+                        @click="triggerFocus"
+                        aria-label="Focus preview"
+                        title="Focus preview"
+                    >
+                        <svg
+                            class="node-panel__toggle-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 2a1 1 0 0 1 1 1v2.05A7.002 7.002 0 0 1 18.95 11H21a1 1 0 1 1 0 2h-2.05A7.002 7.002 0 0 1 13 18.95V21a1 1 0 1 1-2 0v-2.05A7.002 7.002 0 0 1 5.05 13H3a1 1 0 1 1 0-2h2.05A7.002 7.002 0 0 1 11 5.05V3a1 1 0 0 1 1-1Zm0 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
+                            />
+                        </svg>
                     </button>
                     <button
                         class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--clone"
@@ -59,3437 +86,69 @@
             class="node-panel__body"
             v-show="!collapsedNodes[node.uid]"
         >
-            <div v-if="componentDef?.props?.length" class="node-panel__props">
-                <template
-                    v-for="prop in filterVisibleFields(
-                        componentDef?.props,
-                        propDraft,
-                    )"
-                    :key="prop.key"
-                >
-                    <component
-                        :is="fieldWrapperTag(prop)"
-                        class="node-panel__field"
-                        :class="{ 'is-row': prop.type === 'boolean' }"
-                        :role="fieldWrapperRole(prop)"
-                        v-on="fieldWrapperListeners(prop)"
-                    >
-                        <span>{{ prop.label }}</span>
-                        <template v-if="prop.type === 'textarea'">
-                            <textarea
-                                v-model="propDraft[prop.key]"
-                                :placeholder="prop.placeholder"
-                                rows="3"
-                                @input="
-                                    () =>
-                                        schedulePropUpdate(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                                @blur="
-                                    () =>
-                                        flushPropUpdate(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                            />
-                        </template>
-                        <template v-else-if="prop.type === 'boolean'">
-                            <span class="node-panel__checkbox">
-                                <input
-                                    type="checkbox"
-                                    class="node-panel__checkbox-input"
-                                    :checked="Boolean(propDraft[prop.key])"
-                                    @change="
-                                        (event: Event) =>
-                                            applyProp(
-                                                prop.key,
-                                                (
-                                                    event.target as HTMLInputElement
-                                                ).checked,
-                                                prop.type,
-                                            )
-                                    "
-                                />
-                                <span
-                                    class="node-panel__checkbox-box"
-                                    aria-hidden="true"
-                                >
-                                    <svg
-                                        viewBox="0 0 20 20"
-                                        fill="none"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                    >
-                                        <path
-                                            d="M5 10.5L8.5 14L15 6"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                        />
-                                    </svg>
-                                </span>
-                            </span>
-                        </template>
-                        <template v-else-if="prop.type === 'select'">
-                            <select
-                                v-model="propDraft[prop.key]"
-                                @change="
-                                    () =>
-                                        applyProp(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                            >
-                                <option disabled value="">Select</option>
-                                <option
-                                    v-for="option in prop.options || []"
-                                    :key="option.value"
-                                    :value="option.value"
-                                >
-                                    {{ option.label }}
-                                </option>
-                            </select>
-                        </template>
-                        <template v-else-if="prop.type === 'json'">
-                            <textarea
-                                v-model="propDraft[prop.key]"
-                                class="font-mono"
-                                rows="6"
-                                @change="
-                                    () =>
-                                        applyProp(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                                @blur="
-                                    () =>
-                                        applyProp(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                            />
-                            <small
-                                v-if="jsonErrors[prop.key]"
-                                class="node-panel__error"
-                                >{{ jsonErrors[prop.key] }}</small
-                            >
-                        </template>
-                        <template
-                            v-else-if="
-                                prop.type === 'jsonobject' &&
-                                prop.fields?.length
-                            "
-                        >
-                            <div class="node-panel__object">
-                                <label
-                                    v-for="field in filterVisibleFields(
-                                        prop.fields,
-                                        propDraft[prop.key],
-                                    )"
-                                    :key="`${prop.key}-${field.key}`"
-                                    class="node-panel__field node-panel__field--nested"
-                                >
-                                    <span>{{ field.label }}</span>
-                                    <template v-if="field.type === 'textarea'">
-                                        <textarea
-                                            v-model="
-                                                propDraft[prop.key][field.key]
-                                            "
-                                            rows="3"
-                                            @input="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                            @change="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                            @blur="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                        />
-                                    </template>
-                                    <template
-                                        v-else-if="field.type === 'boolean'"
-                                    >
-                                        <span class="node-panel__checkbox">
-                                            <input
-                                                type="checkbox"
-                                                class="node-panel__checkbox-input"
-                                                :checked="
-                                                    Boolean(
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                                "
-                                                @change="
-                                                    (event: Event) =>
-                                                        handleObjectFieldChange(
-                                                            prop.key,
-                                                            field,
-                                                            (
-                                                                event.target as HTMLInputElement
-                                                            ).checked,
-                                                        )
-                                                "
-                                            />
-                                            <span
-                                                class="node-panel__checkbox-box"
-                                                aria-hidden="true"
-                                            >
-                                                <svg
-                                                    viewBox="0 0 20 20"
-                                                    fill="none"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                >
-                                                    <path
-                                                        d="M5 10.5L8.5 14L15 6"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    />
-                                                </svg>
-                                            </span>
-                                        </span>
-                                    </template>
-                                    <template
-                                        v-else-if="field.type === 'number'"
-                                    >
-                                        <input
-                                            v-model.number="
-                                                propDraft[prop.key][field.key]
-                                            "
-                                            type="number"
-                                            @input="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                            @change="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                            @blur="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                        />
-                                    </template>
-                                    <template
-                                        v-else-if="field.type === 'select'"
-                                    >
-                                        <select
-                                            v-model="
-                                                propDraft[prop.key][field.key]
-                                            "
-                                            @change="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                        >
-                                            <option disabled value="">
-                                                Select
-                                            </option>
-                                            <option
-                                                v-for="option in field.options ||
-                                                []"
-                                                :key="option.value"
-                                                :value="option.value"
-                                            >
-                                                {{ option.label }}
-                                            </option>
-                                        </select>
-                                    </template>
-                                    <template v-else-if="field.ui?.component">
-                                        <component
-                                            :is="field.ui.component"
-                                            :model-value="
-                                                propDraft[prop.key][field.key]
-                                            "
-                                            :prop-definition="field"
-                                            :field-context="{
-                                                propKey: prop.key,
-                                            }"
-                                            @update:modelValue="
-                                                (value: unknown) =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        value,
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                        />
-                                    </template>
-                                    <template v-else>
-                                        <input
-                                            v-model="
-                                                propDraft[prop.key][field.key]
-                                            "
-                                            type="text"
-                                            @input="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                            @change="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                            @blur="
-                                                () =>
-                                                    handleObjectFieldChange(
-                                                        prop.key,
-                                                        field,
-                                                        propDraft[prop.key][
-                                                            field.key
-                                                        ],
-                                                    )
-                                            "
-                                        />
-                                    </template>
-                                    <small
-                                        v-if="
-                                            objectFieldErrors[prop.key]?.[
-                                                field.key
-                                            ]
-                                        "
-                                        class="node-panel__error"
-                                    >
-                                        {{
-                                            objectFieldErrors[prop.key]?.[
-                                                field.key
-                                            ]
-                                        }}
-                                    </small>
-                                </label>
-                            </div>
-                        </template>
-                        <template v-else-if="prop.type === 'jsonobject'">
-                            <textarea
-                                v-model="propDraft[prop.key]"
-                                class="font-mono"
-                                rows="6"
-                                @change="
-                                    () =>
-                                        applyProp(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            'json',
-                                        )
-                                "
-                                @blur="
-                                    () =>
-                                        applyProp(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            'json',
-                                        )
-                                "
-                            />
-                            <small
-                                v-if="jsonErrors[prop.key]"
-                                class="node-panel__error"
-                                >{{ jsonErrors[prop.key] }}</small
-                            >
-                        </template>
-                        <template v-else-if="prop.type === 'jsonarray'">
-                            <div
-                                class="node-panel__array"
-                                :data-collapsed="collapsedArrays[prop.key]"
-                            >
-                                <div class="node-panel__array-header">
-                                    <button
-                                        type="button"
-                                        class="node-panel__array-toggle"
-                                        :data-state="
-                                            collapsedArrays[prop.key]
-                                                ? 'collapsed'
-                                                : 'expanded'
-                                        "
-                                        @click="toggleArray(prop.key)"
-                                    >
-                                        {{
-                                            collapsedArrays[prop.key]
-                                                ? "Expand"
-                                                : "Collapse"
-                                        }}
-                                        ({{ propDraft[prop.key]?.length || 0 }})
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="node-panel__array-add"
-                                        @click="openInsertDialog(prop)"
-                                    >
-                                        <span
-                                            class="node-panel__array-add-icon"
-                                            aria-hidden="true"
-                                            >+</span
-                                        >
-                                        <!--                  <span>Add item</span>-->
-                                    </button>
-                                </div>
-                                <div
-                                    v-for="(item, index) in propDraft[prop.key]"
-                                    :key="`${prop.key}-${index}`"
-                                    class="node-panel__array-item"
-                                    :class="{
-                                        'node-panel__array-item--drag-over':
-                                            dragOverArrayItem?.propKey ===
-                                                prop.key &&
-                                            dragOverArrayItem.index === index,
-                                    }"
-                                    draggable="true"
-                                    @dragstart.stop="
-                                        (event) =>
-                                            handleArrayItemDragStart(
-                                                prop.key,
-                                                index,
-                                                'jsonarray',
-                                                event,
-                                            )
-                                    "
-                                    @dragenter.stop.prevent="
-                                        () =>
-                                            handleArrayItemDragEnter(
-                                                prop.key,
-                                                index,
-                                            )
-                                    "
-                                    @dragover.stop.prevent="
-                                        () =>
-                                            handleArrayItemDragEnter(
-                                                prop.key,
-                                                index,
-                                            )
-                                    "
-                                    @dragleave.stop="handleArrayItemDragLeave"
-                                    @drop.stop.prevent="
-                                        () =>
-                                            handleArrayItemDrop(
-                                                prop.key,
-                                                index,
-                                                'jsonarray',
-                                            )
-                                    "
-                                    @dragend.stop="handleArrayItemDragEnd"
-                                    v-show="!collapsedArrays[prop.key]"
-                                >
-                                    <div class="node-panel__array-fields">
-                                        <label
-                                            v-for="field in filterVisibleFields(
-                                                prop.items,
-                                                item,
-                                            )"
-                                            :key="field.key"
-                                            class="node-panel__field node-panel__field--nested"
-                                        >
-                                            <span>{{ field.label }}</span>
-                                            <template
-                                                v-if="field.type === 'textarea'"
-                                            >
-                                                <textarea
-                                                    v-model="item[field.key]"
-                                                    rows="3"
-                                                    @input="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                                {
-                                                                    debounce: true,
-                                                                },
-                                                            )
-                                                    "
-                                                    @change="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                    @blur="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                />
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'boolean'
-                                                "
-                                            >
-                                                <span
-                                                    class="node-panel__checkbox"
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        class="node-panel__checkbox-input"
-                                                        :checked="
-                                                            Boolean(
-                                                                item[field.key],
-                                                            )
-                                                        "
-                                                        @change="
-                                                            (event: Event) =>
-                                                                handleArrayItemFieldChange(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field,
-                                                                    (
-                                                                        event.target as HTMLInputElement
-                                                                    ).checked,
-                                                                )
-                                                        "
-                                                    />
-                                                    <span
-                                                        class="node-panel__checkbox-box"
-                                                        aria-hidden="true"
-                                                    >
-                                                        <svg
-                                                            viewBox="0 0 20 20"
-                                                            fill="none"
-                                                            xmlns="http://www.w3.org/2000/svg"
-                                                        >
-                                                            <path
-                                                                d="M5 10.5L8.5 14L15 6"
-                                                                stroke="currentColor"
-                                                                stroke-width="2"
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                            />
-                                                        </svg>
-                                                    </span>
-                                                </span>
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'number'
-                                                "
-                                            >
-                                                <input
-                                                    v-model.number="
-                                                        item[field.key]
-                                                    "
-                                                    type="number"
-                                                    @input="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                                {
-                                                                    debounce: true,
-                                                                },
-                                                            )
-                                                    "
-                                                    @change="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                    @blur="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                />
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'select'
-                                                "
-                                            >
-                                                <select
-                                                    v-model="item[field.key]"
-                                                    @change="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                >
-                                                    <option disabled value="">
-                                                        Select
-                                                    </option>
-                                                    <option
-                                                        v-for="option in field.options ||
-                                                        []"
-                                                        :key="option.value"
-                                                        :value="option.value"
-                                                    >
-                                                        {{ option.label }}
-                                                    </option>
-                                                </select>
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'stringarray'
-                                                "
-                                            >
-                                                <div
-                                                    class="node-panel__array node-panel__array--nested"
-                                                    :data-collapsed="
-                                                        isNestedArrayCollapsed(
-                                                            prop.key,
-                                                            index,
-                                                            field.key,
-                                                        )
-                                                    "
-                                                >
-                                                    <div
-                                                        class="node-panel__array-header node-panel__array-header--nested"
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            class="node-panel__array-toggle"
-                                                            :data-state="
-                                                                isNestedArrayCollapsed(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                                    ? 'collapsed'
-                                                                    : 'expanded'
-                                                            "
-                                                            @click="
-                                                                toggleNestedArray(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                            "
-                                                        >
-                                                            {{
-                                                                isNestedArrayCollapsed(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                                    ? "Expand"
-                                                                    : "Collapse"
-                                                            }}
-                                                            ({{
-                                                                getArrayItemStringArrayItems(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field,
-                                                                ).length
-                                                            }})
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            class="node-panel__array-add"
-                                                            @click="
-                                                                addArrayItemStringArrayItem(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field,
-                                                                )
-                                                            "
-                                                        >
-                                                            <span
-                                                                class="node-panel__array-add-icon"
-                                                                aria-hidden="true"
-                                                                >+</span
-                                                            >
-                                                        </button>
-                                                    </div>
-                                                    <div
-                                                        v-for="(
-                                                            nestedValue,
-                                                            nestedIndex
-                                                        ) in getArrayItemStringArrayItems(
-                                                            prop.key,
-                                                            index,
-                                                            field,
-                                                        )"
-                                                        :key="`${prop.key}-${index}-${field.key}-string-${nestedIndex}`"
-                                                        class="node-panel__array-item node-panel__array-item--nested"
-                                                        v-show="
-                                                            !isNestedArrayCollapsed(
-                                                                prop.key,
-                                                                index,
-                                                                field.key,
-                                                            )
-                                                        "
-                                                    >
-                                                        <label
-                                                            class="node-panel__field node-panel__field--nested"
-                                                        >
-                                                            <span
-                                                                >{{
-                                                                    field.label
-                                                                }}
-                                                                {{
-                                                                    nestedIndex +
-                                                                    1
-                                                                }}</span
-                                                            >
-                                                            <component
-                                                                v-if="
-                                                                    field.ui
-                                                                        ?.component
-                                                                "
-                                                                :is="
-                                                                    field.ui
-                                                                        .component
-                                                                "
-                                                                :model-value="
-                                                                    nestedValue
-                                                                "
-                                                                :prop-definition="
-                                                                    field
-                                                                "
-                                                                :field-context="{
-                                                                    propKey:
-                                                                        prop.key,
-                                                                    arrayIndex:
-                                                                        index,
-                                                                    nestedFieldKey:
-                                                                        field.key,
-                                                                }"
-                                                                @update:modelValue="
-                                                                    (
-                                                                        value: unknown,
-                                                                    ) =>
-                                                                        handleArrayItemStringArrayChange(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                            nestedIndex,
-                                                                            value,
-                                                                            {
-                                                                                debounce: true,
-                                                                            },
-                                                                        )
-                                                                "
-                                                            />
-                                                            <input
-                                                                v-else
-                                                                :value="
-                                                                    nestedValue
-                                                                "
-                                                                type="text"
-                                                                @input="
-                                                                    (
-                                                                        event: Event,
-                                                                    ) =>
-                                                                        handleArrayItemStringArrayChange(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                            nestedIndex,
-                                                                            (
-                                                                                event.target as HTMLInputElement
-                                                                            )
-                                                                                .value,
-                                                                            {
-                                                                                debounce: true,
-                                                                            },
-                                                                        )
-                                                                "
-                                                                @change="
-                                                                    (
-                                                                        event: Event,
-                                                                    ) =>
-                                                                        handleArrayItemStringArrayChange(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                            nestedIndex,
-                                                                            (
-                                                                                event.target as HTMLInputElement
-                                                                            )
-                                                                                .value,
-                                                                        )
-                                                                "
-                                                                @blur="
-                                                                    (
-                                                                        event: Event,
-                                                                    ) =>
-                                                                        handleArrayItemStringArrayChange(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                            nestedIndex,
-                                                                            (
-                                                                                event.target as HTMLInputElement
-                                                                            )
-                                                                                .value,
-                                                                        )
-                                                                "
-                                                            />
-                                                        </label>
-                                                        <div
-                                                            class="node-panel__array-actions"
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                class="node-panel__array-remove"
-                                                                @click="
-                                                                    removeArrayItemStringArrayItem(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        nestedIndex,
-                                                                    )
-                                                                "
-                                                            >
-                                                                Remove item
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                class="node-panel__array-reorder-link"
-                                                                @click="
-                                                                    openArrayItemStringArrayReorderDialog(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        nestedIndex,
-                                                                    )
-                                                                "
-                                                            >
-                                                                Move (#{{
-                                                                    nestedIndex +
-                                                                    1
-                                                                }})
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'jsonobject'
-                                                "
-                                            >
-                                                <div
-                                                    class="node-panel__object node-panel__object--nested"
-                                                >
-                                                    <template
-                                                        v-if="
-                                                            field.fields?.length
-                                                        "
-                                                    >
-                                                        <label
-                                                            v-for="nestedObjectField in filterVisibleFields(
-                                                                field.fields,
-                                                                item[field.key],
-                                                            )"
-                                                            :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
-                                                            class="node-panel__field node-panel__field--nested"
-                                                        >
-                                                            <span>{{
-                                                                nestedObjectField.label
-                                                            }}</span>
-                                                            <template
-                                                                v-if="
-                                                                    nestedObjectField.type ===
-                                                                    'textarea'
-                                                                "
-                                                            >
-                                                                <textarea
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    rows="3"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'boolean'
-                                                                "
-                                                            >
-                                                                <span
-                                                                    class="node-panel__checkbox"
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        class="node-panel__checkbox-input"
-                                                                        :checked="
-                                                                            Boolean(
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                        "
-                                                                        @change="
-                                                                            (
-                                                                                event: Event,
-                                                                            ) =>
-                                                                                handleArrayItemObjectFieldChange(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedObjectField,
-                                                                                    (
-                                                                                        event.target as HTMLInputElement
-                                                                                    )
-                                                                                        .checked,
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                    <span
-                                                                        class="node-panel__checkbox-box"
-                                                                        aria-hidden="true"
-                                                                    >
-                                                                        <svg
-                                                                            viewBox="0 0 20 20"
-                                                                            fill="none"
-                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                        >
-                                                                            <path
-                                                                                d="M5 10.5L8.5 14L15 6"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            />
-                                                                        </svg>
-                                                                    </span>
-                                                                </span>
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'number'
-                                                                "
-                                                            >
-                                                                <input
-                                                                    v-model.number="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    type="number"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'select'
-                                                                "
-                                                            >
-                                                                <select
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                >
-                                                                    <option
-                                                                        disabled
-                                                                        value=""
-                                                                    >
-                                                                        Select
-                                                                    </option>
-                                                                    <option
-                                                                        v-for="option in nestedObjectField.options ||
-                                                                        []"
-                                                                        :key="
-                                                                            option.value
-                                                                        "
-                                                                        :value="
-                                                                            option.value
-                                                                        "
-                                                                    >
-                                                                        {{
-                                                                            option.label
-                                                                        }}
-                                                                    </option>
-                                                                </select>
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField
-                                                                        .ui
-                                                                        ?.component
-                                                                "
-                                                            >
-                                                                <component
-                                                                    :is="
-                                                                        nestedObjectField
-                                                                            .ui
-                                                                            .component
-                                                                    "
-                                                                    :model-value="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    :prop-definition="
-                                                                        nestedObjectField
-                                                                    "
-                                                                    :field-context="{
-                                                                        propKey:
-                                                                            prop.key,
-                                                                        arrayIndex:
-                                                                            index,
-                                                                    }"
-                                                                    @update:modelValue="
-                                                                        (
-                                                                            value: unknown,
-                                                                        ) =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                value,
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template v-else>
-                                                                <input
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    type="text"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                        </label>
-                                                    </template>
-                                                    <template v-else>
-                                                        <textarea
-                                                            class="font-mono"
-                                                            rows="4"
-                                                            :value="
-                                                                formatJsonValue(
-                                                                    getArrayItemObjectValue(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                    ),
-                                                                )
-                                                            "
-                                                            @change="
-                                                                (
-                                                                    event: Event,
-                                                                ) =>
-                                                                    handleArrayItemObjectJsonChange(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        (
-                                                                            event.target as HTMLTextAreaElement
-                                                                        ).value,
-                                                                    )
-                                                            "
-                                                            @blur="
-                                                                (
-                                                                    event: Event,
-                                                                ) =>
-                                                                    handleArrayItemObjectJsonChange(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        (
-                                                                            event.target as HTMLTextAreaElement
-                                                                        ).value,
-                                                                    )
-                                                            "
-                                                        />
-                                                    </template>
-                                                </div>
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'jsonobject'
-                                                "
-                                            >
-                                                <div
-                                                    class="node-panel__object node-panel__object--nested"
-                                                >
-                                                    <template
-                                                        v-if="
-                                                            field.fields?.length
-                                                        "
-                                                    >
-                                                        <label
-                                                            v-for="nestedObjectField in field.fields ||
-                                                            []"
-                                                            v-if="
-                                                                isFieldVisible(
-                                                                    nestedObjectField,
-                                                                    getArrayItemObjectValue(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                    ),
-                                                                )
-                                                            "
-                                                            :key="`${prop.key}-${index}-${field.key}-${nestedObjectField.key}`"
-                                                            class="node-panel__field node-panel__field--nested"
-                                                        >
-                                                            <span>{{
-                                                                nestedObjectField.label
-                                                            }}</span>
-                                                            <template
-                                                                v-if="
-                                                                    nestedObjectField.type ===
-                                                                    'textarea'
-                                                                "
-                                                            >
-                                                                <textarea
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    rows="3"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'boolean'
-                                                                "
-                                                            >
-                                                                <span
-                                                                    class="node-panel__checkbox"
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        class="node-panel__checkbox-input"
-                                                                        :checked="
-                                                                            Boolean(
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                        "
-                                                                        @change="
-                                                                            (
-                                                                                event: Event,
-                                                                            ) =>
-                                                                                handleArrayItemObjectFieldChange(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedObjectField,
-                                                                                    (
-                                                                                        event.target as HTMLInputElement
-                                                                                    )
-                                                                                        .checked,
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                    <span
-                                                                        class="node-panel__checkbox-box"
-                                                                        aria-hidden="true"
-                                                                    >
-                                                                        <svg
-                                                                            viewBox="0 0 20 20"
-                                                                            fill="none"
-                                                                            xmlns="http://www.w3.org/2000/svg"
-                                                                        >
-                                                                            <path
-                                                                                d="M5 10.5L8.5 14L15 6"
-                                                                                stroke="currentColor"
-                                                                                stroke-width="2"
-                                                                                stroke-linecap="round"
-                                                                                stroke-linejoin="round"
-                                                                            />
-                                                                        </svg>
-                                                                    </span>
-                                                                </span>
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'number'
-                                                                "
-                                                            >
-                                                                <input
-                                                                    v-model.number="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    type="number"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField.type ===
-                                                                    'select'
-                                                                "
-                                                            >
-                                                                <select
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                >
-                                                                    <option
-                                                                        disabled
-                                                                        value=""
-                                                                    >
-                                                                        Select
-                                                                    </option>
-                                                                    <option
-                                                                        v-for="option in nestedObjectField.options ||
-                                                                        []"
-                                                                        :key="
-                                                                            option.value
-                                                                        "
-                                                                        :value="
-                                                                            option.value
-                                                                        "
-                                                                    >
-                                                                        {{
-                                                                            option.label
-                                                                        }}
-                                                                    </option>
-                                                                </select>
-                                                            </template>
-                                                            <template
-                                                                v-else-if="
-                                                                    nestedObjectField
-                                                                        .ui
-                                                                        ?.component
-                                                                "
-                                                            >
-                                                                <component
-                                                                    :is="
-                                                                        nestedObjectField
-                                                                            .ui
-                                                                            .component
-                                                                    "
-                                                                    :model-value="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    :prop-definition="
-                                                                        nestedObjectField
-                                                                    "
-                                                                    :field-context="{
-                                                                        propKey:
-                                                                            prop.key,
-                                                                        arrayIndex:
-                                                                            index,
-                                                                    }"
-                                                                    @update:modelValue="
-                                                                        (
-                                                                            value: unknown,
-                                                                        ) =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                value,
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                            <template v-else>
-                                                                <input
-                                                                    v-model="
-                                                                        getArrayItemObjectValue(
-                                                                            prop.key,
-                                                                            index,
-                                                                            field,
-                                                                        )[
-                                                                            nestedObjectField
-                                                                                .key
-                                                                        ]
-                                                                    "
-                                                                    type="text"
-                                                                    @input="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                                {
-                                                                                    debounce: true,
-                                                                                },
-                                                                            )
-                                                                    "
-                                                                    @change="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                    @blur="
-                                                                        () =>
-                                                                            handleArrayItemObjectFieldChange(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedObjectField,
-                                                                                getArrayItemObjectValue(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                )[
-                                                                                    nestedObjectField
-                                                                                        .key
-                                                                                ],
-                                                                            )
-                                                                    "
-                                                                />
-                                                            </template>
-                                                        </label>
-                                                    </template>
-                                                    <template v-else>
-                                                        <textarea
-                                                            class="font-mono"
-                                                            rows="4"
-                                                            :value="
-                                                                formatJsonValue(
-                                                                    getArrayItemObjectValue(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                    ),
-                                                                )
-                                                            "
-                                                            @change="
-                                                                (
-                                                                    event: Event,
-                                                                ) =>
-                                                                    handleArrayItemObjectJsonChange(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        (
-                                                                            event.target as HTMLTextAreaElement
-                                                                        ).value,
-                                                                    )
-                                                            "
-                                                            @blur="
-                                                                (
-                                                                    event: Event,
-                                                                ) =>
-                                                                    handleArrayItemObjectJsonChange(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        (
-                                                                            event.target as HTMLTextAreaElement
-                                                                        ).value,
-                                                                    )
-                                                            "
-                                                        />
-                                                    </template>
-                                                </div>
-                                            </template>
-                                            <template
-                                                v-else-if="field.ui?.component"
-                                            >
-                                                <component
-                                                    :is="field.ui.component"
-                                                    :model-value="
-                                                        item[field.key]
-                                                    "
-                                                    :prop-definition="field"
-                                                    :field-context="{
-                                                        propKey: prop.key,
-                                                        arrayIndex: index,
-                                                    }"
-                                                    @update:modelValue="
-                                                        (value: unknown) =>
-                                                            handleCustomArrayFieldUpdate(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                value,
-                                                                {
-                                                                    debounce: true,
-                                                                },
-                                                            )
-                                                    "
-                                                />
-                                            </template>
-                                            <template
-                                                v-else-if="
-                                                    field.type === 'jsonarray'
-                                                "
-                                            >
-                                                <div
-                                                    class="node-panel__array node-panel__array--nested"
-                                                    :data-collapsed="
-                                                        isNestedArrayCollapsed(
-                                                            prop.key,
-                                                            index,
-                                                            field.key,
-                                                        )
-                                                    "
-                                                >
-                                                    <div
-                                                        class="node-panel__array-header node-panel__array-header--nested"
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            class="node-panel__array-toggle"
-                                                            :data-state="
-                                                                isNestedArrayCollapsed(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                                    ? 'collapsed'
-                                                                    : 'expanded'
-                                                            "
-                                                            @click="
-                                                                toggleNestedArray(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                            "
-                                                        >
-                                                            {{
-                                                                isNestedArrayCollapsed(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field.key,
-                                                                )
-                                                                    ? "Expand"
-                                                                    : "Collapse"
-                                                            }}
-                                                            ({{
-                                                                getNestedArrayItems(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field,
-                                                                ).length
-                                                            }})
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            class="node-panel__array-add"
-                                                            @click="
-                                                                addNestedArrayItem(
-                                                                    prop.key,
-                                                                    index,
-                                                                    field,
-                                                                )
-                                                            "
-                                                        >
-                                                            <span
-                                                                class="node-panel__array-add-icon"
-                                                                aria-hidden="true"
-                                                                >+</span
-                                                            >
-                                                        </button>
-                                                    </div>
-                                                    <div
-                                                        v-for="(
-                                                            nestedItem,
-                                                            nestedIndex
-                                                        ) in getNestedArrayItems(
-                                                            prop.key,
-                                                            index,
-                                                            field,
-                                                        )"
-                                                        :key="`${prop.key}-${index}-${field.key}-${nestedIndex}`"
-                                                        class="node-panel__array-item node-panel__array-item--nested"
-                                                        v-show="
-                                                            !isNestedArrayCollapsed(
-                                                                prop.key,
-                                                                index,
-                                                                field.key,
-                                                            )
-                                                        "
-                                                    >
-                                                        <div
-                                                            class="node-panel__array-fields node-panel__array-fields--nested"
-                                                        >
-                                                            <label
-                                                                v-for="nestedField in filterVisibleFields(
-                                                                    field.items,
-                                                                    nestedItem,
-                                                                )"
-                                                                :key="`${field.key}-${nestedField.key}-${nestedIndex}`"
-                                                                class="node-panel__field node-panel__field--nested"
-                                                            >
-                                                                <span>{{
-                                                                    nestedField.label
-                                                                }}</span>
-                                                                <template
-                                                                    v-if="
-                                                                        nestedField.type ===
-                                                                        'textarea'
-                                                                    "
-                                                                >
-                                                                    <textarea
-                                                                        v-model="
-                                                                            nestedItem[
-                                                                                nestedField
-                                                                                    .key
-                                                                            ]
-                                                                        "
-                                                                        rows="3"
-                                                                        @input="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                    {
-                                                                                        debounce: true,
-                                                                                    },
-                                                                                )
-                                                                        "
-                                                                        @change="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                        @blur="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField.type ===
-                                                                        'boolean'
-                                                                    "
-                                                                >
-                                                                    <span
-                                                                        class="node-panel__checkbox"
-                                                                    >
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            class="node-panel__checkbox-input"
-                                                                            :checked="
-                                                                                Boolean(
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                            "
-                                                                            @change="
-                                                                                (
-                                                                                    event: Event,
-                                                                                ) =>
-                                                                                    updateNestedArrayItemField(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        field,
-                                                                                        nestedIndex,
-                                                                                        nestedField,
-                                                                                        (
-                                                                                            event.target as HTMLInputElement
-                                                                                        )
-                                                                                            .checked,
-                                                                                    )
-                                                                            "
-                                                                        />
-                                                                        <span
-                                                                            class="node-panel__checkbox-box"
-                                                                            aria-hidden="true"
-                                                                        >
-                                                                            <svg
-                                                                                viewBox="0 0 20 20"
-                                                                                fill="none"
-                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                            >
-                                                                                <path
-                                                                                    d="M5 10.5L8.5 14L15 6"
-                                                                                    stroke="currentColor"
-                                                                                    stroke-width="2"
-                                                                                    stroke-linecap="round"
-                                                                                    stroke-linejoin="round"
-                                                                                />
-                                                                            </svg>
-                                                                        </span>
-                                                                    </span>
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField.type ===
-                                                                        'number'
-                                                                    "
-                                                                >
-                                                                    <input
-                                                                        v-model.number="
-                                                                            nestedItem[
-                                                                                nestedField
-                                                                                    .key
-                                                                            ]
-                                                                        "
-                                                                        type="number"
-                                                                        @input="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                    {
-                                                                                        debounce: true,
-                                                                                    },
-                                                                                )
-                                                                        "
-                                                                        @change="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                        @blur="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField.type ===
-                                                                        'stringarray'
-                                                                    "
-                                                                >
-                                                                    <div
-                                                                        class="node-panel__array node-panel__array--nested"
-                                                                        :data-collapsed="
-                                                                            isNestedArrayCollapsed(
-                                                                                prop.key,
-                                                                                index,
-                                                                                `${field.key}-${nestedField.key}`,
-                                                                                nestedIndex,
-                                                                            )
-                                                                        "
-                                                                    >
-                                                                        <div
-                                                                            class="node-panel__array-header node-panel__array-header--nested"
-                                                                        >
-                                                                            <button
-                                                                                type="button"
-                                                                                class="node-panel__array-toggle"
-                                                                                :data-state="
-                                                                                    isNestedArrayCollapsed(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        `${field.key}-${nestedField.key}`,
-                                                                                        nestedIndex,
-                                                                                    )
-                                                                                        ? 'collapsed'
-                                                                                        : 'expanded'
-                                                                                "
-                                                                                @click="
-                                                                                    toggleNestedArray(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        `${field.key}-${nestedField.key}`,
-                                                                                        nestedIndex,
-                                                                                    )
-                                                                                "
-                                                                            >
-                                                                                {{
-                                                                                    isNestedArrayCollapsed(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        `${field.key}-${nestedField.key}`,
-                                                                                        nestedIndex,
-                                                                                    )
-                                                                                        ? "Expand"
-                                                                                        : "Collapse"
-                                                                                }}
-                                                                                ({{
-                                                                                    getNestedArrayItemStringArrayItems(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        field,
-                                                                                        nestedIndex,
-                                                                                        nestedField,
-                                                                                    )
-                                                                                        .length
-                                                                                }})
-                                                                            </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                class="node-panel__array-add"
-                                                                                @click="
-                                                                                    addNestedArrayItemStringArrayItem(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        field,
-                                                                                        nestedIndex,
-                                                                                        nestedField,
-                                                                                    )
-                                                                                "
-                                                                            >
-                                                                                <span
-                                                                                    class="node-panel__array-add-icon"
-                                                                                    aria-hidden="true"
-                                                                                    >+</span
-                                                                                >
-                                                                            </button>
-                                                                        </div>
-                                                                        <div
-                                                                            v-for="(
-                                                                                optionValue,
-                                                                                optionIndex
-                                                                            ) in getNestedArrayItemStringArrayItems(
-                                                                                prop.key,
-                                                                                index,
-                                                                                field,
-                                                                                nestedIndex,
-                                                                                nestedField,
-                                                                            )"
-                                                                            :key="`${prop.key}-${index}-${field.key}-${nestedIndex}-${nestedField.key}-string-${optionIndex}`"
-                                                                            class="node-panel__array-item node-panel__array-item--nested"
-                                                                            v-show="
-                                                                                !isNestedArrayCollapsed(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    `${field.key}-${nestedField.key}`,
-                                                                                    nestedIndex,
-                                                                                )
-                                                                            "
-                                                                        >
-                                                                            <label
-                                                                                class="node-panel__field node-panel__field--nested"
-                                                                            >
-                                                                                <span
-                                                                                    >{{
-                                                                                        nestedField.label
-                                                                                    }}
-                                                                                    {{
-                                                                                        optionIndex +
-                                                                                        1
-                                                                                    }}</span
-                                                                                >
-                                                                                <component
-                                                                                    v-if="
-                                                                                        nestedField
-                                                                                            .ui
-                                                                                            ?.component
-                                                                                    "
-                                                                                    :is="
-                                                                                        nestedField
-                                                                                            .ui
-                                                                                            .component
-                                                                                    "
-                                                                                    :model-value="
-                                                                                        optionValue
-                                                                                    "
-                                                                                    :prop-definition="
-                                                                                        nestedField
-                                                                                    "
-                                                                                    :field-context="{
-                                                                                        propKey:
-                                                                                            prop.key,
-                                                                                        arrayIndex:
-                                                                                            index,
-                                                                                        nestedFieldKey:
-                                                                                            nestedField.key,
-                                                                                        nestedIndex,
-                                                                                    }"
-                                                                                    @update:modelValue="
-                                                                                        (
-                                                                                            value: unknown,
-                                                                                        ) =>
-                                                                                            handleNestedArrayItemStringArrayChange(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                                optionIndex,
-                                                                                                value,
-                                                                                                {
-                                                                                                    debounce: true,
-                                                                                                },
-                                                                                            )
-                                                                                    "
-                                                                                />
-                                                                                <input
-                                                                                    v-else
-                                                                                    :value="
-                                                                                        optionValue
-                                                                                    "
-                                                                                    type="text"
-                                                                                    @input="
-                                                                                        (
-                                                                                            event: Event,
-                                                                                        ) =>
-                                                                                            handleNestedArrayItemStringArrayChange(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                                optionIndex,
-                                                                                                (
-                                                                                                    event.target as HTMLInputElement
-                                                                                                )
-                                                                                                    .value,
-                                                                                                {
-                                                                                                    debounce: true,
-                                                                                                },
-                                                                                            )
-                                                                                    "
-                                                                                    @change="
-                                                                                        (
-                                                                                            event: Event,
-                                                                                        ) =>
-                                                                                            handleNestedArrayItemStringArrayChange(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                                optionIndex,
-                                                                                                (
-                                                                                                    event.target as HTMLInputElement
-                                                                                                )
-                                                                                                    .value,
-                                                                                            )
-                                                                                    "
-                                                                                    @blur="
-                                                                                        (
-                                                                                            event: Event,
-                                                                                        ) =>
-                                                                                            handleNestedArrayItemStringArrayChange(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                                optionIndex,
-                                                                                                (
-                                                                                                    event.target as HTMLInputElement
-                                                                                                )
-                                                                                                    .value,
-                                                                                            )
-                                                                                    "
-                                                                                />
-                                                                            </label>
-                                                                            <div
-                                                                                class="node-panel__array-actions"
-                                                                            >
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="node-panel__array-remove"
-                                                                                    @click="
-                                                                                        removeNestedArrayItemStringArrayItem(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                            optionIndex,
-                                                                                        )
-                                                                                    "
-                                                                                >
-                                                                                    Remove
-                                                                                    item
-                                                                                </button>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="node-panel__array-reorder-link"
-                                                                                    @click="
-                                                                                        openNestedStringArrayReorderDialog(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                            optionIndex,
-                                                                                        )
-                                                                                    "
-                                                                                >
-                                                                                    Move
-                                                                                    (#{{
-                                                                                        optionIndex +
-                                                                                        1
-                                                                                    }})
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField.type ===
-                                                                        'select'
-                                                                    "
-                                                                >
-                                                                    <select
-                                                                        v-model="
-                                                                            nestedItem[
-                                                                                nestedField
-                                                                                    .key
-                                                                            ]
-                                                                        "
-                                                                        @change="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                    >
-                                                                        <option
-                                                                            disabled
-                                                                            value=""
-                                                                        >
-                                                                            Select
-                                                                        </option>
-                                                                        <option
-                                                                            v-for="option in nestedField.options ||
-                                                                            []"
-                                                                            :key="
-                                                                                option.value
-                                                                            "
-                                                                            :value="
-                                                                                option.value
-                                                                            "
-                                                                        >
-                                                                            {{
-                                                                                option.label
-                                                                            }}
-                                                                        </option>
-                                                                    </select>
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField.type ===
-                                                                        'jsonobject'
-                                                                    "
-                                                                >
-                                                                    <div
-                                                                        class="node-panel__object node-panel__object--nested"
-                                                                    >
-                                                                        <template
-                                                                            v-if="
-                                                                                nestedField
-                                                                                    .fields
-                                                                                    ?.length
-                                                                            "
-                                                                        >
-                                                                            <label
-                                                                                v-for="objectField in filterVisibleFields(
-                                                                                    nestedField.fields,
-                                                                                    getNestedArrayItemObjectValue(
-                                                                                        prop.key,
-                                                                                        index,
-                                                                                        field,
-                                                                                        nestedIndex,
-                                                                                        nestedField,
-                                                                                    ),
-                                                                                )"
-                                                                                :key="`${prop.key}-${index}-${nestedField.key}-${objectField.key}-${nestedIndex}`"
-                                                                                class="node-panel__field node-panel__field--nested"
-                                                                            >
-                                                                                <span
-                                                                                    >{{
-                                                                                        objectField.label
-                                                                                    }}</span
-                                                                                >
-                                                                                <template
-                                                                                    v-if="
-                                                                                        objectField.type ===
-                                                                                        'textarea'
-                                                                                    "
-                                                                                >
-                                                                                    <textarea
-                                                                                        v-model="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
-                                                                                        "
-                                                                                        rows="3"
-                                                                                        @input="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                    {
-                                                                                                        debounce: true,
-                                                                                                    },
-                                                                                                )
-                                                                                        "
-                                                                                        @change="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                        @blur="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                    />
-                                                                                </template>
-                                                                                <template
-                                                                                    v-else-if="
-                                                                                        objectField.type ===
-                                                                                        'boolean'
-                                                                                    "
-                                                                                >
-                                                                                    <span
-                                                                                        class="node-panel__checkbox"
-                                                                                    >
-                                                                                        <input
-                                                                                            type="checkbox"
-                                                                                            class="node-panel__checkbox-input"
-                                                                                            :checked="
-                                                                                                Boolean(
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                            "
-                                                                                            @change="
-                                                                                                (
-                                                                                                    event: Event,
-                                                                                                ) =>
-                                                                                                    handleNestedArrayItemObjectFieldChange(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                        objectField,
-                                                                                                        (
-                                                                                                            event.target as HTMLInputElement
-                                                                                                        )
-                                                                                                            .checked,
-                                                                                                    )
-                                                                                            "
-                                                                                        />
-                                                                                        <span
-                                                                                            class="node-panel__checkbox-box"
-                                                                                            aria-hidden="true"
-                                                                                        >
-                                                                                            <svg
-                                                                                                viewBox="0 0 20 20"
-                                                                                                fill="none"
-                                                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                                            >
-                                                                                                <path
-                                                                                                    d="M5 10.5L8.5 14L15 6"
-                                                                                                    stroke="currentColor"
-                                                                                                    stroke-width="2"
-                                                                                                    stroke-linecap="round"
-                                                                                                    stroke-linejoin="round"
-                                                                                                />
-                                                                                            </svg>
-                                                                                        </span>
-                                                                                    </span>
-                                                                                </template>
-                                                                                <template
-                                                                                    v-else-if="
-                                                                                        objectField.type ===
-                                                                                        'number'
-                                                                                    "
-                                                                                >
-                                                                                    <input
-                                                                                        v-model.number="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
-                                                                                        "
-                                                                                        type="number"
-                                                                                        @input="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                    {
-                                                                                                        debounce: true,
-                                                                                                    },
-                                                                                                )
-                                                                                        "
-                                                                                        @change="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                        @blur="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                    />
-                                                                                </template>
-                                                                                <template
-                                                                                    v-else-if="
-                                                                                        objectField.type ===
-                                                                                        'select'
-                                                                                    "
-                                                                                >
-                                                                                    <select
-                                                                                        v-model="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
-                                                                                        "
-                                                                                        @change="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                    >
-                                                                                        <option
-                                                                                            disabled
-                                                                                            value=""
-                                                                                        >
-                                                                                            Select
-                                                                                        </option>
-                                                                                        <option
-                                                                                            v-for="option in objectField.options ||
-                                                                                            []"
-                                                                                            :key="
-                                                                                                option.value
-                                                                                            "
-                                                                                            :value="
-                                                                                                option.value
-                                                                                            "
-                                                                                        >
-                                                                                            {{
-                                                                                                option.label
-                                                                                            }}
-                                                                                        </option>
-                                                                                    </select>
-                                                                                </template>
-                                                                                <template
-                                                                                    v-else-if="
-                                                                                        objectField
-                                                                                            .ui
-                                                                                            ?.component
-                                                                                    "
-                                                                                >
-                                                                                    <component
-                                                                                        :is="
-                                                                                            objectField
-                                                                                                .ui
-                                                                                                .component
-                                                                                        "
-                                                                                        :model-value="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
-                                                                                        "
-                                                                                        :prop-definition="
-                                                                                            objectField
-                                                                                        "
-                                                                                        :field-context="{
-                                                                                            propKey:
-                                                                                                prop.key,
-                                                                                            arrayIndex:
-                                                                                                index,
-                                                                                            nestedFieldKey:
-                                                                                                nestedField.key,
-                                                                                            nestedIndex,
-                                                                                        }"
-                                                                                        @update:modelValue="
-                                                                                            (
-                                                                                                value: unknown,
-                                                                                            ) =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    value,
-                                                                                                    {
-                                                                                                        debounce: true,
-                                                                                                    },
-                                                                                                )
-                                                                                        "
-                                                                                    />
-                                                                                </template>
-                                                                                <template
-                                                                                    v-else
-                                                                                >
-                                                                                    <input
-                                                                                        v-model="
-                                                                                            getNestedArrayItemObjectValue(
-                                                                                                prop.key,
-                                                                                                index,
-                                                                                                field,
-                                                                                                nestedIndex,
-                                                                                                nestedField,
-                                                                                            )[
-                                                                                                objectField
-                                                                                                    .key
-                                                                                            ]
-                                                                                        "
-                                                                                        type="text"
-                                                                                        @input="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                    {
-                                                                                                        debounce: true,
-                                                                                                    },
-                                                                                                )
-                                                                                        "
-                                                                                        @change="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                        @blur="
-                                                                                            () =>
-                                                                                                handleNestedArrayItemObjectFieldChange(
-                                                                                                    prop.key,
-                                                                                                    index,
-                                                                                                    field,
-                                                                                                    nestedIndex,
-                                                                                                    nestedField,
-                                                                                                    objectField,
-                                                                                                    getNestedArrayItemObjectValue(
-                                                                                                        prop.key,
-                                                                                                        index,
-                                                                                                        field,
-                                                                                                        nestedIndex,
-                                                                                                        nestedField,
-                                                                                                    )[
-                                                                                                        objectField
-                                                                                                            .key
-                                                                                                    ],
-                                                                                                )
-                                                                                        "
-                                                                                    />
-                                                                                </template>
-                                                                            </label>
-                                                                        </template>
-                                                                        <template
-                                                                            v-else
-                                                                        >
-                                                                            <textarea
-                                                                                class="font-mono"
-                                                                                rows="4"
-                                                                                :value="
-                                                                                    formatJsonValue(
-                                                                                        getNestedArrayItemObjectValue(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                        ),
-                                                                                    )
-                                                                                "
-                                                                                @change="
-                                                                                    (
-                                                                                        event: Event,
-                                                                                    ) =>
-                                                                                        handleNestedArrayItemObjectJsonChange(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                            (
-                                                                                                event.target as HTMLTextAreaElement
-                                                                                            )
-                                                                                                .value,
-                                                                                        )
-                                                                                "
-                                                                                @blur="
-                                                                                    (
-                                                                                        event: Event,
-                                                                                    ) =>
-                                                                                        handleNestedArrayItemObjectJsonChange(
-                                                                                            prop.key,
-                                                                                            index,
-                                                                                            field,
-                                                                                            nestedIndex,
-                                                                                            nestedField,
-                                                                                            (
-                                                                                                event.target as HTMLTextAreaElement
-                                                                                            )
-                                                                                                .value,
-                                                                                        )
-                                                                                "
-                                                                            />
-                                                                        </template>
-                                                                    </div>
-                                                                </template>
-                                                                <template
-                                                                    v-else-if="
-                                                                        nestedField
-                                                                            .ui
-                                                                            ?.component
-                                                                    "
-                                                                >
-                                                                    <component
-                                                                        :is="
-                                                                            nestedField
-                                                                                .ui
-                                                                                .component
-                                                                        "
-                                                                        :model-value="
-                                                                            nestedItem[
-                                                                                nestedField
-                                                                                    .key
-                                                                            ]
-                                                                        "
-                                                                        :prop-definition="
-                                                                            nestedField
-                                                                        "
-                                                                        :field-context="{
-                                                                            propKey:
-                                                                                prop.key,
-                                                                            arrayIndex:
-                                                                                index,
-                                                                            nestedFieldKey:
-                                                                                nestedField.key,
-                                                                            nestedIndex,
-                                                                        }"
-                                                                        @update:modelValue="
-                                                                            (
-                                                                                value: unknown,
-                                                                            ) =>
-                                                                                updateCustomNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    value,
-                                                                                    {
-                                                                                        debounce: true,
-                                                                                    },
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                </template>
-                                                                <template
-                                                                    v-else
-                                                                >
-                                                                    <input
-                                                                        v-model="
-                                                                            nestedItem[
-                                                                                nestedField
-                                                                                    .key
-                                                                            ]
-                                                                        "
-                                                                        type="text"
-                                                                        @input="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                    {
-                                                                                        debounce: true,
-                                                                                    },
-                                                                                )
-                                                                        "
-                                                                        @change="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                        @blur="
-                                                                            () =>
-                                                                                updateNestedArrayItemField(
-                                                                                    prop.key,
-                                                                                    index,
-                                                                                    field,
-                                                                                    nestedIndex,
-                                                                                    nestedField,
-                                                                                    nestedItem[
-                                                                                        nestedField
-                                                                                            .key
-                                                                                    ],
-                                                                                )
-                                                                        "
-                                                                    />
-                                                                </template>
-                                                            </label>
-                                                        </div>
-                                                        <div
-                                                            class="node-panel__array-actions"
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                class="node-panel__array-remove"
-                                                                @click="
-                                                                    removeNestedArrayItem(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        nestedIndex,
-                                                                    )
-                                                                "
-                                                            >
-                                                                Remove item
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                class="node-panel__array-reorder-link"
-                                                                @click="
-                                                                    openNestedJsonArrayReorderDialog(
-                                                                        prop.key,
-                                                                        index,
-                                                                        field,
-                                                                        nestedIndex,
-                                                                    )
-                                                                "
-                                                            >
-                                                                Move (#{{
-                                                                    nestedIndex +
-                                                                    1
-                                                                }})
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <template v-else>
-                                                <input
-                                                    v-model="item[field.key]"
-                                                    type="text"
-                                                    @input="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                                {
-                                                                    debounce: true,
-                                                                },
-                                                            )
-                                                    "
-                                                    @change="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                    @blur="
-                                                        () =>
-                                                            handleArrayItemFieldChange(
-                                                                prop.key,
-                                                                index,
-                                                                field,
-                                                                item[field.key],
-                                                            )
-                                                    "
-                                                />
-                                            </template>
-                                        </label>
-                                    </div>
-                                    <div class="node-panel__array-actions">
-                                        <button
-                                            type="button"
-                                            class="node-panel__array-remove"
-                                            @click="
-                                                removeArrayItem(prop.key, index)
-                                            "
-                                        >
-                                            Remove item
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="node-panel__array-reorder-link"
-                                            @click="
-                                                openTopLevelArrayReorderDialog(
-                                                    prop.key,
-                                                    'jsonarray',
-                                                    index,
-                                                )
-                                            "
-                                        >
-                                            Move (#{{ index + 1 }})
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </template>
-                        <template v-else-if="prop.type === 'stringarray'">
-                            <div
-                                class="node-panel__array"
-                                :data-collapsed="collapsedArrays[prop.key]"
-                            >
-                                <div class="node-panel__array-header">
-                                    <button
-                                        type="button"
-                                        class="node-panel__array-toggle"
-                                        :data-state="
-                                            collapsedArrays[prop.key]
-                                                ? 'collapsed'
-                                                : 'expanded'
-                                        "
-                                        @click="toggleArray(prop.key)"
-                                    >
-                                        {{
-                                            collapsedArrays[prop.key]
-                                                ? "Expand"
-                                                : "Collapse"
-                                        }}
-                                        ({{ propDraft[prop.key]?.length || 0 }})
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="node-panel__array-add"
-                                        @click="openInsertDialog(prop)"
-                                    >
-                                        <span
-                                            class="node-panel__array-add-icon"
-                                            aria-hidden="true"
-                                            >+</span
-                                        >
-                                        <!--                  <span>Add item</span>-->
-                                    </button>
-                                </div>
-                                <div
-                                    v-for="(value, index) in propDraft[
-                                        prop.key
-                                    ]"
-                                    :key="`${prop.key}-${index}`"
-                                    class="node-panel__array-item"
-                                    :class="{
-                                        'node-panel__array-item--drag-over':
-                                            dragOverArrayItem?.propKey ===
-                                                prop.key &&
-                                            dragOverArrayItem.index === index,
-                                    }"
-                                    draggable="true"
-                                    @dragstart.stop="
-                                        (event) =>
-                                            handleArrayItemDragStart(
-                                                prop.key,
-                                                index,
-                                                'stringarray',
-                                                event,
-                                            )
-                                    "
-                                    @dragenter.stop.prevent="
-                                        () =>
-                                            handleArrayItemDragEnter(
-                                                prop.key,
-                                                index,
-                                            )
-                                    "
-                                    @dragover.stop.prevent="
-                                        () =>
-                                            handleArrayItemDragEnter(
-                                                prop.key,
-                                                index,
-                                            )
-                                    "
-                                    @dragleave.stop="handleArrayItemDragLeave"
-                                    @drop.stop.prevent="
-                                        () =>
-                                            handleArrayItemDrop(
-                                                prop.key,
-                                                index,
-                                                'stringarray',
-                                            )
-                                    "
-                                    @dragend.stop="handleArrayItemDragEnd"
-                                    v-show="!collapsedArrays[prop.key]"
-                                >
-                                    <label class="node-panel__field">
-                                        <span
-                                            >{{ prop.label }}
-                                            {{ index + 1 }}</span
-                                        >
-                                        <component
-                                            v-if="prop.ui?.component"
-                                            :is="prop.ui.component"
-                                            :model-value="
-                                                propDraft[prop.key][index]
-                                            "
-                                            :prop-definition="prop"
-                                            :field-context="{
-                                                propKey: prop.key,
-                                                arrayIndex: index,
-                                            }"
-                                            @update:modelValue="
-                                                (value: unknown) =>
-                                                    handleStringArrayChange(
-                                                        prop.key,
-                                                        index,
-                                                        value,
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                        />
-                                        <input
-                                            v-else
-                                            v-model="propDraft[prop.key][index]"
-                                            type="text"
-                                            @input="
-                                                () =>
-                                                    handleStringArrayChange(
-                                                        prop.key,
-                                                        index,
-                                                        propDraft[prop.key][
-                                                            index
-                                                        ],
-                                                        {
-                                                            debounce: true,
-                                                        },
-                                                    )
-                                            "
-                                            @change="
-                                                () =>
-                                                    handleStringArrayChange(
-                                                        prop.key,
-                                                        index,
-                                                        propDraft[prop.key][
-                                                            index
-                                                        ],
-                                                    )
-                                            "
-                                            @blur="
-                                                () =>
-                                                    handleStringArrayChange(
-                                                        prop.key,
-                                                        index,
-                                                        propDraft[prop.key][
-                                                            index
-                                                        ],
-                                                    )
-                                            "
-                                        />
-                                    </label>
-                                    <div class="node-panel__array-actions">
-                                        <button
-                                            type="button"
-                                            class="node-panel__array-remove"
-                                            @click="
-                                                removeStringArrayItem(
-                                                    prop.key,
-                                                    index,
-                                                )
-                                            "
-                                        >
-                                            Remove item
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="node-panel__array-reorder-link"
-                                            @click="
-                                                openTopLevelArrayReorderDialog(
-                                                    prop.key,
-                                                    'stringarray',
-                                                    index,
-                                                )
-                                            "
-                                        >
-                                            Move (#{{ index + 1 }})
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </template>
-                        <template v-else-if="prop.ui?.component">
-                            <component
-                                :is="prop.ui.component"
-                                :model-value="propDraft[prop.key]"
-                                :prop-definition="prop"
-                                :field-context="{ propKey: prop.key }"
-                                @update:modelValue="
-                                    (value: unknown) =>
-                                        handleCustomPropUpdate(prop, value, {
-                                            debounce: true,
-                                        })
-                                "
-                            />
-                        </template>
-                        <template v-else>
-                            <input
-                                v-model="propDraft[prop.key]"
-                                :placeholder="prop.placeholder"
-                                :type="
-                                    prop.type === 'number' ? 'number' : 'text'
-                                "
-                                @input="
-                                    () =>
-                                        schedulePropUpdate(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                                @blur="
-                                    () =>
-                                        flushPropUpdate(
-                                            prop.key,
-                                            propDraft[prop.key],
-                                            prop.type,
-                                        )
-                                "
-                            />
-                        </template>
-                        <small v-if="prop.description">{{
-                            prop.description
-                        }}</small>
-                    </component>
-                </template>
-            </div>
-
-            <div v-if="extraPropEntries.length" class="node-panel__props">
-                <label
-                    v-for="entry in extraPropEntries"
-                    :key="entry.key"
-                    class="node-panel__field"
-                >
-                    <span>{{ entry.key }}</span>
-                    <input
-                        v-model="extraPropsDraft[entry.key]"
-                        type="text"
-                        @input="
-                            () =>
-                                schedulePropUpdate(
-                                    entry.key,
-                                    extraPropsDraft[entry.key],
-                                    'text',
-                                )
-                        "
-                        @blur="
-                            () =>
-                                flushPropUpdate(
-                                    entry.key,
-                                    extraPropsDraft[entry.key],
-                                    'text',
-                                )
-                        "
-                    />
-                </label>
-            </div>
+            <NodePropsPanel
+                :visible-props="visibleProps"
+                :prop-draft="propDraft"
+                :extra-props-draft="extraPropsDraft"
+                :filtered-extra-prop-entries="filteredExtraPropEntries"
+                :json-errors="jsonErrors"
+                :object-field-errors="objectFieldErrors"
+                :collapsed-arrays="collapsedArrays"
+                :drag-over-array-item="dragOverArrayItem"
+                :is-search-active="isSearchActive"
+                :matches-search="matchesSearch"
+                :filter-visible-fields="filterVisibleFields"
+                :should-highlight-text="shouldHighlightText"
+                :get-highlight-markup="getHighlightMarkup"
+                :should-highlight-select="shouldHighlightSelect"
+                :sync-highlight-scroll="syncHighlightScroll"
+                :schedule-prop-update="schedulePropUpdate"
+                :flush-prop-update="flushPropUpdate"
+                :apply-prop="applyProp"
+                :handle-custom-prop-update="handleCustomPropUpdate"
+                :handle-object-field-change="handleObjectFieldChange"
+                :handle-array-item-field-change="handleArrayItemFieldChange"
+                :handle-custom-array-field-update="handleCustomArrayFieldUpdate"
+                :handle-string-array-change="handleStringArrayChange"
+                :handle-array-item-string-array-change="handleArrayItemStringArrayChange"
+                :handle-array-item-object-field-change="handleArrayItemObjectFieldChange"
+                :handle-array-item-object-json-change="handleArrayItemObjectJsonChange"
+                :handle-nested-array-item-string-array-change="handleNestedArrayItemStringArrayChange"
+                :handle-nested-array-item-object-field-change="handleNestedArrayItemObjectFieldChange"
+                :handle-nested-array-item-object-json-change="handleNestedArrayItemObjectJsonChange"
+                :get-filtered-json-array-items="getFilteredJsonArrayItems"
+                :get-filtered-string-array-items="getFilteredStringArrayItems"
+                :get-filtered-array-item-string-array-items="getFilteredArrayItemStringArrayItems"
+                :get-array-item-string-array-items="getArrayItemStringArrayItems"
+                :get-array-item-object-value="getArrayItemObjectValue"
+                :get-nested-array-items="getNestedArrayItems"
+                :get-nested-array-item-string-array-items="getNestedArrayItemStringArrayItems"
+                :get-nested-array-item-object-value="getNestedArrayItemObjectValue"
+                :add-array-item-string-array-item="addArrayItemStringArrayItem"
+                :add-nested-array-item="addNestedArrayItem"
+                :add-nested-array-item-string-array-item="addNestedArrayItemStringArrayItem"
+                :remove-array-item="removeArrayItem"
+                :remove-string-array-item="removeStringArrayItem"
+                :remove-array-item-string-array-item="removeArrayItemStringArrayItem"
+                :remove-nested-array-item="removeNestedArrayItem"
+                :remove-nested-array-item-string-array-item="removeNestedArrayItemStringArrayItem"
+                :open-insert-dialog="openInsertDialog"
+                :toggle-array="toggleArray"
+                :is-nested-array-collapsed="isNestedArrayCollapsed"
+                :toggle-nested-array="toggleNestedArray"
+                :open-top-level-array-reorder-dialog="openTopLevelArrayReorderDialog"
+                :open-array-item-string-array-reorder-dialog="openArrayItemStringArrayReorderDialog"
+                :open-nested-json-array-reorder-dialog="openNestedJsonArrayReorderDialog"
+                :open-nested-string-array-reorder-dialog="openNestedStringArrayReorderDialog"
+                :handle-array-item-drag-start="handleArrayItemDragStart"
+                :handle-array-item-drag-enter="handleArrayItemDragEnter"
+                :handle-array-item-drag-leave="handleArrayItemDragLeave"
+                :handle-array-item-drop="handleArrayItemDrop"
+                :handle-array-item-drag-end="handleArrayItemDragEnd"
+                :update-nested-array-item-field="updateNestedArrayItemField"
+                :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
+                :format-json-value="formatJsonValue"
+            />
 
             <!-- New props are not enabled for the moment, keep it here for possible future use -->
             <!--
@@ -3504,168 +163,62 @@
       </form>
 -->
 
-            <div class="node-panel__margins">
-                <div class="node-panel__margins-header">
-                    <h4>Margins</h4>
-                    <div class="node-panel__margins-actions">
-                        <button
-                            type="button"
-                            class="node-panel__margins-toggle"
-                            @click="
-                                showResponsiveMargins = !showResponsiveMargins
-                            "
-                        >
-                            {{
-                                showResponsiveMargins
-                                    ? "Hide responsive"
-                                    : "Responsive overrides"
-                            }}
-                        </button>
-                        <button
-                            type="button"
-                            class="node-panel__margins-reset"
-                            @click="resetMargins"
-                        >
-                            Reset
-                        </button>
-                    </div>
-                </div>
-                <div class="node-panel__margins-grid">
-                    <label
-                        v-for="side in marginSides"
-                        :key="`base-${side.key}`"
-                        class="node-panel__margin-field"
-                    >
-                        <span>{{ side.label }}</span>
-                        <select
-                            :value="marginDraft[side.key].base"
-                            @change="
-                                handleMarginChange(
-                                    side.key,
-                                    'base',
-                                    ($event.target as HTMLSelectElement).value,
-                                )
-                            "
-                        >
-                            <option
-                                v-for="option in marginOptions"
-                                :key="`${side.key}-base-${option.value}`"
-                                :value="option.value"
-                            >
-                                {{ option.label }}
-                            </option>
-                        </select>
-                    </label>
-                </div>
-                <Transition name="fade">
-                    <div
-                        v-if="showResponsiveMargins"
-                        class="node-panel__margins-responsive"
-                    >
-                        <div
-                            v-for="breakpoint in responsiveBreakpoints"
-                            :key="breakpoint.key"
-                            class="node-panel__margins-row"
-                        >
-                            <div class="node-panel__margin-breakpoint">
-                                {{ breakpoint.label }}
-                            </div>
-                            <div
-                                class="node-panel__margins-grid node-panel__margins-grid--responsive"
-                            >
-                                <label
-                                    v-for="side in marginSides"
-                                    :key="`${breakpoint.key}-${side.key}`"
-                                    class="node-panel__margin-field"
-                                >
-                                    <span>{{ side.short }}</span>
-                                    <select
-                                        :value="
-                                            marginDraft[side.key][
-                                                breakpoint.key
-                                            ]
-                                        "
-                                        @change="
-                                            handleMarginChange(
-                                                side.key,
-                                                breakpoint.key,
-                                                (
-                                                    $event.target as HTMLSelectElement
-                                                ).value,
-                                            )
-                                        "
-                                    >
-                                        <option
-                                            v-for="option in marginOptions"
-                                            :key="`${side.key}-${breakpoint.key}-${option.value}`"
-                                            :value="option.value"
-                                        >
-                                            {{ option.label }}
-                                        </option>
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </Transition>
-            </div>
+            <NodeMarginsPanel
+                :margin-draft="marginDraft"
+                :margin-options="marginOptions"
+                :margin-sides="marginSides"
+                :responsive-breakpoints="responsiveBreakpoints"
+                v-model:showResponsiveMargins="showResponsiveMargins"
+                :handle-margin-change="handleMarginChange"
+                :reset-margins="resetMargins"
+            />
 
-            <div
-                v-if="componentDef?.allowChildren"
-                class="node-panel__children"
+            <NodeChildrenPanel
+                :allow-children="Boolean(componentDef?.allowChildren)"
+                :component-options="componentOptions"
+                :node-uid="node.uid"
+                :child-hint="componentDef?.childHint"
+                :children="filteredChildren"
+                :on-add-child-component="handleAddChildComponent"
+                :on-add-child-text="onAddChildText"
             >
-                <div class="node-panel__children-actions">
-                    <select v-model="selectedChildComponent">
-                        <option disabled value="">Select component</option>
-                        <option
-                            v-for="option in componentOptions"
-                            :key="option.id"
-                            :value="option.id"
-                        >
-                            {{ option.label }}
-                        </option>
-                    </select>
-                    <button
-                        type="button"
-                        :disabled="!selectedChildComponent"
-                        @click="handleAddChildComponent"
-                    >
-                        Add child component
-                    </button>
-                    <button type="button" @click="onAddChildText(node.uid)">
-                        Add text child
-                    </button>
-                </div>
-                <p v-if="componentDef.childHint" class="node-panel__hint">
-                    {{ componentDef.childHint }}
-                </p>
-                <NodeEditor
-                    v-for="child in node.children"
-                    :key="child.uid"
-                    :node="child"
-                    :registry="registry"
-                    :component-options="componentOptions"
-                    :depth="depth + 1"
-                    :on-update-prop="onUpdateProp"
-                    :on-update-text="onUpdateText"
-                    :on-add-child-component="onAddChildComponent"
-                    :on-add-child-text="onAddChildText"
-                    :on-remove="onRemove"
-                    :on-clone="onClone"
-                    :on-toggle-expanded="onToggleExpanded"
-                />
-            </div>
+                <template #child="{ child }">
+                    <NodeEditor
+                        :node="child"
+                        :registry="registry"
+                        :component-options="componentOptions"
+                        :search-query="normalizedSearchQuery"
+                        :depth="depth + 1"
+                        :on-update-prop="onUpdateProp"
+                        :on-update-text="onUpdateText"
+                        :on-add-child-component="onAddChildComponent"
+                        :on-add-child-text="onAddChildText"
+                        :on-remove="onRemove"
+                        :on-clone="onClone"
+                        :on-toggle-expanded="onToggleExpanded"
+                    />
+                </template>
+            </NodeChildrenPanel>
         </div>
 
         <div v-else class="node-panel__text">
             <label class="node-panel__field">
                 <span>Text value</span>
-                <textarea
-                    v-model="textDraft"
-                    rows="2"
-                    @change="applyTextValue"
-                    @blur="applyTextValue"
-                />
+                <div class="node-panel__input-wrap">
+                    <div
+                        v-if="shouldHighlightText(textDraft, 'text')"
+                        class="node-panel__input-highlight node-panel__input-highlight--multiline"
+                        v-html="getHighlightMarkup(textDraft)"
+                        aria-hidden="true"
+                    />
+                    <textarea
+                        v-model="textDraft"
+                        rows="2"
+                        @change="applyTextValue"
+                        @blur="applyTextValue"
+                        @scroll="syncHighlightScroll"
+                    />
+                </div>
             </label>
             <div class="node-panel__text-butons">
                 <button
@@ -3704,100 +257,20 @@
                 </button>
             </div>
         </div>
-        <div
+        <NodeInsertDialog
             v-if="insertDialog.key && insertDialog.type"
-            class="node-panel__insert-dialog"
-        >
-            <div
-                class="node-panel__insert-backdrop"
-                @click="closeInsertDialog"
-            ></div>
-            <div class="node-panel__insert-content">
-                <header class="node-panel__insert-header">
-                    <h3>Select insertion point</h3>
-                    <button
-                        type="button"
-                        class="node-panel__insert-close"
-                        @click="closeInsertDialog"
-                    >
-                        ×
-                    </button>
-                </header>
-                <p class="node-panel__insert-subtitle">
-                    Choose where to place the new
-                    {{
-                        insertDialog.type === "jsonarray"
-                            ? "entry"
-                            : "text item"
-                    }}.
-                </p>
-                <ul class="node-panel__insert-options">
-                    <li
-                        v-for="option in getInsertPositions()"
-                        :key="`${insertDialog.key}-${option.index}`"
-                    >
-                        <button
-                            type="button"
-                            @click="handleInsertAt(option.index)"
-                        >
-                            <strong>Position {{ option.index + 1 }}</strong>
-                            <span>{{ option.preview }}</span>
-                        </button>
-                    </li>
-                </ul>
-            </div>
-        </div>
-        <div v-if="reorderDialog.visible" class="node-panel__insert-dialog">
-            <div
-                class="node-panel__insert-backdrop"
-                @click="closeReorderDialog"
-            ></div>
-            <div
-                class="node-panel__insert-content node-panel__insert-content--small"
-            >
-                <header class="node-panel__insert-header">
-                    <h3>Move item</h3>
-                    <button
-                        type="button"
-                        class="node-panel__insert-close"
-                        @click="closeReorderDialog"
-                    >
-                        ×
-                    </button>
-                </header>
-                <p class="node-panel__insert-subtitle">
-                    Set a new position (1-{{ reorderDialog.maxIndex }}) for this
-                    entry.
-                </p>
-                <div class="node-panel__reorder-input">
-                    <label>
-                        New position
-                        <input
-                            v-model.number="reorderDialog.newIndex"
-                            type="number"
-                            min="1"
-                            :max="reorderDialog.maxIndex"
-                        />
-                    </label>
-                </div>
-                <div class="node-panel__insert-actions">
-                    <button
-                        type="button"
-                        class="node-panel__insert-confirm"
-                        @click="confirmReorderDialog"
-                    >
-                        Move item
-                    </button>
-                    <button
-                        type="button"
-                        class="node-panel__insert-cancel"
-                        @click="closeReorderDialog"
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
+            :insert-dialog="insertDialog"
+            :get-insert-positions="getInsertPositions"
+            :handle-insert-at="handleInsertAt"
+            :close-insert-dialog="closeInsertDialog"
+        />
+        <NodeReorderDialog
+            v-if="reorderDialog.visible"
+            :max-index="reorderDialog.maxIndex"
+            v-model:newIndex="reorderDialog.newIndex"
+            :confirm-reorder-dialog="confirmReorderDialog"
+            :close-reorder-dialog="closeReorderDialog"
+        />
     </div>
 </template>
 
@@ -3811,6 +284,19 @@ import type {
     ComponentPropSchema,
     ComponentRegistry,
 } from "~/types/builder";
+import {
+    filterNodesBySearch,
+    matchesSearchValue,
+    normalizeSearchQuery,
+} from "../../utils/builderSearch";
+import NodeChildrenPanel from "./node-editor/NodeChildrenPanel.vue";
+import NodeInsertDialog from "./node-editor/NodeInsertDialog.vue";
+import NodeMarginsPanel from "./node-editor/NodeMarginsPanel.vue";
+import NodePropsPanel from "./node-editor/NodePropsPanel.vue";
+import NodeReorderDialog from "./node-editor/NodeReorderDialog.vue";
+import { useNodeEditorSearchHighlight } from "./node-editor/composables/useNodeEditorSearchHighlight";
+import { useNodeEditorFieldVisibility } from "./node-editor/composables/useNodeEditorFieldVisibility";
+import { useNodeEditorDialogs } from "./node-editor/composables/useNodeEditorDialogs";
 
 const isNestedArrayField = (
     field: ComponentArrayItemField,
@@ -3854,31 +340,11 @@ type PropInputType =
     | "stringarray"
     | "number";
 
-const fieldWrapperTag = (schema: ComponentPropSchema) =>
-    schema.ui?.component ? "div" : "label";
-
-const fieldWrapperRole = (schema: ComponentPropSchema) =>
-    schema.ui?.component ? "group" : undefined;
-
-const preventFieldWrapperActivation = (event: Event) => {
-    event.stopPropagation();
-    event.preventDefault();
-};
-
-const fieldWrapperListeners = (schema: ComponentPropSchema) => {
-    if (schema.ui?.component) {
-        return {
-            onMousedown: preventFieldWrapperActivation,
-            onClick: preventFieldWrapperActivation,
-        };
-    }
-    return {};
-};
-
 const props = defineProps<{
     node: BuilderNodeChild;
     registry: ComponentRegistry;
     componentOptions: ComponentDefinition[];
+    searchQuery?: string;
     depth?: number;
     onUpdateProp: (uid: string, key: string, value: unknown) => void;
     onUpdateText: (uid: string, value: string) => void;
@@ -3887,15 +353,51 @@ const props = defineProps<{
     onRemove: (uid: string) => void;
     onClone: (uid: string) => void;
     onToggleExpanded?: (uid: string, expanded: boolean) => void;
+    onFocusNode?: (payload: {
+        uid: string;
+        mode: "flash" | "lock" | "clear";
+    }) => void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
+const normalizedSearchQuery = computed(() =>
+    normalizeSearchQuery(props.searchQuery),
+);
+const matchesSearch = (value: unknown) =>
+    matchesSearchValue(value, normalizedSearchQuery.value);
+const {
+    isSearchActive,
+    shouldHighlightText,
+    getHighlightMarkup,
+    shouldHighlightSelect,
+    syncHighlightScroll,
+} = useNodeEditorSearchHighlight(normalizedSearchQuery, matchesSearch);
 
 const componentDef = computed(() =>
     props.node.type === "component"
         ? props.registry.lookup[props.node.component]
         : undefined,
 );
+
+const filteredChildren = computed(() => {
+    if (props.node.type !== "component") {
+        return [] as BuilderNodeChild[];
+    }
+    return filterNodesBySearch(
+        props.node.children || [],
+        normalizedSearchQuery.value,
+    );
+});
+
+const notifyFocus = (mode: "flash" | "lock" | "clear" = "flash") => {
+    if (props.onFocusNode) {
+        props.onFocusNode({ uid: props.node.uid, mode });
+    }
+};
+
+const triggerFocus = () => {
+    notifyFocus("flash");
+};
 
 watch(
     () => componentDef.value,
@@ -3915,39 +417,60 @@ const jsonErrors = reactive<Record<string, string | null>>({});
 const objectFieldErrors = reactive<
     Record<string, Record<string, string | null>>
 >({});
-type VisibleWhenRule = { prop: string; equals: unknown };
-const isFieldVisible = (
-    schema: { visibleWhen?: VisibleWhenRule | VisibleWhenRule[] } | undefined,
-    context: Record<string, any> | undefined,
-) => {
-    if (!schema?.visibleWhen) {
-        return true;
+const { filterVisibleFields } = useNodeEditorFieldVisibility({
+    isSearchActive,
+    matchesSearch,
+});
+const visibleProps = computed(() =>
+    filterVisibleFields(componentDef.value?.props, propDraft),
+);
+const slotDisplayName = computed(() => {
+    if (props.node.type !== "component") {
+        return null;
     }
-    const rules = Array.isArray(schema.visibleWhen)
-        ? schema.visibleWhen
-        : [schema.visibleWhen];
-    return rules.some((rule) => {
-        if (!rule || typeof rule !== "object") {
-            return true;
-        }
-        const target = context?.[rule.prop];
-        if (Array.isArray(rule.equals)) {
-            return rule.equals.includes(target);
-        }
-        return target === rule.equals;
-    });
+    if (componentDef.value?.label !== "Template (Slot)") {
+        return null;
+    }
+    const rawValue =
+        propDraft.slot ??
+        (props.node.props ? props.node.props["slot"] : undefined);
+    const slotName = typeof rawValue === "string" ? rawValue.trim() : "";
+    return slotName || "Unnamed slot";
+});
+
+type IndexedEntry<T> = { value: T; index: number };
+
+const toIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> =>
+    values.map((value, index) => ({ value, index }));
+
+const filterIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> => {
+    const entries = toIndexedEntries(values);
+    if (!isSearchActive.value) {
+        return entries;
+    }
+    return entries.filter((entry) => matchesSearch(entry.value));
 };
-const filterVisibleFields = (
-    fields:
-        | Array<{ visibleWhen?: VisibleWhenRule | VisibleWhenRule[] }>
-        | undefined,
-    context: Record<string, any> | undefined,
+
+const getFilteredJsonArrayItems = (propKey: string) => {
+    const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
+    return filterIndexedEntries(items);
+};
+
+const getFilteredStringArrayItems = (propKey: string) => {
+    const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
+    return filterIndexedEntries(items);
+};
+
+const getFilteredArrayItemStringArrayItems = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
 ) => {
-    if (!fields) return [];
-    return fields.filter((field) => isFieldVisible(field, context));
+    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
+    return filterIndexedEntries(items);
 };
 const textDraft = ref(props.node.type === "text" ? props.node.value : "");
-const selectedChildComponent = ref("");
+// selectedChildComponent is no longer needed
 const newPropKey = ref("");
 const newPropValue = ref("");
 const draggingArrayItem = ref<{
@@ -3959,57 +482,6 @@ const dragOverArrayItem = ref<{ propKey: string; index: number } | null>(null);
 const collapsedNodes = reactive<Record<string, boolean>>({});
 const collapsedArrays = reactive<Record<string, boolean>>({});
 const collapsedNestedArrays = reactive<Record<string, boolean>>({});
-type ReorderDialogContext =
-    | {
-          kind: "top-level";
-          propKey: string;
-          arrayType: "jsonarray" | "stringarray";
-      }
-    | {
-          kind: "array-field-stringarray";
-          propKey: string;
-          parentIndex: number;
-          field: Extract<ComponentArrayItemField, { type: "stringarray" }>;
-      }
-    | {
-          kind: "nested-jsonarray";
-          propKey: string;
-          parentIndex: number;
-          field: Extract<ComponentArrayItemField, { type: "jsonarray" }>;
-      }
-    | {
-          kind: "nested-stringarray";
-          propKey: string;
-          parentIndex: number;
-          field: Extract<ComponentArrayItemField, { type: "jsonarray" }>;
-          nestedIndex: number;
-          nestedField: Extract<
-              ComponentArrayItemField,
-              { type: "stringarray" }
-          >;
-      };
-const insertDialog = reactive<{
-    key: string | null;
-    type: "jsonarray" | "stringarray" | null;
-    schema: ComponentPropSchema | null;
-}>({
-    key: null,
-    type: null,
-    schema: null,
-});
-const reorderDialog = reactive<{
-    visible: boolean;
-    context: ReorderDialogContext | null;
-    currentIndex: number;
-    newIndex: number;
-    maxIndex: number;
-}>({
-    visible: false,
-    context: null,
-    currentIndex: 0,
-    newIndex: 1,
-    maxIndex: 1,
-});
 
 const nestedArrayKey = (
     propKey: string,
@@ -4074,6 +546,14 @@ const commitPropChange = (
     } else {
         flushPropUpdate(key, value, type);
     }
+};
+
+const applyArrayProp = (
+    key: string,
+    value: unknown,
+    type: "jsonarray" | "stringarray",
+) => {
+    applyProp(key, value, type);
 };
 
 const marginOptions = [
@@ -4148,6 +628,19 @@ const extraPropEntries = computed(() => {
     return Object.entries(props.node.props)
         .filter(([key]) => !definedPropKeys.value.has(key))
         .map(([key, value]) => ({ key, value }));
+});
+const filteredExtraPropEntries = computed(() => {
+    const entries = extraPropEntries.value;
+    if (!isSearchActive.value) {
+        return entries;
+    }
+    return entries.filter((entry) => {
+        const draftValue =
+            entry.key in extraPropsDraft
+                ? extraPropsDraft[entry.key]
+                : entry.value;
+        return matchesSearch(draftValue);
+    });
 });
 
 const getPropSchema = (key: string) =>
@@ -5587,248 +2080,40 @@ const toggleNode = (uid: string) => {
     if (typeof props.onToggleExpanded === "function") {
         props.onToggleExpanded(uid, !nextCollapsed);
     }
+    notifyFocus(nextCollapsed ? "clear" : "lock");
 };
 
-const openInsertDialog = (schema: ComponentPropSchema) => {
-    if (schema.type !== "jsonarray" && schema.type !== "stringarray") {
-        return;
-    }
-    insertDialog.key = schema.key;
-    insertDialog.type = schema.type;
-    insertDialog.schema = schema;
-    collapsedArrays[schema.key] = false;
-};
+const {
+    insertDialog,
+    reorderDialog,
+    openInsertDialog,
+    closeInsertDialog,
+    getInsertPositions,
+    handleInsertAt,
+    openTopLevelArrayReorderDialog,
+    openArrayItemStringArrayReorderDialog,
+    openNestedJsonArrayReorderDialog,
+    openNestedStringArrayReorderDialog,
+    closeReorderDialog,
+    confirmReorderDialog,
+} = useNodeEditorDialogs({
+    propDraft,
+    collapsedArrays,
+    ensureArrayValue,
+    ensureStringArray,
+    createEmptyArrayItem,
+    applyArrayProp,
+    getArrayItemStringArrayItems,
+    getNestedArrayItems,
+    getNestedArrayItemStringArrayItems,
+    reorderArrayItems,
+    moveArrayItemStringArrayItem,
+    moveNestedArrayItem,
+    moveNestedArrayItemStringArrayItem,
+});
 
-const closeInsertDialog = () => {
-    insertDialog.key = null;
-    insertDialog.type = null;
-    insertDialog.schema = null;
-};
-
-const getInsertPositions = () => {
-    if (!insertDialog.key || !insertDialog.type) {
-        return [] as Array<{ index: number; preview: string }>;
-    }
-    const key = insertDialog.key;
-    const type = insertDialog.type;
-    const items =
-        type === "jsonarray"
-            ? ensureArrayValue(propDraft[key])
-            : ensureStringArray(propDraft[key]);
-    const positions: Array<{ index: number; preview: string }> = [];
-    const formatPreview = (value: unknown) => {
-        if (type === "stringarray") {
-            return String(value ?? "") || "(empty)";
-        }
-        if (value && typeof value === "object") {
-            const entries = Object.entries(value as Record<string, unknown>);
-            if (!entries.length) {
-                return "(empty object)";
-            }
-            return entries
-                .slice(0, 3)
-                .map(
-                    ([k, v]) =>
-                        `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`,
-                )
-                .join(", ");
-        }
-        return "(empty)";
-    };
-
-    for (let index = 0; index <= items.length; index += 1) {
-        const before =
-            index > 0 ? formatPreview(items[index - 1]) : "Beginning";
-        const after =
-            index < items.length ? formatPreview(items[index]) : "End";
-        const preview = `${before} → ${after}`;
-        positions.push({ index, preview });
-    }
-    return positions;
-};
-
-const handleInsertAt = (index: number) => {
-    if (!insertDialog.key || !insertDialog.type) {
-        return;
-    }
-    const key = insertDialog.key;
-    const type = insertDialog.type;
-
-    if (type === "jsonarray") {
-        const schemaItems = insertDialog.schema?.items || [];
-        const current = ensureArrayValue(propDraft[key]);
-        const next = [...current];
-        next.splice(index, 0, createEmptyArrayItem(schemaItems));
-        propDraft[key] = next;
-        collapsedArrays[key] = false;
-        applyProp(key, next, "jsonarray");
-    } else {
-        const current = ensureStringArray(propDraft[key]);
-        const next = [...current];
-        next.splice(index, 0, "");
-        propDraft[key] = next;
-        collapsedArrays[key] = false;
-        applyProp(key, next, "stringarray");
-    }
-
-    closeInsertDialog();
-};
-
-const openTopLevelArrayReorderDialog = (
-    propKey: string,
-    arrayType: "jsonarray" | "stringarray",
-    currentIndex: number,
-) => {
-    const length =
-        arrayType === "jsonarray"
-            ? ensureArrayValue(propDraft[propKey]).length
-            : ensureStringArray(propDraft[propKey]).length;
-    reorderDialog.visible = true;
-    reorderDialog.context = { kind: "top-level", propKey, arrayType };
-    reorderDialog.currentIndex = currentIndex;
-    reorderDialog.newIndex = currentIndex + 1;
-    reorderDialog.maxIndex = Math.max(length, 1);
-};
-
-const openArrayItemStringArrayReorderDialog = (
-    propKey: string,
-    parentIndex: number,
-    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
-    currentIndex: number,
-) => {
-    const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
-    reorderDialog.visible = true;
-    reorderDialog.context = {
-        kind: "array-field-stringarray",
-        propKey,
-        parentIndex,
-        field,
-    };
-    reorderDialog.currentIndex = currentIndex;
-    reorderDialog.newIndex = currentIndex + 1;
-    reorderDialog.maxIndex = Math.max(items.length, 1);
-};
-
-const openNestedJsonArrayReorderDialog = (
-    propKey: string,
-    parentIndex: number,
-    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
-    currentIndex: number,
-) => {
-    const items = getNestedArrayItems(propKey, parentIndex, field);
-    reorderDialog.visible = true;
-    reorderDialog.context = {
-        kind: "nested-jsonarray",
-        propKey,
-        parentIndex,
-        field,
-    };
-    reorderDialog.currentIndex = currentIndex;
-    reorderDialog.newIndex = currentIndex + 1;
-    reorderDialog.maxIndex = Math.max(items.length, 1);
-};
-
-const openNestedStringArrayReorderDialog = (
-    propKey: string,
-    parentIndex: number,
-    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
-    nestedIndex: number,
-    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
-    currentIndex: number,
-) => {
-    const items = getNestedArrayItemStringArrayItems(
-        propKey,
-        parentIndex,
-        field,
-        nestedIndex,
-        nestedField,
-    );
-    reorderDialog.visible = true;
-    reorderDialog.context = {
-        kind: "nested-stringarray",
-        propKey,
-        parentIndex,
-        field,
-        nestedIndex,
-        nestedField,
-    };
-    reorderDialog.currentIndex = currentIndex;
-    reorderDialog.newIndex = currentIndex + 1;
-    reorderDialog.maxIndex = Math.max(items.length, 1);
-};
-
-const closeReorderDialog = () => {
-    reorderDialog.visible = false;
-    reorderDialog.context = null;
-    reorderDialog.currentIndex = 0;
-    reorderDialog.newIndex = 1;
-    reorderDialog.maxIndex = 1;
-};
-
-const confirmReorderDialog = () => {
-    if (!reorderDialog.visible || !reorderDialog.context) {
-        return;
-    }
-    const rawIndex = Number(reorderDialog.newIndex);
-    if (!Number.isFinite(rawIndex)) {
-        return;
-    }
-    const clamped = Math.min(
-        Math.max(Math.floor(rawIndex), 1),
-        reorderDialog.maxIndex,
-    );
-    const destinationIndex = clamped - 1;
-    const context = reorderDialog.context;
-    switch (context.kind) {
-        case "top-level":
-            reorderArrayItems(
-                context.propKey,
-                reorderDialog.currentIndex,
-                destinationIndex,
-                context.arrayType,
-            );
-            break;
-        case "array-field-stringarray":
-            moveArrayItemStringArrayItem(
-                context.propKey,
-                context.parentIndex,
-                context.field,
-                reorderDialog.currentIndex,
-                destinationIndex,
-            );
-            break;
-        case "nested-jsonarray":
-            moveNestedArrayItem(
-                context.propKey,
-                context.parentIndex,
-                context.field,
-                reorderDialog.currentIndex,
-                destinationIndex,
-            );
-            break;
-        case "nested-stringarray":
-            moveNestedArrayItemStringArrayItem(
-                context.propKey,
-                context.parentIndex,
-                context.field,
-                context.nestedIndex,
-                context.nestedField,
-                reorderDialog.currentIndex,
-                destinationIndex,
-            );
-            break;
-        default:
-            break;
-    }
-    closeReorderDialog();
-};
-
-const handleAddChildComponent = () => {
-    if (!selectedChildComponent.value) {
-        return;
-    }
-    props.onAddChildComponent(props.node.uid, selectedChildComponent.value);
-    selectedChildComponent.value = "";
+const handleAddChildComponent = (componentId: string) => {
+    props.onAddChildComponent(props.node.uid, componentId);
 };
 
 const handleAddCustomProp = () => {
@@ -5882,6 +2167,12 @@ const applyTextValue = () => {
     flex-direction: column;
 }
 
+.node-panel__slot-suffix {
+    margin-left: 6px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
 .node-panel__header-actions {
     display: flex;
     align-items: center;
@@ -5900,56 +2191,98 @@ const applyTextValue = () => {
     gap: 12px;
 }
 
-.node-panel__props {
+.node-panel :deep(.node-panel__props) {
     display: grid;
     gap: 2rem;
 }
 
-.node-panel__field {
+.node-panel :deep(.node-panel__field) {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.node-panel__field.is-row {
+.node-panel :deep(.node-panel__field--match) {
+    outline: 2px solid rgba(250, 204, 21, 0.45);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.node-panel :deep(.node-panel__field.is-row) {
     flex-direction: row;
     align-items: center;
 }
 
-.node-panel__field input,
-.node-panel__field textarea,
-.node-panel__field select {
+:deep(.node-panel__input-wrap) {
+    position: relative;
+}
+
+:deep(.node-panel__input-highlight) {
+    position: absolute;
+    inset: 0;
+    padding: 6px 8px;
+    pointer-events: none;
+    color: transparent;
+    overflow: hidden;
+    border-radius: 4px;
+    z-index: 2;
+}
+
+:deep(.node-panel__input-highlight--single) {
+    white-space: pre;
+}
+
+:deep(.node-panel__input-highlight--multiline) {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+:deep(.node-panel__input-highlight mark) {
+    background: rgba(250, 204, 21, 0.45);
+    color: transparent;
+}
+
+:deep(.node-panel__input-wrap input),
+:deep(.node-panel__input-wrap textarea) {
+    position: relative;
+    z-index: 1;
+}
+
+:deep(.node-panel__field input),
+:deep(.node-panel__field textarea),
+:deep(.node-panel__field select) {
     padding: 6px 8px;
     border-radius: 4px;
     border: 1px solid #cbd5f5;
+    width: 100%;
 }
 
-.node-panel__field--nested {
+.node-panel :deep(.node-panel__field--nested) {
     background: #f8fafc;
     padding: 8px;
     border: 1px dashed #cbd5f5;
 }
 
-.node-panel__array {
+.node-panel :deep(.node-panel__array) {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.node-panel__object {
+.node-panel :deep(.node-panel__object) {
     display: grid;
     gap: 12px;
 }
 
-.node-panel__object--nested {
+.node-panel :deep(.node-panel__object--nested) {
     margin-left: 12px;
 }
 
-.node-panel__object .node-panel__field--nested {
+.node-panel :deep(.node-panel__object .node-panel__field--nested) {
     margin: 0;
 }
 
-.node-panel__margins {
+.node-panel :deep(.node-panel__margins) {
     border-top: 1px dashed #e2e8f0;
     margin-top: 12px;
     padding-top: 12px;
@@ -5958,25 +2291,50 @@ const applyTextValue = () => {
     gap: 12px;
 }
 
-.node-panel__margins-header {
+.node-panel :deep(.node-panel__margins-header) {
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
-.node-panel__margins-header h4 {
+.node-panel :deep(.node-panel__margins-title) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    padding: 0;
     font-size: 0.9rem;
     font-weight: 600;
     color: #1e293b;
+    cursor: pointer;
 }
 
-.node-panel__margins-actions {
+.node-panel :deep(.node-panel__margins-title.is-active) {
+    color: #2563eb;
+}
+
+.node-panel :deep(.node-panel__margins-chevron) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    color: #64748b;
+    transition: transform 140ms ease;
+}
+
+.node-panel :deep(.node-panel__margins-chevron[data-state="expanded"]) {
+    transform: rotate(180deg);
+    color: #2563eb;
+}
+
+.node-panel :deep(.node-panel__margins-actions) {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.node-panel__margins-toggle {
+.node-panel :deep(.node-panel__margins-toggle) {
     font-size: 0.75rem;
     color: #334155;
     background: #f8fafc;
@@ -5990,14 +2348,14 @@ const applyTextValue = () => {
         border-color 120ms ease;
 }
 
-.node-panel__margins-toggle:hover,
-.node-panel__margins-toggle:focus-visible {
+.node-panel :deep(.node-panel__margins-toggle:hover),
+.node-panel :deep(.node-panel__margins-toggle:focus-visible) {
     background: #e0f2fe;
     color: #1d4ed8;
     border-color: #93c5fd;
 }
 
-.node-panel__margins-reset {
+.node-panel :deep(.node-panel__margins-reset) {
     font-size: 0.75rem;
     color: #2563eb;
     background: transparent;
@@ -6005,52 +2363,52 @@ const applyTextValue = () => {
     cursor: pointer;
 }
 
-.node-panel__margins-grid {
+.node-panel :deep(.node-panel__margins-grid) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
 
 @media (min-width: 640px) {
-    .node-panel__margins-grid {
+    .node-panel :deep(.node-panel__margins-grid) {
         grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 }
 
-.node-panel__margins-grid--responsive {
+.node-panel :deep(.node-panel__margins-grid--responsive) {
     gap: 8px;
 }
 
-.node-panel__margin-field {
+.node-panel :deep(.node-panel__margin-field) {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.node-panel__margin-field select {
+.node-panel :deep(.node-panel__margin-field select) {
     border: 1px solid #cbd5f5;
     border-radius: 4px;
     padding: 6px 8px;
 }
 
-.node-panel__array--nested {
+.node-panel :deep(.node-panel__array--nested) {
     gap: 8px;
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px dashed #e2e8f0;
 }
 
-.node-panel__array-header--nested {
+.node-panel :deep(.node-panel__array-header--nested) {
     align-items: center;
 }
 
-.node-panel__array-header {
+.node-panel :deep(.node-panel__array-header) {
     display: flex;
     justify-content: flex-start;
     gap: 10px;
 }
 
-.node-panel__array-toggle {
+.node-panel :deep(.node-panel__array-toggle) {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -6069,15 +2427,15 @@ const applyTextValue = () => {
         box-shadow 140ms ease;
 }
 
-.node-panel__array-toggle:hover,
-.node-panel__array-toggle:focus-visible {
+.node-panel :deep(.node-panel__array-toggle:hover),
+.node-panel :deep(.node-panel__array-toggle:focus-visible) {
     background: #1e293b;
     color: #ffffff;
     box-shadow: 0 10px 25px rgba(30, 41, 59, 0.18);
     border-color: #1e293b;
 }
 
-.node-panel__array-toggle::before {
+.node-panel :deep(.node-panel__array-toggle::before) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -6087,16 +2445,16 @@ const applyTextValue = () => {
     transition: transform 160ms ease;
 }
 
-.node-panel__array-toggle[data-state="collapsed"]::before {
+.node-panel :deep(.node-panel__array-toggle[data-state="collapsed"]::before) {
     content: "+";
 }
 
-.node-panel__array-toggle[data-state="expanded"]::before {
+.node-panel :deep(.node-panel__array-toggle[data-state="expanded"]::before) {
     content: "–";
 }
 
-.node-panel__array-toggle[data-state="expanded"]:hover::before,
-.node-panel__array-toggle[data-state="expanded"]:focus-visible::before {
+.node-panel :deep(.node-panel__array-toggle[data-state="expanded"]:hover::before),
+.node-panel :deep(.node-panel__array-toggle[data-state="expanded"]:focus-visible::before) {
     transform: rotate(180deg);
 }
 
@@ -6194,7 +2552,7 @@ const applyTextValue = () => {
     border-color: #dc2626;
 }
 
-.node-panel__array-item {
+.node-panel :deep(.node-panel__array-item) {
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 12px;
@@ -6205,19 +2563,19 @@ const applyTextValue = () => {
     cursor: move;
 }
 
-.node-panel__array-item--nested {
+.node-panel :deep(.node-panel__array-item--nested) {
     cursor: default;
     margin-left: 12px;
 }
 
-.node-panel__array-actions {
+.node-panel :deep(.node-panel__array-actions) {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
 }
 
-.node-panel__array-reorder-link {
+.node-panel :deep(.node-panel__array-reorder-link) {
     margin-left: 8px;
     background: none;
     border: none;
@@ -6226,26 +2584,26 @@ const applyTextValue = () => {
     transition: color 120ms ease;
 }
 
-.node-panel__array-reorder-link:hover,
-.node-panel__array-reorder-link:focus-visible {
+.node-panel :deep(.node-panel__array-reorder-link:hover),
+.node-panel :deep(.node-panel__array-reorder-link:focus-visible) {
     color: #1d4ed8;
 }
 
-.node-panel__array-fields {
+.node-panel :deep(.node-panel__array-fields) {
     display: grid;
     gap: 8px;
 }
 
-.node-panel__array-fields--nested {
+.node-panel :deep(.node-panel__array-fields--nested) {
     gap: 6px;
 }
 
-.node-panel__array-item--drag-over {
+.node-panel :deep(.node-panel__array-item--drag-over) {
     border-color: #2563eb;
     background: #eff6ff;
 }
 
-.node-panel__checkbox {
+.node-panel :deep(.node-panel__checkbox) {
     position: relative;
     display: inline-flex;
     width: 1.5rem;
@@ -6253,7 +2611,7 @@ const applyTextValue = () => {
     order: -1;
 }
 
-.node-panel__checkbox-input {
+.node-panel :deep(.node-panel__checkbox-input) {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -6263,7 +2621,7 @@ const applyTextValue = () => {
     cursor: pointer;
 }
 
-.node-panel__checkbox-box {
+.node-panel :deep(.node-panel__checkbox-box) {
     width: 100%;
     height: 100%;
     border-radius: 0.4rem;
@@ -6280,27 +2638,27 @@ const applyTextValue = () => {
         box-shadow 140ms ease;
 }
 
-.node-panel__checkbox svg {
+.node-panel :deep(.node-panel__checkbox svg) {
     width: 0.9rem;
     height: 0.9rem;
 }
 
-.node-panel__checkbox:hover .node-panel__checkbox-box {
+.node-panel :deep(.node-panel__checkbox:hover .node-panel__checkbox-box) {
     border-color: #2563eb;
 }
 
-.node-panel__checkbox-input:focus-visible + .node-panel__checkbox-box {
+.node-panel :deep(.node-panel__checkbox-input:focus-visible + .node-panel__checkbox-box) {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
     border-color: #2563eb;
 }
 
-.node-panel__checkbox-input:checked + .node-panel__checkbox-box {
+.node-panel :deep(.node-panel__checkbox-input:checked + .node-panel__checkbox-box) {
     background: #2563eb;
     border-color: #2563eb;
     color: #ffffff;
 }
 
-.node-panel__array-add {
+.node-panel :deep(.node-panel__array-add) {
     align-self: flex-start;
     display: inline-flex;
     align-items: center;
@@ -6319,15 +2677,15 @@ const applyTextValue = () => {
         box-shadow 140ms ease;
 }
 
-.node-panel__array-add:hover,
-.node-panel__array-add:focus-visible {
+.node-panel :deep(.node-panel__array-add:hover),
+.node-panel :deep(.node-panel__array-add:focus-visible) {
     background: #0f766e;
     color: #ffffff;
     box-shadow: 0 10px 25px rgba(15, 118, 110, 0.25);
     border-color: #0f766e;
 }
 
-.node-panel__array-add-icon {
+.node-panel :deep(.node-panel__array-add-icon) {
     display: inline-flex;
     width: 1.25rem;
     height: 1.25rem;
@@ -6342,13 +2700,13 @@ const applyTextValue = () => {
         background 140ms ease;
 }
 
-.node-panel__array-add:hover .node-panel__array-add-icon,
-.node-panel__array-add:focus-visible .node-panel__array-add-icon {
+.node-panel :deep(.node-panel__array-add:hover .node-panel__array-add-icon),
+.node-panel :deep(.node-panel__array-add:focus-visible .node-panel__array-add-icon) {
     transform: rotate(90deg);
     background: rgba(255, 255, 255, 0.25);
 }
 
-.node-panel__array-remove {
+.node-panel :deep(.node-panel__array-remove) {
     align-self: flex-start;
     background: transparent;
     border: none;
@@ -6356,7 +2714,7 @@ const applyTextValue = () => {
     cursor: pointer;
 }
 
-.node-panel__insert-dialog {
+.node-panel :deep(.node-panel__insert-dialog) {
     position: fixed;
     inset: 0;
     display: flex;
@@ -6365,13 +2723,13 @@ const applyTextValue = () => {
     z-index: 1000;
 }
 
-.node-panel__insert-backdrop {
+.node-panel :deep(.node-panel__insert-backdrop) {
     position: absolute;
     inset: 0;
     background: rgba(15, 23, 42, 0.45);
 }
 
-.node-panel__insert-content {
+.node-panel :deep(.node-panel__insert-content) {
     position: relative;
     background: #ffffff;
     border-radius: 10px;
@@ -6386,24 +2744,24 @@ const applyTextValue = () => {
     overflow: hidden;
 }
 
-.node-panel__insert-content--small {
+.node-panel :deep(.node-panel__insert-content--small) {
     width: min(360px, 90vw);
 }
 
-.node-panel__insert-header {
+.node-panel :deep(.node-panel__insert-header) {
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
-.node-panel__insert-header h3 {
+.node-panel :deep(.node-panel__insert-header h3) {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
     color: #0f172a;
 }
 
-.node-panel__insert-close {
+.node-panel :deep(.node-panel__insert-close) {
     background: transparent;
     border: none;
     font-size: 1.25rem;
@@ -6412,12 +2770,12 @@ const applyTextValue = () => {
     color: #475569;
 }
 
-.node-panel__insert-subtitle {
+.node-panel :deep(.node-panel__insert-subtitle) {
     margin: 0;
     color: #64748b;
 }
 
-.node-panel__insert-options {
+.node-panel :deep(.node-panel__insert-options) {
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -6429,7 +2787,7 @@ const applyTextValue = () => {
     scrollbar-width: thin;
 }
 
-.node-panel__insert-options button {
+.node-panel :deep(.node-panel__insert-options button) {
     width: 100%;
     text-align: left;
     border: 1px solid #cbd5f5;
@@ -6442,24 +2800,24 @@ const applyTextValue = () => {
         background 120ms ease;
 }
 
-.node-panel__insert-options button strong {
+.node-panel :deep(.node-panel__insert-options button strong) {
     display: block;
     margin-bottom: 4px;
     color: #1e293b;
 }
 
-.node-panel__insert-options button span {
+.node-panel :deep(.node-panel__insert-options button span) {
     display: block;
     font-size: 0.85rem;
     color: #475569;
 }
 
-.node-panel__insert-options button:hover {
+.node-panel :deep(.node-panel__insert-options button:hover) {
     border-color: #2563eb;
     background: #eff6ff;
 }
 
-.node-panel__reorder-input label {
+.node-panel :deep(.node-panel__reorder-input label) {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -6468,21 +2826,21 @@ const applyTextValue = () => {
     color: #0f172a;
 }
 
-.node-panel__reorder-input input {
+.node-panel :deep(.node-panel__reorder-input input) {
     border: 1px solid #cbd5f5;
     border-radius: 6px;
     padding: 8px 10px;
     font-size: 0.95rem;
 }
 
-.node-panel__insert-actions {
+.node-panel :deep(.node-panel__insert-actions) {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
 }
 
-.node-panel__insert-confirm,
-.node-panel__insert-cancel {
+.node-panel :deep(.node-panel__insert-confirm),
+.node-panel :deep(.node-panel__insert-cancel) {
     border-radius: 6px;
     border: 1px solid transparent;
     padding: 8px 16px;
@@ -6495,24 +2853,24 @@ const applyTextValue = () => {
         border-color 140ms ease;
 }
 
-.node-panel__insert-confirm {
+.node-panel :deep(.node-panel__insert-confirm) {
     background: #2563eb;
     color: #ffffff;
 }
 
-.node-panel__insert-confirm:hover,
-.node-panel__insert-confirm:focus-visible {
+.node-panel :deep(.node-panel__insert-confirm:hover),
+.node-panel :deep(.node-panel__insert-confirm:focus-visible) {
     background: #1d4ed8;
 }
 
-.node-panel__insert-cancel {
+.node-panel :deep(.node-panel__insert-cancel) {
     background: transparent;
     border-color: #cbd5f5;
     color: #0f172a;
 }
 
-.node-panel__insert-cancel:hover,
-.node-panel__insert-cancel:focus-visible {
+.node-panel :deep(.node-panel__insert-cancel:hover),
+.node-panel :deep(.node-panel__insert-cancel:focus-visible) {
     border-color: #94a3b8;
 }
 
@@ -6527,23 +2885,23 @@ const applyTextValue = () => {
     }
 }
 
-.node-panel__children {
+.node-panel :deep(.node-panel__children) {
     margin-top: 8px;
 }
 
-.node-panel__error {
+.node-panel :deep(.node-panel__error) {
     color: #ef4444;
     font-size: 0.75rem;
 }
 
-.node-panel__children-actions {
+.node-panel :deep(.node-panel__children-actions) {
     display: flex;
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
 }
 
-.node-panel__hint {
+.node-panel :deep(.node-panel__hint) {
     font-size: 0.8rem;
     color: #64748b;
     margin: 8px 0;
@@ -6561,13 +2919,13 @@ const applyTextValue = () => {
     border: 1px solid #cbd5f5;
 }
 
-.node-panel__margins-responsive {
+.node-panel :deep(.node-panel__margins-responsive) {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.node-panel__margins-row {
+.node-panel :deep(.node-panel__margins-row) {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -6577,7 +2935,7 @@ const applyTextValue = () => {
     background: #f8fafc;
 }
 
-.node-panel__margin-breakpoint {
+.node-panel :deep(.node-panel__margin-breakpoint) {
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.04em;
