@@ -6,6 +6,18 @@ interface DbInfoPayload {
   password: string;
 }
 
+interface DbInfoResponse {
+  instance_start_time?: string;
+  db_name?: string;
+  update_seq?: string;
+  sizes?: {
+    file?: number;
+    external?: number;
+    active?: number;
+  };
+  doc_count?: number;
+}
+
 const normalizeHost = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -23,8 +35,41 @@ const normalizeHost = (value: string): string => {
   return `https://${trimmed}`.replace(/\/+$/, "");
 };
 
+const fetchDbInfo = async (
+  baseUrl: string,
+  authHeader: string,
+  dbName: string,
+): Promise<DbInfoResponse | null> => {
+  const response = await fetch(`${baseUrl}/${encodeURIComponent(dbName)}`, {
+    headers: {
+      Authorization: authHeader,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw createError({
+      statusCode: response.status,
+      statusMessage: detail || "Remote CouchDB request failed.",
+    });
+  }
+
+  return (await response.json()) as DbInfoResponse;
+};
+
 export default defineEventHandler(async (event) => {
   await assertAdminSession(event);
+
+  const runtimeConfig = useRuntimeConfig();
+  const localCouchUrl =
+    typeof runtimeConfig.couchUrl === "string"
+      ? runtimeConfig.couchUrl.replace(/\/+$/, "")
+      : "";
+  const localAdminAuth = process.env.COUCHDB_ADMIN_AUTH;
 
   const dbName = getRouterParam(event, "db_name");
   if (!dbName) {
@@ -57,23 +102,25 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString(
-    "base64",
-  )}`;
-
-  const response = await fetch(`${normalizedHost}/${encodeURIComponent(dbName)}`, {
-    headers: {
-      Authorization: authHeader,
-    },
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
+  if (!localCouchUrl || !localAdminAuth) {
     throw createError({
-      statusCode: response.status,
-      statusMessage: detail || "Remote CouchDB request failed.",
+      statusCode: 500,
+      statusMessage: "Local CouchDB configuration missing.",
     });
   }
 
-  return await response.json();
+  const remoteAuthHeader = `Basic ${Buffer.from(
+    `${username}:${password}`,
+  ).toString("base64")}`;
+  const localAuthHeader = `Basic ${localAdminAuth}`;
+
+  const [remoteInfo, localInfo] = await Promise.all([
+    fetchDbInfo(normalizedHost, remoteAuthHeader, dbName),
+    fetchDbInfo(localCouchUrl, localAuthHeader, dbName),
+  ]);
+
+  return {
+    remote: remoteInfo,
+    local: localInfo,
+  };
 });

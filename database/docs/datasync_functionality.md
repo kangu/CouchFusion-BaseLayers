@@ -31,6 +31,14 @@ Use inline discrete spinners for loading status on each of the tables.
 - [x] Implement `/api/datasync/db-info/:db_name` to fetch remote database info with Basic Auth.
 - [x] Iteratively fetch per-db info after `_all_dbs` and populate the table with inline spinners.
 
+## New tasks
+- Fetch local CouchDB db info alongside remote using local admin credentials.
+- Highlight doc_count and update_seq values when local and remote differ, and show stacked local/remote values.
+
+## Progress
+- [x] Fetch local database info from runtimeConfig.couchUrl and compare against remote values.
+- [x] Stack local + remote values in the Docs and Update Seq columns and highlight mismatches.
+
 ## New task
 When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
 

@@ -2,32 +2,37 @@
 import { useLocalStorage } from "@vueuse/core";
 
 interface RemoteDbsResponse {
-    databases: string[];
+  databases: string[];
 }
 
 interface RemoteDbInfoResponse {
-    instance_start_time?: string;
-    db_name?: string;
-    update_seq?: string;
-    sizes?: {
-        file?: number;
-        external?: number;
-        active?: number;
-    };
-    doc_count?: number;
+  instance_start_time?: string;
+  db_name?: string;
+  update_seq?: string;
+  sizes?: {
+    file?: number;
+    external?: number;
+    active?: number;
+  };
+  doc_count?: number;
+}
+
+interface DbInfoPayload {
+  remote: RemoteDbInfoResponse | null;
+  local: RemoteDbInfoResponse | null;
 }
 
 interface DbInfoState {
-    isLoading: boolean;
-    error: string | null;
-    info: RemoteDbInfoResponse | null;
+  isLoading: boolean;
+  error: string | null;
+  info: DbInfoPayload | null;
 }
 
 /**
  * Admin data sync page for database tooling.
  */
 definePageMeta({
-    middleware: ["admin-auth"],
+  middleware: ["admin-auth"],
 });
 
 // == props ==
@@ -50,23 +55,20 @@ const isEditing = ref(false);
 // == computed ==
 const trimmedHost = computed(() => host.value.trim());
 const isReady = computed(
-    () =>
-        isClient.value &&
-        Boolean(trimmedHost.value) &&
-        Boolean(username.value) &&
-        Boolean(password.value),
+  () =>
+    isClient.value &&
+    Boolean(trimmedHost.value) &&
+    Boolean(username.value) &&
+    Boolean(password.value),
 );
 const hasCredentials = computed(
-    () =>
-        Boolean(trimmedHost.value) &&
-        Boolean(username.value) &&
-        Boolean(password.value),
+  () => Boolean(trimmedHost.value) && Boolean(username.value) && Boolean(password.value),
 );
 const sortedDatabases = computed(() => [...databases.value].sort());
 
 // == lifecycle ==
 onMounted(() => {
-    isClient.value = true;
+  isClient.value = true;
 });
 
 // == watchers ==
@@ -76,15 +78,15 @@ onMounted(() => {
  * Initialize the per-database info state map.
  */
 const resetDbInfoState = (names: string[]) => {
-    const nextState: Record<string, DbInfoState> = {};
-    for (const name of names) {
-        nextState[name] = {
-            isLoading: true,
-            error: null,
-            info: null,
-        };
-    }
-    dbInfoMap.value = nextState;
+  const nextState: Record<string, DbInfoState> = {};
+  for (const name of names) {
+    nextState[name] = {
+      isLoading: true,
+      error: null,
+      info: null,
+    };
+  }
+  dbInfoMap.value = nextState;
 };
 
 /**
@@ -127,355 +129,399 @@ const formatBytes = (value?: number): string => {
  * Fetch info for a single database and update its status entry.
  */
 const fetchDbInfo = async (dbName: string): Promise<DbInfoState> => {
-    try {
-        const info = await $fetch<RemoteDbInfoResponse>(
-            `/api/datasync/db-info/${encodeURIComponent(dbName)}`,
-            {
-                method: "POST",
-                body: {
-                    host: trimmedHost.value,
-                    username: username.value,
-                    password: password.value,
-                },
-            },
-        );
+  try {
+    const info = await $fetch<DbInfoPayload>(
+      `/api/datasync/db-info/${encodeURIComponent(dbName)}`,
+      {
+        method: "POST",
+        body: {
+          host: trimmedHost.value,
+          username: username.value,
+          password: password.value,
+        },
+      },
+    );
 
-        return {
-            isLoading: false,
-            error: null,
-            info,
-        };
-    } catch (error) {
-        const message =
-            error instanceof Error
-                ? error.message
-                : "Failed to load database info.";
-        return {
-            isLoading: false,
-            error: message,
-            info: null,
-        };
-    }
+    return {
+      isLoading: false,
+      error: null,
+      info,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load database info.";
+    return {
+      isLoading: false,
+      error: message,
+      info: null,
+    };
+  }
 };
 
 /**
  * Request the database list from the remote CouchDB host via server proxy.
  */
 const fetchDatabases = async () => {
-    errorMessage.value = null;
-    databases.value = [];
-    lastFetchedAt.value = null;
-    dbInfoMap.value = {};
+  errorMessage.value = null;
+  databases.value = [];
+  lastFetchedAt.value = null;
+  dbInfoMap.value = {};
 
-    if (!trimmedHost.value) {
-        errorMessage.value = "Enter a remote host to continue.";
-        return;
+  if (!trimmedHost.value) {
+    errorMessage.value = "Enter a remote host to continue.";
+    return;
+  }
+
+  if (!username.value || !password.value) {
+    errorMessage.value = "Enter both username and password to continue.";
+    return;
+  }
+
+  if (!process.client) {
+    errorMessage.value = "This action is only available in the browser.";
+    return;
+  }
+
+  isLoading.value = true;
+
+  try {
+    const response = await $fetch<RemoteDbsResponse>(
+      "/api/datasync/remote-dbs",
+      {
+        method: "POST",
+        body: {
+          host: trimmedHost.value,
+          username: username.value,
+          password: password.value,
+        },
+      },
+    );
+
+    if (!response?.databases || !Array.isArray(response.databases)) {
+      throw new Error("Unexpected response from the server.");
     }
 
-    if (!username.value || !password.value) {
-        errorMessage.value = "Enter both username and password to continue.";
-        return;
+    databases.value = response.databases;
+    lastFetchedAt.value = new Date().toISOString();
+    resetDbInfoState(response.databases);
+    isDetailsLoading.value = true;
+
+    const infoEntries = await Promise.all(
+      response.databases.map(async (dbName) => ({
+        dbName,
+        state: await fetchDbInfo(dbName),
+      })),
+    );
+
+    const nextMap: Record<string, DbInfoState> = {};
+    for (const entry of infoEntries) {
+      nextMap[entry.dbName] = entry.state;
     }
 
-    if (!process.client) {
-        errorMessage.value = "This action is only available in the browser.";
-        return;
-    }
-
-    isLoading.value = true;
-
-    try {
-        const response = await $fetch<RemoteDbsResponse>(
-            "/api/datasync/remote-dbs",
-            {
-                method: "POST",
-                body: {
-                    host: trimmedHost.value,
-                    username: username.value,
-                    password: password.value,
-                },
-            },
-        );
-
-        if (!response?.databases || !Array.isArray(response.databases)) {
-            throw new Error("Unexpected response from the server.");
-        }
-
-        databases.value = response.databases;
-        lastFetchedAt.value = new Date().toISOString();
-        resetDbInfoState(response.databases);
-        isDetailsLoading.value = true;
-
-        const infoEntries = await Promise.all(
-            response.databases.map(async (dbName) => ({
-                dbName,
-                state: await fetchDbInfo(dbName),
-            })),
-        );
-
-        const nextMap: Record<string, DbInfoState> = {};
-        for (const entry of infoEntries) {
-            nextMap[entry.dbName] = entry.state;
-        }
-
-        dbInfoMap.value = nextMap;
-        isDetailsLoading.value = false;
-    } catch (error) {
-        const message =
-            error instanceof Error
-                ? error.message
-                : "Failed to load databases from the remote host.";
-        errorMessage.value = message;
-        isDetailsLoading.value = false;
-    } finally {
-        isLoading.value = false;
-    }
+    dbInfoMap.value = nextMap;
+    isDetailsLoading.value = false;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load databases from the remote host.";
+    errorMessage.value = message;
+    isDetailsLoading.value = false;
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 /**
  * Trigger a refresh of databases and details.
  */
 const handleRefresh = async () => {
-    await fetchDatabases();
+  await fetchDatabases();
 };
 
 /**
  * Toggle edit mode for the connection form.
  */
 const handleEdit = () => {
-    isEditing.value = true;
+  isEditing.value = true;
 };
 </script>
 
 <template>
-    <section class="space-y-8">
-        <div
-            class="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-orange-100 px-8 py-10 shadow-sm"
-        >
-            <div class="space-y-3">
-                <h1 class="text-3xl font-semibold text-gray-900">
-                    Database Data Sync
-                </h1>
-                <p class="text-sm text-gray-700 max-w-2xl">
-                    Configure a remote CouchDB host over HTTPS and authenticate
-                    with Basic Auth. The credentials are saved locally in this
-                    browser.
-                </p>
-            </div>
+  <section class="space-y-8">
+    <div
+      class="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-orange-100 px-8 py-10 shadow-sm"
+    >
+      <div class="space-y-3">
+        <h1 class="text-3xl font-semibold text-gray-900">Database Data Sync</h1>
+        <p class="text-sm text-gray-700 max-w-2xl">
+          Configure a remote CouchDB host over HTTPS and authenticate with
+          Basic Auth. The credentials are saved locally in this browser.
+        </p>
+      </div>
 
-            <div
-                v-if="hasCredentials && !isEditing"
-                class="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-orange-100 bg-white/70 px-4 py-4"
-            >
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-orange-500">
-                        Connected host
-                    </p>
-                    <p class="text-sm font-semibold text-gray-900">
-                        {{ trimmedHost }}
-                    </p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <button
-                        type="button"
-                        class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
-                        :disabled="!isReady || isLoading"
-                        @click="handleRefresh"
-                    >
-                        <span v-if="isLoading">Refreshing…</span>
-                        <span v-else>Refresh</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="text-sm font-medium text-gray-700 hover:text-gray-900"
-                        @click="handleEdit"
-                    >
-                        Edit
-                    </button>
-                </div>
-            </div>
-
-            <div v-else class="mt-8">
-                <div class="grid gap-6 lg:grid-cols-[2fr_1fr_1fr]">
-                    <div class="space-y-1">
-                        <label class="block text-sm font-medium text-gray-800">
-                            Remote host (https)
-                        </label>
-                        <input
-                            v-model="host"
-                            type="text"
-                            placeholder="https://db.example.com"
-                            class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
-                        />
-                        <p class="text-xs text-gray-500">
-                            Enter the base URL for the CouchDB instance.
-                        </p>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="block text-sm font-medium text-gray-800">
-                            Username
-                        </label>
-                        <input
-                            v-model="username"
-                            type="text"
-                            autocomplete="username"
-                            class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
-                        />
-                        <p class="text-xs text-gray-500">
-                            CouchDB admin or service account.
-                        </p>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="block text-sm font-medium text-gray-800">
-                            Password
-                        </label>
-                        <input
-                            v-model="password"
-                            type="password"
-                            autocomplete="current-password"
-                            class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
-                        />
-                        <p class="text-xs text-gray-500">
-                            Stored locally in this browser.
-                        </p>
-                    </div>
-                </div>
-                <div class="mt-6 flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
-                        :disabled="!isReady || isLoading"
-                        @click="fetchDatabases"
-                    >
-                        <span v-if="isLoading">Fetching…</span>
-                        <span v-else>Fetch Databases</span>
-                    </button>
-                    <p v-if="errorMessage" class="text-sm text-red-600">
-                        {{ errorMessage }}
-                    </p>
-                    <p v-else class="text-xs text-gray-500">
-                        Results appear below once the connection succeeds.
-                    </p>
-                </div>
-            </div>
+      <div
+        v-if="hasCredentials && !isEditing"
+        class="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-orange-100 bg-white/70 px-4 py-4"
+      >
+        <div>
+          <p class="text-xs uppercase tracking-wide text-orange-500">
+            Connected host
+          </p>
+          <p class="text-sm font-semibold text-gray-900">{{ trimmedHost }}</p>
         </div>
-
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-900">
-                        Remote databases
-                    </h2>
-                    <p class="text-xs text-gray-500">
-                        {{ databases.length }} databases loaded
-                        <span v-if="lastFetchedAt">
-                            · last fetched
-                            {{ new Date(lastFetchedAt).toLocaleString() }}
-                        </span>
-                    </p>
-                </div>
-            </div>
-
-            <div
-                class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
-            >
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
-                            >
-                                Database name
-                            </th>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
-                            >
-                                Docs
-                            </th>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
-                            >
-                                Size
-                            </th>
-                            <th
-                                scope="col"
-                                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
-                            >
-                                Update seq
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <tr v-if="!sortedDatabases.length">
-                            <td
-                                class="px-4 py-4 text-sm text-gray-500"
-                                colspan="7"
-                            >
-                                No databases loaded yet.
-                            </td>
-                        </tr>
-                        <tr v-else-if="isDetailsLoading">
-                            <td
-                                class="px-4 py-4 text-sm text-gray-500"
-                                colspan="7"
-                            >
-                                Loading database details…
-                            </td>
-                        </tr>
-                        <tr v-for="db in sortedDatabases" :key="db">
-                            <td class="px-4 py-3 text-sm text-gray-700">
-                                {{ db }}
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-700">
-                                <span
-                                    v-if="dbInfoMap[db]?.error"
-                                    class="text-red-500"
-                                >
-                                    Error
-                                </span>
-                                <span v-else>{{
-                                    dbInfoMap[db]?.info?.doc_count ?? "-"
-                                }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-700">
-                                <span
-                                    v-if="dbInfoMap[db]?.error"
-                                    class="text-red-500"
-                                >
-                                    Error
-                                </span>
-                                <span v-else>{{
-                                    formatBytes(
-                                        dbInfoMap[db]?.info?.sizes?.file,
-                                    )
-                                }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-700">
-                                <span
-                                    v-if="dbInfoMap[db]?.error"
-                                    class="text-red-500"
-                                >
-                                    Error
-                                </span>
-                                <span
-                                    v-else
-                                    class="line-clamp-1"
-                                    :title="dbInfoMap[db]?.info?.update_seq"
-                                >
-                                    {{
-                                        getUpdateSeqNumber(
-                                            dbInfoMap[db]?.info?.update_seq,
-                                        ) ?? "-"
-                                    }}
-                                </span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
+            :disabled="!isReady || isLoading"
+            @click="handleRefresh"
+          >
+            <span v-if="isLoading">Refreshing…</span>
+            <span v-else>Refresh</span>
+          </button>
+          <button
+            type="button"
+            class="text-sm font-medium text-gray-700 hover:text-gray-900"
+            @click="handleEdit"
+          >
+            Edit
+          </button>
         </div>
-    </section>
+      </div>
+
+      <div v-else class="mt-8">
+        <div class="grid gap-6 lg:grid-cols-[2fr_1fr_1fr]">
+          <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-800">
+              Remote host (https)
+            </label>
+            <input
+              v-model="host"
+              type="text"
+              placeholder="https://db.example.com"
+              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
+            />
+            <p class="text-xs text-gray-500">
+              Enter the base URL for the CouchDB instance.
+            </p>
+          </div>
+          <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-800">
+              Username
+            </label>
+            <input
+              v-model="username"
+              type="text"
+              autocomplete="username"
+              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
+            />
+            <p class="text-xs text-gray-500">
+              CouchDB admin or service account.
+            </p>
+          </div>
+          <div class="space-y-1">
+            <label class="block text-sm font-medium text-gray-800">
+              Password
+            </label>
+            <input
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/70 focus:outline-none"
+            />
+            <p class="text-xs text-gray-500">
+              Stored locally in this browser.
+            </p>
+          </div>
+        </div>
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
+            :disabled="!isReady || isLoading"
+            @click="fetchDatabases"
+          >
+            <span v-if="isLoading">Fetching…</span>
+            <span v-else>Fetch Databases</span>
+          </button>
+          <p v-if="errorMessage" class="text-sm text-red-600">
+            {{ errorMessage }}
+          </p>
+          <p v-else class="text-xs text-gray-500">
+            Results appear below once the connection succeeds.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900">Remote databases</h2>
+          <p class="text-xs text-gray-500">
+            {{ databases.length }} databases loaded
+            <span v-if="lastFetchedAt">
+              · last fetched {{ new Date(lastFetchedAt).toLocaleString() }}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <div
+        class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
+      >
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Database name
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Docs
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                File
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Update seq
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-if="!sortedDatabases.length">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="4">
+                No databases loaded yet.
+              </td>
+            </tr>
+            <tr v-else-if="isDetailsLoading">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="4">
+                Loading database details…
+              </td>
+            </tr>
+            <tr v-for="db in sortedDatabases" :key="db">
+              <td class="px-4 py-3 text-sm text-gray-700">{{ db }}</td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <div v-else class="flex items-center gap-3">
+                  <span class="inline-flex items-center font-semibold text-gray-900">
+                    <svg
+                      class="mr-1 h-3 w-3 text-gray-400"
+                      viewBox="0 0 12 12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      title="Local"
+                    >
+                      <circle cx="6" cy="6" r="5" />
+                      <path
+                        d="M4.6 3.8h1v4.4H4.6zM4.6 8.2h2.8v1H4.6z"
+                        fill="#ffffff"
+                      />
+                    </svg>
+                    {{ dbInfoMap[db]?.info?.local?.doc_count ?? "-" }}
+                  </span>
+                  <span class="inline-flex items-center font-semibold text-gray-900">
+                    <svg
+                      class="mr-1 h-3 w-3 text-gray-400"
+                      viewBox="0 0 12 12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      title="Remote"
+                    >
+                      <circle cx="6" cy="6" r="5" />
+                      <path
+                        d="M4.1 3.6h2.2c1.3 0 2.1.7 2.1 1.7 0 .7-.4 1.3-1.1 1.5L8 8.6H6.8L6.2 7H5.1v1.6h-1V3.6Zm1 2.5h1.1c.6 0 1-.3 1-.8 0-.5-.4-.8-1-.8H5.1v1.6Z"
+                        fill="#ffffff"
+                      />
+                    </svg>
+                    {{ dbInfoMap[db]?.info?.remote?.doc_count ?? "-" }}
+                  </span>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <div v-else class="flex items-center gap-3">
+                  <span class="inline-flex items-center">
+                    {{
+                      formatBytes(dbInfoMap[db]?.info?.local?.sizes?.file)
+                    }}
+                  </span>
+                  <span class="inline-flex items-center">
+                    {{
+                      formatBytes(dbInfoMap[db]?.info?.remote?.sizes?.file)
+                    }}
+                  </span>
+                </div>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <div v-else class="flex items-center gap-3">
+                  <span class="inline-flex items-center font-semibold text-gray-900">
+                    <svg
+                      class="mr-1 h-3 w-3 text-gray-400"
+                      viewBox="0 0 12 12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      title="Local"
+                    >
+                      <circle cx="6" cy="6" r="5" />
+                      <path
+                        d="M4.6 3.8h1v4.4H4.6zM4.6 8.2h2.8v1H4.6z"
+                        fill="#ffffff"
+                      />
+                    </svg>
+                    {{
+                      getUpdateSeqNumber(
+                        dbInfoMap[db]?.info?.local?.update_seq,
+                      ) ?? "-"
+                    }}
+                  </span>
+                  <span class="inline-flex items-center font-semibold text-gray-900">
+                    <svg
+                      class="mr-1 h-3 w-3 text-gray-400"
+                      viewBox="0 0 12 12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      title="Remote"
+                    >
+                      <circle cx="6" cy="6" r="5" />
+                      <path
+                        d="M4.1 3.6h2.2c1.3 0 2.1.7 2.1 1.7 0 .7-.4 1.3-1.1 1.5L8 8.6H6.8L6.2 7H5.1v1.6h-1V3.6Zm1 2.5h1.1c.6 0 1-.3 1-.8 0-.5-.4-.8-1-.8H5.1v1.6Z"
+                        fill="#ffffff"
+                      />
+                    </svg>
+                    {{
+                      getUpdateSeqNumber(
+                        dbInfoMap[db]?.info?.remote?.update_seq,
+                      ) ?? "-"
+                    }}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 </template>
