@@ -5,6 +5,24 @@ interface RemoteDbsResponse {
   databases: string[];
 }
 
+interface RemoteDbInfoResponse {
+  instance_start_time?: string;
+  db_name?: string;
+  update_seq?: string;
+  sizes?: {
+    file?: number;
+    external?: number;
+    active?: number;
+  };
+  doc_count?: number;
+}
+
+interface DbInfoState {
+  isLoading: boolean;
+  error: string | null;
+  info: RemoteDbInfoResponse | null;
+}
+
 /**
  * Admin data sync page for database tooling.
  */
@@ -25,6 +43,8 @@ const errorMessage = ref<string | null>(null);
 const isLoading = ref(false);
 const lastFetchedAt = ref<string | null>(null);
 const isClient = ref(false);
+const dbInfoMap = ref<Record<string, DbInfoState>>({});
+const isDetailsLoading = ref(false);
 
 // == computed ==
 const trimmedHost = computed(() => host.value.trim());
@@ -46,12 +66,75 @@ onMounted(() => {
 
 // == local page api ==
 /**
+ * Initialize the per-database info state map.
+ */
+const resetDbInfoState = (names: string[]) => {
+  const nextState: Record<string, DbInfoState> = {};
+  for (const name of names) {
+    nextState[name] = {
+      isLoading: true,
+      error: null,
+      info: null,
+    };
+  }
+  dbInfoMap.value = nextState;
+};
+
+/**
+ * Extract the leading numeric part from CouchDB update_seq values.
+ */
+const getUpdateSeqNumber = (value?: string): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/^\d+/);
+  return match ? match[0] : null;
+};
+
+/**
+ * Fetch info for a single database and update its status entry.
+ */
+const fetchDbInfo = async (dbName: string): Promise<DbInfoState> => {
+  try {
+    const info = await $fetch<RemoteDbInfoResponse>(
+      `/api/datasync/db-info/${encodeURIComponent(dbName)}`,
+      {
+        method: "POST",
+        body: {
+          host: trimmedHost.value,
+          username: username.value,
+          password: password.value,
+        },
+      },
+    );
+
+    return {
+      isLoading: false,
+      error: null,
+      info,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load database info.";
+    return {
+      isLoading: false,
+      error: message,
+      info: null,
+    };
+  }
+};
+
+/**
  * Request the database list from the remote CouchDB host via server proxy.
  */
 const fetchDatabases = async () => {
   errorMessage.value = null;
   databases.value = [];
   lastFetchedAt.value = null;
+  dbInfoMap.value = {};
 
   if (!trimmedHost.value) {
     errorMessage.value = "Enter a remote host to continue.";
@@ -89,12 +172,30 @@ const fetchDatabases = async () => {
 
     databases.value = response.databases;
     lastFetchedAt.value = new Date().toISOString();
+    resetDbInfoState(response.databases);
+    isDetailsLoading.value = true;
+
+    const infoEntries = await Promise.all(
+      response.databases.map(async (dbName) => ({
+        dbName,
+        state: await fetchDbInfo(dbName),
+      })),
+    );
+
+    const nextMap: Record<string, DbInfoState> = {};
+    for (const entry of infoEntries) {
+      nextMap[entry.dbName] = entry.state;
+    }
+
+    dbInfoMap.value = nextMap;
+    isDetailsLoading.value = false;
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
         : "Failed to load databases from the remote host.";
     errorMessage.value = message;
+    isDetailsLoading.value = false;
   } finally {
     isLoading.value = false;
   }
@@ -199,16 +300,102 @@ const fetchDatabases = async () => {
               >
                 Database name
               </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Docs
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Active
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                External
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                File
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Update seq
+              </th>
+              <th
+                scope="col"
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+              >
+                Instance start
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
             <tr v-if="!sortedDatabases.length">
-              <td class="px-4 py-4 text-sm text-gray-500">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="7">
                 No databases loaded yet.
+              </td>
+            </tr>
+            <tr v-else-if="isDetailsLoading">
+              <td class="px-4 py-4 text-sm text-gray-500" colspan="7">
+                Loading database details…
               </td>
             </tr>
             <tr v-for="db in sortedDatabases" :key="db">
               <td class="px-4 py-3 text-sm text-gray-700">{{ db }}</td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span v-else>{{ dbInfoMap[db]?.info?.doc_count ?? "-" }}</span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span v-else>{{ dbInfoMap[db]?.info?.sizes?.active ?? "-" }}</span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span v-else>{{ dbInfoMap[db]?.info?.sizes?.external ?? "-" }}</span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span v-else>{{ dbInfoMap[db]?.info?.sizes?.file ?? "-" }}</span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span
+                  v-else
+                  class="line-clamp-1"
+                  :title="dbInfoMap[db]?.info?.update_seq"
+                >
+                  {{
+                    getUpdateSeqNumber(dbInfoMap[db]?.info?.update_seq) ??
+                      "-"
+                  }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-sm text-gray-700">
+                <span v-if="dbInfoMap[db]?.error" class="text-red-500">
+                  Error
+                </span>
+                <span v-else>{{ dbInfoMap[db]?.info?.instance_start_time ?? "-" }}</span>
+              </td>
             </tr>
           </tbody>
         </table>

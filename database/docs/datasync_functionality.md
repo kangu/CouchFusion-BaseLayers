@@ -26,3 +26,10 @@ Once the configuration is set, the system does client side HTTP requests with th
 On the client side, once the remote databases have been fetched, run an async iterative process to query the database information for each of the databases in the list, and then populate the table with the columns and data that is fetched.
 
 Use inline discrete spinners for loading status on each of the tables.
+
+## Progress
+- [x] Implement `/api/datasync/db-info/:db_name` to fetch remote database info with Basic Auth.
+- [x] Iteratively fetch per-db info after `_all_dbs` and populate the table with inline spinners.
+
+## New task
+When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
