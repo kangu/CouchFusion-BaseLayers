@@ -47,6 +47,14 @@ Use inline discrete spinners for loading status on each of the tables.
 - [x] Create replication endpoints for creating jobs and checking status with _active_tasks polling.
 - [x] Add per-row Replicate Down actions with status feedback in the UI.
 
+## New tasks
+- Add compare-docs API to list doc ids + revs for local/remote and determine status.
+- Add a dialog with search and pagination to view document comparison results.
+
+## Progress
+- [x] Implement compare-docs server endpoint with search + pagination and status counts.
+- [x] Add Compare Docs action and HTML dialog with paginated table in the Data Sync UI.
+
 ## New task
 When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
 
