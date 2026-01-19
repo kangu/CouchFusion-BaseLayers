@@ -55,6 +55,14 @@ Use inline discrete spinners for loading status on each of the tables.
 - [x] Implement compare-docs server endpoint with search + pagination and status counts.
 - [x] Add Compare Docs action and HTML dialog with paginated table in the Data Sync UI.
 
+## New tasks
+- Add per-document sync up/down endpoints with safe/force strategies.
+- Expose sync actions in the Compare Docs dialog.
+
+## Progress
+- [x] Implement sync-up/down endpoints with safe vs force conflict handling.
+- [x] Add per-document sync actions with status feedback in the comparison dialog.
+
 ## New task
 When the remote host username and password are set on the Datasync page show a banner at the top for the host and a refresh button to the right and only expand to full layout with input boxes under an edit link.
 
