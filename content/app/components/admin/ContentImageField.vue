@@ -320,10 +320,10 @@ const normalizeFolderName = (value?: string | null) => {
 
 const defaultFolder = computed(() => {
     const publicFolder = normalizeFolderName(runtimeConfig.public?.imagekit?.folder);
-    const privateFolder = normalizeFolderName(
-        (runtimeConfig as Record<string, any>)?.imagekit?.folder,
-    );
-    return publicFolder ?? privateFolder;
+    const serverFolder =
+        import.meta.server &&
+        normalizeFolderName((runtimeConfig as Record<string, any>)?.imagekit?.folder);
+    return publicFolder ?? serverFolder;
 });
 
 const folderHint = computed(() => {
@@ -366,7 +366,12 @@ const canShowAll = computed(() => {
     );
 });
 
-const normalizeFolder = (value: string) => value.replace(/^\/+/, "");
+const normalizeFolder = (value: unknown) => {
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value.replace(/^\/+/, "");
+};
 
 const isImageKitPath = (value?: string | null) => {
     if (!value) {
@@ -380,7 +385,7 @@ const isImageKitPath = (value?: string | null) => {
     return normalizedValue.startsWith(expectedFolder);
 };
 
-const ensureAbsoluteUrl = (value?: string | null) => {
+function ensureAbsoluteUrl(value?: string | null) {
     if (!value) {
         return "";
     }
@@ -394,7 +399,7 @@ const ensureAbsoluteUrl = (value?: string | null) => {
     }
 
     return buildPreviewUrl(value);
-};
+}
 
 watch(
     () => props.modelValue,
@@ -411,7 +416,7 @@ watch(
     { immediate: true },
 );
 
-const buildPreviewUrl = (filePath?: string) => {
+function buildPreviewUrl(filePath?: string) {
     if (!filePath) {
         return "";
     }
@@ -433,7 +438,7 @@ const buildPreviewUrl = (filePath?: string) => {
         urlEndpoint.value || undefined,
     );
     return resolved;
-};
+}
 
 const commitValue = () => {
     error.value = null;

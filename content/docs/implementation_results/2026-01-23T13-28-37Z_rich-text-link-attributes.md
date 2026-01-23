@@ -8,6 +8,10 @@
 - Replaced browser prompts with an in-editor popover that edits URL/target/rel/download together and applies them in one action (target now uses a dropdown with common values).
 - Extended rich-text sanitization to allow the `download` attribute and to preserve user-provided `target`/`rel`, auto-appending `noopener noreferrer` only when `target="_blank"` is present without a safe `rel`.
 - Normalized empty `download` inputs by removing the attribute post-sanitization.
+- Disabled StarterKit’s built-in link to avoid duplicate extension warnings now that a custom EnhancedLink is used.
+- Adjusted ImageKit folder resolution to avoid client-side runtimeConfig access to private keys (InlineLiveEditor warning).
+- Hardened folder normalization in `ContentImageField` to tolerate non-string values and prevent runtime `replace` errors when checking ImageKit paths.
+- Converted `ensureAbsoluteUrl`/`buildPreviewUrl` to hoisted functions to avoid TDZ errors when the watcher runs immediately.
 
 # Verification
 - Opened a rich text field, added a link, and set `target=_blank`, `rel=ugc`, and `download=brochure.pdf`; saved content retained all attributes and rendered with `rel="ugc noopener noreferrer"` and `download="brochure.pdf"`.

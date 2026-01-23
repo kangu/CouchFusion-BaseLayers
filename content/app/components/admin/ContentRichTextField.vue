@@ -337,6 +337,7 @@ const createEditor = () => {
                 heading: {
                     levels: [1, 2, 3],
                 },
+                link: false,
             }),
             EnhancedLink.configure({
                 openOnClick: false,
