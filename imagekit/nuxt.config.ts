@@ -16,6 +16,7 @@ export default defineNuxtConfig({
       ),
     },
     fileURLToPath(new URL("./plugins/lazy", import.meta.url)),
+    fileURLToPath(new URL("./plugins/lazy-background", import.meta.url)),
   ],
 
   runtimeConfig: {
