@@ -5,6 +5,7 @@
 
 # Changes
 - Updated the link command prompt to capture `href` plus optional `target`, `rel`, and `download`, prefilling existing values and unsetting when URL is cleared.
+- Replaced browser prompts with an in-editor popover that edits URL/target/rel/download together and applies them in one action (target now uses a dropdown with common values).
 - Extended rich-text sanitization to allow the `download` attribute and to preserve user-provided `target`/`rel`, auto-appending `noopener noreferrer` only when `target="_blank"` is present without a safe `rel`.
 - Normalized empty `download` inputs by removing the attribute post-sanitization.
 

@@ -27,6 +27,82 @@
         <p v-if="description" class="rich-text-field__description">
             {{ description }}
         </p>
+
+        <div
+            v-if="isLinkPopoverOpen"
+            class="rich-text-field__popover-backdrop"
+            @click.stop.prevent="closeLinkPopover"
+        >
+            <div
+                class="rich-text-field__popover"
+                @click.stop
+            >
+                <h3 class="rich-text-field__popover-title">
+                    Edit Link
+                </h3>
+                <div class="rich-text-field__form">
+                    <label class="rich-text-field__label">
+                        URL
+                        <input
+                            ref="linkUrlInputRef"
+                            v-model="linkForm.href"
+                            class="rich-text-field__input"
+                            type="text"
+                            placeholder="https://example.com"
+                        />
+                    </label>
+                    <label class="rich-text-field__label">
+                        Target
+                        <select
+                            v-model="linkForm.target"
+                            class="rich-text-field__input"
+                        >
+                            <option
+                                v-for="option in linkTargetOptions"
+                                :key="option || 'default'"
+                                :value="option"
+                            >
+                                {{ option || "Default" }}
+                            </option>
+                        </select>
+                    </label>
+                    <label class="rich-text-field__label">
+                        rel
+                        <input
+                            v-model="linkForm.rel"
+                            class="rich-text-field__input"
+                            type="text"
+                            placeholder="noopener noreferrer"
+                        />
+                    </label>
+                    <label class="rich-text-field__label">
+                        Download filename
+                        <input
+                            v-model="linkForm.download"
+                            class="rich-text-field__input"
+                            type="text"
+                            placeholder="brochure.pdf"
+                        />
+                    </label>
+                </div>
+                <div class="rich-text-field__actions">
+                    <button
+                        type="button"
+                        class="rich-text-field__button-secondary"
+                        @click="closeLinkPopover"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="rich-text-field__button-primary"
+                        @click="applyLinkForm"
+                    >
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -69,6 +145,16 @@ const placeholder = computed(
     () => props.propDefinition?.placeholder ?? "Start typing…",
 );
 const description = computed(() => props.propDefinition?.description);
+
+const isLinkPopoverOpen = ref(false);
+const linkForm = ref({
+    href: "",
+    target: "",
+    rel: "",
+    download: "",
+});
+const linkUrlInputRef = ref<HTMLInputElement | null>(null);
+const linkTargetOptions = ["", "_self", "_blank", "_parent", "_top"];
 
 let updateTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -191,55 +277,16 @@ const toolbarActions = computed(() => [
         command: () => {
             if (!editorInstance.value) return;
             const existing = editorInstance.value.getAttributes("link") ?? {};
-            const previousUrl = existing?.href ?? "";
-            const url = window.prompt("Enter URL", previousUrl);
-            if (url === null) {
-                return;
-            }
-            const normalizedUrl = url.trim();
-            runEditorCommand((ed) => {
-                if (normalizedUrl === "") {
-                    ed.chain().focus().extendMarkRange("link").unsetLink().run();
-                } else {
-                    const targetPrompt = window.prompt(
-                        'Target (_self, _blank, _parent, _top). Leave blank for default.',
-                        existing?.target ?? "",
-                    );
-                    if (targetPrompt === null) {
-                        return;
-                    }
-                    const relPrompt = window.prompt(
-                        "rel attribute (space separated). Leave blank for default.",
-                        existing?.rel ?? "",
-                    );
-                    if (relPrompt === null) {
-                        return;
-                    }
-                    const downloadPrompt = window.prompt(
-                        "Download filename (optional). Leave blank to omit.",
-                        existing?.download ?? "",
-                    );
-                    if (downloadPrompt === null) {
-                        return;
-                    }
-
-                    const target = targetPrompt.trim();
-                    const rel = relPrompt.trim();
-                    const download = downloadPrompt.trim();
-
-                    const payload: Record<string, string> = { href: normalizedUrl };
-                    if (target) {
-                        payload.target = target;
-                    }
-                    if (rel) {
-                        payload.rel = rel;
-                    }
-                    if (download) {
-                        payload.download = download;
-                    }
-
-                    ed.chain().focus().extendMarkRange("link").setLink(payload).run();
-                }
+            linkForm.value = {
+                href: existing?.href ?? "",
+                target: existing?.target ?? "",
+                rel: existing?.rel ?? "",
+                download: existing?.download ?? "",
+            };
+            isLinkPopoverOpen.value = true;
+            requestAnimationFrame(() => {
+                linkUrlInputRef.value?.focus();
+                linkUrlInputRef.value?.select();
             });
         },
         isActive: () => editorInstance.value?.isActive("link"),
@@ -307,6 +354,33 @@ const createEditor = () => {
             emitSanitizedChange(editor.getHTML());
         },
     });
+};
+
+const applyLinkForm = () => {
+    if (!editorInstance.value) return;
+    const href = linkForm.value.href.trim();
+    const target = linkForm.value.target.trim();
+    const rel = linkForm.value.rel.trim();
+    const download = linkForm.value.download.trim();
+
+    runEditorCommand((ed) => {
+        if (!href) {
+            ed.chain().focus().extendMarkRange("link").unsetLink().run();
+            return;
+        }
+        const payload: Record<string, string> = { href };
+        if (target) payload.target = target;
+        if (rel) payload.rel = rel;
+        if (download) payload.download = download;
+
+        ed.chain().focus().extendMarkRange("link").setLink(payload).run();
+    });
+
+    isLinkPopoverOpen.value = false;
+};
+
+const closeLinkPopover = () => {
+    isLinkPopoverOpen.value = false;
 };
 
 onMounted(async () => {
@@ -445,5 +519,86 @@ onBeforeUnmount(() => {
 .rich-text-field__description {
     color: #6b7280;
     font-size: 0.85rem;
+}
+
+.rich-text-field__popover-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.rich-text-field__popover {
+    width: min(440px, 92vw);
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.14);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.rich-text-field__popover-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.rich-text-field__form {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.rich-text-field__label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+    color: #111827;
+}
+
+.rich-text-field__input {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.95rem;
+    outline: none;
+}
+
+.rich-text-field__input:focus {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
+}
+
+.rich-text-field__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.rich-text-field__button-secondary,
+.rich-text-field__button-primary {
+    border-radius: 6px;
+    padding: 0.45rem 0.8rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.rich-text-field__button-secondary {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+    color: #111827;
+}
+
+.rich-text-field__button-primary {
+    background: #111827;
+    border-color: #111827;
+    color: #fff;
 }
 </style>
