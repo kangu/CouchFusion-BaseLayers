@@ -1371,7 +1371,13 @@
                                     schema,
                                     value,
                                 )"
-                            :json-value="formatJsonValue(getArrayItemObjectValue(prop.key, arrayItemEntry.index, field))"
+                            :json-value="formatJsonValue(
+                                getArrayItemObjectValue(
+                                    prop.key,
+                                    arrayItemEntry.index,
+                                    field,
+                                ),
+                            )"
                             :json-rows="4"
                             json-highlight-type="json"
                         />

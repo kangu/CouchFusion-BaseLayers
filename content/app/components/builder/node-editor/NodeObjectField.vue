@@ -158,6 +158,386 @@
                         "
                     />
                 </template>
+                <template v-else-if="field.type === 'jsonarray'">
+                    <div
+                        class="node-panel__array node-panel__array--nested"
+                        :data-collapsed="collapsedArrays[field.key]"
+                    >
+                        <div
+                            class="node-panel__array-header node-panel__array-header--nested"
+                        >
+                            <button
+                                type="button"
+                                class="node-panel__array-toggle"
+                                :data-state="
+                                    collapsedArrays[field.key]
+                                        ? 'collapsed'
+                                        : 'expanded'
+                                "
+                                @click="toggleArray(field.key)"
+                            >
+                                {{
+                                    collapsedArrays[field.key]
+                                        ? 'Expand'
+                                        : 'Collapse'
+                                }}
+                                ({{ getArrayItems(field).length }})
+                            </button>
+                            <button
+                                type="button"
+                                class="node-panel__array-add"
+                                @click="addArrayItem(field)"
+                            >
+                                <span
+                                    class="node-panel__array-add-icon"
+                                    aria-hidden="true"
+                                    >+</span
+                                >
+                            </button>
+                        </div>
+                        <div
+                            v-for="(arrayItem, index) in getArrayItems(field)"
+                            :key="`${field.key}-${index}`"
+                            class="node-panel__array-item node-panel__array-item--nested"
+                            v-show="!collapsedArrays[field.key]"
+                        >
+                            <div
+                                class="node-panel__array-fields node-panel__array-fields--nested"
+                            >
+                                <label
+                                    v-for="arrayField in filterVisibleFields(
+                                        field.items,
+                                        arrayItem,
+                                    )"
+                                    :key="`${field.key}-${arrayField.key}-${index}`"
+                                    :class="[
+                                        'node-panel__field',
+                                        'node-panel__field--nested',
+                                        {
+                                            'node-panel__field--match':
+                                                shouldHighlightSelect(
+                                                    arrayField,
+                                                    arrayItem?.[
+                                                        arrayField.key
+                                                    ],
+                                                ),
+                                        },
+                                    ]"
+                                >
+                                    <span>{{ arrayField.label }}</span>
+                                    <template
+                                        v-if="
+                                            arrayField.type === 'textarea'
+                                        "
+                                    >
+                                        <div
+                                            class="node-panel__input-wrap"
+                                        >
+                                            <div
+                                                v-if="
+                                                    shouldHighlightText(
+                                                        arrayItem?.[
+                                                            arrayField.key
+                                                        ],
+                                                        arrayField.type,
+                                                    )
+                                                "
+                                                class="node-panel__input-highlight node-panel__input-highlight--multiline"
+                                                v-html="
+                                                    getHighlightMarkup(
+                                                        arrayItem?.[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                                "
+                                                aria-hidden="true"
+                                            />
+                                            <textarea
+                                                v-model="
+                                                    arrayItem[
+                                                        arrayField.key
+                                                    ]
+                                                "
+                                                rows="3"
+                                                @input="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                            {
+                                                                debounce: true,
+                                                            },
+                                                        )
+                                                "
+                                                @change="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                        )
+                                                "
+                                                @blur="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                        )
+                                                "
+                                                @scroll="syncHighlightScroll"
+                                            />
+                                        </div>
+                                    </template>
+                                    <template
+                                        v-else-if="
+                                            arrayField.type === 'boolean'
+                                        "
+                                    >
+                                        <span class="node-panel__checkbox">
+                                            <input
+                                                type="checkbox"
+                                                class="node-panel__checkbox-input"
+                                                :checked="
+                                                    Boolean(
+                                                        arrayItem?.[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                                "
+                                                @change="
+                                                    (event: Event) =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            (
+                                                                event.target as HTMLInputElement
+                                                            ).checked,
+                                                        )
+                                                "
+                                            />
+                                            <span
+                                                class="node-panel__checkbox-box"
+                                                aria-hidden="true"
+                                            >
+                                                <svg
+                                                    viewBox="0 0 20 20"
+                                                    fill="none"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                >
+                                                    <path
+                                                        d="M5 10.5L8.5 14L15 6"
+                                                        stroke="currentColor"
+                                                        stroke-width="2"
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                    />
+                                                </svg>
+                                            </span>
+                                        </span>
+                                    </template>
+                                    <template
+                                        v-else-if="
+                                            arrayField.type === 'number'
+                                        "
+                                    >
+                                        <input
+                                            v-model.number="
+                                                arrayItem[arrayField.key]
+                                            "
+                                            type="number"
+                                            @input="
+                                                () =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        arrayItem[
+                                                            arrayField.key
+                                                        ],
+                                                        {
+                                                            debounce: true,
+                                                        },
+                                                    )
+                                            "
+                                            @change="
+                                                () =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        arrayItem[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                            "
+                                            @blur="
+                                                () =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        arrayItem[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                            "
+                                        />
+                                    </template>
+                                    <template
+                                        v-else-if="
+                                            arrayField.type === 'select'
+                                        "
+                                    >
+                                        <select
+                                            v-model="
+                                                arrayItem[arrayField.key]
+                                            "
+                                            @change="
+                                                () =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        arrayItem[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                            "
+                                        >
+                                            <option disabled value="">
+                                                Select
+                                            </option>
+                                            <option
+                                                v-for="option in arrayField.options ||
+                                                []"
+                                                :key="option.value"
+                                                :value="option.value"
+                                            >
+                                                {{ option.label }}
+                                            </option>
+                                        </select>
+                                    </template>
+                                    <template
+                                        v-else-if="arrayField.ui?.component"
+                                    >
+                                        <component
+                                            :is="arrayField.ui.component"
+                                            :model-value="
+                                                arrayItem[arrayField.key]
+                                            "
+                                            :prop-definition="arrayField"
+                                            :field-context="
+                                                fieldContext(arrayField)
+                                            "
+                                            @update:modelValue="
+                                                (value: unknown) =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        value,
+                                                        { debounce: true },
+                                                    )
+                                            "
+                                        />
+                                    </template>
+                                    <template v-else>
+                                        <div
+                                            class="node-panel__input-wrap"
+                                        >
+                                            <div
+                                                v-if="
+                                                    shouldHighlightText(
+                                                        arrayItem?.[
+                                                            arrayField.key
+                                                        ],
+                                                        arrayField.type,
+                                                    )
+                                                "
+                                                class="node-panel__input-highlight node-panel__input-highlight--single"
+                                                v-html="
+                                                    getHighlightMarkup(
+                                                        arrayItem?.[
+                                                            arrayField.key
+                                                        ],
+                                                    )
+                                                "
+                                                aria-hidden="true"
+                                            />
+                                            <input
+                                                v-model="
+                                                    arrayItem[arrayField.key]
+                                                "
+                                                type="text"
+                                                @input="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                            {
+                                                                debounce: true,
+                                                            },
+                                                        )
+                                                "
+                                                @change="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                        )
+                                                "
+                                                @blur="
+                                                    () =>
+                                                        updateArrayField(
+                                                            field,
+                                                            index,
+                                                            arrayField,
+                                                            arrayItem[
+                                                                arrayField.key
+                                                            ],
+                                                        )
+                                                "
+                                            />
+                                        </div>
+                                    </template>
+                                </label>
+                                <div
+                                    class="node-panel__array-actions node-panel__array-actions--nested"
+                                >
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-remove"
+                                        @click="
+                                            removeArrayItem(field, index)
+                                        "
+                                    >
+                                        Remove item
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
                 <template v-else>
                     <div class="node-panel__input-wrap">
                         <div
@@ -227,7 +607,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 
 type FieldContext = (field: ComponentArrayItemField) => Record<string, any>;
@@ -292,6 +672,8 @@ const visibleFields = computed(() =>
     props.filterVisibleFields(props.schema.fields, objectValue.value),
 );
 
+const collapsedArrays = ref<Record<string, boolean>>({});
+
 const highlightType = computed(
     () => props.jsonHighlightType ?? props.schema.type,
 );
@@ -315,5 +697,64 @@ const handleJsonInput = (event: Event) => {
 const handleJsonChange = (event: Event) => {
     const target = event.target as HTMLTextAreaElement;
     props.onJsonChange(props.schema, target.value);
+};
+
+const getArrayItems = (field: ComponentArrayItemField) => {
+    const current = objectValue.value?.[field.key];
+    return Array.isArray(current) ? current : [];
+};
+
+const toggleArray = (key: string) => {
+    collapsedArrays.value[key] = !collapsedArrays.value[key];
+};
+
+const addArrayItem = (field: ComponentArrayItemField) => {
+    const next = [...getArrayItems(field), buildArrayItem(field)];
+    if (objectValue.value) {
+        objectValue.value[field.key] = next;
+    }
+    applyFieldChange(field, next);
+};
+
+const removeArrayItem = (field: ComponentArrayItemField, index: number) => {
+    const next = [...getArrayItems(field)];
+    next.splice(index, 1);
+    if (objectValue.value) {
+        objectValue.value[field.key] = next;
+    }
+    applyFieldChange(field, next);
+};
+
+const updateArrayField = (
+    field: ComponentArrayItemField,
+    index: number,
+    arrayField: ComponentArrayItemField,
+    value: unknown,
+    options?: { debounce?: boolean },
+) => {
+    const next = [...getArrayItems(field)];
+    const item = { ...(next[index] || {}) };
+    item[arrayField.key] = value;
+    next[index] = item;
+    if (objectValue.value) {
+        objectValue.value[field.key] = next;
+    }
+    applyFieldChange(field, next, options);
+};
+
+const buildArrayItem = (field: ComponentArrayItemField) => {
+    const item: Record<string, unknown> = {};
+    (field.items || []).forEach((entry) => {
+        if (entry.type === "number") {
+            item[entry.key] = 0;
+            return;
+        }
+        if (entry.type === "boolean") {
+            item[entry.key] = false;
+            return;
+        }
+        item[entry.key] = "";
+    });
+    return item;
 };
 </script>

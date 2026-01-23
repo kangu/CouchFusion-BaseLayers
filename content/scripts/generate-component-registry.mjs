@@ -1648,7 +1648,7 @@ const applyBuilderMeta = (definition, meta) => {
       if (!target) return
       if (i === segments.length - 1) {
         Object.assign(target, payload)
-        return
+        return target
       }
       current = target
     }
@@ -1671,7 +1671,15 @@ const applyBuilderMeta = (definition, meta) => {
     if (payload.default !== undefined) {
       normalizedPayload.default = payload.default
     }
-    applyToPath(path, normalizedPayload)
+    if (Object.prototype.hasOwnProperty.call(payload, 'ui')) {
+      normalizedPayload.ui = payload.ui
+    }
+    const target = applyToPath(path, normalizedPayload)
+    if (target && Object.prototype.hasOwnProperty.call(normalizedPayload, 'ui')) {
+      if (normalizedPayload.ui === null) {
+        delete target.ui
+      }
+    }
   })
 }
 

@@ -144,7 +144,7 @@
                         (propDraft[prop.key] = value)"
                     :on-json-change="(_, value) =>
                         applyProp(prop.key, value, 'json')"
-                    :json-value="propDraft[prop.key] ?? ''"
+                    :json-value="formatJsonValue(propDraft[prop.key])"
                     :json-rows="6"
                     :json-highlight-type="prop.type"
                 />
