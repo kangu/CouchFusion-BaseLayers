@@ -25,7 +25,7 @@ const RICH_TEXT_ALLOWED_TAGS = [
   'a'
 ] as const
 
-const RICH_TEXT_ALLOWED_ATTRIBUTES = ['class', 'href', 'title', 'target', 'rel'] as const
+const RICH_TEXT_ALLOWED_ATTRIBUTES = ['class', 'href', 'title', 'target', 'rel', 'download'] as const
 
 const DOMPURIFY_CONFIG = {
   ALLOWED_TAGS: [...RICH_TEXT_ALLOWED_TAGS],
@@ -45,10 +45,35 @@ const getBrowserDomPurify = (): DOMPurifyInstance | null => {
     browserDomPurify.setConfig?.(DOMPURIFY_CONFIG)
     browserDomPurify.addHook?.('afterSanitizeAttributes', (node) => {
       if (node.tagName === 'A') {
-        if (!node.getAttribute('target')) {
+        const target = node.getAttribute('target')
+        const rel = node.getAttribute('rel')
+        const hasTarget = Boolean(target && target.trim().length > 0)
+
+        if (!hasTarget) {
           node.setAttribute('target', '_blank')
         }
-        node.setAttribute('rel', 'noopener noreferrer')
+
+        const shouldForceSafeRel = !rel && node.getAttribute('target') === '_blank'
+        const relTokens = new Set(
+          (rel ?? '')
+            .split(/\s+/)
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+        )
+
+        if (node.getAttribute('target') === '_blank') {
+          relTokens.add('noopener')
+          relTokens.add('noreferrer')
+        }
+
+        if (shouldForceSafeRel || relTokens.size > 0) {
+          node.setAttribute('rel', Array.from(relTokens).join(' '))
+        }
+
+        const download = node.getAttribute('download')
+        if (download !== null && download.trim().length === 0) {
+          node.removeAttribute('download')
+        }
       }
     })
   }

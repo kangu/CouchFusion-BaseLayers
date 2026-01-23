@@ -190,17 +190,55 @@ const toolbarActions = computed(() => [
         label: "Link",
         command: () => {
             if (!editorInstance.value) return;
-            const previousUrl =
-                editorInstance.value.getAttributes("link")?.href ?? "";
+            const existing = editorInstance.value.getAttributes("link") ?? {};
+            const previousUrl = existing?.href ?? "";
             const url = window.prompt("Enter URL", previousUrl);
             if (url === null) {
                 return;
             }
+            const normalizedUrl = url.trim();
             runEditorCommand((ed) => {
-                if (url === "") {
+                if (normalizedUrl === "") {
                     ed.chain().focus().extendMarkRange("link").unsetLink().run();
                 } else {
-                    ed.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+                    const targetPrompt = window.prompt(
+                        'Target (_self, _blank, _parent, _top). Leave blank for default.',
+                        existing?.target ?? "",
+                    );
+                    if (targetPrompt === null) {
+                        return;
+                    }
+                    const relPrompt = window.prompt(
+                        "rel attribute (space separated). Leave blank for default.",
+                        existing?.rel ?? "",
+                    );
+                    if (relPrompt === null) {
+                        return;
+                    }
+                    const downloadPrompt = window.prompt(
+                        "Download filename (optional). Leave blank to omit.",
+                        existing?.download ?? "",
+                    );
+                    if (downloadPrompt === null) {
+                        return;
+                    }
+
+                    const target = targetPrompt.trim();
+                    const rel = relPrompt.trim();
+                    const download = downloadPrompt.trim();
+
+                    const payload: Record<string, string> = { href: normalizedUrl };
+                    if (target) {
+                        payload.target = target;
+                    }
+                    if (rel) {
+                        payload.rel = rel;
+                    }
+                    if (download) {
+                        payload.download = download;
+                    }
+
+                    ed.chain().focus().extendMarkRange("link").setLink(payload).run();
                 }
             });
         },
@@ -214,6 +252,37 @@ const createEditor = () => {
         return;
     }
 
+    const EnhancedLink = mods.Link.extend({
+        addAttributes() {
+            return {
+                ...this.parent?.(),
+                target: {
+                    default: null,
+                    parseHTML: (element: HTMLElement) =>
+                        element.getAttribute("target"),
+                    renderHTML: (attributes: Record<string, any>) =>
+                        attributes.target ? { target: attributes.target } : {},
+                },
+                rel: {
+                    default: null,
+                    parseHTML: (element: HTMLElement) =>
+                        element.getAttribute("rel"),
+                    renderHTML: (attributes: Record<string, any>) =>
+                        attributes.rel ? { rel: attributes.rel } : {},
+                },
+                download: {
+                    default: null,
+                    parseHTML: (element: HTMLElement) =>
+                        element.getAttribute("download"),
+                    renderHTML: (attributes: Record<string, any>) =>
+                        attributes.download
+                            ? { download: attributes.download }
+                            : {},
+                },
+            };
+        },
+    });
+
     editor.value = new mods.Editor({
         content: lastEmitted.value || "<p></p>",
         extensions: [
@@ -222,7 +291,7 @@ const createEditor = () => {
                     levels: [1, 2, 3],
                 },
             }),
-            mods.Link.configure({
+            EnhancedLink.configure({
                 openOnClick: false,
                 autolink: false,
                 linkOnPaste: false,
