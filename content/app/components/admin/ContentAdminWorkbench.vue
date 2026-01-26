@@ -134,8 +134,6 @@ const saveError = ref<string | null>(null);
 const lastSavedAt = ref<string | null>(null);
 const selectedHistoryId = ref<string | null>(null);
 const latestDocument = ref<MinimalContentDocument | null>(null);
-const editorBodyRef = ref<HTMLElement | null>(null);
-const isCondensed = ref(false);
 const hasUnsavedChanges = ref(false);
 const lastSavedSnapshot = ref<string | null>(null);
 
@@ -182,6 +180,8 @@ const isHeaderPinned = ref(false);
 const headerPlaceholderHeight = ref(0);
 const headerPosition = reactive({ top: "0px", left: "0px", width: "auto" });
 const hasLoadedInitialDocument = ref(false);
+const isHistoryMenuOpen = ref(false);
+const historyMenuRef = ref<HTMLElement | null>(null);
 
 const headerFixedStyles = computed(() => {
     if (!isHeaderPinned.value) {
@@ -198,7 +198,6 @@ const headerFixedStyles = computed(() => {
 
 let headerObserver: IntersectionObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let editorBodyObserver: ResizeObserver | null = null;
 
 const updateUnsavedState = (value: boolean) => {
     if (hasUnsavedChanges.value === value) {
@@ -254,7 +253,6 @@ const lastUpdatedDisplay = computed(() =>
         lastSavedAt.value,
     ),
 );
-const condensedHistoryValue = computed(() => selectedHistoryId.value ?? "");
 const pageListId = "content-admin-pages-datalist";
 
 const searchPlaceholder = computed(() => {
@@ -318,6 +316,7 @@ watch(
 watch(
     () => selectedSummary.value?.path,
     (path) => {
+        closeHistoryMenu();
         if (!path) {
             emit("page-selected", null);
             return;
@@ -345,15 +344,6 @@ const updateHeaderMeasurements = () => {
     headerPlaceholderHeight.value = headerEl.offsetHeight;
 };
 
-const updateCondensedState = () => {
-    const element = editorBodyRef.value;
-    if (!element) {
-        return;
-    }
-    const { width } = element.getBoundingClientRect();
-    isCondensed.value = width < 1000;
-};
-
 const handleIntersection: IntersectionObserverCallback = (entries) => {
     const entry = entries[0];
     if (!entry) {
@@ -376,16 +366,32 @@ const handleIntersection: IntersectionObserverCallback = (entries) => {
     }
 };
 
+const handleHistoryMenuOutsideClick = (event: MouseEvent) => {
+    if (!isHistoryMenuOpen.value) {
+        return;
+    }
+    const target = event.target as Node | null;
+    if (historyMenuRef.value && target && !historyMenuRef.value.contains(target)) {
+        closeHistoryMenu();
+    }
+};
+
+const handleHistoryMenuEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+        closeHistoryMenu();
+    }
+};
+
 onMounted(() => {
     if (typeof window === "undefined") {
         return;
     }
 
     updateHeaderMeasurements();
-    updateCondensedState();
 
     window.addEventListener("resize", updateHeaderMeasurements);
-    window.addEventListener("resize", updateCondensedState);
+    window.addEventListener("click", handleHistoryMenuOutsideClick);
+    window.addEventListener("keydown", handleHistoryMenuEscape);
 
     if ("ResizeObserver" in window) {
         resizeObserver = new ResizeObserver(() => updateHeaderMeasurements());
@@ -398,18 +404,6 @@ onMounted(() => {
             resizeObserver.observe(editorCardRef.value);
         }
 
-        editorBodyObserver = new ResizeObserver(() => updateCondensedState());
-
-        if (editorBodyRef.value) {
-            editorBodyObserver.observe(editorBodyRef.value);
-        } else {
-            nextTick(() => {
-                if (editorBodyRef.value) {
-                    editorBodyObserver?.observe(editorBodyRef.value);
-                    updateCondensedState();
-                }
-            });
-        }
     }
 
     if (headerSentinelRef.value) {
@@ -423,12 +417,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", updateHeaderMeasurements);
-        window.removeEventListener("resize", updateCondensedState);
+        window.removeEventListener("click", handleHistoryMenuOutsideClick);
+        window.removeEventListener("keydown", handleHistoryMenuEscape);
     }
 
     headerObserver?.disconnect();
     resizeObserver?.disconnect();
-    editorBodyObserver?.disconnect();
 });
 
 function formatTimestamp(
@@ -1099,13 +1093,21 @@ async function handleSelectHistory(entryId: string): Promise<void> {
     }
 }
 
-async function handleCondensedHistoryChange(event: Event): Promise<void> {
-    const target = event.target as HTMLSelectElement | null;
-    if (!target) {
+const closeHistoryMenu = () => {
+    isHistoryMenuOpen.value = false;
+};
+
+const toggleHistoryMenu = () => {
+    if (!selectedSummary.value) {
         return;
     }
-    await handleSelectHistory(target.value ?? "");
-}
+    isHistoryMenuOpen.value = !isHistoryMenuOpen.value;
+};
+
+const handleHistoryMenuSelection = async (historyId: string): Promise<void> => {
+    await handleSelectHistory(historyId);
+    closeHistoryMenu();
+};
 
 async function handleDeletePage(): Promise<void> {
     if (isDeletePending.value || !selectedSummary.value) {
@@ -1368,82 +1370,15 @@ defineExpose({
                             />
                         </svg>
                     </button>
-                </div>
-            </div>
-
-            <div
-                v-if="isHeaderPinned"
-                :style="{ height: `${headerPlaceholderHeight}px` }"
-                aria-hidden="true"
-            />
-
-            <div
-                ref="editorBodyRef"
-                class="content-admin-workbench__editor-body"
-            >
-                <div
-                    v-if="isCondensed"
-                    class="content-admin-workbench__condensed-history"
-                >
-                    <div class="condensed-history__header">
-                        <label
-                            class="condensed-history__label"
-                            for="condensed-history-select"
-                        >
-                            <span class="sidebar__title">History</span>
-                        </label>
-                    </div>
-
-                    <div v-if="historyError" class="sidebar__error">
-                        {{ historyError }}
-                    </div>
-                    <div v-else-if="isHistoryLoading" class="sidebar__hint">
-                        Loading history…
-                    </div>
-                    <div v-else class="condensed-history__control">
-                        <select
-                            id="condensed-history-select"
-                            :value="condensedHistoryValue"
-                            :disabled="
-                                isHistoryLoading || historyEntries.length === 0
-                            "
-                            @change="handleCondensedHistoryChange"
-                        >
-                            <option value="">Current version</option>
-                            <option
-                                v-for="entry in historyEntries"
-                                :key="entry.id"
-                                :value="entry.id"
-                            >
-                                {{ formatHistoryLabel(entry.timestamp) }}
-                            </option>
-                        </select>
-                        <p
-                            v-if="historyEntries.length === 0"
-                            class="sidebar__hint"
-                        >
-                            No history available yet.
-                        </p>
-                    </div>
-                </div>
-
-                <div
-                    v-if="!isCondensed"
-                    class="content-admin-workbench__editor-sidebar"
-                >
-                    <h2 class="sidebar__title">History</h2>
-                    <p class="sidebar__subtitle">Restore recent revisions.</p>
-
-                    <div v-if="historyError" class="sidebar__error">
-                        {{ historyError }}
-                    </div>
-
-                    <div class="sidebar__history">
+                    <div class="editor-header__history" ref="historyMenuRef">
                         <button
                             type="button"
-                            class="sidebar__history-item"
-                            :class="{ 'is-active': !selectedHistoryId }"
-                            @click="handleSelectHistory('')"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
+                            :disabled="!selectedSummary"
+                            :aria-expanded="isHistoryMenuOpen"
+                            aria-haspopup="menu"
+                            aria-label="Open history"
+                            @click="toggleHistoryMenu"
                         >
                             <svg
                                 class="content-admin-workbench__icon content-admin-workbench__icon--sm"
@@ -1456,48 +1391,75 @@ defineExpose({
                                     d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.65Z"
                                 />
                             </svg>
-                            <span>Current version</span>
                         </button>
-
-                        <div v-if="isHistoryLoading" class="sidebar__hint">
-                            Loading history…
-                        </div>
                         <div
-                            v-else-if="historyEntries.length === 0"
-                            class="sidebar__hint"
+                            v-if="isHistoryMenuOpen"
+                            class="editor-header__history-dropdown"
+                            role="menu"
                         >
-                            No history available yet.
-                        </div>
-                        <template v-else>
-                            <button
-                                v-for="entry in historyEntries"
-                                :key="entry.id"
-                                type="button"
-                                class="sidebar__history-item"
-                                :class="{
-                                    'is-active': entry.id === selectedHistoryId,
-                                }"
-                                @click="handleSelectHistory(entry.id)"
-                            >
-                                <svg
-                                    class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 24 24"
-                                    aria-hidden="true"
+                            <div class="history-menu">
+                                <div class="history-menu__header">
+                                    <span>History</span>
+                                </div>
+                                <div v-if="historyError" class="history-menu__error">
+                                    {{ historyError }}
+                                </div>
+                                <div
+                                    v-else-if="isHistoryLoading"
+                                    class="history-menu__hint"
                                 >
-                                    <path
-                                        fill="currentColor"
-                                        d="M12 5V2L8 6l4 4V7a6 6 0 0 1 6 6 6 6 0 0 1-4 5.66v2.1A8 8 0 0 0 20 13a8 8 0 0 0-8-8ZM6 11a6 6 0 0 1 4-5.66v-2.1A8 8 0 0 0 4 11a8 8 0 0 0 8 8v3l4-4-4-4v3a6 6 0 0 1-6-6Z"
-                                    />
-                                </svg>
-                                <span>{{
-                                    formatHistoryLabel(entry.timestamp)
-                                }}</span>
-                            </button>
-                        </template>
+                                    Loading history…
+                                </div>
+                                <div v-else class="history-menu__list" role="none">
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        class="history-menu__item"
+                                        :class="{
+                                            'is-active': !selectedHistoryId,
+                                        }"
+                                        @click="handleHistoryMenuSelection('')"
+                                    >
+                                        Current version
+                                    </button>
+                                    <template v-if="historyEntries.length">
+                                        <button
+                                            v-for="entry in historyEntries"
+                                            :key="entry.id"
+                                            type="button"
+                                            role="menuitem"
+                                            class="history-menu__item"
+                                            :class="{
+                                                'is-active':
+                                                    entry.id === selectedHistoryId,
+                                            }"
+                                            @click="
+                                                handleHistoryMenuSelection(entry.id)
+                                            "
+                                        >
+                                            {{ formatHistoryLabel(entry.timestamp) }}
+                                        </button>
+                                    </template>
+                                    <p
+                                        v-else
+                                        class="history-menu__hint"
+                                    >
+                                        No history available yet.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </div>
 
+            <div
+                v-if="isHeaderPinned"
+                :style="{ height: `${headerPlaceholderHeight}px` }"
+                aria-hidden="true"
+            />
+
+            <div class="content-admin-workbench__editor-body">
                 <div class="content-admin-workbench__editor-canvas">
                     <div v-if="saveError" class="editor-canvas__error">
                         {{ saveError }}
@@ -2257,160 +2219,86 @@ defineExpose({
     gap: 0.75rem;
 }
 
-.content-admin-workbench__editor-body {
+.editor-header__history {
+    position: relative;
+}
+
+.editor-header__history-button {
+    min-width: 2.5rem;
+}
+
+.editor-header__history-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1200;
+}
+
+.history-menu {
+    min-width: 220px;
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background-color: #ffffff;
+    box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.35);
     display: grid;
-    grid-template-columns: 1fr;
+    gap: 0.5rem;
+}
+
+.history-menu__header {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #111827;
+}
+
+.history-menu__list {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.history-menu__item {
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    background: #ffffff;
+    color: #111827;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.history-menu__item:hover {
+    border-color: #93c5fd;
+    color: #2563eb;
+    background-color: #f8fafc;
+}
+
+.history-menu__item.is-active {
+    border-color: #2563eb;
+    color: #2563eb;
+    background-color: #eff6ff;
+}
+
+.history-menu__hint {
+    font-size: 0.8125rem;
+    color: #6b7280;
+}
+
+.history-menu__error {
+    font-size: 0.875rem;
+    color: #dc2626;
+}
+
+.content-admin-workbench__editor-body {
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
     padding: 1.25rem;
-    container-type: inline-size;
-    container-name: workbench;
-}
-
-@container workbench (min-width: 1000px) {
-    .content-admin-workbench__editor-body {
-        grid-template-columns: minmax(240px, 280px) 1fr;
-    }
-
-    .content-admin-workbench__editor-sidebar {
-        display: block;
-        border-right: 1px solid #e5e7eb;
-        padding-right: 1.25rem;
-    }
-
-    .content-admin-workbench__condensed-history {
-        display: none;
-    }
-}
-
-.content-admin-workbench__editor-sidebar {
-    border-right: 1px solid #e5e7eb;
-    padding-right: 1.25rem;
-    display: none;
-}
-
-.content-admin-workbench__condensed-history {
-    display: block;
-    border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.condensed-history__header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.condensed-history__label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.condensed-history__control {
-    display: flex;
-    flex-direction: column;
-}
-
-.content-admin-workbench__condensed-history select {
-    width: 100%;
-    margin-top: 0.75rem;
-    border-radius: 0.5rem;
-    border: 1px solid #d1d5db;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    color: #111827;
-    background-color: #ffffff;
-}
-
-.content-admin-workbench__condensed-history select:disabled {
-    color: #9ca3af;
-    background-color: #f9fafb;
-}
-
-.content-admin-workbench__condensed-history .sidebar__hint {
-    margin-top: 0.5rem;
-}
-
-@container workbench (max-width: 999px) {
-    .content-admin-workbench__editor-body {
-        padding: 1rem;
-        grid-template-columns: 1fr;
-        grid-auto-rows: auto;
-    }
-
-    .content-admin-workbench__editor-body > * {
-        width: 100%;
-    }
-
-    .content-admin-workbench__editor-canvas {
-        gap: 0.75rem;
-        width: 100%;
-    }
-
-    .editor-canvas__workbench,
-    .builder-page,
-    .editor-canvas__placeholder {
-        width: 100%;
-        padding: 0 !important;
-    }
-}
-
-.sidebar__title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #111827;
-}
-
-.sidebar__subtitle {
-    margin-top: 0.25rem;
-    font-size: 0.875rem;
-    color: #6b7280;
-}
-
-.sidebar__hint {
-    margin-top: 0.75rem;
-    font-size: 0.875rem;
-    color: #6b7280;
-}
-
-.sidebar__error {
-    margin-top: 0.75rem;
-    border-radius: 0.5rem;
-    background-color: #fee2e2;
-    color: #b91c1c;
-    font-size: 0.875rem;
-    padding: 0.75rem 1rem;
-}
-
-.sidebar__history {
-    margin-top: 1rem;
-    display: grid;
-    gap: 0.5rem;
-}
-
-.sidebar__history-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-radius: 0.5rem;
-    border: 1px solid transparent;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    color: #374151;
-    transition: all 0.15s ease;
-    background-color: #f9fafb;
-}
-
-.sidebar__history-item:hover {
-    background-color: #eef2ff;
-    color: #1d4ed8;
-}
-
-.sidebar__history-item.is-active {
-    background-color: #e0e7ff;
-    border-color: #6366f1;
-    color: #1d4ed8;
 }
 
 .content-admin-workbench__editor-canvas {
