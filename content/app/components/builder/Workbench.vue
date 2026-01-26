@@ -919,14 +919,14 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
                 <label>
-                    <span>Page title</span>
+                    <span>Page title (internal)</span>
                     <input
                         v-model="pageConfig.title"
                         type="text"
                         placeholder="Page title"
                     />
                 </label>
-                <label>
+                <label class="builder-config__full">
                     <span>SEO title</span>
                     <input
                         v-model="pageConfig.seoTitle"
@@ -934,7 +934,7 @@ const handleSaveDebugClick = () => {
                         placeholder="SEO title"
                     />
                 </label>
-                <label class="builder-config__textarea">
+                <label class="builder-config__textarea builder-config__full">
                     <span>SEO description</span>
                     <textarea
                         v-model="pageConfig.seoDescription"
@@ -1141,6 +1141,10 @@ const handleSaveDebugClick = () => {
     border-radius: 4px;
     border: 1px solid #cbd5f5;
     font: inherit;
+}
+
+.builder-config__full {
+  grid-column: 1 / -1;
 }
 
 .builder-config__textarea textarea {
