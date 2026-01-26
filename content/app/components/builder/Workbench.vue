@@ -967,35 +967,6 @@ const handleSaveDebugClick = () => {
                 </div>
             </div> -->
 
-            <div class="builder-add">
-                <button type="button" @click="isRootPickerOpen = true">
-                    Add component
-                </button>
-                <ComponentPickerDialog
-                    :is-open="isRootPickerOpen"
-                    :component-options="componentOptions"
-                    @close="isRootPickerOpen = false"
-                    @select="addRootComponent"
-                />
-                <!-- <button type="button" @click="addRootText">
-                    Add text node
-                </button> -->
-                <!-- <button type="button" class="builder-load" @click="handleLoadDebugClick">
-          Load Debug Data
-        </button>
-        <button type="button" class="builder-save" @click="handleSaveDebugClick">
-          Save Debug Data
-        </button> -->
-                <input
-                    ref="importInputRef"
-                    type="file"
-                    accept="application/json"
-                    hidden
-                    data-test="debug-import"
-                    @change="handleDebugFile"
-                />
-            </div>
-
             <!-- <div class="builder-layout">
                 <label>
                     <span>Spacing preset (dummy for now)</span>
@@ -1013,15 +984,35 @@ const handleSaveDebugClick = () => {
         </section>
 
         <section class="builder-tree">
-            <div class="builder-search builder-tree__search">
-                <label>
-                    <span>Search components</span>
-                    <input
-                        v-model="searchQuery"
-                        type="search"
-                        placeholder="Search prop values..."
+            <div class="builder-tree__controls">
+                <div class="builder-add">
+                    <button type="button" @click="isRootPickerOpen = true">
+                        + Section
+                    </button>
+                    <ComponentPickerDialog
+                        :is-open="isRootPickerOpen"
+                        :component-options="componentOptions"
+                        @close="isRootPickerOpen = false"
+                        @select="addRootComponent"
                     />
-                </label>
+                    <input
+                        ref="importInputRef"
+                        type="file"
+                        accept="application/json"
+                        hidden
+                        data-test="debug-import"
+                        @change="handleDebugFile"
+                    />
+                </div>
+                <div class="builder-search builder-tree__search">
+                    <label>
+                        <input
+                            v-model="searchQuery"
+                            type="search"
+                            placeholder="Search through content..."
+                        />
+                    </label>
+                </div>
             </div>
             <p v-if="!builderTree.length" class="builder-empty">
                 No components added yet.
@@ -1101,6 +1092,19 @@ const handleSaveDebugClick = () => {
     background: #f8fafc;
 }
 
+.builder-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.builder-tree__controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
 .builder-search {
     display: grid;
     gap: 6px;
@@ -1108,6 +1112,11 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #fff;
+}
+
+.builder-tree__search {
+    flex: 1 1 320px;
+    min-width: 260px;
 }
 
 .builder-search label {
@@ -1203,19 +1212,21 @@ const handleSaveDebugClick = () => {
 
 .builder-add {
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    flex-wrap: wrap;
+    flex: 1;
 }
 
 .builder-add select,
 .builder-add button {
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 14px 10px;
+    border-radius: 12px;
     border: 1px solid #cbd5f5;
     background: #2563eb;
     color: #ffffff;
-    width: 100%;
     cursor: pointer;
+    min-width: 132px;
+    font-weight: 600;
 }
 
 .builder-add button:hover {
@@ -1282,6 +1293,7 @@ const handleSaveDebugClick = () => {
     border: 1px dashed transparent;
     border-radius: 8px;
     padding: 0;
+  position: relative;
 }
 
 .builder-root-item[data-dragging="true"] {
@@ -1300,6 +1312,9 @@ const handleSaveDebugClick = () => {
     padding: 8px 4px;
     color: #94a3b8;
     user-select: none;
+  position: absolute;
+  left: -0.6rem;
+  top: -1rem;
 }
 
 .builder-root-dropzone {
