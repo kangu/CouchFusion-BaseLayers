@@ -39,14 +39,6 @@
                 >
                     Browse Local
                 </button>
-                <button
-                    type="button"
-                    class="image-field__button"
-                    @click="triggerUpload"
-                    :disabled="pending"
-                >
-                    Upload
-                </button>
             </div>
         </div>
 
@@ -123,6 +115,15 @@
                             :disabled="isLibraryLoading"
                         >
                             Search
+                        </button>
+                        <button
+                            v-if="!isLocalLibrary"
+                            type="button"
+                            class="image-field__button"
+                            @click="triggerUpload"
+                            :disabled="isLibraryLoading || pending"
+                        >
+                            Upload
                         </button>
                         <button
                             v-if="isLocalLibrary"
@@ -574,6 +575,7 @@ const handleFileChange = async (event: Event) => {
         commitValue();
         if (isLibraryOpen.value && libraryMode.value === "imagekit") {
             await fetchLibrary({ limit: libraryLimit.value });
+            closeLibrary();
         }
     } catch (uploadError) {
         error.value =
