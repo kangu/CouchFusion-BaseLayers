@@ -154,11 +154,13 @@ const stripParagraphAlignFromStyle = (style: unknown): unknown => {
 const props = defineProps<{
     initialDocument?: MinimalContentDocument | null;
     hidePreview?: boolean;
+    searchQuery?: string;
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
+    (e: "update:searchQuery", value: string): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
@@ -185,7 +187,17 @@ const previewSpacingClass = computed(
 
 const expandedRootNodes = reactive<Record<string, boolean>>({});
 
-const searchQuery = ref("");
+const fallbackSearchQuery = ref("");
+const searchQuery = computed<string>({
+    get: () => props.searchQuery ?? fallbackSearchQuery.value,
+    set: (value) => {
+        if (props.searchQuery !== undefined) {
+            emit("update:searchQuery", value);
+        } else {
+            fallbackSearchQuery.value = value;
+        }
+    },
+});
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(searchQuery.value),
 );
@@ -1003,15 +1015,6 @@ const handleSaveDebugClick = () => {
                         data-test="debug-import"
                         @change="handleDebugFile"
                     />
-                </div>
-                <div class="builder-search builder-tree__search">
-                    <label>
-                        <input
-                            v-model="searchQuery"
-                            type="search"
-                            placeholder="Search through content..."
-                        />
-                    </label>
                 </div>
             </div>
             <p v-if="!builderTree.length" class="builder-empty">

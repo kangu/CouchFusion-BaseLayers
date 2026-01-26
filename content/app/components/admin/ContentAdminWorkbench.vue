@@ -126,6 +126,7 @@ const selectedPath = ref<string | null>(null);
 const isSelectingPage = ref(false);
 const selectionError = ref<string | null>(null);
 const hasBootstrappedSelection = ref(false);
+const builderSearchQuery = ref("");
 
 const builderRef = ref<BuilderWorkbenchInstance | null>(null);
 const isSavePending = ref(false);
@@ -1279,34 +1280,37 @@ defineExpose({
                 :class="{ 'is-pinned': isHeaderPinned }"
                 :style="headerFixedStyles"
             >
-                <div class="editor-header__left">
+              <div class="flex flex-col">
+
+                <div class="flex-1 flex">
+                  <div class="editor-header__left">
                     <div class="editor-header__meta">
                         <span class="editor-header__meta-value">
                             {{
-                                selectedSummary?.title ||
-                                selectedSummary?.path ||
-                                "No page selected"
-                            }}
+                            selectedSummary?.title ||
+                            selectedSummary?.path ||
+                            "No page selected"
+                          }}
                         </span>
                     </div>
                     <div class="editor-header__status">
-                        {{ selectedSummary?.path }}
+                      {{ selectedSummary?.path }}
                     </div>
                     <div class="editor-header__status">
                         <span
                             v-if="selectionError"
                             class="editor-header__status-error"
-                            >{{ selectionError }}</span
+                        >{{ selectionError }}</span
                         >
-                        <span
-                            v-else-if="lastUpdatedDisplay"
-                            class="editor-header__status-time"
-                        >
+                      <span
+                          v-else-if="lastUpdatedDisplay"
+                          class="editor-header__status-time"
+                      >
                             Last saved {{ lastUpdatedDisplay }}
                         </span>
                     </div>
-                </div>
-                <div class="editor-header__actions">
+                  </div>
+                  <div class="editor-header__actions">
                     <button
                         type="button"
                         class="content-admin-workbench__button content-admin-workbench__button--primary"
@@ -1314,20 +1318,20 @@ defineExpose({
                         :disabled="isSavePending || !selectedSummary"
                         @click="handleSaveDocument"
                     >
-                        <svg
-                            v-if="isSavePending"
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path
-                                fill="currentColor"
-                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
-                            />
-                        </svg>
-                        <span>{{
-                            isSavePending ? "Saving…" : "Save Changes"
+                      <svg
+                          v-if="isSavePending"
+                          class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                      >
+                        <path
+                            fill="currentColor"
+                            d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                        />
+                      </svg>
+                      <span>{{
+                          isSavePending ? "Saving…" : "Save Changes"
                         }}</span>
                     </button>
                     <button
@@ -1337,18 +1341,18 @@ defineExpose({
                         :disabled="isDeletePending || !selectedSummary"
                         @click="handleDeletePage"
                     >
-                        <svg
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path
-                                fill="currentColor"
-                                d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14Zm-1 3H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2Zm-3 2v10h-2V9Zm-4 0v10H9V9Z"
-                            />
-                        </svg>
-                        <span>Delete</span>
+                      <svg
+                          class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                      >
+                        <path
+                            fill="currentColor"
+                            d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14Zm-1 3H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2Zm-3 2v10h-2V9Zm-4 0v10H9V9Z"
+                        />
+                      </svg>
+                      <span>Delete</span>
                     </button>
                     <button
                         type="button"
@@ -1357,99 +1361,111 @@ defineExpose({
                         :disabled="isDuplicatePending || !selectedSummary"
                         @click="showDuplicateModal"
                     >
+                      <svg
+                          class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                      >
+                        <path
+                            fill="currentColor"
+                            d="M7 4h9a2 2 0 0 1 2 2v1h-2V6H7v12h9v-1h2v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm5 4h8v2h-8Zm0 4h8v2h-8Zm0 4h5v2h-5Z"
+                        />
+                      </svg>
+                    </button>
+                    <div class="editor-header__history" ref="historyMenuRef">
+                      <button
+                          type="button"
+                          class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
+                          :disabled="!selectedSummary"
+                          :aria-expanded="isHistoryMenuOpen"
+                          aria-haspopup="menu"
+                          aria-label="Open history"
+                          @click="toggleHistoryMenu"
+                      >
                         <svg
                             class="content-admin-workbench__icon content-admin-workbench__icon--sm"
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
                             aria-hidden="true"
                         >
-                            <path
-                                fill="currentColor"
-                                d="M7 4h9a2 2 0 0 1 2 2v1h-2V6H7v12h9v-1h2v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm5 4h8v2h-8Zm0 4h8v2h-8Zm0 4h5v2h-5Z"
-                            />
+                          <path
+                              fill="currentColor"
+                              d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.65Z"
+                          />
                         </svg>
-                    </button>
-                    <div class="editor-header__history" ref="historyMenuRef">
-                        <button
-                            type="button"
-                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
-                            :disabled="!selectedSummary"
-                            :aria-expanded="isHistoryMenuOpen"
-                            aria-haspopup="menu"
-                            aria-label="Open history"
-                            @click="toggleHistoryMenu"
-                        >
-                            <svg
-                                class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                            >
-                                <path
-                                    fill="currentColor"
-                                    d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.65Z"
-                                />
-                            </svg>
-                        </button>
-                        <div
-                            v-if="isHistoryMenuOpen"
-                            class="editor-header__history-dropdown"
-                            role="menu"
-                        >
-                            <div class="history-menu">
-                                <div class="history-menu__header">
-                                    <span>History</span>
-                                </div>
-                                <div v-if="historyError" class="history-menu__error">
-                                    {{ historyError }}
-                                </div>
-                                <div
-                                    v-else-if="isHistoryLoading"
-                                    class="history-menu__hint"
-                                >
-                                    Loading history…
-                                </div>
-                                <div v-else class="history-menu__list" role="none">
-                                    <button
-                                        type="button"
-                                        role="menuitem"
-                                        class="history-menu__item"
-                                        :class="{
+                      </button>
+                      <div
+                          v-if="isHistoryMenuOpen"
+                          class="editor-header__history-dropdown"
+                          role="menu"
+                      >
+                        <div class="history-menu">
+                          <div class="history-menu__header">
+                            <span>History</span>
+                          </div>
+                          <div v-if="historyError" class="history-menu__error">
+                            {{ historyError }}
+                          </div>
+                          <div
+                              v-else-if="isHistoryLoading"
+                              class="history-menu__hint"
+                          >
+                            Loading history…
+                          </div>
+                          <div v-else class="history-menu__list" role="none">
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="history-menu__item"
+                                :class="{
                                             'is-active': !selectedHistoryId,
                                         }"
-                                        @click="handleHistoryMenuSelection('')"
-                                    >
-                                        Current version
-                                    </button>
-                                    <template v-if="historyEntries.length">
-                                        <button
-                                            v-for="entry in historyEntries"
-                                            :key="entry.id"
-                                            type="button"
-                                            role="menuitem"
-                                            class="history-menu__item"
-                                            :class="{
+                                @click="handleHistoryMenuSelection('')"
+                            >
+                              Current version
+                            </button>
+                            <template v-if="historyEntries.length">
+                              <button
+                                  v-for="entry in historyEntries"
+                                  :key="entry.id"
+                                  type="button"
+                                  role="menuitem"
+                                  class="history-menu__item"
+                                  :class="{
                                                 'is-active':
                                                     entry.id === selectedHistoryId,
                                             }"
-                                            @click="
+                                  @click="
                                                 handleHistoryMenuSelection(entry.id)
                                             "
-                                        >
-                                            {{ formatHistoryLabel(entry.timestamp) }}
-                                        </button>
-                                    </template>
-                                    <p
-                                        v-else
-                                        class="history-menu__hint"
-                                    >
-                                        No history available yet.
-                                    </p>
-                                </div>
-                            </div>
+                              >
+                                {{ formatHistoryLabel(entry.timestamp) }}
+                              </button>
+                            </template>
+                            <p
+                                v-else
+                                class="history-menu__hint"
+                            >
+                              No history available yet.
+                            </p>
+                          </div>
                         </div>
+                      </div>
                     </div>
+                  </div>
                 </div>
+
+                <div class="editor-header__fullrow">
+                  <label class="builder-component-search">
+                    <input
+                        v-model="builderSearchQuery"
+                        type="search"
+                        placeholder="Search through content..."
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div
@@ -1485,11 +1501,15 @@ defineExpose({
                                 :initial-document="selectedDocument"
                                 :hide-preview="hidePreview"
                                 :key="selectedDocument.id"
+                                :search-query="builderSearchQuery"
                                 @document-change="handleDocumentChange"
                                 @document-preview-change="
                                     handleDocumentPreviewChange
                                 "
                                 @node-focus="handleNodeFocus"
+                                @update:search-query="
+                                    (value) => (builderSearchQuery = value)
+                                "
                             />
                         </div>
                     </div>
@@ -2216,6 +2236,26 @@ defineExpose({
     display: flex;
     align-items: center;
     gap: 0.75rem;
+}
+
+.editor-header__fullrow {
+    width: 100%;
+    margin-top: 0.5rem;
+    flex: 1 1 100%;
+}
+
+.builder-component-search {
+    display: block;
+    width: 100%;
+}
+
+.builder-component-search input {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    font-size: 0.95rem;
+    background: #fff;
 }
 
 .editor-header__history {
