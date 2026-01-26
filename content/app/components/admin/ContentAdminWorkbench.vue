@@ -1457,13 +1457,27 @@ defineExpose({
                 </div>
 
                 <div class="editor-header__fullrow">
-                  <label class="builder-component-search">
-                    <input
-                        v-model="builderSearchQuery"
-                        type="search"
-                        placeholder="Search through content..."
-                    />
-                  </label>
+                    <label
+                        class="builder-component-search"
+                        :class="{ 'is-active': builderSearchQuery.length > 0 }"
+                    >
+                        <svg
+                            class="builder-component-search__icon"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
+                            />
+                        </svg>
+                        <input
+                            v-model="builderSearchQuery"
+                            type="search"
+                            placeholder="Search through content..."
+                        />
+                    </label>
                 </div>
               </div>
             </div>
@@ -2245,17 +2259,38 @@ defineExpose({
 }
 
 .builder-component-search {
-    display: block;
+    position: relative;
+    display: flex;
+    align-items: center;
     width: 100%;
+    gap: 0.5rem;
 }
 
 .builder-component-search input {
     width: 100%;
-    padding: 0.65rem 0.85rem;
+    padding: 0.65rem 0.85rem 0.65rem 2.5rem;
     border-radius: 0.75rem;
     border: 1px solid rgba(148, 163, 184, 0.5);
     font-size: 0.95rem;
     background: #fff;
+}
+
+.builder-component-search__icon {
+    position: absolute;
+    left: 0.85rem;
+    width: 1rem;
+    height: 1rem;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.builder-component-search.is-active input {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.builder-component-search.is-active .builder-component-search__icon {
+    color: #2563eb;
 }
 
 .editor-header__history {
