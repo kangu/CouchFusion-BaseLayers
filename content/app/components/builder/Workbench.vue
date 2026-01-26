@@ -1078,7 +1078,7 @@ const handleSaveDebugClick = () => {
 .builder-page {
     display: grid;
     gap: 24px;
-    padding: 24px;
+    padding: 0;
     max-width: 1200px;
     margin: 0 auto;
 }
@@ -1090,12 +1090,6 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #f8fafc;
-}
-
-.builder-tree {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
 }
 
 .builder-tree__controls {
@@ -1270,8 +1264,6 @@ const handleSaveDebugClick = () => {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: var(--builder-tree-max-height, 70vh);
-    overflow-y: auto;
 }
 
 .builder-tree__search {

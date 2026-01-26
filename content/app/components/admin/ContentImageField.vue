@@ -31,14 +31,14 @@
                 >
                     Browse
                 </button>
-                <button
-                    type="button"
-                    class="image-field__button"
-                    @click="openLibrary('local')"
-                    :disabled="pending"
-                >
-                    Browse Local
-                </button>
+<!--                <button-->
+<!--                    type="button"-->
+<!--                    class="image-field__button"-->
+<!--                    @click="openLibrary('local')"-->
+<!--                    :disabled="pending"-->
+<!--                >-->
+<!--                    Browse Local-->
+<!--                </button>-->
             </div>
         </div>
 
@@ -62,7 +62,10 @@
             <div
                 v-if="isLibraryOpen"
                 class="image-field__library-backdrop"
+                data-image-library
                 @click.self="closeLibrary"
+                @keydown.esc.prevent.stop="closeLibrary"
+                tabindex="-1"
             >
                 <div class="image-field__library">
                     <header class="image-field__library-header">
@@ -229,7 +232,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch, nextTick } from "vue";
 import { useRequestFetch, useRuntimeConfig } from "#imports";
 import type {
     ComponentArrayItemField,
@@ -737,14 +740,24 @@ const setLibraryMode = (mode: LibraryMode) => {
 };
 
 onMounted(() => {
-    if (!props.modelValue) {
+    if (props.modelValue) {
+        const normalized = ensureAbsoluteUrl(props.modelValue);
+        if (normalized !== props.modelValue) {
+            localValue.value = normalized;
+            emit("update:modelValue", normalized);
+        }
+    }
+});
+
+watch(isLibraryOpen, async (isOpen) => {
+    if (!isOpen) {
         return;
     }
-    const normalized = ensureAbsoluteUrl(props.modelValue);
-    if (normalized !== props.modelValue) {
-        localValue.value = normalized;
-        emit("update:modelValue", normalized);
-    }
+    await nextTick();
+    const backdrop = document.querySelector<HTMLElement>(
+        "[data-image-library]",
+    );
+    backdrop?.focus();
 });
 </script>
 
@@ -794,7 +807,7 @@ onMounted(() => {
 }
 
 .image-field__controls {
-    display: grid;
+    display: flex;
     gap: 0.5rem;
 }
 

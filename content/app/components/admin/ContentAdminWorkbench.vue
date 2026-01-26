@@ -2318,9 +2318,8 @@ defineExpose({
 
 .editor-canvas__workbench {
     border-radius: 0.75rem;
-    border: 1px solid #e5e7eb;
     background-color: #f9fafb;
-    padding: 1rem;
+    padding: 0;
     min-height: 600px;
 }
 
