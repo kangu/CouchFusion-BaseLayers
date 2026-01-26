@@ -28,6 +28,19 @@ export const deriveStem = (path: string): string => {
     return segments[segments.length - 1] || 'index'
 }
 
+const isAbsoluteUrl = (value: string): boolean => /^https?:\/\//i.test(value)
+
+export const normalizeSeoImage = (value: any): string | null => {
+    if (typeof value !== 'string') {
+        return null
+    }
+    const trimmed = value.trim()
+    if (!trimmed) {
+        return null
+    }
+    return isAbsoluteUrl(trimmed) ? trimmed : null
+}
+
 export const contentIdFromPath = (path: string): string => {
     const normalized = normalizePagePath(path)
     const trimmed = normalized.replace(/^\//, '')
@@ -65,7 +78,8 @@ export const minimalToContentDocument = (doc: MinimalContentDocument): ContentPa
         path: normalizedPath,
         seo: {
             title: doc.seo?.title ?? doc.title ?? 'Page title',
-            description: doc.seo?.description ?? 'SEO description.'
+            description: doc.seo?.description ?? 'SEO description.',
+            image: normalizeSeoImage(doc.seo?.image)
         },
         stem: doc.stem ?? deriveStem(normalizedPath),
         meta: doc.meta ? clonePlain(doc.meta) : {},
@@ -91,7 +105,8 @@ export const contentToMinimalDocument = (doc: ContentPageDocument): MinimalConte
         path: doc.path,
         seo: {
             title: doc.seo?.title ?? doc.title ?? 'Page title',
-            description: doc.seo?.description ?? 'SEO description.'
+            description: doc.seo?.description ?? 'SEO description.',
+            image: normalizeSeoImage(doc.seo?.image)
         },
         stem: doc.stem ?? deriveStem(doc.path)
     }

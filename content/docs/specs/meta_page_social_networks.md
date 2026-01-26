@@ -1,0 +1,3 @@
+- [x] Extend the content workbench component with page-level social preview image data (SEO image).
+- [x] Allow managing the social image using the same image field experience as node editor image props (browse/upload/local).
+- [x] Emit the resulting absolute image URL into document head tags (`og:image`, `twitter:image`, etc.) on rendered pages.

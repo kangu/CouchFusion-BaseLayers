@@ -6,7 +6,8 @@ import {
     deriveStem,
     contentIdFromPath,
     ensureLayout,
-    ensureMinimalBody
+    ensureMinimalBody,
+    normalizeSeoImage
 } from '#content/utils/page-documents'
 
 export { contentIdFromPath } from '#content/utils/page-documents'
@@ -39,11 +40,13 @@ export const sanitiseIncomingDocument = (
     const seo = raw.seo && typeof raw.seo === 'object'
         ? {
             title: raw.seo.title ?? existing.seo?.title ?? raw.title ?? existing.title ?? 'Page title',
-            description: raw.seo.description ?? existing.seo?.description ?? 'SEO description.'
+            description: raw.seo.description ?? existing.seo?.description ?? 'SEO description.',
+            image: normalizeSeoImage(raw.seo.image ?? existing.seo?.image)
         }
         : existing.seo || {
             title: raw.title ?? existing.title ?? 'Page title',
-            description: 'SEO description.'
+            description: 'SEO description.',
+            image: normalizeSeoImage(existing.seo?.image)
         }
 
     const meta = raw.meta && typeof raw.meta === 'object'

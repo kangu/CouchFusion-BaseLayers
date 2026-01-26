@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
+import {
+    computed,
+    defineAsyncComponent,
+    onBeforeUnmount,
+    reactive,
+    ref,
+    toRaw,
+    watch,
+} from "vue";
 import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
@@ -18,6 +26,11 @@ import {
     type PageConfigInput,
     type SpacingPresetId,
 } from "../../utils/contentBuilder";
+import type { ComponentPropSchema } from "~/types/builder";
+
+const ContentImageField = defineAsyncComponent(
+    () => import("../admin/ContentImageField.vue"),
+);
 
 const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
     if (!doc) {
@@ -157,6 +170,7 @@ const pageConfig = reactive<PageConfigInput>({
     title: "Page title",
     seoTitle: "Page title",
     seoDescription: "SEO description.",
+    seoImage: "",
     navigation: true,
     extension: "md",
     meta: {},
@@ -193,6 +207,14 @@ const spacingPresets: Array<{
     { id: "cozy", label: "Cozy (32px)", className: "space-cozy" },
     { id: "roomy", label: "Roomy (48px)", className: "space-roomy" },
 ];
+
+const socialImagePropDefinition: ComponentPropSchema = {
+    key: "seoImage",
+    label: "Social preview image",
+    type: "text",
+    ui: { component: "ContentImageField" },
+    description: "Absolute URL used for Open Graph and Twitter cards.",
+};
 
 const normalizeJsonProps = (
     component: string,
@@ -432,6 +454,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.title = "Page title";
         pageConfig.seoTitle = "Page title";
         pageConfig.seoDescription = "SEO description.";
+        pageConfig.seoImage = "";
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
@@ -445,6 +468,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.title = doc.title ?? "";
     pageConfig.seoTitle = doc.seo?.title ?? "";
     pageConfig.seoDescription = doc.seo?.description ?? "";
+    pageConfig.seoImage = doc.seo?.image ?? "";
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = doc.meta ?? {};
@@ -918,6 +942,19 @@ const handleSaveDebugClick = () => {
                         placeholder="SEO description."
                     />
                 </label>
+                <div class="builder-config__image">
+                    <div class="builder-config__image-label">
+                        <span>Social preview image</span>
+                        <small>Absolute URL for og:image / twitter:image</small>
+                    </div>
+                    <ContentImageField
+                        :prop-definition="socialImagePropDefinition"
+                        :model-value="pageConfig.seoImage || ''"
+                        @update:model-value="
+                            (value) => (pageConfig.seoImage = value ?? '')
+                        "
+                    />
+                </div>
             </div>
             <!-- <div class="builder-derived">
                 <div>
@@ -1108,6 +1145,24 @@ const handleSaveDebugClick = () => {
 
 .builder-config__textarea textarea {
     min-height: 72px;
+}
+
+.builder-config__image {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 8px;
+}
+
+.builder-config__image-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.builder-config__image-label small {
+    font-size: 12px;
+    color: #64748b;
 }
 
 .builder-config__checkbox {

@@ -8,7 +8,8 @@ import {
     ensureLayout,
     deriveStem,
     clonePlain,
-    minimalToContentDocument
+    minimalToContentDocument,
+    normalizeSeoImage
 } from '#content/utils/page-documents'
 
 type Maybe<T> = T | null | undefined
@@ -41,6 +42,7 @@ const normalizeDocument = (
     const normalizedPath = normalizePagePath(raw.path ?? fallback.path)
     const seoTitle = raw.seo?.title ?? fallback.seoTitle ?? fallback.title ?? 'Page title'
     const seoDescription = raw.seo?.description ?? fallback.seoDescription ?? 'SEO description.'
+    const seoImage = normalizeSeoImage(raw.seo?.image)
 
     return {
         _id: raw._id ?? fallback.id,
@@ -51,7 +53,8 @@ const normalizeDocument = (
         path: normalizedPath,
         seo: {
             title: seoTitle,
-            description: seoDescription
+            description: seoDescription,
+            image: seoImage
         },
         stem: raw.stem ?? deriveStem(normalizedPath),
         meta: raw.meta && typeof raw.meta === 'object' ? clonePlain(raw.meta) : (raw.metadata && typeof raw.metadata === 'object' ? clonePlain(raw.metadata) : {}),
@@ -70,6 +73,7 @@ const extractSummary = (payload: any): ContentPageSummary => {
     const fallbackTitle = payload?.title ?? rawDoc?.title ?? null
     const fallbackSeoTitle = payload?.seoTitle ?? rawDoc?.seoTitle ?? rawDoc?.seo?.title ?? fallbackTitle
     const fallbackSeoDescription = payload?.seoDescription ?? rawDoc?.seoDescription ?? rawDoc?.seo?.description ?? null
+    const fallbackSeoImage = normalizeSeoImage(payload?.seoImage ?? rawDoc?.seo?.image)
 
     const document = normalizeDocument(rawDoc, {
         id: fallbackId,
@@ -92,6 +96,7 @@ const extractSummary = (payload: any): ContentPageSummary => {
         title: document.title ?? null,
         seoTitle: document.seo.title,
         seoDescription: document.seo.description,
+        seoImage: document.seo.image ?? fallbackSeoImage ?? null,
         meta,
         updatedAt,
         document
@@ -258,6 +263,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             metadata?: Record<string, any>
             seoTitle?: string | null
             seoDescription?: string | null
+            seoImage?: string | null
         }): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
             const minimal = createDocumentFromTree(
@@ -267,6 +273,7 @@ export const useContentPagesStore = defineStore('content-pages', {
                     title: payload.title ?? 'Page title',
                     seoTitle: payload.seoTitle ?? payload.title ?? 'Page title',
                     seoDescription: payload.seoDescription ?? 'SEO description.',
+                    seoImage: normalizeSeoImage(payload.seoImage),
                     navigation: true,
                     extension: 'md',
                     meta: payload.meta ?? payload.metadata ?? {}
@@ -290,7 +297,8 @@ export const useContentPagesStore = defineStore('content-pages', {
                 path: normalizedPath,
                 seo: {
                     title: document.seo?.title ?? document.title ?? 'Page title',
-                    description: document.seo?.description ?? 'SEO description.'
+                    description: document.seo?.description ?? 'SEO description.',
+                    image: normalizeSeoImage(document.seo?.image)
                 },
                 stem: document.stem ?? deriveStem(normalizedPath),
                 meta: document.meta ? clonePlain(document.meta) : {},

@@ -14,6 +14,7 @@ export interface ContentPageDocument {
     seo: {
         title: string | null
         description: string | null
+        image?: string | null
     }
     stem: string | null
     _rev?: string
@@ -32,6 +33,7 @@ export interface ContentPageSummary {
     title: string | null
     seoTitle: string | null
     seoDescription: string | null
+    seoImage: string | null
     meta: Record<string, any>
     updatedAt: string | null
     document: ContentPageDocument | null

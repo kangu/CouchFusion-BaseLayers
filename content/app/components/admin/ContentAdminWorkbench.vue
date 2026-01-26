@@ -23,6 +23,7 @@ import {
     contentToMinimalDocument,
     deriveStem,
     minimalToContentDocument,
+    normalizeSeoImage,
 } from "#content/utils/page-documents";
 import type {
     ContentPageSummary,
@@ -150,6 +151,7 @@ const newPageForm = reactive({
     title: "",
     seoTitle: "",
     seoDescription: "",
+    seoImage: "",
     meta: "{}",
 });
 
@@ -158,6 +160,7 @@ const duplicatePageForm = reactive({
     title: "",
     seoTitle: "",
     seoDescription: "",
+    seoImage: "",
     meta: "{}",
 });
 
@@ -220,23 +223,7 @@ const confirmDiscardUnsavedChanges = async (): Promise<boolean> => {
 };
 
 const availablePages = computed(() => indexState.value.data);
-
-const normalizedFilter = computed(() => filterTerm.value.trim().toLowerCase());
-
-const filteredPages = computed(() => {
-    const list = availablePages.value ?? [];
-    if (!normalizedFilter.value) {
-        return list;
-    }
-    return list.filter((page) => {
-        const titleValue = page.title?.toLowerCase() ?? "";
-        const pathValue = page.path.toLowerCase();
-        return (
-            titleValue.includes(normalizedFilter.value) ||
-            pathValue.includes(normalizedFilter.value)
-        );
-    });
-});
+const totalPagesCount = computed(() => availablePages.value?.length ?? 0);
 
 const selectedSummary = computed<ContentPageSummary | null>(() => {
     if (!selectedPath.value) {
@@ -261,9 +248,6 @@ const historyError = computed(() => historyState.value?.error ?? null);
 const isIndexLoading = computed(() => indexState.value.pending);
 const indexError = computed(() => indexState.value.error);
 const hasPages = computed(() => (availablePages.value?.length ?? 0) > 0);
-const isFilteredEmpty = computed(
-    () => hasPages.value && filteredPages.value.length === 0,
-);
 const lastUpdatedDisplay = computed(() =>
     formatTimestamp(
         selectedSummary.value?.updatedAt ?? null,
@@ -271,6 +255,14 @@ const lastUpdatedDisplay = computed(() =>
     ),
 );
 const condensedHistoryValue = computed(() => selectedHistoryId.value ?? "");
+const pageListId = "content-admin-pages-datalist";
+
+const searchPlaceholder = computed(() => {
+    if (isIndexLoading.value) {
+        return "Loading pages…";
+    }
+    return `Search pages (${totalPagesCount.value} total)`;
+});
 
 const selectedHistoryDocument = computed<MinimalContentDocument | null>(() => {
     if (!selectedHistoryId.value) {
@@ -476,6 +468,7 @@ function resolveDocument(
             title: summary.title ?? "Page title",
             seoTitle: summary.seoTitle ?? summary.title ?? "Page title",
             seoDescription: summary.seoDescription ?? "SEO description.",
+            seoImage: summary.seoImage ?? undefined,
             navigation: true,
             extension: "md",
             meta: summary.meta ?? {},
@@ -526,11 +519,42 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
     }
 }
 
+function handlePageSearchChange(event: Event): void {
+    const target = event.target as HTMLInputElement | null;
+    if (!target) {
+        return;
+    }
+
+    const rawValue = target.value.trim();
+    if (!rawValue) {
+        return;
+    }
+
+    const normalizedPath = normalizePagePath(rawValue);
+    const pages = availablePages.value ?? [];
+    const byPath = pages.find(
+        (page) => normalizePagePath(page.path) === normalizedPath,
+    );
+    if (byPath) {
+        openPageForEditing(byPath.path);
+        return;
+    }
+
+    const lowerValue = rawValue.toLowerCase();
+    const byTitle = pages.find(
+        (page) => page.title?.toLowerCase() === lowerValue,
+    );
+    if (byTitle) {
+        openPageForEditing(byTitle.path);
+    }
+}
+
 function resetCreatePageForm(): void {
     newPageForm.path = "/";
     newPageForm.title = "";
     newPageForm.seoTitle = "";
     newPageForm.seoDescription = "";
+    newPageForm.seoImage = "";
     newPageForm.meta = "{}";
     createPageError.value = null;
 }
@@ -546,6 +570,10 @@ function parseMetaField(value: string): Record<string, any> {
         return {};
     }
     return JSON.parse(trimmed);
+}
+
+function normaliseSeoImage(value: string | null | undefined): string | null {
+    return normalizeSeoImage(value ?? null);
 }
 
 function serialiseMetaField(
@@ -595,6 +623,9 @@ function resetDuplicatePageForm(document: MinimalContentDocument | null): void {
         sourceDoc?.seo?.description ??
         summary?.seoDescription ??
         "SEO description.";
+    duplicatePageForm.seoImage = normalizeSeoImage(
+        sourceDoc?.seo?.image ?? summary?.seoImage ?? "",
+    ) ?? "";
     duplicatePageForm.meta = serialiseMetaField(
         sourceDoc?.meta ?? summary?.meta ?? {},
     );
@@ -794,11 +825,13 @@ async function handleCreatePage(): Promise<void> {
     createPageError.value = null;
 
     try {
+        const seoImage = normaliseSeoImage(newPageForm.seoImage);
         const summary = await contentStore.createPage({
             path: normalizedPath,
             title: newPageForm.title,
             seoTitle: newPageForm.seoTitle || newPageForm.title,
             seoDescription: newPageForm.seoDescription || "SEO description.",
+            seoImage,
             meta: metaPayload,
         });
         await contentStore.fetchIndex(true);
@@ -874,6 +907,7 @@ async function handleDuplicatePage(): Promise<void> {
             selectedComponentKeys,
         );
 
+        const duplicatedSeoImage = normaliseSeoImage(duplicatePageForm.seoImage);
         const duplicatedMinimal: MinimalContentDocument = {
             ...baseDocument,
             id: contentIdFromPath(normalizedPath),
@@ -883,6 +917,7 @@ async function handleDuplicatePage(): Promise<void> {
                 title: duplicatePageForm.seoTitle || duplicatePageForm.title,
                 description:
                     duplicatePageForm.seoDescription || "SEO description.",
+                image: duplicatedSeoImage,
             },
             meta: metaPayload,
             stem: deriveStem(normalizedPath),
@@ -1194,9 +1229,20 @@ defineExpose({
                         </svg>
                         <input
                             v-model="filterTerm"
+                            :list="pageListId"
                             type="search"
-                            placeholder="Filter pages by title or path"
+                            :placeholder="searchPlaceholder"
+                            @change="handlePageSearchChange"
                         />
+                        <datalist :id="pageListId">
+                            <option
+                                v-for="page in availablePages || []"
+                                :key="page.path"
+                                :value="page.path"
+                            >
+                                {{ `${page.path} — ${page.title || "[No title]"}` }}
+                            </option>
+                        </datalist>
                     </label>
                 </div>
                 <div v-if="indexError" class="content-admin-workbench__error">
@@ -1213,47 +1259,9 @@ defineExpose({
                     </svg>
                     <span>{{ indexError }}</span>
                 </div>
-            </div>
-
-            <div class="content-admin-workbench__chip-list">
-                <template v-if="isIndexLoading">
-                    <span class="content-admin-workbench__hint"
-                        >Loading pages…</span
-                    >
-                </template>
-                <template v-else-if="isFilteredEmpty">
-                    <span class="content-admin-workbench__hint"
-                        >No pages match your filter.</span
-                    >
-                </template>
-                <template v-else-if="!hasPages">
-                    <span class="content-admin-workbench__hint"
-                        >No pages available yet. Create one to get
-                        started.</span
-                    >
-                </template>
-                <template v-else>
-                    <button
-                        v-for="page in filteredPages"
-                        :key="page.path"
-                        type="button"
-                        class="content-admin-workbench__chip"
-                        :class="[
-                            page.path === selectedPath
-                                ? [
-                                      'content-admin-workbench__chip--active',
-                                      ui.pageChipActive,
-                                  ]
-                                : [
-                                      'content-admin-workbench__chip--inactive',
-                                      ui.pageChipInactive,
-                                  ],
-                        ]"
-                        @click="openPageForEditing(page.path)"
-                    >
-                        {{ `${page.path} - ${page.title || "[No title]"}` }}
-                    </button>
-                </template>
+                <div v-else-if="!isIndexLoading && !hasPages" class="content-admin-workbench__hint">
+                    No pages available yet. Create one to get started.
+                </div>
             </div>
         </div>
 
@@ -1619,6 +1627,18 @@ defineExpose({
                             </div>
 
                             <div class="modal__field">
+                                <label for="new-page-seo-image"
+                                    >Social image URL (absolute)</label
+                                >
+                                <input
+                                    id="new-page-seo-image"
+                                    v-model="newPageForm.seoImage"
+                                    type="url"
+                                    placeholder="https://example.com/og-image.jpg"
+                                />
+                            </div>
+
+                            <div class="modal__field">
                                 <label for="new-page-meta"
                                     >Meta JSON (optional)</label
                                 >
@@ -1756,6 +1776,18 @@ defineExpose({
                                         type="text"
                                     />
                                 </div>
+                            </div>
+
+                            <div class="modal__field">
+                                <label for="duplicate-page-seo-image"
+                                    >Social image URL (absolute)</label
+                                >
+                                <input
+                                    id="duplicate-page-seo-image"
+                                    v-model="duplicatePageForm.seoImage"
+                                    type="url"
+                                    placeholder="https://example.com/og-image.jpg"
+                                />
                             </div>
 
                             <div class="modal__field">
@@ -2035,11 +2067,15 @@ defineExpose({
 }
 
 @media (min-width: 1024px) {
-    .content-admin-workbench__panel-controls {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
+.content-admin-workbench__panel-controls {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.content-admin-workbench__search {
+    flex: 1;
+}
 }
 
 .search-input {
@@ -2052,7 +2088,7 @@ defineExpose({
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     color: #4b5563;
-    width: 17rem;
+    width: 100%;
 }
 
 .search-input:focus-within {
