@@ -3,6 +3,7 @@ import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 import { createDocumentFromTree } from '#content/app/utils/contentBuilder'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
 import type { ContentPageDocument, ContentPageSummary, ContentPageHistoryEntry } from '#content/types/content-page'
+import { createError } from '#imports'
 import {
     ensureMinimalBody,
     ensureLayout,
@@ -214,6 +215,19 @@ export const useContentPagesStore = defineStore('content-pages', {
             } finally {
                 state.pending = false
             }
+        },
+
+        async fetchPageOrThrow(path: string, force = false): Promise<ContentPageSummary> {
+            const summary = await this.fetchPage(path, force)
+
+            if (!summary) {
+                throw createError({
+                    statusCode: 404,
+                    statusMessage: 'Page not found'
+                })
+            }
+
+            return summary
         },
 
         async fetchHistory(path: string, force = false): Promise<ContentPageHistoryEntry[]> {
