@@ -505,7 +505,6 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
         selectedHistoryId.value = null;
         updateUnsavedState(false);
         contentStore.fetchHistory(normalizedPath, force).catch(() => {});
-        nextTick(() => updateCondensedState());
     } catch (error: any) {
         selectionError.value = error?.message || "Failed to load page content.";
     } finally {
