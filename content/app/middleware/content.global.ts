@@ -37,6 +37,17 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
 
   const ignoredPrefixes = buildIgnoredPrefixes();
 
+  if (to.path.startsWith("/api")) {
+    // API endpoints are reserved for Nitro server routes; return a hard 404 when a page route
+    // attempts to handle them so consuming apps don't need per-page guards.
+    return abortNavigation(
+      createError({
+        statusCode: 404,
+        statusMessage: "API endpoint not foundX1",
+      }),
+    );
+  }
+
   if (!isContentRoute(to.path, ignoredPrefixes)) {
     return;
   }
