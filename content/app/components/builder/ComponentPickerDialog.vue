@@ -36,7 +36,7 @@
                     class="component-card"
                     role="button"
                     tabindex="0"
-                    
+
                 >
                     <div class="component-card-preview" @click="select(comp.id)">
                         <div class="preview-desktop">
@@ -83,8 +83,8 @@
                     <h3>Preview: {{ expandedComp.label }}</h3>
                     <div class="expanded-controls">
                         <div class="device-toggles">
-                            <button 
-                                :class="{ active: expandedDevice === 'desktop' }" 
+                            <button
+                                :class="{ active: expandedDevice === 'desktop' }"
                                 @click="expandedDevice = 'desktop'"
                                 title="Desktop View"
                             >
@@ -94,8 +94,8 @@
                                     <line x1="12" y1="17" x2="12" y2="21" />
                                 </svg>
                             </button>
-                            <button 
-                                :class="{ active: expandedDevice === 'mobile' }" 
+                            <button
+                                :class="{ active: expandedDevice === 'mobile' }"
                                 @click="expandedDevice = 'mobile'"
                                 title="Mobile View"
                             >
@@ -120,8 +120,8 @@
                 </header>
                 <div class="expanded-content" :class="expandedDevice">
                     <div class="expanded-frame-wrapper" :style="{ width: expandedDevice === 'mobile' ? '375px' : '100%' }">
-                         <PreviewFrame 
-                            :width="expandedDevice === 'mobile' ? 375 : '100%'" 
+                         <PreviewFrame
+                            :width="expandedDevice === 'mobile' ? 375 : '100%'"
                             :height="'100%'"
                             class="full-size-frame"
                         >
@@ -188,7 +188,7 @@ const select = (id: string) => {
 const getDefaultProps = (def: ComponentDefinition) => {
     const defaults: Record<string, BuilderValue> = {};
     if (!def.props) return defaults;
-    
+
     for (const prop of def.props) {
         if (prop.default !== undefined) {
             defaults[prop.key] = prop.default;
@@ -258,7 +258,7 @@ watch(
     background: white;
     border-radius: 12px;
     width: 100%;
-    max-width: 900px;
+    max-width: 80vw;
     height: 85vh; /* Use fixed height to ensure consistent large canvas */
     max-height: 85vh;
     display: flex;
@@ -438,9 +438,9 @@ watch(
 }
 
 .preview-scaler {
-    width: 400%; 
+    width: 400%;
     height: 400%;
-    transform: scale(0.25); 
+    transform: scale(0.25);
     transform-origin: top left;
     pointer-events: none;
     overflow: hidden;
