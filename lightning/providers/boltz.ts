@@ -39,15 +39,13 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
     const pairId = config.network === 'testnet' ? 'BTC/L-BTC' : 'BTC/L-BTC'
 
     const swapRequest: Record<string, any> = {
-      type: 'submarine',
-      pairId,
-      orderSide: 'buy',
-        from: 'BTC',
-        to: 'L-BTC',
-      toAddress: config.liquidAddress,
+      claimAddress: config.liquidAddress,
+      claimPublicKey: refundPublicKey,
+        pairId, // this should be pairHash and needs to be taken from a call to /available-pairs ()
+      from: 'BTC',
+      to: 'L-BTC',
       invoiceAmount: request.amount,
       preimageHash,
-      refundPublicKey,
       ...(config.refundAddress && { refundAddress: config.refundAddress }),
       ...(config.referralCode && { referralId: config.referralCode }),
       ...(webhookUrl && {
@@ -59,11 +57,11 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
       })
     }
 
-    const response = await makeRequest('/v2/swap/submarine', {
+    const response = await makeRequest('/v2/swap/reverse', {
       method: 'POST',
       body: JSON.stringify(swapRequest)
     })
-    console.log('Doing submarine swap request', response)
+    console.log('Doing reverse swap request', response)
 
     // Store preimage for later claim (in production, use secure storage)
     // For now, we'll store it in metadata
