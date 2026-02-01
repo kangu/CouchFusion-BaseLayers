@@ -49,6 +49,26 @@ export interface SaveInvoiceOptions {
     databaseName: string;
 }
 
+export interface SaveInvoiceCodeOptions {
+    invoiceCode: string;
+    invoiceId: string;
+    orderId: string;
+    provider?: string;
+    event: any; // H3 event object
+    databaseName: string;
+}
+
+export interface InvoiceCodeDocument {
+    _id: string;
+    type: 'invoice_code';
+    timestamp: string;
+    orderId: string;
+    invoiceId: string;
+    code: string;
+    provider?: string;
+    userName: string;
+}
+
 /**
  * Generate a random ID for purchase orders
  */
@@ -200,10 +220,11 @@ export async function saveInvoiceToDatabase(options: SaveInvoiceOptions): Promis
     // Create invoice document
     const invoiceDocument: InvoiceDocument = {
         _id: invoiceDocId,
-        type: 'invoice',
+        type: 'lightning_invoice',
         timestamp: new Date().toISOString(),
         orderId: orderId,
         invoiceData: invoiceData,
+        amount: invoiceData.amount,
         userName: userName,
         email: userDoc.email,
         lastEvent: 'created'

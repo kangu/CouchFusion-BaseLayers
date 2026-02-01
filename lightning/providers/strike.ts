@@ -52,7 +52,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
   const createInvoice = async (
     request: InvoiceRequest,
   ): Promise<InvoiceResponse> => {
-    console.log("Request inside strike", request);
+    // console.log("Request inside strike", request);
 
     // Convert sats to BTC for Strike API if currency is sats
     let amount: string;
@@ -74,7 +74,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
         currency,
       },
     };
-    console.log("Creating invoice with strike", payload);
+    // console.log("Creating invoice with strike", payload);
 
     const invoiceResponse = await makeRequest("/v1/invoices", {
       method: "POST",
@@ -99,8 +99,8 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
       amount: parseFloat(invoiceResponse.amount.amount),
       currency: invoiceResponse.amount.currency.toLowerCase(),
       status: mapStrikeStatus(invoiceResponse.state),
-      expiresAt: invoiceResponse.expiration
-        ? new Date(invoiceResponse.expiration)
+      expiresAt: quoteResponse.expiration
+        ? new Date(quoteResponse.expiration)
         : undefined,
       // Quote data
       quoteId: quoteResponse.quoteId,

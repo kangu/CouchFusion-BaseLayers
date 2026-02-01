@@ -1,5 +1,6 @@
 import { createLightningInvoice, checkLightningInvoiceStatus, type CreateInvoiceOptions } from '../../utils/lightning'
 import type { LightningConfig } from '../../types/lightning'
+import { getDocument } from '#database/utils/couchdb'
 
 export interface PaymentOptions {
   description?: string
@@ -31,7 +32,9 @@ export function useLightning() {
   let currentPayment: PaymentInfo | null = null
   let paymentStatus: string = 'idle'
   let statusInterval: NodeJS.Timeout | null = null
+  let invoiceDocInterval: NodeJS.Timeout | null = null
   let isPolling = false
+  let isInvoiceDocPolling = false
   let config: LightningConfig | null = null
 
   // Initialize with config
@@ -62,7 +65,7 @@ export function useLightning() {
     loading = true
 
     try {
-      console.log('Creating invoice', amount, options)
+      // console.log('Creating invoice', amount, options)
       const invoice = await createLightningInvoice(config, {
         amount,
         currency: 'sats',
@@ -70,6 +73,7 @@ export function useLightning() {
         metadata: options.metadata,
         provider: options.provider
       })
+        console.log('Haide ba', invoice)
 
       const payment: PaymentInfo = {
         id: invoice.invoiceId,
@@ -156,9 +160,63 @@ export function useLightning() {
     isPolling = false
   }
 
+  // Check invoice status from CouchDB invoice document (webhook-updated)
+  const checkInvoiceDocStatus = async (
+    invoiceDocId: string,
+    databaseName: string
+  ): Promise<string | null> => {
+    if (!invoiceDocId || !databaseName) return null
+
+    try {
+      const doc = await getDocument<any>(databaseName, invoiceDocId)
+      if (!doc) return null
+
+      const docStatus = doc.invoiceData?.status || doc.status || null
+
+      if (docStatus) {
+        paymentStatus = docStatus
+        if (currentPayment && doc.invoiceData?.invoiceId === currentPayment.id) {
+          currentPayment.status = docStatus as any
+        }
+      }
+
+      return docStatus
+    } catch (err) {
+      console.warn('Invoice doc status check failed:', (err as any)?.message || err)
+      return null
+    }
+  }
+
+  // Poll invoice document for status updates (every 2s by default)
+  const startInvoiceDocPolling = (
+    invoiceDocId: string,
+    databaseName: string,
+    intervalMs: number = 2000
+  ) => {
+    if (!invoiceDocId || !databaseName || isInvoiceDocPolling) return
+
+    isInvoiceDocPolling = true
+    invoiceDocInterval = setInterval(async () => {
+      const status = await checkInvoiceDocStatus(invoiceDocId, databaseName)
+
+      if (status && ['paid', 'expired', 'cancelled'].includes(status)) {
+        stopInvoiceDocPolling()
+      }
+    }, intervalMs)
+  }
+
+  const stopInvoiceDocPolling = () => {
+    if (invoiceDocInterval) {
+      clearInterval(invoiceDocInterval)
+      invoiceDocInterval = null
+    }
+    isInvoiceDocPolling = false
+  }
+
   // Reset all state
   const reset = () => {
     stopStatusPolling()
+    stopInvoiceDocPolling()
     loading = false
     error = null
     currentPayment = null
@@ -179,6 +237,7 @@ export function useLightning() {
   // Auto-cleanup
   const cleanup = () => {
     stopStatusPolling()
+    stopInvoiceDocPolling()
   }
 
   // Return composable interface
@@ -189,6 +248,7 @@ export function useLightning() {
     getCurrentPayment: () => currentPayment,
     getPaymentStatus: () => paymentStatus,
     getIsPolling: () => isPolling,
+    getIsInvoiceDocPolling: () => isInvoiceDocPolling,
 
     // Computed getters
     isPending: getIsPending,
@@ -197,6 +257,11 @@ export function useLightning() {
     isCancelled: getIsCancelled,
     hasError: getHasError,
     paymentUrl: getPaymentUrl,
+
+    // Invoice document polling
+    checkInvoiceDocStatus,
+    startInvoiceDocPolling,
+    stopInvoiceDocPolling,
 
     // Methods
     initialize,

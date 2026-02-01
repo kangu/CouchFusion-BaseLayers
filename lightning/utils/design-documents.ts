@@ -14,7 +14,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_invoice_id: {
       map: `function(doc) {
-        if (doc.invoiceId && doc.type === 'lightning_order') {
+        if (doc.invoiceId && doc.type === 'lightning_invoice') {
           emit(doc.invoiceId, doc);
         }
       }`
@@ -26,7 +26,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_status: {
       map: `function(doc) {
-        if (doc.status && doc.type === 'lightning_order') {
+        if (doc.status && doc.type === 'lightning_invoice') {
           emit(doc.status, doc);
         }
       }`
@@ -34,11 +34,11 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
 
     /**
      * Query invoices by provider
-     * Key: provider, Value: full document  
+     * Key: provider, Value: full document
      */
     by_provider: {
       map: `function(doc) {
-        if (doc.provider && doc.type === 'lightning_order') {
+        if (doc.provider && doc.type === 'lightning_invoice') {
           emit(doc.provider, doc);
         }
       }`
@@ -50,7 +50,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_timestamp: {
       map: `function(doc) {
-        if (doc.createdAt && doc.type === 'lightning_order') {
+        if (doc.createdAt && doc.type === 'lightning_invoice') {
           emit(doc.createdAt, doc);
         }
       }`
@@ -62,7 +62,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_status_and_timestamp: {
       map: `function(doc) {
-        if (doc.status && doc.createdAt && doc.type === 'lightning_order') {
+        if (doc.status && doc.createdAt && doc.type === 'lightning_invoice') {
           emit([doc.status, doc.createdAt], doc);
         }
       }`
@@ -74,7 +74,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_provider_and_status: {
       map: `function(doc) {
-        if (doc.provider && doc.status && doc.type === 'lightning_order') {
+        if (doc.provider && doc.status && doc.type === 'lightning_invoice') {
           emit([doc.provider, doc.status], doc);
         }
       }`
@@ -86,7 +86,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_amount: {
       map: `function(doc) {
-        if (doc.amount && doc.type === 'lightning_order') {
+        if (doc.amount && doc.type === 'lightning_invoice') {
           emit(doc.amount, {
             invoiceId: doc.invoiceId,
             amount: doc.amount,
@@ -103,7 +103,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_expiration: {
       map: `function(doc) {
-        if (doc.expiresAt && doc.type === 'lightning_order') {
+        if (doc.expiresAt && doc.type === 'lightning_invoice') {
           emit(doc.expiresAt, {
             invoiceId: doc.invoiceId,
             status: doc.status,
@@ -119,7 +119,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_swap_id: {
       map: `function(doc) {
-        if (doc.swapId && doc.provider === 'boltz' && doc.type === 'lightning_order') {
+        if (doc.swapId && doc.provider === 'boltz' && doc.type === 'lightning_invoice') {
           emit(doc.swapId, doc);
         }
       }`
@@ -131,7 +131,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     stats_by_status: {
       map: `function(doc) {
-        if (doc.status && doc.type === 'lightning_order') {
+        if (doc.status && doc.type === 'lightning_invoice') {
           emit(doc.status, 1);
         }
       }`,
@@ -146,7 +146,7 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     stats_by_provider: {
       map: `function(doc) {
-        if (doc.provider && doc.amount && doc.type === 'lightning_order') {
+        if (doc.provider && doc.amount && doc.type === 'lightning_invoice') {
           emit(doc.provider, doc.amount);
         }
       }`,

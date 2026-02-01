@@ -160,6 +160,7 @@ export default defineEventHandler(async (event) => {
         if (!payment) {
             throw new Error('Payment creation failed on server')
         }
+        console.log('Got payment result', payment)
 
         // Save invoice data to database
         try {
