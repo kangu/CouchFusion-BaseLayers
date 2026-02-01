@@ -214,7 +214,7 @@ export const useContentLiveUpdates = (): void => {
           document.path = path
         }
 
-        console.log('[content-live-updates] applying document', { path, document })
+        // console.log('[content-live-updates] applying document', { path, document })
 
         if (typeof window !== 'undefined') {
           const currentPath = normalizePagePath(window.location.pathname || '/')
@@ -229,10 +229,10 @@ export const useContentLiveUpdates = (): void => {
         }
 
         contentStore.applyLiveDocument(document)
-        console.log('[content-live-updates] document applied', {
-          path,
-          summary: contentStore.getPage(path)
-        })
+        // console.log('[content-live-updates] document applied', {
+        //   path,
+        //   summary: contentStore.getPage(path)
+        // })
 
         if (pendingScroll) {
           const coords = pendingScroll
