@@ -35,8 +35,19 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
+    codexSessions: {
+      serverUrl: "",
+      token: "",
+      allowedRoots: [] as string[],
+      discoveryCaps: {
+        maxSeconds: 0,
+        maxBytes: 0,
+        maxCommands: 0,
+      },
+    },
     public: {
       content: {},
+      featureCodexSessions: true,
     },
   },
 
