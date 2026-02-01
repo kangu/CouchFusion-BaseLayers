@@ -15,6 +15,14 @@ export interface InvoiceResponse {
   expiresAt?: Date
   liquidAddress?: string // For Boltz swaps
   swapId?: string // For Boltz swaps
+  // Boltz reverse swap data required for spending
+  preimage?: string
+  preimageHash?: string
+  claimPublicKey?: string
+  claimPrivateKey?: string
+  blindingKey?: string
+  lockupAddress?: string
+  onchainAmount?: number
   // Quote data (Strike provider)
   quoteId?: string
   rate?: number
@@ -53,13 +61,26 @@ export interface BoltzConfig {
   apiUrl: string
   network: 'mainnet' | 'testnet'
   liquidAddress: string
+  refundAddress?: string
+  claimPublicKey?: string
+  refundPublicKey?: string
+  pairHash?: string
   referralCode?: string
 }
 
+export interface AlbyConfig {
+  apiUrl?: string
+  accessToken: string // PAT
+  webhookUrl?: string
+  webhookEndpointId?: string
+  webhookSecret?: string
+}
+
 export interface LightningConfig {
-  defaultProvider: 'strike' | 'boltz'
+  defaultProvider: 'strike' | 'boltz' | 'alby'
   providers: {
     strike?: StrikeConfig
     boltz?: BoltzConfig
+    alby?: AlbyConfig
   }
 }

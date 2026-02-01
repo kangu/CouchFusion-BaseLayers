@@ -1,6 +1,7 @@
 import type { LightningProvider, LightningConfig, InvoiceRequest, InvoiceResponse } from '../types/lightning'
 import { createStrikeProvider } from '../providers/strike'
 import { createBoltzProvider } from '../providers/boltz'
+import { createAlbyProvider } from '../providers/alby'
 
 export function createLightningService(config: LightningConfig) {
   const providerInstances = new Map<string, LightningProvider>()
@@ -29,6 +30,13 @@ export function createLightningService(config: LightningConfig) {
           throw new Error('Boltz provider not configured')
         }
         provider = createBoltzProvider(config.providers.boltz)
+        break
+
+      case 'alby':
+        if (!config.providers.alby) {
+          throw new Error('Alby provider not configured')
+        }
+        provider = createAlbyProvider(config.providers.alby)
         break
         
       default:

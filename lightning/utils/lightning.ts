@@ -6,7 +6,7 @@ export interface CreateInvoiceOptions {
   currency?: string
   description?: string
   metadata?: Record<string, any>
-  provider?: 'strike' | 'boltz'
+  provider?: 'strike' | 'boltz' | 'alby'
 }
 
 export async function createLightningInvoice(

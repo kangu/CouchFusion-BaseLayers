@@ -6,6 +6,8 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
   const webhookUrl = process.env.NUXT_PUBLIC_SITE_URL ?
     `${process.env.NUXT_PUBLIC_SITE_URL}/api/webhooks/boltz` :
     undefined
+  // Keep ephemeral claim data in-memory so we can auto-claim once invoice is settled
+  const pendingClaims = new Map<string, { preimage: string; claimPrivateKey: string }>()
 
   const makeRequest = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${baseUrl}${endpoint}`
@@ -15,8 +17,10 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
       ...options.headers
     }
 
+    console.log(`[boltz] -> ${options.method || 'GET'} ${url}`, options.body ? `body: ${options.body}` : '')
     const response = await fetch(url, { ...options, headers })
 
+    console.log(`[boltz] <- ${response.status} ${url}`)
     if (!response.ok) {
       const errorText = await response.text()
       throw new Error(`Boltz API error: ${response.status} - ${errorText}`)
@@ -26,27 +30,35 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
   }
 
   const createInvoice = async (request: InvoiceRequest): Promise<InvoiceResponse> => {
-    // Generate preimage and hash for swap
-    const preimage = crypto.randomBytes(32)
+    // Use caller-provided preimageHash if supplied, otherwise random
+    const preimage = request.metadata?.preimage
+      ? Buffer.from(request.metadata.preimage, 'hex')
+      : crypto.randomBytes(32)
     const preimageHash = crypto.createHash('sha256').update(preimage).digest('hex')
+
+    // Generate an ephemeral claim key (Boltz web also auto-generates). We return it for spending.
     const claimKey = crypto.createECDH('secp256k1')
     claimKey.generateKeys()
-    const refundKey = crypto.createECDH('secp256k1')
-    refundKey.generateKeys()
     const claimPublicKey = claimKey.getPublicKey('hex', 'compressed')
-    const refundPublicKey = refundKey.getPublicKey('hex', 'compressed')
+    const claimPrivateKey = claimKey.getPrivateKey('hex')
 
-    const pairId = config.network === 'testnet' ? 'BTC/L-BTC' : 'BTC/L-BTC'
+    const pairHash = config.pairHash || (await (async () => {
+      const reversePairs = await makeRequest('/v2/swap/reverse')
+      const hash = reversePairs?.BTC?.['L-BTC']?.hash
+      if (!hash) {
+        throw new Error('Boltz pairHash missing for BTC -> L-BTC')
+      }
+      return hash
+    })())
 
     const swapRequest: Record<string, any> = {
-      claimAddress: config.liquidAddress,
-      claimPublicKey: refundPublicKey,
-        pairId, // this should be pairHash and needs to be taken from a call to /available-pairs ()
+      pairHash,
       from: 'BTC',
       to: 'L-BTC',
       invoiceAmount: request.amount,
       preimageHash,
-      ...(config.refundAddress && { refundAddress: config.refundAddress }),
+      claimPublicKey,
+      claimAddress: config.liquidAddress,
       ...(config.referralCode && { referralId: config.referralCode }),
       ...(webhookUrl && {
         webhook: {
@@ -61,6 +73,7 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
       method: 'POST',
       body: JSON.stringify(swapRequest)
     })
+    console.log('Swap params', swapRequest)
     console.log('Doing reverse swap request', response)
 
     // Store preimage for later claim (in production, use secure storage)
@@ -75,14 +88,77 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
       status: 'pending',
       liquidAddress: config.liquidAddress,
       swapId,
+      preimage: preimage.toString('hex'),
+      preimageHash,
+      claimPublicKey,
+      claimPrivateKey,
+      lockupAddress: response.lockupAddress,
+      blindingKey: response.claimDetails?.blindingKey,
+      onchainAmount: response.onchainAmount,
       expiresAt: response.timeoutBlockHeight ?
         new Date(Date.now() + (response.timeoutBlockHeight * 10 * 60 * 1000)) : // Rough estimate
         undefined
     }
   }
 
+  const tryAutoClaim = async (swapId: string, preimage: string, claimPrivateKey: string) => {
+    try {
+      // Fetch claim transaction and swap details
+      const [claimInfo, swap] = await Promise.all([
+        makeRequest(`/v2/swap/reverse/${swapId}/transaction`),
+        makeRequest(`/v2/swap/${swapId}`)
+      ])
+
+      const serverPubKey =
+        swap.claimDetails?.serverPublicKey ||
+        swap.lockupDetails?.serverPublicKey ||
+        claimInfo.serverPublicKey
+
+      const transaction = claimInfo.transaction || claimInfo.hex
+      const index = claimInfo.index ?? 0
+      if (!serverPubKey || !transaction) {
+        console.warn(`[boltz] auto-claim: missing serverPubKey or transaction for swap ${swapId}`)
+        return
+      }
+
+      const { Musig } = await import('boltz-core')
+      const { ECPairFactory } = await import('ecpair')
+      // @ts-ignore secp import
+      const ecc = await import('@bitcoinerlab/secp256k1')
+      const ec = ECPairFactory(ecc)
+      const claimant = ec.fromPrivateKey(Buffer.from(claimPrivateKey, 'hex'))
+      const musig = new Musig([claimant.publicKey, Buffer.from(serverPubKey, 'hex')])
+      const ourNonce = musig.getNonce(0)
+
+      const payload = {
+        index,
+        preimage,
+        pubNonce: Buffer.from(ourNonce).toString('hex'),
+        transaction
+      }
+
+      const res = await makeRequest(`/v2/swap/reverse/${swapId}/claim`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+      console.log(`[boltz] auto-claim submitted for swap ${swapId}`, res)
+      // Once submitted, remove from pending to avoid repeats
+      pendingClaims.delete(swapId)
+    } catch (err) {
+      console.error(`[boltz] auto-claim failed for swap ${swapId}`, err)
+    }
+  }
+
   const getInvoiceStatus = async (invoiceId: string): Promise<InvoiceResponse> => {
     const response = await makeRequest(`/v2/swap/${invoiceId}`)
+
+    // If we have stored claim data and the swap is ready, auto-claim
+    const stored = pendingClaims.get(invoiceId)
+    const boltzStatus = response.status
+    const isSettled = ['invoice.settled', 'transaction.mempool', 'transaction.confirmed'].includes(boltzStatus)
+    if (stored && isSettled) {
+      tryAutoClaim(invoiceId, stored.preimage, stored.claimPrivateKey)
+    }
 
     return {
       invoiceId: response.id,
@@ -91,7 +167,9 @@ export function createBoltzProvider(config: BoltzConfig): LightningProvider {
       currency: 'sats',
       status: mapBoltzStatus(response.status),
       liquidAddress: response.claimAddress,
-      swapId: response.id
+      swapId: response.id,
+      lockupAddress: response.lockupAddress,
+      onchainAmount: response.onchainAmount
     }
   }
 
