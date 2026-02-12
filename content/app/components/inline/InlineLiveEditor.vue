@@ -33,6 +33,7 @@ const route = useRoute();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const isIframeReady = ref(false);
+const isPreviewClientReady = ref(false);
 const latestDocument = ref<MinimalContentDocument | null>(null);
 const latestPreviewDocument = ref<MinimalContentDocument | null>(null);
 const selectedSummary = ref<ContentPageSummary | null>(null);
@@ -54,6 +55,7 @@ const pendingFocusTarget = ref<{
     path: string;
     mode?: "flash" | "lock" | "clear";
 } | null>(null);
+const pendingLiveUpdate = ref(false);
 const dividerRef = ref<HTMLDivElement | null>(null);
 const isDraggingDivider = ref(false);
 const pendingDividerDrag = ref(false);
@@ -226,21 +228,24 @@ const getPreviewPayload = (): MinimalContentDocument | null => {
     return latestPreviewDocument.value ?? latestDocument.value;
 };
 
-const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
-    const sourceDocument = document ?? getPreviewPayload();
-    if (!sourceDocument) {
-        return;
-    }
+const canPostToPreview = (): boolean => {
+    return Boolean(
+        iframeRef.value?.contentWindow &&
+            isIframeReady.value &&
+            isPreviewClientReady.value,
+    );
+};
 
+const postLiveUpdate = (document: MinimalContentDocument) => {
     if (!iframeRef.value?.contentWindow) {
         return;
     }
 
     const normalizedPath = normalizePagePath(
-        sourceDocument.path ?? activePath.value,
+        document.path ?? activePath.value,
     );
     const cloned = getClonedDocument({
-        ...sourceDocument,
+        ...document,
         path: normalizedPath,
     });
 
@@ -261,17 +266,14 @@ const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
     );
 };
 
-const sendFocusMessage = (
+const postFocusMessage = (
     uid: string,
     path: string,
     mode: "flash" | "lock" | "clear" = "flash",
 ) => {
-    if (!iframeRef.value?.contentWindow || !isIframeReady.value) {
-        pendingFocusTarget.value = { uid, path, mode };
+    if (!iframeRef.value?.contentWindow) {
         return;
     }
-
-    pendingFocusTarget.value = null;
 
     iframeRef.value.contentWindow.postMessage(
         {
@@ -286,6 +288,58 @@ const sendFocusMessage = (
     );
 };
 
+const flushPendingPreviewMessages = () => {
+    if (!canPostToPreview()) {
+        return;
+    }
+
+    if (pendingLiveUpdate.value) {
+        const payload = getPreviewPayload();
+        pendingLiveUpdate.value = false;
+        if (payload) {
+            postLiveUpdate(payload);
+        }
+    }
+
+    if (pendingFocusTarget.value) {
+        const target = pendingFocusTarget.value;
+        pendingFocusTarget.value = null;
+        postFocusMessage(
+            target.uid,
+            normalizePagePath(target.path || activePath.value),
+            target.mode ?? "flash",
+        );
+    }
+};
+
+const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
+    const sourceDocument = document ?? getPreviewPayload();
+    if (!sourceDocument) {
+        return;
+    }
+
+    if (!canPostToPreview()) {
+        pendingLiveUpdate.value = true;
+        return;
+    }
+    pendingLiveUpdate.value = false;
+    postLiveUpdate(sourceDocument);
+};
+
+const sendFocusMessage = (
+    uid: string,
+    path: string,
+    mode: "flash" | "lock" | "clear" = "flash",
+) => {
+    if (!canPostToPreview()) {
+        pendingFocusTarget.value = { uid, path, mode };
+        return;
+    }
+
+    pendingFocusTarget.value = null;
+    postFocusMessage(uid, path, mode);
+};
+
 const handlePageSelected = (summary: ContentPageSummary | null) => {
     selectedSummary.value = summary;
     if (!summary) {
@@ -297,6 +351,7 @@ const handlePageSelected = (summary: ContentPageSummary | null) => {
     if (activePath.value !== normalizedPath) {
         activePath.value = normalizedPath;
         isIframeReady.value = false;
+        isPreviewClientReady.value = false;
     }
     setUnsavedState(false);
 };
@@ -309,10 +364,9 @@ const handleDocumentChange = (document: MinimalContentDocument) => {
     if (activePath.value !== normalized.path) {
         activePath.value = normalized.path;
         isIframeReady.value = false;
+        isPreviewClientReady.value = false;
     }
-    if (isIframeReady.value) {
-        sendLiveUpdate();
-    }
+    sendLiveUpdate();
 };
 
 const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
@@ -322,10 +376,9 @@ const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
     if (activePath.value !== normalized.path) {
         activePath.value = normalized.path;
         isIframeReady.value = false;
+        isPreviewClientReady.value = false;
     }
-    if (isIframeReady.value) {
-        sendLiveUpdate();
-    }
+    sendLiveUpdate();
 };
 
 const handleNodeFocus = (payload: {
@@ -344,6 +397,7 @@ const handleNodeFocus = (payload: {
     if (activePath.value !== normalizedPath) {
         activePath.value = normalizedPath;
         isIframeReady.value = false;
+        isPreviewClientReady.value = false;
     }
     if (typeof payload.uid !== "string") {
         return;
@@ -456,15 +510,33 @@ const beginDividerDrag = (event: PointerEvent) => {
 
 const handleIframeLoad = () => {
     isIframeReady.value = true;
+    pendingLiveUpdate.value = true;
+};
+
+const handlePreviewReadyMessage = (event: MessageEvent) => {
+    const iframeWindow = iframeRef.value?.contentWindow;
+    if (!iframeWindow || event.source !== iframeWindow) {
+        return;
+    }
+
+    const expectedOrigin = previewOrigin.value;
+    if (expectedOrigin !== "*" && event.origin !== expectedOrigin) {
+        return;
+    }
+
+    const data = event.data;
+    if (!data || typeof data !== "object") {
+        return;
+    }
+
+    if ((data as { type?: string }).type !== "content_inline_preview_ready") {
+        return;
+    }
+
+    isPreviewClientReady.value = true;
+    pendingLiveUpdate.value = true;
     nextTick(() => {
-        sendLiveUpdate();
-        if (pendingFocusTarget.value) {
-            sendFocusMessage(
-                pendingFocusTarget.value.uid,
-                pendingFocusTarget.value.path,
-                pendingFocusTarget.value.mode ?? "flash",
-            );
-        }
+        flushPendingPreviewMessages();
     });
 };
 
@@ -548,12 +620,17 @@ watch(
         latestDocument.value = null;
         selectedSummary.value = null;
         isIframeReady.value = false;
+        isPreviewClientReady.value = false;
+        pendingLiveUpdate.value = false;
+        pendingFocusTarget.value = null;
         workbenchInstanceKey.value += 1;
         setUnsavedState(false);
     },
 );
 
 onMounted(() => {
+    window.addEventListener("message", handlePreviewReadyMessage);
+
     if (typeof window !== "undefined") {
         const stored = loadStoredSidebarWidth();
         if (stored !== null) {
@@ -576,6 +653,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     applyBeforeUnload(false);
     stopDividerDrag();
+    window.removeEventListener("message", handlePreviewReadyMessage);
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", applySidebarConstraints);
     }

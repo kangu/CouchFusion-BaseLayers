@@ -71,7 +71,60 @@ const isInlinePreview = (): boolean => {
   }
 }
 
+const notifyInlinePreviewReady = () => {
+  if (typeof window === 'undefined' || !isInlinePreview()) {
+    return
+  }
+
+  try {
+    const path = normalizePagePath(window.location.pathname || '/')
+    window.parent?.postMessage(
+      {
+        type: 'content_inline_preview_ready',
+        payload: { path },
+      },
+      '*'
+    )
+  } catch {
+    // noop
+  }
+}
+
 let highlightOverlay: HTMLDivElement | null = null
+const MAX_OUT_OF_VIEW_RATIO_BEFORE_SCROLL = 0.6
+
+const shouldScrollTargetIntoView = (target: HTMLElement): boolean => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const rect = target.getBoundingClientRect()
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return false
+  }
+
+  const elementArea = Math.max(rect.width, 0) * Math.max(rect.height, 0)
+  if (elementArea <= 0) {
+    return false
+  }
+
+  const intersectionWidth = Math.max(
+    0,
+    Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0)
+  )
+  const intersectionHeight = Math.max(
+    0,
+    Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0)
+  )
+  const visibleArea = intersectionWidth * intersectionHeight
+  const visibleRatio = visibleArea / elementArea
+  const outOfViewRatio = 1 - visibleRatio
+
+  return outOfViewRatio > MAX_OUT_OF_VIEW_RATIO_BEFORE_SCROLL
+}
 
 const ensureHighlightOverlay = (): HTMLDivElement => {
   if (highlightOverlay) {
@@ -266,7 +319,9 @@ export const useContentLiveUpdates = (): void => {
           return
         }
 
-        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        if (shouldScrollTargetIntoView(target)) {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        }
         ensureHighlightStyles()
         applyElementShadow(target, mode)
         showHighlight(target)
@@ -278,6 +333,7 @@ export const useContentLiveUpdates = (): void => {
 
   onMounted(() => {
     window.addEventListener('message', handleMessage)
+    notifyInlinePreviewReady()
   })
 
   onBeforeUnmount(() => {
