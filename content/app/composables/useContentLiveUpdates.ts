@@ -3,27 +3,44 @@ import { useContentPagesStore } from '#content/app/stores/pages'
 import { normalizePagePath } from '#content/utils/page'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
 
+/**
+ * Payload used by the inline editor to push a full minimal document snapshot
+ * into the preview iframe.
+ */
 interface LiveUpdatePayload {
   path: string
   document: MinimalContentDocument
 }
 
+/**
+ * PostMessage envelope for live document synchronization.
+ */
 interface LiveUpdateMessage {
   type: 'live_updates'
   payload?: LiveUpdatePayload
 }
 
+/**
+ * Payload used by the builder to request visual focus/highlight for one node
+ * in the preview iframe.
+ */
 interface BuilderFocusPayload {
   path: string
   uid: string
   mode?: 'flash' | 'lock' | 'clear'
 }
 
+/**
+ * PostMessage envelope for focus/highlight synchronization.
+ */
 interface BuilderFocusMessage {
   type: 'builder_focus'
   payload?: BuilderFocusPayload
 }
 
+/**
+ * Narrow unknown postMessage data to a valid live-update message.
+ */
 const isLiveUpdateMessage = (value: unknown): value is LiveUpdateMessage => {
   if (!value || typeof value !== 'object') {
     return false
@@ -45,6 +62,9 @@ const isLiveUpdateMessage = (value: unknown): value is LiveUpdateMessage => {
   return Boolean(candidate.payload.document && typeof candidate.payload.document === 'object')
 }
 
+/**
+ * Narrow unknown postMessage data to a valid focus message.
+ */
 const isBuilderFocusMessage = (value: unknown): value is BuilderFocusMessage => {
   if (!value || typeof value !== 'object') {
     return false
@@ -59,6 +79,10 @@ const isBuilderFocusMessage = (value: unknown): value is BuilderFocusMessage => 
   return typeof candidate.payload.uid === 'string' && typeof candidate.payload.path === 'string'
 }
 
+/**
+ * Inline preview mode is enabled when the iframe URL contains `inline-preview`.
+ * The composable only applies focus-specific behavior in this mode.
+ */
 const isInlinePreview = (): boolean => {
   if (typeof window === 'undefined') {
     return false
@@ -71,6 +95,11 @@ const isInlinePreview = (): boolean => {
   }
 }
 
+/**
+ * Handshake message emitted from the preview iframe to the parent inline editor.
+ * This signals that the message listener is mounted and ready to receive
+ * `live_updates` and `builder_focus` messages.
+ */
 const notifyInlinePreviewReady = () => {
   if (typeof window === 'undefined' || !isInlinePreview()) {
     return
@@ -91,8 +120,16 @@ const notifyInlinePreviewReady = () => {
 }
 
 let highlightOverlay: HTMLDivElement | null = null
+/**
+ * Scroll only when the target is sufficiently outside the viewport.
+ * Example: `0.6` means at least 60% of the element is out of view.
+ */
 const MAX_OUT_OF_VIEW_RATIO_BEFORE_SCROLL = 0.6
 
+/**
+ * Computes element visibility within the current viewport and returns whether
+ * auto-scroll should be triggered for focus.
+ */
 const shouldScrollTargetIntoView = (target: HTMLElement): boolean => {
   if (typeof window === 'undefined') {
     return false
@@ -126,6 +163,10 @@ const shouldScrollTargetIntoView = (target: HTMLElement): boolean => {
   return outOfViewRatio > MAX_OUT_OF_VIEW_RATIO_BEFORE_SCROLL
 }
 
+/**
+ * Creates (once) and reuses a floating overlay rectangle that tracks the
+ * focused element bounds. This is separate from element box-shadow effects.
+ */
 const ensureHighlightOverlay = (): HTMLDivElement => {
   if (highlightOverlay) {
     return highlightOverlay
@@ -146,6 +187,9 @@ const ensureHighlightOverlay = (): HTMLDivElement => {
   return overlay
 }
 
+/**
+ * Positions and displays the highlight overlay around the current target.
+ */
 const showHighlight = (target: HTMLElement) => {
   const overlay = ensureHighlightOverlay()
   const rect = target.getBoundingClientRect()
@@ -157,12 +201,18 @@ const showHighlight = (target: HTMLElement) => {
   overlay.style.opacity = '1'
 }
 
+/**
+ * Hides the persistent highlight overlay without removing the node.
+ */
 const clearHighlight = () => {
   if (highlightOverlay) {
     highlightOverlay.style.opacity = '0'
   }
 }
 
+/**
+ * Applies transient or persistent element shadow classes for focus feedback.
+ */
 const applyElementShadow = (
   element: HTMLElement,
   mode: 'flash' | 'lock' | 'clear' = 'flash'
@@ -188,6 +238,9 @@ const applyElementShadow = (
   window.setTimeout(() => element.classList.remove(flashClass), 900)
 }
 
+/**
+ * Injects focus CSS classes once into the preview document.
+ */
 const ensureHighlightStyles = () => {
   if (document.getElementById('builder-highlight-styles')) {
     return
@@ -206,6 +259,15 @@ const ensureHighlightStyles = () => {
   document.head.appendChild(style)
 }
 
+/**
+ * Keeps content preview in sync with builder changes and focus actions.
+ *
+ * Responsibilities:
+ * - listen for postMessage live updates and patch the page store
+ * - preserve scroll position during live content replacement
+ * - apply node-level focus highlight when requested by the builder
+ * - emit iframe readiness handshake for robust parent->iframe messaging
+ */
 export const useContentLiveUpdates = (): void => {
   if (import.meta.server) {
     return
@@ -214,6 +276,10 @@ export const useContentLiveUpdates = (): void => {
   const contentStore = useContentPagesStore()
   let pendingScroll: { x: number; y: number } | null = null
 
+  /**
+   * Live content replacement can nudge scroll unexpectedly.
+   * Retry restoration for a few frames to survive async layout shifts.
+   */
   const scheduleScrollRestore = (coords: { x: number; y: number }) => {
     if (typeof window === 'undefined') {
       return
@@ -250,6 +316,10 @@ export const useContentLiveUpdates = (): void => {
     requestAnimationFrame(attemptRestore)
   }
 
+  /**
+   * Unified postMessage entrypoint for both live document updates and
+   * builder-driven focus events.
+   */
   const handleMessage = (event: MessageEvent) => {
     const data = event.data
 
