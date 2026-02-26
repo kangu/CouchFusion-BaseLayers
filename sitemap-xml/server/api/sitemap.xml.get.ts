@@ -1,3 +1,11 @@
+/*
+*
+* For the moment, the sitemap layer depends heavily on the content layer
+* this is somehow intended as they are supposed to go together
+* but there are some projects where i strictly want the content and not the sitemap
+*
+* */
+
 import {
   defineEventHandler,
   setResponseHeader,
