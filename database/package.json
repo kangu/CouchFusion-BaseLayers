@@ -9,5 +9,8 @@
   "peerDependencies": {
     "@vueuse/core": "^13.9.0",
     "nuxt": "^4.0.0"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.4.0"
   }
 }
