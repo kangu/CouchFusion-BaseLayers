@@ -23,10 +23,46 @@ const normalizePrefix = (value: string | null | undefined): string | null => {
   }
 
   if (trimmed === "/") {
-    return null;
+    return "/";
   }
 
   return trimmed.replace(/\/+$/, "");
+};
+
+const normalisePrefixList = (input: any): string[] =>
+  Array.isArray(input)
+    ? input
+        .map((prefix) => normalizePrefix(prefix))
+        .filter((value): value is string => Boolean(value))
+    : [];
+
+/**
+ * Route-prefix matcher where `/` is treated as exact-only.
+ */
+const matchesPrefix = (path: string, prefix: string): boolean => {
+  if (prefix === "/") {
+    return path === "/";
+  }
+
+  return path.startsWith(prefix);
+};
+
+const applyAllowOverrides = (
+  ignored: string[],
+  allowed: string[],
+): string[] => {
+  if (!allowed.length) {
+    return Array.from(new Set(ignored)).sort((a, b) => a.localeCompare(b));
+  }
+
+  return Array.from(new Set(ignored))
+    .filter(
+      (ignoredPrefix) =>
+        !allowed.some((allowedPrefix) =>
+          matchesPrefix(ignoredPrefix, allowedPrefix),
+        ),
+    )
+    .sort((a, b) => a.localeCompare(b));
 };
 
 const getPagesDir = (nuxt: any) => {
@@ -88,13 +124,6 @@ const collectStaticPagePrefixes = async (
   return Array.from(prefixes);
 };
 
-const normalisePrefixList = (input: any): string[] =>
-  Array.isArray(input)
-    ? input
-        .map((prefix) => normalizePrefix(prefix))
-        .filter((value): value is string => Boolean(value))
-    : [];
-
 export default async function contentLayerIgnoredPrefixesModule(
   _moduleOptions: any,
   nuxt: any,
@@ -114,34 +143,46 @@ export default async function contentLayerIgnoredPrefixesModule(
 
     const manualNormalised = normalisePrefixList(manualPrefixesInput);
 
-    const merged = Array.from(
-      new Set<string>([...autoNormalised, ...manualNormalised]),
-    ).sort((a, b) => a.localeCompare(b));
+    const allowInput = contentConfig?.allow ?? contentConfig?.allowedPrefixes ?? [];
+    const allowNormalised = normalisePrefixList(allowInput);
+
+    const merged = applyAllowOverrides(
+      [...autoNormalised, ...manualNormalised],
+      allowNormalised,
+    );
 
     return {
       ...contentConfig,
       autoIgnoredPrefixes: autoNormalised,
       manualIgnoredPrefixes: manualNormalised,
       ignoredPrefixes: merged,
+      allow: allowNormalised,
+      allowedPrefixes: allowNormalised,
     };
   };
 
-  // Expose the merged ignores to runtimeConfig.content.ignore so server consumers can append them
+  // Expose merged ignore/allow values to runtimeConfig.content for server-side consumers.
   nuxt.options.runtimeConfig = nuxt.options.runtimeConfig || {};
   const runtimeContent = nuxt.options.runtimeConfig.content || {};
-  const runtimeIgnore = Array.isArray(runtimeContent.ignore)
-    ? runtimeContent.ignore
-    : [];
-  const mergedRuntimeIgnore = Array.from(
-    new Set<string>([
-      ...runtimeIgnore,
-      ...autoNormalised,
-      ...(nuxt.options.appConfig?.content?.manualIgnoredPrefixes || []),
-    ]),
-  ).sort((a, b) => a.localeCompare(b));
+
+  const runtimeIgnore = normalisePrefixList(runtimeContent.ignore ?? []);
+  const runtimeAllow = normalisePrefixList(runtimeContent.allow ?? []);
+
+  const manualFromAppConfig = normalisePrefixList(
+    nuxt.options.appConfig?.content?.manualIgnoredPrefixes ??
+      nuxt.options.appConfig?.content?.manualPrefixes ??
+      [],
+  );
+
+  const mergedRuntimeIgnore = applyAllowOverrides(
+    [...runtimeIgnore, ...autoNormalised, ...manualFromAppConfig],
+    runtimeAllow,
+  );
+
   nuxt.options.runtimeConfig.content = {
     ...runtimeContent,
     ignore: mergedRuntimeIgnore,
+    allow: runtimeAllow,
   };
 
   nuxt.hook("app:config", (appConfig: any) => {

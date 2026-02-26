@@ -17,12 +17,13 @@ export const normaliseContentPrefix = (
   }
 
   const trimmed = value.trim();
+
   if (!trimmed.startsWith("/")) {
     return null;
   }
 
   if (trimmed === "/") {
-    return null;
+    return "/";
   }
 
   return trimmed.replace(/\/+$/, "");
@@ -38,11 +39,54 @@ const normalisePrefixList = (input: any): string[] => {
     .filter((value): value is string => Boolean(value));
 };
 
+/**
+ * Route-prefix matcher where `/` is treated as exact-only.
+ */
+const matchesRoutePrefix = (path: string, prefix: string): boolean => {
+  if (prefix === "/") {
+    return path === "/";
+  }
+
+  return path.startsWith(prefix);
+};
+
 export interface ResolveIgnoredPrefixesOptions {
   includeAuto?: boolean;
   includeManual?: boolean;
   includeMerged?: boolean;
 }
+
+export interface ResolveAllowedPrefixesOptions {
+  includeRuntimeAllow?: boolean;
+  includeConfiguredAllow?: boolean;
+}
+
+export const resolveAllowedPrefixes = (
+  appConfigContent: Record<string, any> | undefined | null,
+  options: ResolveAllowedPrefixesOptions = {},
+): string[] => {
+  const { includeRuntimeAllow = true, includeConfiguredAllow = true } = options;
+
+  const combined = new Set<string>();
+
+  if (includeRuntimeAllow) {
+    const runtimeAllowed = normalisePrefixList(appConfigContent?.allow ?? []);
+    for (const prefix of runtimeAllowed) {
+      combined.add(prefix);
+    }
+  }
+
+  if (includeConfiguredAllow) {
+    const configuredAllowed = normalisePrefixList(
+      appConfigContent?.allowedPrefixes ?? [],
+    );
+    for (const prefix of configuredAllowed) {
+      combined.add(prefix);
+    }
+  }
+
+  return Array.from(combined).sort((a, b) => a.localeCompare(b));
+};
 
 export const resolveIgnoredPrefixes = (
   appConfigContent: Record<string, any> | undefined | null,
@@ -89,18 +133,27 @@ export const resolveIgnoredPrefixes = (
     }
   }
 
-  return Array.from(combined).sort((a, b) => a.localeCompare(b));
+  const allowed = resolveAllowedPrefixes(appConfigContent);
+
+  return Array.from(combined)
+    .filter((ignoredPrefix) => {
+      if ((RESERVED_CONTENT_PREFIXES as readonly string[]).includes(ignoredPrefix)) {
+        return true;
+      }
+
+      return !allowed.some((allowedPrefix) =>
+        matchesRoutePrefix(ignoredPrefix, allowedPrefix),
+      );
+    })
+    .sort((a, b) => a.localeCompare(b));
 };
 
 export const isContentRoute = (
   path: string,
   ignoredPrefixes: string[],
+  allowedPrefixes: string[] = [],
 ): boolean => {
   if (!path || !path.startsWith("/")) {
-    return false;
-  }
-
-  if (ignoredPrefixes.some((prefix) => path.startsWith(prefix))) {
     return false;
   }
 
@@ -113,6 +166,20 @@ export const isContentRoute = (
     if (!lastSegment || lastSegment.includes(".")) {
       return false;
     }
+  }
+
+  if (
+    RESERVED_CONTENT_PREFIXES.some((prefix) => matchesRoutePrefix(path, prefix))
+  ) {
+    return false;
+  }
+
+  if (allowedPrefixes.some((prefix) => matchesRoutePrefix(path, prefix))) {
+    return true;
+  }
+
+  if (ignoredPrefixes.some((prefix) => matchesRoutePrefix(path, prefix))) {
+    return false;
   }
 
   return true;

@@ -2,31 +2,40 @@ import {
   defineNuxtRouteMiddleware,
   createError,
   abortNavigation,
-  useAppConfig,
   useRuntimeConfig,
 } from "#imports";
 import { useContentPagesStore } from "#content/app/stores/pages";
 import {
+  resolveAllowedPrefixes,
   resolveIgnoredPrefixes,
   isContentRoute,
-  normaliseContentPrefix,
 } from "#content/utils/content-route";
 
-const buildIgnoredPrefixes = (): string[] => {
-  if (import.meta.client) {
-    return [];
-  }
+interface RoutePrefixConfig {
+  ignoredPrefixes: string[];
+  allowedPrefixes: string[];
+}
+
+const buildRoutePrefixConfig = (): RoutePrefixConfig => {
   const runtimeConfig = useRuntimeConfig();
 
   const runtimeIgnore = Array.isArray(runtimeConfig.content?.ignore)
-    ? runtimeConfig.content!.ignore
+    ? runtimeConfig.content.ignore
     : [];
 
-  const prefixes = resolveIgnoredPrefixes({
-    ignore: runtimeIgnore,
-  });
+  const runtimeAllow = Array.isArray(runtimeConfig.content?.allow)
+    ? runtimeConfig.content.allow
+    : [];
 
-  return prefixes;
+  return {
+    ignoredPrefixes: resolveIgnoredPrefixes({
+      ignore: runtimeIgnore,
+      allow: runtimeAllow,
+    }),
+    allowedPrefixes: resolveAllowedPrefixes({
+      allow: runtimeAllow,
+    }),
+  };
 };
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
@@ -35,7 +44,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     return;
   }
 
-  const ignoredPrefixes = buildIgnoredPrefixes();
+  const { ignoredPrefixes, allowedPrefixes } = buildRoutePrefixConfig();
 
   if (to.path.startsWith("/api")) {
     // API endpoints are reserved for Nitro server routes; return a hard 404 when a page route
@@ -43,12 +52,12 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     return abortNavigation(
       createError({
         statusCode: 404,
-        statusMessage: "API endpoint not foundX1",
+        statusMessage: "API endpoint not found",
       }),
     );
   }
 
-  if (!isContentRoute(to.path, ignoredPrefixes)) {
+  if (!isContentRoute(to.path, ignoredPrefixes, allowedPrefixes)) {
     return;
   }
 

@@ -601,7 +601,7 @@ const updateNodeProp = (uid: string, key: string, value: unknown) => {
         return;
     }
     const props = { ...node.props };
-    if (value === "" || value === undefined || value === null) {
+    if (value === undefined || value === null) {
         delete props[key];
     } else {
         props[key] = value;

@@ -448,7 +448,7 @@ const commitValue = () => {
     error.value = null;
     const normalized = ensureAbsoluteUrl(localValue.value);
     localValue.value = normalized;
-    emit("update:modelValue", normalized || undefined);
+    emit("update:modelValue", normalized);
 };
 
 const clearImage = () => {
