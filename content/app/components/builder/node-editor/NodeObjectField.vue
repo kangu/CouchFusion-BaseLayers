@@ -124,25 +124,16 @@
                     />
                 </template>
                 <template v-else-if="field.type === 'select'">
-                    <select
-                        v-model="objectValue[field.key]"
-                        @change="
-                            () =>
-                                applyFieldChange(
-                                    field,
-                                    objectValue[field.key],
-                                )
+                    <NodeRemoteSelect
+                        :schema="field"
+                        :model-value="objectValue[field.key]"
+                        @update:model-value="
+                            (value) => {
+                                objectValue[field.key] = value;
+                                applyFieldChange(field, value);
+                            }
                         "
-                    >
-                        <option disabled value="">Select</option>
-                        <option
-                            v-for="option in field.options || []"
-                            :key="option.value"
-                            :value="option.value"
-                        >
-                            {{ option.label }}
-                        </option>
-                    </select>
+                    />
                 </template>
                 <template v-else-if="field.ui?.component">
                     <component
@@ -400,34 +391,24 @@
                                             arrayField.type === 'select'
                                         "
                                     >
-                                        <select
-                                            v-model="
+                                        <NodeRemoteSelect
+                                            :schema="arrayField"
+                                            :model-value="
                                                 arrayItem[arrayField.key]
                                             "
-                                            @change="
-                                                () =>
+                                            @update:model-value="
+                                                (value) => {
+                                                    arrayItem[arrayField.key] =
+                                                        value;
                                                     updateArrayField(
                                                         field,
                                                         index,
                                                         arrayField,
-                                                        arrayItem[
-                                                            arrayField.key
-                                                        ],
-                                                    )
+                                                        value,
+                                                    );
+                                                }
                                             "
-                                        >
-                                            <option disabled value="">
-                                                Select
-                                            </option>
-                                            <option
-                                                v-for="option in arrayField.options ||
-                                                []"
-                                                :key="option.value"
-                                                :value="option.value"
-                                            >
-                                                {{ option.label }}
-                                            </option>
-                                        </select>
+                                        />
                                     </template>
                                     <template
                                         v-else-if="arrayField.ui?.component"
@@ -609,6 +590,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
+import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 
 type FieldContext = (field: ComponentArrayItemField) => Record<string, any>;
 

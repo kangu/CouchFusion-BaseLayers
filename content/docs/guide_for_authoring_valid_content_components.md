@@ -35,6 +35,28 @@ This note captures the conventions used across `components/content` so component
 
 ## Props for Builder Integration
 - Keep prop names kebab-case when declared in the template, camelCase in TypeScript.
+- For select props with dynamic API data:
+  - Set `builderFieldMeta` with `type: 'select'`.
+  - Configure `ui.remoteOptions` with runtime API details.
+  - Use dot-paths for nested response parsing.
+  - The node editor fetches live at runtime (not during registry generation), includes credentials, and refetches on select focus.
+  - On fetch failure, the dropdown is disabled and an inline error hint is shown.
+  Example:
+  ```ts
+  export const builderFieldMeta = {
+    category: {
+      type: 'select',
+      ui: {
+        remoteOptions: {
+          url: '/api/categories',
+          itemsPath: 'data.items',
+          labelPath: 'name',
+          valuePath: 'id',
+        },
+      },
+    },
+  }
+  ```
 - For array/object props:
   - Model them as `jsonarray`/`jsonobject` in the registry.
   - Provide shape documentation (e.g., `{ icon: string; label: string }`) via TypeScript types and comments.

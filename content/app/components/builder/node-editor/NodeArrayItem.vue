@@ -218,31 +218,23 @@
                         />
                     </template>
                     <template v-else-if="field.type === 'select'">
-                        <select
-                            v-model="
+                        <NodeRemoteSelect
+                            :schema="field"
+                            :model-value="
                                 arrayItemEntry.value[field.key]
                             "
-                            @change="
-                                () =>
+                            @update:model-value="
+                                (value) => {
+                                    arrayItemEntry.value[field.key] = value;
                                     handleArrayItemFieldChange(
                                         prop.key,
                                         arrayItemEntry.index,
                                         field,
-                                        arrayItemEntry.value[
-                                            field.key
-                                        ],
-                                    )
+                                        value,
+                                    );
+                                }
                             "
-                        >
-                            <option disabled value="">Select</option>
-                            <option
-                                v-for="option in field.options || []"
-                                :key="option.value"
-                                :value="option.value"
-                            >
-                                {{ option.label }}
-                            </option>
-                        </select>
+                        />
                     </template>
                     <template v-else-if="field.type === 'stringarray'">
                         <div
@@ -809,47 +801,29 @@
                                                 'select'
                                             "
                                         >
-                                            <select
-                                                v-model="
+                                            <NodeRemoteSelect
+                                                :schema="nestedField"
+                                                :model-value="
                                                     nestedItem[
                                                         nestedField.key
                                                     ]
                                                 "
-                                                @change="
-                                                    () =>
+                                                @update:model-value="
+                                                    (value) => {
+                                                        nestedItem[
+                                                            nestedField.key
+                                                        ] = value;
                                                         updateNestedArrayItemField(
                                                             prop.key,
                                                             arrayItemEntry.index,
                                                             field,
                                                             nestedIndex,
                                                             nestedField,
-                                                            nestedItem[
-                                                                nestedField.key
-                                                            ],
-                                                        )
+                                                            value,
+                                                        );
+                                                    }
                                                 "
-                                            >
-                                                <option
-                                                    disabled
-                                                    value=""
-                                                >
-                                                    Select
-                                                </option>
-                                                <option
-                                                    v-for="option in nestedField.options ||
-                                                    []"
-                                                    :key="
-                                                        option.value
-                                                    "
-                                                    :value="
-                                                        option.value
-                                                    "
-                                                >
-                                                    {{
-                                                        option.label
-                                                    }}
-                                                </option>
-                                            </select>
+                                            />
                                         </template>
                                         <template
                                             v-else-if="
@@ -1634,6 +1608,7 @@
 import { computed } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeObjectField from "./NodeObjectField.vue";
+import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 
 type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;

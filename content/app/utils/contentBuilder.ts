@@ -139,12 +139,17 @@ const serializeProps = (node: BuilderNode, componentName: string): Record<string
   const props: Record<string, any> = {}
 
   for (const [key, value] of Object.entries(node.props || {})) {
-    if (value === undefined || value === '') {
+    if (value === undefined) {
       continue
     }
 
     if (componentName === 'template' && key === 'slot') {
-      props[`v-slot:${value}`] = ''
+      const slotName = typeof value === 'string' ? value.trim() : ''
+      if (!slotName) {
+        props[key] = ''
+        continue
+      }
+      props[`v-slot:${slotName}`] = ''
       continue
     }
 

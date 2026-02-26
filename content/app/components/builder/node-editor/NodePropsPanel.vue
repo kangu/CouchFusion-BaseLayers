@@ -73,26 +73,16 @@
                 </span>
             </template>
             <template v-else-if="prop.type === 'select'">
-                <select
-                    v-model="propDraft[prop.key]"
-                    @change="
-                        () =>
-                            applyProp(
-                                prop.key,
-                                propDraft[prop.key],
-                                prop.type,
-                            )
+                <NodeRemoteSelect
+                    :schema="prop"
+                    :model-value="propDraft[prop.key]"
+                    @update:model-value="
+                        (value) => {
+                            propDraft[prop.key] = value;
+                            applyProp(prop.key, value, prop.type);
+                        }
                     "
-                >
-                    <option disabled value="">Select</option>
-                    <option
-                        v-for="option in prop.options || []"
-                        :key="option.value"
-                        :value="option.value"
-                    >
-                        {{ option.label }}
-                    </option>
-                </select>
+                />
             </template>
             <template v-else-if="prop.type === 'json'">
                 <div class="node-panel__input-wrap">
@@ -289,6 +279,7 @@ import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/build
 import NodeArrayField from "./NodeArrayField.vue";
 import NodeField from "./NodeField.vue";
 import NodeObjectField from "./NodeObjectField.vue";
+import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeTextField from "./NodeTextField.vue";
 import NodeTextareaField from "./NodeTextareaField.vue";
 

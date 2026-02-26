@@ -1,4 +1,5 @@
 export type BuilderValuePrimitive = string | number | boolean;
+export type BuilderSelectOptionValue = BuilderValuePrimitive;
 
 export type BuilderValue =
   | BuilderValuePrimitive
@@ -20,7 +21,18 @@ export type ComponentFieldType =
 export interface ComponentFieldUiConfig {
   component?: string;
   widget?: string;
+  remoteOptions?: {
+    url: string;
+    itemsPath?: string;
+    labelPath: string;
+    valuePath: string;
+  };
   [key: string]: unknown;
+}
+
+export interface ComponentSelectOption {
+  label: string;
+  value: BuilderSelectOptionValue;
 }
 
 export interface ComponentArrayItemFieldBase {
@@ -29,7 +41,7 @@ export interface ComponentArrayItemFieldBase {
   description?: string;
   ui?: ComponentFieldUiConfig;
   default?: BuilderValue;
-  options?: Array<{ label: string; value: string }>;
+  options?: ComponentSelectOption[];
 }
 
 export interface ComponentArrayPrimitiveField extends ComponentArrayItemFieldBase {
@@ -64,7 +76,7 @@ export interface ComponentPropSchema {
   type: ComponentFieldType;
   required?: boolean;
   placeholder?: string;
-  options?: Array<{ label: string; value: string }>;
+  options?: ComponentSelectOption[];
   description?: string;
   default?: BuilderValue;
   items?: ComponentArrayItemField[];

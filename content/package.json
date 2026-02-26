@@ -18,6 +18,7 @@
     "@tiptap/core": "^2.6.6",
     "@tiptap/starter-kit": "^2.6.6",
     "@tiptap/vue-3": "^2.6.6",
-    "dompurify": "^3.0.8"
+    "dompurify": "^3.0.8",
+    "minimark": "^0.2.0"
   }
 }

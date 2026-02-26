@@ -181,6 +181,32 @@ const toTitleCase = (value) => {
     .replace(/^\w/, (char) => char.toUpperCase())
 }
 
+const FALLBACK_NODE_TYPES = {
+  ROOT: 0,
+  ELEMENT: 1,
+  TEXT: 2,
+  COMMENT: 3,
+  SIMPLE_EXPRESSION: 4,
+  INTERPOLATION: 5,
+  ATTRIBUTE: 6,
+  DIRECTIVE: 7,
+  COMPOUND_EXPRESSION: 8,
+  IF: 9,
+  IF_BRANCH: 10,
+  FOR: 11,
+  TEXT_CALL: 12
+}
+
+const resolveNodeTypes = (compilerDom) => {
+  const exported = compilerDom?.NodeTypes
+  if (exported && typeof exported === 'object') {
+    return exported
+  }
+
+  // Vue compiler-dom no longer exports NodeTypes in newer builds; use stable numeric enum values.
+  return FALLBACK_NODE_TYPES
+}
+
 // --- remainder of generator logic unchanged ---
 // To keep parity with the original CLI version, we inline the remainder without modifications.
 
@@ -198,7 +224,7 @@ const extractTemplateMetadata = (template, propNames, helpers) => {
   }
 
   const { compilerDom, parser, traverse } = helpers
-  const { NodeTypes } = compilerDom
+  const NodeTypes = resolveNodeTypes(compilerDom)
 
   let ast
   try {
