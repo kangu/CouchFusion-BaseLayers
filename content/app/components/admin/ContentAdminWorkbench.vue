@@ -231,6 +231,9 @@ const selectedSummary = computed<ContentPageSummary | null>(() => {
     }
     return contentStore.getPage(selectedPath.value);
 });
+const currentEditedPath = computed(
+    () => selectedSummary.value?.path ?? latestDocument.value?.path ?? title.value,
+);
 
 const historyState = computed(() => {
     if (!selectedSummary.value?.path) {
@@ -1181,14 +1184,13 @@ defineExpose({
             name="header"
             :title="title"
             :description="description"
-            :open-create="showCreatePageModal"
+                :open-create="showCreatePageModal"
         >
             <div class="content-admin-workbench__header">
                 <div class="content-admin-workbench__header-copy">
-                    <h1 class="content-admin-workbench__title">{{ title }}</h1>
-                    <p class="content-admin-workbench__description">
-                        {{ description }}
-                    </p>
+                    <h1 class="content-admin-workbench__title">
+                        {{ currentEditedPath }}
+                    </h1>
                 </div>
                 <div class="content-admin-workbench__header-actions">
                     <button
@@ -1208,7 +1210,6 @@ defineExpose({
                                 d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"
                             />
                         </svg>
-                        <span>New Page</span>
                     </button>
                 </div>
             </div>
@@ -1280,36 +1281,9 @@ defineExpose({
                 :class="{ 'is-pinned': isHeaderPinned }"
                 :style="headerFixedStyles"
             >
-              <div class="flex flex-col">
+              <div class="flex flex-col flex-1">
 
-                <div class="flex-1 flex">
-                  <div class="editor-header__left">
-                    <div class="editor-header__meta">
-                        <span class="editor-header__meta-value">
-                            {{
-                            selectedSummary?.title ||
-                            selectedSummary?.path ||
-                            "No page selected"
-                          }}
-                        </span>
-                    </div>
-                    <div class="editor-header__status">
-                      {{ selectedSummary?.path }}
-                    </div>
-                    <div class="editor-header__status">
-                        <span
-                            v-if="selectionError"
-                            class="editor-header__status-error"
-                        >{{ selectionError }}</span
-                        >
-                      <span
-                          v-else-if="lastUpdatedDisplay"
-                          class="editor-header__status-time"
-                      >
-                            Last saved {{ lastUpdatedDisplay }}
-                        </span>
-                    </div>
-                  </div>
+                <div class="flex-none flex">
                   <div class="editor-header__actions">
                     <button
                         type="button"
@@ -1906,10 +1880,6 @@ defineExpose({
     flex-direction: column;
 }
 
-.content-admin-workbench > * + * {
-    margin-top: 1.5rem;
-}
-
 .content-admin-workbench__button {
     display: inline-flex;
     align-items: center;
@@ -2013,6 +1983,7 @@ defineExpose({
 }
 
 .content-admin-workbench__header {
+  padding: 0.5rem 0.75rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
