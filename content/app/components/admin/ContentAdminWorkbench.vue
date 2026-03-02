@@ -91,6 +91,13 @@ const emit = defineEmits<{
     (e: "duplicate-error", error: Error): void;
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
+    (
+        e: "preview-motion-change",
+        payload: {
+            forceMotion: boolean;
+            mediaPreference: "reduce" | "no-preference";
+        },
+    ): void;
     (e: "unsaved-state-change", hasChanges: boolean): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
 }>();
@@ -137,6 +144,7 @@ const selectedHistoryId = ref<string | null>(null);
 const latestDocument = ref<MinimalContentDocument | null>(null);
 const hasUnsavedChanges = ref(false);
 const lastSavedSnapshot = ref<string | null>(null);
+const forcePreviewMotion = ref(false);
 
 const isCreateModalOpen = ref(false);
 const isCreatingPage = ref(false);
@@ -1100,6 +1108,17 @@ const closeHistoryMenu = () => {
     isHistoryMenuOpen.value = false;
 };
 
+watch(
+    () => forcePreviewMotion.value,
+    (value) => {
+        emit("preview-motion-change", {
+            forceMotion: value,
+            mediaPreference: value ? "no-preference" : "reduce",
+        });
+    },
+    { immediate: true },
+);
+
 const toggleHistoryMenu = () => {
     if (!selectedSummary.value) {
         return;
@@ -1340,6 +1359,13 @@ defineExpose({
                         <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="m383.5 128l.5-24a56.16 56.16 0 0 0-56-56H112a64.19 64.19 0 0 0-64 64v216a56.16 56.16 0 0 0 56 56h24m168-168v160m80-80H216" />
                       </svg>
                     </button>
+                    <label class="editor-header__motion-toggle" title="Preview motion preference">
+                      <input
+                          v-model="forcePreviewMotion"
+                          type="checkbox"
+                      />
+                      <span>Force Motion</span>
+                    </label>
                     <div class="editor-header__history" ref="historyMenuRef">
                       <button
                           type="button"
@@ -2214,6 +2240,26 @@ defineExpose({
     display: flex;
     align-items: center;
     gap: 0.75rem;
+}
+
+.editor-header__motion-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #4b5563;
+    font-size: 0.8rem;
+    font-weight: 600;
+    user-select: none;
+}
+
+.editor-header__motion-toggle input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
 }
 
 .editor-header__fullrow {

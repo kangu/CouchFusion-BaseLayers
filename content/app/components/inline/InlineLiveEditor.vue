@@ -36,6 +36,7 @@ const isIframeReady = ref(false);
 const isPreviewClientReady = ref(false);
 const latestDocument = ref<MinimalContentDocument | null>(null);
 const latestPreviewDocument = ref<MinimalContentDocument | null>(null);
+const previewForceMotion = ref(false);
 const selectedSummary = ref<ContentPageSummary | null>(null);
 const cacheBuster = ref(Date.now());
 const resolvedBaseUrl = ref<string>("");
@@ -189,6 +190,10 @@ const previewUrl = computed(() => {
     try {
         const url = new URL(activePath.value || "/", resolvedBaseUrl.value);
         url.searchParams.set("inline-preview", "1");
+        url.searchParams.set(
+            "preview-motion",
+            previewForceMotion.value ? "force" : "reduce",
+        );
         url.searchParams.set("_ts", cacheBuster.value.toString());
         console.debug(
             "[inline-live-editor] resolved preview url",
@@ -310,6 +315,24 @@ const flushPendingPreviewMessages = () => {
             target.mode ?? "flash",
         );
     }
+
+    postMotionPreference();
+};
+
+const postMotionPreference = () => {
+    if (!iframeRef.value?.contentWindow) {
+        return;
+    }
+
+    iframeRef.value.contentWindow.postMessage(
+        {
+            type: "builder_motion_preference",
+            payload: {
+                mode: previewForceMotion.value ? "force" : "reduce",
+            },
+        },
+        previewOrigin.value,
+    );
 };
 
 const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
@@ -540,6 +563,14 @@ const handlePreviewReadyMessage = (event: MessageEvent) => {
     });
 };
 
+const handlePreviewMotionChange = (payload: {
+    forceMotion: boolean;
+    mediaPreference: "reduce" | "no-preference";
+}) => {
+    previewForceMotion.value = Boolean(payload.forceMotion);
+    postMotionPreference();
+};
+
 watch(
     () => props.previewBaseUrl,
     () => {
@@ -606,6 +637,13 @@ watch(
     (nextPath, previousPath) => {
         cacheBuster.value = Date.now();
         syncRouteToActivePath(nextPath, previousPath ?? null);
+    },
+);
+
+watch(
+    () => previewForceMotion.value,
+    () => {
+        postMotionPreference();
     },
 );
 
@@ -706,6 +744,7 @@ onBeforeRouteLeave(() => {
                 @page-selected="handlePageSelected"
                 @document-change="handleDocumentChange"
                 @document-preview-change="handlePreviewDocumentChange"
+                @preview-motion-change="handlePreviewMotionChange"
                 @node-focus="handleNodeFocus"
                 @save-success="handleSaveSuccess"
                 @unsaved-state-change="handleUnsavedStateChange"

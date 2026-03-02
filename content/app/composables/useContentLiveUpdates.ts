@@ -399,6 +399,7 @@ export const useContentLiveUpdates = (): void => {
         console.error('Failed to highlight builder node:', error)
       }
     }
+
   }
 
   onMounted(() => {
