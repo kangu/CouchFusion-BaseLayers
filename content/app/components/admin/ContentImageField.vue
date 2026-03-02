@@ -453,6 +453,15 @@ const commitValue = () => {
 };
 
 const clearImage = () => {
+    if (typeof window !== "undefined") {
+        const confirmed = window.confirm(
+            "Remove the selected image from this field?",
+        );
+        if (!confirmed) {
+            return;
+        }
+    }
+
     localValue.value = "";
     commitValue();
 };

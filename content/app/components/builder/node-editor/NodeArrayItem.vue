@@ -435,7 +435,7 @@
                                         type="button"
                                         class="node-panel__array-remove"
                                         @click="
-                                            removeArrayItemStringArrayItem(
+                                            confirmRemoveArrayItemStringArrayItem(
                                                 prop.key,
                                                 arrayItemEntry.index,
                                                 field,
@@ -1119,7 +1119,7 @@
                                                             type="button"
                                                             class="node-panel__array-remove"
                                                             @click="
-                                                                removeNestedArrayItemStringArrayItem(
+                                                                confirmRemoveNestedArrayItemStringArrayItem(
                                                                     prop.key,
                                                                     arrayItemEntry.index,
                                                                     field,
@@ -1292,7 +1292,7 @@
                                         type="button"
                                         class="node-panel__array-remove"
                                         @click="
-                                            removeNestedArrayItem(
+                                            confirmRemoveNestedArrayItem(
                                                 prop.key,
                                                 arrayItemEntry.index,
                                                 field,
@@ -1432,7 +1432,10 @@
                     type="button"
                     class="node-panel__array-remove"
                     @click="
-                        removeArrayItem(prop.key, arrayItemEntry.index)
+                        confirmRemoveArrayItem(
+                            prop.key,
+                            arrayItemEntry.index,
+                        )
                     "
                 >
                     Remove item
@@ -1585,7 +1588,7 @@
                     type="button"
                     class="node-panel__array-remove"
                     @click="
-                        removeStringArrayItem(
+                        confirmRemoveStringArrayItem(
                             prop.key,
                             stringEntry.index,
                         )
@@ -1683,4 +1686,47 @@ const props = defineProps<{
 
 const arrayItemEntry = computed(() => props.entry);
 const stringEntry = computed(() => props.entry);
+
+const shouldConfirmRemoval = () => {
+    if (typeof window === "undefined") {
+        return true;
+    }
+
+    return window.confirm("Remove this item? This action cannot be undone.");
+};
+
+const confirmRemoveArrayItem = (...args: any[]) => {
+    if (!shouldConfirmRemoval()) {
+        return;
+    }
+    props.removeArrayItem(...args);
+};
+
+const confirmRemoveStringArrayItem = (...args: any[]) => {
+    if (!shouldConfirmRemoval()) {
+        return;
+    }
+    props.removeStringArrayItem(...args);
+};
+
+const confirmRemoveArrayItemStringArrayItem = (...args: any[]) => {
+    if (!shouldConfirmRemoval()) {
+        return;
+    }
+    props.removeArrayItemStringArrayItem(...args);
+};
+
+const confirmRemoveNestedArrayItem = (...args: any[]) => {
+    if (!shouldConfirmRemoval()) {
+        return;
+    }
+    props.removeNestedArrayItem(...args);
+};
+
+const confirmRemoveNestedArrayItemStringArrayItem = (...args: any[]) => {
+    if (!shouldConfirmRemoval()) {
+        return;
+    }
+    props.removeNestedArrayItemStringArrayItem(...args);
+};
 </script>

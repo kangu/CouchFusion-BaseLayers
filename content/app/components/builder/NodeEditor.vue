@@ -115,7 +115,7 @@
                     <button
                         class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--danger"
                         type="button"
-                        @click="onRemove(node.uid)"
+                        @click="requestRemoveNode(node.uid)"
                         aria-label="Remove component"
                     >
                         <svg
@@ -294,7 +294,7 @@
                 <button
                     class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--danger"
                     type="button"
-                    @click="onRemove(node.uid)"
+                    @click="requestRemoveNode(node.uid)"
                     aria-label="Remove text node"
                 >
                     <svg
@@ -519,6 +519,20 @@ const notifyFocus = (mode: "flash" | "lock" | "clear" = "flash") => {
     if (props.onFocusNode) {
         props.onFocusNode({ uid: props.node.uid, mode });
     }
+};
+
+const requestRemoveNode = (uid: string) => {
+    if (depth.value === 0 && typeof window !== "undefined") {
+        const label = props.node.type === "component" ? "section" : "item";
+        const confirmed = window.confirm(
+            `Remove this ${label}? This action cannot be undone.`,
+        );
+        if (!confirmed) {
+            return;
+        }
+    }
+
+    props.onRemove(uid);
 };
 
 const triggerFocus = () => {
