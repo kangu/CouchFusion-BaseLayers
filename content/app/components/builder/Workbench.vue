@@ -328,6 +328,9 @@ const isRootPickerOpen = ref(false);
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
 const pendingRootInsertIndex = ref<number | null>(null);
+const isSectionNamePromptOpen = ref(false);
+const pendingSelectedComponentId = ref<string | null>(null);
+const pendingSectionNameDraft = ref("");
 
 const spacingPresets: Array<{
     id: SpacingPresetId;
@@ -738,12 +741,49 @@ const openRootPicker = (insertIndex: number | null = null) => {
 
 const closeRootPicker = () => {
     isRootPickerOpen.value = false;
+    if (isSectionNamePromptOpen.value) {
+        return;
+    }
     pendingRootInsertIndex.value = null;
 };
 
-const addRootComponent = (componentId: string) => {
-    insertRootNode(createNode(componentId), pendingRootInsertIndex.value);
-    closeRootPicker();
+const closeAddSectionWorkflow = () => {
+    isRootPickerOpen.value = false;
+    isSectionNamePromptOpen.value = false;
+    pendingRootInsertIndex.value = null;
+    pendingSelectedComponentId.value = null;
+    pendingSectionNameDraft.value = "";
+};
+
+const pendingSelectedComponentLabel = computed(() => {
+    const componentId = pendingSelectedComponentId.value;
+    if (!componentId) {
+        return "";
+    }
+    return registry.lookup[componentId]?.label ?? componentId;
+});
+
+const handleRootComponentPicked = (componentId: string) => {
+    pendingSelectedComponentId.value = componentId;
+    pendingSectionNameDraft.value = "";
+    isRootPickerOpen.value = false;
+    isSectionNamePromptOpen.value = true;
+};
+
+const confirmRootComponentWithName = () => {
+    const componentId = pendingSelectedComponentId.value;
+    const sectionName = pendingSectionNameDraft.value.trim();
+    if (!componentId || !sectionName) {
+        return;
+    }
+    const node = createNode(componentId);
+    insertRootNode(node, pendingRootInsertIndex.value);
+    saveLocalSectionName(node.uid, sectionName);
+    closeAddSectionWorkflow();
+};
+
+const cancelRootComponentSelection = () => {
+    closeAddSectionWorkflow();
 };
 
 const addRootText = () => {
@@ -1257,7 +1297,7 @@ const handleSaveDebugClick = () => {
                         :is-open="isRootPickerOpen"
                         :component-options="componentOptions"
                         @close="closeRootPicker"
-                        @select="addRootComponent"
+                        @select="handleRootComponentPicked"
                     />
                     <input
                         ref="importInputRef"
@@ -1312,6 +1352,41 @@ const handleSaveDebugClick = () => {
                 >
                     +
                 </button>
+            </div>
+            <div
+                v-if="isSectionNamePromptOpen"
+                class="builder-section-name-modal-backdrop"
+                @click.self="cancelRootComponentSelection"
+            >
+                <form
+                    class="builder-section-name-modal"
+                    @submit.prevent="confirmRootComponentWithName"
+                >
+                    <h3>Section Name</h3>
+                    <p>{{ pendingSelectedComponentLabel }}</p>
+                    <input
+                        v-model="pendingSectionNameDraft"
+                        type="text"
+                        placeholder="Enter a section name"
+                        autocomplete="off"
+                    />
+                    <div class="builder-section-name-modal__actions">
+                        <button
+                            type="button"
+                            class="builder-section-name-modal__cancel"
+                            @click="cancelRootComponentSelection"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="builder-section-name-modal__confirm"
+                            :disabled="!pendingSectionNameDraft.trim()"
+                        >
+                            Add Section
+                        </button>
+                    </div>
+                </form>
             </div>
             <div
                 v-if="filteredBuilderTree.length"
@@ -1755,6 +1830,81 @@ const handleSaveDebugClick = () => {
 
 .builder-root-item__insert:hover {
     box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
+}
+
+.builder-section-name-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.24);
+    padding: 16px;
+}
+
+.builder-section-name-modal {
+    width: min(420px, 100%);
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
+}
+
+.builder-section-name-modal h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.builder-section-name-modal p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.builder-section-name-modal input {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.builder-section-name-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.builder-section-name-modal__cancel,
+.builder-section-name-modal__confirm {
+    min-width: 96px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-section-name-modal__cancel {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+}
+
+.builder-section-name-modal__confirm {
+    border: 1px solid #1d4ed8;
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.builder-section-name-modal__confirm:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .builder-root-dropzone {

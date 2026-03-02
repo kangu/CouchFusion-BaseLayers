@@ -47,6 +47,7 @@
                             <span class="node-panel__slot-suffix">(Slot)</span>
                         </strong>
                         <strong v-else>{{ node.component }}</strong>
+                      <small class="component-internal-name">{{ node.component }}</small>
                     </div>
                     <button
                         v-if="isSectionNameEditable && !isSectionNameEditing"
@@ -2272,6 +2273,37 @@ const applyTextValue = () => {
 .node-panel__header-text {
     display: flex;
     flex-direction: column;
+}
+
+.node-panel__header-text .component-internal-name {
+  position: absolute;
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.35;
+    opacity: 0;
+    transform: translateY(-2px);
+    pointer-events: none;
+    transition:
+        opacity 0.18s ease,
+        transform 0.18s ease;
+  bottom: 0;
+  right: 0;
+}
+
+.node-panel:hover .component-internal-name,
+.node-panel:focus-within .component-internal-name {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .node-panel__header-text-row {
