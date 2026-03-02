@@ -252,6 +252,7 @@ const filteredBuilderTree = computed(() =>
 const isRootPickerOpen = ref(false);
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
+const pendingRootInsertIndex = ref<number | null>(null);
 
 const spacingPresets: Array<{
     id: SpacingPresetId;
@@ -635,12 +636,42 @@ const cloneBuilderNode = (source: BuilderNodeChild): BuilderNodeChild => {
     return cloned;
 };
 
+const insertRootNode = (node: BuilderNodeChild, insertIndex: number | null) => {
+    if (insertIndex === null) {
+        builderTree.value.push(node);
+        return;
+    }
+
+    const boundedIndex = Math.max(0, Math.min(insertIndex, builderTree.value.length));
+    builderTree.value.splice(boundedIndex, 0, node);
+};
+
+const openRootPicker = (insertIndex: number | null = null) => {
+    pendingRootInsertIndex.value = insertIndex;
+    isRootPickerOpen.value = true;
+};
+
+const closeRootPicker = () => {
+    isRootPickerOpen.value = false;
+    pendingRootInsertIndex.value = null;
+};
+
 const addRootComponent = (componentId: string) => {
-    builderTree.value.push(createNode(componentId));
+    insertRootNode(createNode(componentId), pendingRootInsertIndex.value);
+    closeRootPicker();
 };
 
 const addRootText = () => {
-    builderTree.value.push(createTextNode("New text"));
+    insertRootNode(createTextNode("New text"), pendingRootInsertIndex.value);
+    closeRootPicker();
+};
+
+const getRootInsertIndexAfter = (uid: string): number | null => {
+    const rootIndex = builderTree.value.findIndex((node) => node.uid === uid);
+    if (rootIndex === -1) {
+        return null;
+    }
+    return rootIndex + 1;
 };
 
 const updateNodeProp = (uid: string, key: string, value: unknown) => {
@@ -1100,13 +1131,13 @@ const handleSaveDebugClick = () => {
         <section class="builder-tree">
             <div class="builder-tree__controls">
                 <div class="builder-add">
-                    <button type="button" @click="isRootPickerOpen = true">
+                    <button type="button" @click="openRootPicker()">
                         + Section
                     </button>
                     <ComponentPickerDialog
                         :is-open="isRootPickerOpen"
                         :component-options="componentOptions"
-                        @close="isRootPickerOpen = false"
+                        @close="closeRootPicker"
                         @select="addRootComponent"
                     />
                     <input
@@ -1152,6 +1183,14 @@ const handleSaveDebugClick = () => {
                     :on-toggle-expanded="handleRootExpansion"
                     :on-focus-node="handleNodeFocus"
                 />
+                <button
+                    type="button"
+                    class="builder-root-item__insert"
+                    aria-label="Add section after this section"
+                    @click="openRootPicker(getRootInsertIndexAfter(node.uid))"
+                >
+                    +
+                </button>
             </div>
             <div
                 v-if="filteredBuilderTree.length"
@@ -1560,6 +1599,41 @@ const handleSaveDebugClick = () => {
   position: absolute;
   left: -0.6rem;
   top: -1rem;
+}
+
+.builder-root-item__insert {
+    position: absolute;
+    left: 50%;
+    bottom: -12px;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid #bfdbfe;
+    background: #ffffff;
+    color: #2563eb;
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    z-index: 3;
+}
+
+.builder-root-item:hover .builder-root-item__insert,
+.builder-root-item:focus-within .builder-root-item__insert {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(2px);
+}
+
+.builder-root-item__insert:hover {
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.24);
 }
 
 .builder-root-dropzone {
