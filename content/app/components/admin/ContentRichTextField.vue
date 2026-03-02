@@ -115,8 +115,8 @@ import {
     shallowRef,
     watch,
 } from "vue";
-import type { ComponentPropSchema } from "~/types/builder";
-import { sanitizeRichTextHtml } from "~/utils/rich-text";
+import type { ComponentPropSchema } from "../../types/builder";
+import { sanitizeRichTextHtml } from "../../utils/rich-text";
 
 const UPDATE_DEBOUNCE_MS = 250;
 
