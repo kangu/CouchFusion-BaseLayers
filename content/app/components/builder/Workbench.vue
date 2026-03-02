@@ -177,6 +177,50 @@ const pageConfig = reactive<PageConfigInput>({
     extension: "md",
     meta: {},
 });
+const seoDraft = reactive({
+    path: pageConfig.path,
+    title: pageConfig.title,
+    seoTitle: pageConfig.seoTitle,
+    seoDescription: pageConfig.seoDescription,
+    seoImage: pageConfig.seoImage,
+});
+const isSeoCardExpanded = ref(false);
+
+const syncSeoDraftFromPageConfig = () => {
+    seoDraft.path = pageConfig.path;
+    seoDraft.title = pageConfig.title;
+    seoDraft.seoTitle = pageConfig.seoTitle;
+    seoDraft.seoDescription = pageConfig.seoDescription;
+    seoDraft.seoImage = pageConfig.seoImage;
+};
+
+const hasSeoDraftChanges = computed(
+    () =>
+        seoDraft.path !== pageConfig.path ||
+        seoDraft.title !== pageConfig.title ||
+        seoDraft.seoTitle !== pageConfig.seoTitle ||
+        seoDraft.seoDescription !== pageConfig.seoDescription ||
+        seoDraft.seoImage !== pageConfig.seoImage,
+);
+
+const openSeoCardEditor = () => {
+    syncSeoDraftFromPageConfig();
+    isSeoCardExpanded.value = true;
+};
+
+const applySeoDraft = () => {
+    pageConfig.path = seoDraft.path;
+    pageConfig.title = seoDraft.title;
+    pageConfig.seoTitle = seoDraft.seoTitle;
+    pageConfig.seoDescription = seoDraft.seoDescription;
+    pageConfig.seoImage = seoDraft.seoImage;
+    isSeoCardExpanded.value = false;
+};
+
+const cancelSeoDraft = () => {
+    syncSeoDraftFromPageConfig();
+    isSeoCardExpanded.value = false;
+};
 
 const layout = reactive<{ spacing: SpacingPresetId }>({ spacing: "none" });
 const previewSpacingClass = computed(
@@ -470,6 +514,8 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
+        syncSeoDraftFromPageConfig();
+        isSeoCardExpanded.value = false;
         layout.spacing = "none";
         resetExpandedRoots();
         return;
@@ -484,6 +530,8 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = doc.meta ?? {};
+    syncSeoDraftFromPageConfig();
+    isSeoCardExpanded.value = false;
     layout.spacing = doc.layout?.spacing ?? "none";
     pruneExpandedRoots();
 };
@@ -921,19 +969,61 @@ const handleSaveDebugClick = () => {
 <template>
     <div class="builder-page">
         <section class="builder-controls">
-            <div class="builder-config">
+            <button
+                v-if="!isSeoCardExpanded"
+                type="button"
+                class="builder-seo-card"
+                :class="{ 'builder-seo-card--dirty': hasSeoDraftChanges }"
+                @click="openSeoCardEditor"
+            >
+                <div class="builder-seo-card__content">
+                    <div class="builder-seo-card__main">
+                        <div class="builder-seo-card__eyebrow">SEO</div>
+                        <div class="builder-seo-card__title">
+                            {{ pageConfig.seoTitle || "SEO title" }}
+                        </div>
+                        <div class="builder-seo-card__description">
+                            {{
+                                pageConfig.seoDescription ||
+                                "SEO description is empty."
+                            }}
+                        </div>
+                        <div class="builder-seo-card__meta">
+                            <span>Path: {{ pageConfig.path || "/" }}</span>
+                            <span>
+                                Internal: {{ pageConfig.title || "Page title" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="builder-seo-card__preview">
+                        <div class="builder-seo-card__preview-label">
+                            Social preview
+                        </div>
+                        <img
+                            v-if="pageConfig.seoImage"
+                            :src="pageConfig.seoImage"
+                            alt="Social preview"
+                            class="builder-seo-card__preview-image"
+                        />
+                        <div
+                            v-else
+                            class="builder-seo-card__preview-placeholder"
+                        >
+                            No image
+                        </div>
+                    </div>
+                </div>
+            </button>
+
+            <div v-else class="builder-config">
                 <label>
                     <span>Page path</span>
-                    <input
-                        v-model="pageConfig.path"
-                        type="text"
-                        placeholder="/"
-                    />
+                    <input v-model="seoDraft.path" type="text" placeholder="/" />
                 </label>
                 <label>
                     <span>Page title (internal)</span>
                     <input
-                        v-model="pageConfig.title"
+                        v-model="seoDraft.title"
                         type="text"
                         placeholder="Page title"
                     />
@@ -941,7 +1031,7 @@ const handleSaveDebugClick = () => {
                 <label class="builder-config__full">
                     <span>SEO title</span>
                     <input
-                        v-model="pageConfig.seoTitle"
+                        v-model="seoDraft.seoTitle"
                         type="text"
                         placeholder="SEO title"
                     />
@@ -949,7 +1039,7 @@ const handleSaveDebugClick = () => {
                 <label class="builder-config__textarea builder-config__full">
                     <span>SEO description</span>
                     <textarea
-                        v-model="pageConfig.seoDescription"
+                        v-model="seoDraft.seoDescription"
                         rows="2"
                         placeholder="SEO description."
                     />
@@ -961,11 +1051,23 @@ const handleSaveDebugClick = () => {
                     </div>
                     <ContentImageField
                         :prop-definition="socialImagePropDefinition"
-                        :model-value="pageConfig.seoImage || ''"
+                        :model-value="seoDraft.seoImage || ''"
                         @update:model-value="
-                            (value) => (pageConfig.seoImage = value ?? '')
+                            (value) => (seoDraft.seoImage = value ?? '')
                         "
                     />
+                </div>
+                <div class="builder-config__actions">
+                    <button
+                        type="button"
+                        class="builder-config__cancel"
+                        @click="cancelSeoDraft"
+                    >
+                        Cancel
+                    </button>
+                    <button type="button" class="builder-config__ok" @click="applySeoDraft">
+                        OK
+                    </button>
                 </div>
             </div>
             <!-- <div class="builder-derived">
@@ -1089,10 +1191,110 @@ const handleSaveDebugClick = () => {
 .builder-controls {
     display: grid;
     gap: 16px;
-    padding: 16px;
+    padding: 12px;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #f8fafc;
+}
+
+.builder-seo-card {
+    width: 100%;
+    text-align: left;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.builder-seo-card:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.builder-seo-card--dirty {
+    border-color: #3b82f6;
+}
+
+.builder-seo-card__content {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 180px;
+}
+
+.builder-seo-card__main {
+    display: grid;
+    gap: 6px;
+}
+
+.builder-seo-card__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.builder-seo-card__title {
+    font-size: 16px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.builder-seo-card__description {
+    font-size: 13px;
+    line-height: 1.35;
+    color: #475569;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.builder-seo-card__meta {
+    display: grid;
+    gap: 2px;
+    margin-top: 2px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.builder-seo-card__preview {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+}
+
+.builder-seo-card__preview-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+.builder-seo-card__preview-image,
+.builder-seo-card__preview-placeholder {
+    width: 100%;
+    aspect-ratio: 1200 / 630;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.builder-seo-card__preview-image {
+    object-fit: cover;
+    background: #ffffff;
+}
+
+.builder-seo-card__preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 12px;
 }
 
 .builder-tree__controls {
@@ -1163,6 +1365,44 @@ const handleSaveDebugClick = () => {
     gap: 8px;
 }
 
+.builder-config__actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.builder-config__cancel {
+    min-width: 96px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-config__cancel:hover {
+    background: #f8fafc;
+}
+
+.builder-config__ok {
+    min-width: 96px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #1d4ed8;
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-config__ok:hover {
+    background: #1d4ed8;
+}
+
 .builder-config__image-label {
     display: flex;
     justify-content: space-between;
@@ -1184,6 +1424,16 @@ const handleSaveDebugClick = () => {
 .builder-config__checkbox input {
     width: 18px;
     height: 18px;
+}
+
+@media (max-width: 900px) {
+    .builder-seo-card__content {
+        grid-template-columns: 1fr;
+    }
+
+    .builder-seo-card__preview {
+        max-width: 260px;
+    }
 }
 
 .builder-derived {
