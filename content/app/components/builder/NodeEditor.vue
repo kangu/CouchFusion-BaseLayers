@@ -603,13 +603,16 @@ const jsonErrors = reactive<Record<string, string | null>>({});
 const objectFieldErrors = reactive<
     Record<string, Record<string, string | null>>
 >({});
+const INTERNAL_NODE_PROP_KEYS = new Set<string>(["__builderSectionId"]);
 const { filterVisibleFields } = useNodeEditorFieldVisibility({
     isSearchActive,
     matchesSearch,
     normalizedSearchQuery,
 });
 const visibleProps = computed(() =>
-    filterVisibleFields(componentDef.value?.props, propDraft),
+    filterVisibleFields(componentDef.value?.props, propDraft).filter(
+        (prop) => !INTERNAL_NODE_PROP_KEYS.has(prop.key),
+    ),
 );
 const slotDisplayName = computed(() => {
     if (props.node.type !== "component") {
@@ -830,7 +833,11 @@ const extraPropEntries = computed(() => {
         return [] as Array<{ key: string; value: unknown }>;
     }
     return Object.entries(props.node.props)
-        .filter(([key]) => !definedPropKeys.value.has(key))
+        .filter(
+            ([key]) =>
+                !definedPropKeys.value.has(key) &&
+                !INTERNAL_NODE_PROP_KEYS.has(key),
+        )
         .map(([key, value]) => ({ key, value }));
 });
 const filteredExtraPropEntries = computed(() => {

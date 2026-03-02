@@ -1335,16 +1335,9 @@ defineExpose({
                         :disabled="isDuplicatePending || !selectedSummary"
                         @click="showDuplicateModal"
                     >
-                      <svg
-                          class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                      >
-                        <path
-                            fill="currentColor"
-                            d="M7 4h9a2 2 0 0 1 2 2v1h-2V6H7v12h9v-1h2v1a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm5 4h8v2h-8Zm0 4h8v2h-8Zm0 4h5v2h-5Z"
-                        />
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 512 512">
+                        <rect width="336" height="336" x="128" y="128" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32" rx="57" ry="57" />
+                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="m383.5 128l.5-24a56.16 56.16 0 0 0-56-56H112a64.19 64.19 0 0 0-64 64v216a56.16 56.16 0 0 0 56 56h24m168-168v160m80-80H216" />
                       </svg>
                     </button>
                     <div class="editor-header__history" ref="historyMenuRef">
