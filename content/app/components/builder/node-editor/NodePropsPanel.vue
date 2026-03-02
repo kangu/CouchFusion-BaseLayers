@@ -116,6 +116,20 @@
                     />
                 </div>
             </template>
+            <template v-else-if="prop.type === 'jsonobject' && prop.ui?.component">
+                <component
+                    :is="prop.ui.component"
+                    :model-value="propDraft[prop.key]"
+                    :prop-definition="prop"
+                    :field-context="{ propKey: prop.key }"
+                    @update:modelValue="
+                        (value: unknown) =>
+                            handleCustomPropUpdate(prop, value, {
+                                debounce: true,
+                            })
+                    "
+                />
+            </template>
             <template v-else-if="prop.type === 'jsonobject'">
                 <NodeObjectField
                     :schema="prop"

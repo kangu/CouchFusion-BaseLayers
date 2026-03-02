@@ -6,9 +6,12 @@ export default defineNuxtPlugin(({ vueApp }) => {
     ContentAdminWorkbench: () => import("../components/admin/ContentAdminWorkbench.vue"),
     ContentImageField: () => import("../components/admin/ContentImageField.vue"),
     ContentRichTextField: () => import("../components/admin/ContentRichTextField.vue"),
+    AnimationCompactField: () => import("../components/admin/AnimationCompactField.vue"),
   };
 
   for (const [name, loader] of Object.entries(components)) {
-    vueApp.component(name, defineAsyncComponent(loader));
+    if (!vueApp.component(name)) {
+      vueApp.component(name, defineAsyncComponent(loader));
+    }
   }
 });
