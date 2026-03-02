@@ -2,14 +2,6 @@
     <div class="image-field">
         <div class="image-field__preview" v-if="previewUrl">
             <img :src="previewUrl" alt="" loading="lazy" />
-            <button
-                type="button"
-                class="image-field__clear"
-                @click="clearImage"
-                :disabled="pending"
-            >
-                Remove
-            </button>
         </div>
 
         <div class="image-field__controls">
@@ -30,6 +22,15 @@
                     :disabled="pending"
                 >
                     Browse
+                </button>
+                <button
+                    v-if="previewUrl"
+                    type="button"
+                    class="image-field__button image-field__button--danger"
+                    @click="clearImage"
+                    :disabled="pending"
+                >
+                    Clear
                 </button>
 <!--                <button-->
 <!--                    type="button"-->
@@ -793,19 +794,6 @@ watch(isLibraryOpen, async (isOpen) => {
     height: auto;
 }
 
-.image-field__clear {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    background: rgba(15, 23, 42, 0.75);
-    color: #fff;
-    border: none;
-    border-radius: 9999px;
-    padding: 0.25rem 0.625rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-}
-
 .image-field__controls {
     display: flex;
     gap: 0.5rem;
@@ -821,7 +809,7 @@ watch(isLibraryOpen, async (isOpen) => {
 
 .image-field__actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: no-wrap;
     gap: 0.5rem;
 }
 
