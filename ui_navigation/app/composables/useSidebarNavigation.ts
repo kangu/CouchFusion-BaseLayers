@@ -24,7 +24,7 @@ export interface SidebarNavigationOptions {
 export const useSidebarNavigation = (options: SidebarNavigationOptions = {}) => {
     const appConfig = useAppConfig();
     const hasRole = options.hasRole ?? (() => false);
-    const navItems = options.navItems ?? (() => []);
+    const navItems = options.navItems ?? [];
     const mobileMenuOpen = ref(false)
 
     const sections = computed<SidebarNavigationSection[]>(() => {
@@ -67,7 +67,7 @@ const buildBaseSections = (
     hasRole: (role: string) => boolean,
     navItems: SidebarNavigationSection[],
 ): SidebarNavigationSection[] => {
-    const sections: SidebarNavigationSection[] = navItems || [
+    const sections: SidebarNavigationSection[] = navItems.length ? [...navItems] : [
         {
             id: "main",
             title: "Main",

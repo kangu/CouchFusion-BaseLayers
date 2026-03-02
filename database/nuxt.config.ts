@@ -9,6 +9,22 @@ export default defineNuxtConfig({
   },
   modules: [fileURLToPath(new URL("./utils/register-layout", import.meta.url))],
   appConfig: {
+    adminWorkspace: {
+      sections: [
+        {
+          id: "database",
+          title: "Database",
+          requiresRoles: ["admin"],
+          items: [
+            {
+              label: "Data Sync",
+              route: "/admin/datasync",
+              icon: "mdi:database-sync",
+            },
+          ],
+        },
+      ],
+    },
     uiNavigation: {
       sections: [
         {

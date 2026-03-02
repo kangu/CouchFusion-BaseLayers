@@ -5,7 +5,9 @@ export default function registerDatabaseLayoutModule(_options: any, nuxt: any) {
 
   nuxt.hook('pages:extend', (pages: any[]) => {
     const layout =
-      nuxt.options.appConfig?.uiNavigation?.adminLayout || 'default'
+      nuxt.options.appConfig?.adminWorkspace?.layout ||
+      nuxt.options.appConfig?.uiNavigation?.adminLayout ||
+      'default'
 
     for (const page of pages) {
       if (page.file?.startsWith(layerRoot)) {

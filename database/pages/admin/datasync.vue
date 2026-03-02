@@ -626,7 +626,7 @@ const handleEdit = () => {
 </script>
 
 <template>
-    <section class="space-y-8">
+    <section class="ds-root space-y-8 font-sans text-gray-900">
         <div
             class="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-orange-100 px-8 py-10 shadow-sm"
         >
@@ -656,7 +656,7 @@ const handleEdit = () => {
                 <div class="flex items-center gap-3">
                     <button
                         type="button"
-                        class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
+                        class="inline-flex items-center rounded-md border border-transparent bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
                         :disabled="!isReady || isLoading"
                         @click="handleRefresh"
                     >
@@ -721,7 +721,7 @@ const handleEdit = () => {
                 <div class="mt-6 flex flex-wrap items-center gap-3">
                     <button
                         type="button"
-                        class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
+                        class="inline-flex items-center rounded-md border border-transparent bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50"
                         :disabled="!isReady || isLoading"
                         @click="fetchDatabases"
                     >
@@ -1290,3 +1290,30 @@ const handleEdit = () => {
         </dialog>
     </section>
 </template>
+
+<style scoped>
+.ds-root {
+    font-family:
+        ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    line-height: 1.5;
+}
+
+.ds-root,
+.ds-root * {
+    box-sizing: border-box;
+}
+
+.ds-root :where(h1, h2, h3, h4, p, ul, ol, li, table, thead, tbody, tr, th, td, label) {
+    margin: 0;
+}
+
+.ds-root :where(button, input) {
+    font: inherit;
+}
+
+.ds-root table {
+    border-collapse: collapse;
+    width: 100%;
+}
+</style>
