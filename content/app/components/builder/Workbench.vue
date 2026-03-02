@@ -31,6 +31,7 @@ import type { ComponentPropSchema } from "~/types/builder";
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
 );
+const BUILDER_SECTION_ID_PROP = "__builderSectionId";
 
 const cloneDocument = (doc: MinimalContentDocument | undefined | null) => {
     if (!doc) {
@@ -58,8 +59,19 @@ const PARAGRAPH_ALIGN_VALUES = ["left", "center", "right"] as const;
 type ParagraphAlignment = (typeof PARAGRAPH_ALIGN_VALUES)[number];
 const DEFAULT_PARAGRAPH_ALIGN: ParagraphAlignment = "left";
 
-const isPlainObject = (value: unknown): value is Record<string, any> => {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+const isPlainObject = (value: unknown): value is Record<string, any> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+const toPlainRecord = (value: unknown): Record<string, any> =>
+    isPlainObject(value) ? { ...value } : {};
+
+const nextSectionId = () => {
+    if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+        return `sec_${globalThis.crypto.randomUUID()}`;
+    }
+    return `sec_${Date.now().toString(36)}_${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
 };
 
 const normalizeComponentId = (component: unknown): string | null => {
@@ -177,6 +189,69 @@ const pageConfig = reactive<PageConfigInput>({
     extension: "md",
     meta: {},
 });
+
+const getSectionNamesById = (): Record<string, string> => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    const rawNames = toPlainRecord(builder.sectionNamesById);
+    return Object.fromEntries(
+        Object.entries(rawNames).filter(
+            ([key, value]) => typeof key === "string" && typeof value === "string",
+        ),
+    );
+};
+
+const setSectionNamesById = (nextNamesById: Record<string, string>) => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    pageConfig.meta = {
+        ...meta,
+        builder: {
+            ...builder,
+            sectionNamesById: nextNamesById,
+        },
+    };
+};
+
+const getRootSectionId = (node: BuilderNodeChild): string | null => {
+    if (node.type !== "component") {
+        return null;
+    }
+    const value = node.props?.[BUILDER_SECTION_ID_PROP];
+    return typeof value === "string" && value.trim() ? value : null;
+};
+
+const ensureRootSectionId = (node: BuilderNodeChild): string | null => {
+    if (node.type !== "component") {
+        return null;
+    }
+    const existing = getRootSectionId(node);
+    if (existing) {
+        return existing;
+    }
+    const created = nextSectionId();
+    node.props = {
+        ...toPlainRecord(node.props),
+        [BUILDER_SECTION_ID_PROP]: created,
+    };
+    return created;
+};
+
+const syncRootSectionNamesMetadata = () => {
+    const existing = getSectionNamesById();
+    const next: Record<string, string> = {};
+    for (const node of builderTree.value) {
+        const sectionId = ensureRootSectionId(node);
+        if (!sectionId) {
+            continue;
+        }
+        const currentName = existing[sectionId];
+        if (typeof currentName === "string" && currentName.trim()) {
+            next[sectionId] = currentName.trim();
+        }
+    }
+    setSectionNamesById(next);
+};
 const seoDraft = reactive({
     path: pageConfig.path,
     title: pageConfig.title,
@@ -515,6 +590,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
+        syncRootSectionNamesMetadata();
         syncSeoDraftFromPageConfig();
         isSeoCardExpanded.value = false;
         layout.spacing = "none";
@@ -530,7 +606,8 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.seoImage = doc.seo?.image ?? "";
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
-    pageConfig.meta = doc.meta ?? {};
+    pageConfig.meta = isPlainObject(doc.meta) ? { ...doc.meta } : {};
+    syncRootSectionNamesMetadata();
     syncSeoDraftFromPageConfig();
     isSeoCardExpanded.value = false;
     layout.spacing = doc.layout?.spacing ?? "none";
@@ -544,6 +621,14 @@ watch(
         applyDocument(cloned);
     },
     { immediate: true },
+);
+
+watch(
+    builderTree,
+    () => {
+        syncRootSectionNamesMetadata();
+    },
+    { deep: true },
 );
 
 const findNode = (
@@ -672,6 +757,40 @@ const getRootInsertIndexAfter = (uid: string): number | null => {
         return null;
     }
     return rootIndex + 1;
+};
+
+const getRootNodeByUid = (uid: string): BuilderNodeChild | null =>
+    builderTree.value.find((node) => node.uid === uid) ?? null;
+
+const getLocalSectionName = (uid: string): string => {
+    const node = getRootNodeByUid(uid);
+    if (!node) {
+        return "";
+    }
+    const sectionId = getRootSectionId(node);
+    if (!sectionId) {
+        return "";
+    }
+    return getSectionNamesById()[sectionId] ?? "";
+};
+
+const saveLocalSectionName = (uid: string, value: string) => {
+    const node = getRootNodeByUid(uid);
+    if (!node) {
+        return;
+    }
+    const sectionId = ensureRootSectionId(node);
+    if (!sectionId) {
+        return;
+    }
+    const names = getSectionNamesById();
+    const normalized = value.trim();
+    if (!normalized) {
+        delete names[sectionId];
+    } else {
+        names[sectionId] = normalized;
+    }
+    setSectionNamesById(names);
 };
 
 const updateNodeProp = (uid: string, key: string, value: unknown) => {
@@ -1182,6 +1301,8 @@ const handleSaveDebugClick = () => {
                     :on-clone="cloneNode"
                     :on-toggle-expanded="handleRootExpansion"
                     :on-focus-node="handleNodeFocus"
+                    :section-name="getLocalSectionName(node.uid)"
+                    :on-save-section-name="saveLocalSectionName"
                 />
                 <button
                     type="button"
@@ -1577,7 +1698,7 @@ const handleSaveDebugClick = () => {
     border: 1px dashed transparent;
     border-radius: 8px;
     padding: 0;
-  position: relative;
+    position: relative;
 }
 
 .builder-root-item[data-dragging="true"] {
@@ -1596,9 +1717,9 @@ const handleSaveDebugClick = () => {
     padding: 8px 4px;
     color: #94a3b8;
     user-select: none;
-  position: absolute;
-  left: -0.6rem;
-  top: -1rem;
+    position: absolute;
+    left: -0.6rem;
+    top: -1rem;
 }
 
 .builder-root-item__insert {

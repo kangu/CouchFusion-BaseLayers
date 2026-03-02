@@ -108,6 +108,10 @@ function normalizeProps(raw: Record<string, unknown>) {
     }
 
     for (const key of Object.keys(props)) {
+        if (key.startsWith("__builder")) {
+            delete props[key];
+            continue;
+        }
         if (key.startsWith(":") && key.length > 1) {
             const targetKey = key.slice(1);
             const value = props[key];

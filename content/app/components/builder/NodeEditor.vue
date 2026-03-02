@@ -7,12 +7,62 @@
     >
         <div v-if="node.type === 'component'" class="node-panel__header">
             <div class="node-panel__header-main">
-                <div class="node-panel__header-text">
-                    <strong v-if="slotDisplayName">
-                        <span>{{ slotDisplayName }}</span>
-                        <span class="node-panel__slot-suffix">(Slot)</span>
-                    </strong>
-                    <strong v-else>{{ componentDef?.label || node.component }}</strong>
+                <div class="node-panel__header-text-row">
+                    <div class="node-panel__header-text">
+                        <div
+                            v-if="isSectionNameEditing"
+                            class="node-panel__section-name-editor"
+                        >
+                            <input
+                                v-model="sectionNameDraft"
+                                type="text"
+                                placeholder="Section name"
+                                @click.stop
+                                @keydown.enter.prevent="saveSectionNameEdit"
+                                @keydown.esc.prevent="cancelSectionNameEdit"
+                            />
+                            <button
+                                type="button"
+                                class="node-panel__section-name-btn"
+                                @click.stop="saveSectionNameEdit"
+                            >
+                                Save
+                            </button>
+                            <button
+                                type="button"
+                                class="node-panel__section-name-btn node-panel__section-name-btn--secondary"
+                                @click.stop="cancelSectionNameEdit"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                        <strong v-else-if="sectionNameDisplay">
+                            {{ sectionNameDisplay }}
+                        </strong>
+                        <strong v-else-if="isSectionNameEditable">
+                            Unnamed section
+                        </strong>
+                        <strong v-else-if="slotDisplayName">
+                            <span>{{ slotDisplayName }}</span>
+                            <span class="node-panel__slot-suffix">(Slot)</span>
+                        </strong>
+                        <strong v-else>{{ node.component }}</strong>
+                    </div>
+                    <button
+                        v-if="isSectionNameEditable && !isSectionNameEditing"
+                        type="button"
+                        class="node-panel__section-name-trigger"
+                        aria-label="Edit section name"
+                        title="Edit section name"
+                        @click.stop="handleHeaderTextClick"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                fill="currentColor"
+                                d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25Zm2.92 2.33H5v-.92l9.06-9.06.92.92L5.92 19.58ZM20.7 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0L15.13 5.13l3.75 3.75 1.82-1.84Z"
+                            />
+                        </svg>
+                    </button>
                 </div>
                 <div class="node-panel__header-actions">
                     <button
@@ -357,6 +407,8 @@ const props = defineProps<{
         uid: string;
         mode: "flash" | "lock" | "clear";
     }) => void;
+    sectionName?: string;
+    onSaveSectionName?: (uid: string, value: string) => void;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
@@ -399,6 +451,50 @@ const triggerFocus = () => {
     notifyFocus("flash");
 };
 
+const isSectionNameEditable = computed(
+    () =>
+        props.node.type === "component" &&
+        depth.value === 0 &&
+        typeof props.onSaveSectionName === "function",
+);
+const isSectionNameEditing = ref(false);
+const sectionNameDraft = ref("");
+const sectionNameDisplay = computed(() => {
+    if (!isSectionNameEditable.value) {
+        return "";
+    }
+    const value = props.sectionName?.trim();
+    return value || "";
+});
+
+const beginSectionNameEdit = () => {
+    if (!isSectionNameEditable.value) {
+        return;
+    }
+    sectionNameDraft.value = props.sectionName ?? "";
+    isSectionNameEditing.value = true;
+};
+
+const saveSectionNameEdit = () => {
+    if (!isSectionNameEditable.value || typeof props.onSaveSectionName !== "function") {
+        return;
+    }
+    props.onSaveSectionName(props.node.uid, sectionNameDraft.value);
+    isSectionNameEditing.value = false;
+};
+
+const cancelSectionNameEdit = () => {
+    sectionNameDraft.value = props.sectionName ?? "";
+    isSectionNameEditing.value = false;
+};
+
+const handleHeaderTextClick = () => {
+    if (!isSectionNameEditable.value) {
+        return;
+    }
+    beginSectionNameEdit();
+};
+
 watch(
     () => componentDef.value,
     (definition) => {
@@ -407,6 +503,17 @@ watch(
         }
         definition.props?.forEach((prop) => normalizeSchemaUiWidget(prop));
         normalizedDefinitions.add(definition);
+    },
+    { immediate: true },
+);
+
+watch(
+    () => props.sectionName,
+    (value) => {
+        if (isSectionNameEditing.value) {
+            return;
+        }
+        sectionNameDraft.value = value ?? "";
     },
     { immediate: true },
 );
@@ -2165,6 +2272,79 @@ const applyTextValue = () => {
 .node-panel__header-text {
     display: flex;
     flex-direction: column;
+}
+
+.node-panel__header-text-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.node-panel__section-name-trigger {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #475569;
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    transition:
+        opacity 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.node-panel__header-main:hover .node-panel__section-name-trigger,
+.node-panel__header-main:focus-within .node-panel__section-name-trigger {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.node-panel__section-name-trigger:hover,
+.node-panel__section-name-trigger:focus-visible {
+    color: #1d4ed8;
+    border-color: #93c5fd;
+}
+
+.node-panel__section-name-trigger svg {
+    width: 14px;
+    height: 14px;
+}
+
+.node-panel__section-name-editor {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.node-panel__section-name-editor input {
+    min-width: 220px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    font: inherit;
+}
+
+.node-panel__section-name-btn {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    background: #1e293b;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.node-panel__section-name-btn--secondary {
+    border-color: #cbd5e1;
+    background: #ffffff;
+    color: #334155;
 }
 
 .node-panel__slot-suffix {
