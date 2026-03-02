@@ -121,7 +121,7 @@
                     :is="prop.ui.component"
                     :model-value="propDraft[prop.key]"
                     :prop-definition="prop"
-                    :field-context="{ propKey: prop.key }"
+                    :field-context="{ propKey: prop.key, searchQuery }"
                     @update:modelValue="
                         (value: unknown) =>
                             handleCustomPropUpdate(prop, value, {
@@ -136,12 +136,13 @@
                     :value="propDraft[prop.key]"
                     :field-errors="objectFieldErrors[prop.key]"
                     :field-key="(field) => `${prop.key}-${field.key}`"
-                    :field-context="() => ({ propKey: prop.key })"
+                    :field-context="() => ({ propKey: prop.key, searchQuery })"
                     :filter-visible-fields="filterVisibleFields"
                     :should-highlight-text="shouldHighlightText"
                     :get-highlight-markup="getHighlightMarkup"
                     :should-highlight-select="shouldHighlightSelect"
                     :sync-highlight-scroll="syncHighlightScroll"
+                    :search-query="searchQuery"
                     :on-field-change="(schema, field, value, options) =>
                         handleObjectFieldChange(prop.key, field, value, options)"
                     :on-json-input="(_, value) =>
@@ -160,6 +161,7 @@
                     :collapsed-arrays="collapsedArrays"
                     :drag-over-array-item="dragOverArrayItem"
                     :is-search-active="isSearchActive"
+                    :search-query="searchQuery"
                     :matches-search="matchesSearch"
                     :filter-visible-fields="filterVisibleFields"
                     :should-highlight-text="shouldHighlightText"
@@ -214,7 +216,7 @@
                     :is="prop.ui.component"
                     :model-value="propDraft[prop.key]"
                     :prop-definition="prop"
-                    :field-context="{ propKey: prop.key }"
+                    :field-context="{ propKey: prop.key, searchQuery }"
                     @update:modelValue="
                         (value: unknown) =>
                             handleCustomPropUpdate(prop, value, {
@@ -301,6 +303,7 @@ type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;
 
 defineProps<{
+    searchQuery?: string;
     visibleProps: ComponentPropSchema[];
     propDraft: Record<string, any>;
     extraPropsDraft: Record<string, string>;

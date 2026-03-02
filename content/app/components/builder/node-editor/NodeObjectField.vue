@@ -140,7 +140,7 @@
                         :is="field.ui.component"
                         :model-value="objectValue[field.key]"
                         :prop-definition="field"
-                        :field-context="fieldContext(field)"
+                        :field-context="withSearchContext(fieldContext(field))"
                         @update:modelValue="
                             (value: unknown) =>
                                 applyFieldChange(field, value, {
@@ -420,7 +420,9 @@
                                             "
                                             :prop-definition="arrayField"
                                             :field-context="
-                                                fieldContext(arrayField)
+                                                withSearchContext(
+                                                    fieldContext(arrayField),
+                                                )
                                             "
                                             @update:modelValue="
                                                 (value: unknown) =>
@@ -623,6 +625,7 @@ const props = withDefaults(
         isNested?: boolean;
         fieldKey?: FieldKeyHandler;
         fieldContext?: FieldContext;
+        searchQuery?: string;
         filterVisibleFields: FilterVisibleFields;
         shouldHighlightText: (value: unknown, type?: string) => boolean;
         getHighlightMarkup: (value: unknown) => string;
@@ -649,6 +652,10 @@ const props = withDefaults(
 );
 
 const objectValue = computed(() => props.value as Record<string, any>);
+const withSearchContext = (context: Record<string, any>) => ({
+    ...context,
+    searchQuery: props.searchQuery ?? "",
+});
 
 const visibleFields = computed(() =>
     props.filterVisibleFields(props.schema.fields, objectValue.value),

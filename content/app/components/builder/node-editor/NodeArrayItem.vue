@@ -345,6 +345,7 @@
                                                 arrayItemEntry.index,
                                             nestedFieldKey:
                                                 field.key,
+                                            searchQuery,
                                         }"
                                         @update:modelValue="
                                             (value: unknown) =>
@@ -474,6 +475,7 @@
                             :field-context="{
                                 propKey: prop.key,
                                 arrayIndex: arrayItemEntry.index,
+                                searchQuery,
                             }"
                             @update:modelValue="
                                 (value: unknown) =>
@@ -852,6 +854,7 @@
                                                     nestedIndex,
                                                     nestedFieldKey:
                                                         nestedField.key,
+                                                    searchQuery,
                                                 }"
                                                 @update:modelValue="
                                                     (
@@ -1009,6 +1012,7 @@
                                                                     nestedField.key,
                                                                 nestedEntryIndex:
                                                                     nestedEntry.index,
+                                                                searchQuery,
                                                             }"
                                                             @update:modelValue="
                                                                 (
@@ -1164,12 +1168,13 @@
                                                 )"
                                                 :is-nested="true"
                                                 :field-key="(objectField) => `${prop.key}-${arrayItemEntry.index}-${nestedField.key}-${objectField.key}-${nestedIndex}`"
-                                                :field-context="() => ({ propKey: prop.key, arrayIndex: arrayItemEntry.index, nestedIndex, nestedFieldKey: nestedField.key })"
+                                                :field-context="() => ({ propKey: prop.key, arrayIndex: arrayItemEntry.index, nestedIndex, nestedFieldKey: nestedField.key, searchQuery })"
                                                 :filter-visible-fields="filterVisibleFields"
                                                 :should-highlight-text="shouldHighlightText"
                                                 :get-highlight-markup="getHighlightMarkup"
                                                 :should-highlight-select="shouldHighlightSelect"
                                                 :sync-highlight-scroll="syncHighlightScroll"
+                                                :search-query="searchQuery"
                                                 :on-field-change="(schema, objectField, value, options) =>
                                                     handleNestedArrayItemObjectFieldChange(
                                                         prop.key,
@@ -1323,12 +1328,13 @@
                             :value="getArrayItemObjectValue(prop.key, arrayItemEntry.index, field)"
                             :is-nested="true"
                             :field-key="(nestedObjectField) => `${prop.key}-${arrayItemEntry.index}-${field.key}-${nestedObjectField.key}`"
-                            :field-context="() => ({ propKey: prop.key, arrayIndex: arrayItemEntry.index, nestedFieldKey: field.key })"
+                            :field-context="() => ({ propKey: prop.key, arrayIndex: arrayItemEntry.index, nestedFieldKey: field.key, searchQuery })"
                             :filter-visible-fields="filterVisibleFields"
                             :should-highlight-text="shouldHighlightText"
                             :get-highlight-markup="getHighlightMarkup"
                             :should-highlight-select="shouldHighlightSelect"
                             :sync-highlight-scroll="syncHighlightScroll"
+                            :search-query="searchQuery"
                             :on-field-change="(schema, nestedObjectField, value, options) =>
                                 handleArrayItemObjectFieldChange(
                                     prop.key,
@@ -1503,6 +1509,7 @@
                     :field-context="{
                         propKey: prop.key,
                         arrayIndex: stringEntry.index,
+                        searchQuery,
                     }"
                     @update:modelValue="
                         (value: unknown) =>
@@ -1620,6 +1627,7 @@ const props = defineProps<{
     collapsedArrays: Record<string, boolean>;
     dragOverArrayItem: DragOverArrayItem;
     isSearchActive: boolean;
+    searchQuery?: string;
     matchesSearch: (value: unknown) => boolean;
     filterVisibleFields: <
         T extends { key: string; visibleWhen?: unknown },

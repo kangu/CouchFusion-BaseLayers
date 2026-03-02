@@ -139,6 +139,7 @@
             v-show="!collapsedNodes[node.uid]"
         >
             <NodePropsPanel
+                :search-query="normalizedSearchQuery"
                 :visible-props="visibleProps"
                 :prop-draft="propDraft"
                 :extra-props-draft="extraPropsDraft"

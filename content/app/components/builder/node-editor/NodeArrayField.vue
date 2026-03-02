@@ -31,6 +31,7 @@
             :collapsed-arrays="collapsedArrays"
             :drag-over-array-item="dragOverArrayItem"
             :is-search-active="isSearchActive"
+            :search-query="searchQuery"
             :matches-search="matchesSearch"
             :filter-visible-fields="filterVisibleFields"
             :should-highlight-text="shouldHighlightText"
@@ -101,6 +102,7 @@ const props = defineProps<{
     collapsedArrays: Record<string, boolean>;
     dragOverArrayItem: DragOverArrayItem;
     isSearchActive: boolean;
+    searchQuery?: string;
     matchesSearch: (value: unknown) => boolean;
     filterVisibleFields: FilterVisibleFields;
     shouldHighlightText: (value: unknown, type?: string) => boolean;

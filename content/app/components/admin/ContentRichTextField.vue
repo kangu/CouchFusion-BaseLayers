@@ -15,7 +15,11 @@
             </button>
         </div>
 
-        <div class="rich-text-field__surface" :data-placeholder="placeholder">
+        <div
+            class="rich-text-field__surface"
+            :class="{ 'is-search-match': hasSearchMatch }"
+            :data-placeholder="placeholder"
+        >
             <component
                 v-if="EditorContentComponent"
                 :is="EditorContentComponent"
@@ -115,10 +119,20 @@ import {
     shallowRef,
     watch,
 } from "vue";
+import { Extension } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ComponentPropSchema } from "../../types/builder";
+import { normalizeSearchQuery } from "../../utils/builderSearch";
 import { sanitizeRichTextHtml } from "../../utils/rich-text";
 
 const UPDATE_DEBOUNCE_MS = 250;
+const SEARCH_HIT_CLASS = "rich-text-field__search-hit";
+const SEARCH_HIGHLIGHT_META_KEY = "contentRichTextSearchHighlightRefresh";
+const SEARCH_HIGHLIGHT_PLUGIN_KEY = new PluginKey<DecorationSet>(
+    "contentRichTextSearchHighlight",
+);
 
 const props = defineProps<{
     modelValue?: string;
@@ -145,6 +159,19 @@ const placeholder = computed(
     () => props.propDefinition?.placeholder ?? "Start typing…",
 );
 const description = computed(() => props.propDefinition?.description);
+const normalizedSearchQuery = computed(() =>
+    normalizeSearchQuery(
+        typeof props.fieldContext?.searchQuery === "string"
+            ? props.fieldContext.searchQuery
+            : "",
+    ),
+);
+const hasSearchMatch = computed(() => {
+    if (!normalizedSearchQuery.value) {
+        return false;
+    }
+    return lastEmitted.value.toLowerCase().includes(normalizedSearchQuery.value);
+});
 
 const isLinkPopoverOpen = ref(false);
 const linkForm = ref({
@@ -157,6 +184,71 @@ const linkUrlInputRef = ref<HTMLInputElement | null>(null);
 const linkTargetOptions = ["", "_self", "_blank", "_parent", "_top"];
 
 let updateTimer: ReturnType<typeof setTimeout> | null = null;
+
+const buildSearchDecorations = (
+    doc: ProseMirrorNode,
+    query: string,
+): DecorationSet => {
+    if (!query) {
+        return DecorationSet.empty;
+    }
+    const decorations: Decoration[] = [];
+    doc.descendants((node, pos) => {
+        if (!node.isText || !node.text) {
+            return;
+        }
+        const lowerText = node.text.toLowerCase();
+        let fromIndex = 0;
+        let matchIndex = lowerText.indexOf(query, fromIndex);
+        while (matchIndex !== -1) {
+            decorations.push(
+                Decoration.inline(
+                    pos + matchIndex,
+                    pos + matchIndex + query.length,
+                    { class: SEARCH_HIT_CLASS },
+                ),
+            );
+            fromIndex = matchIndex + query.length;
+            matchIndex = lowerText.indexOf(query, fromIndex);
+        }
+    });
+    return decorations.length
+        ? DecorationSet.create(doc, decorations)
+        : DecorationSet.empty;
+};
+
+const createSearchHighlightExtension = (getQuery: () => string) =>
+    Extension.create({
+        name: "contentSearchHighlight",
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    key: SEARCH_HIGHLIGHT_PLUGIN_KEY,
+                    state: {
+                        init: (_config, state) =>
+                            buildSearchDecorations(state.doc, getQuery()),
+                        apply: (tr, previous, _oldState, newState) => {
+                            const shouldRefresh =
+                                tr.docChanged ||
+                                tr.getMeta(SEARCH_HIGHLIGHT_META_KEY) === true;
+                            if (!shouldRefresh) {
+                                return previous.map(tr.mapping, tr.doc);
+                            }
+                            return buildSearchDecorations(
+                                newState.doc,
+                                getQuery(),
+                            );
+                        },
+                    },
+                    props: {
+                        decorations(state) {
+                            return SEARCH_HIGHLIGHT_PLUGIN_KEY.getState(state);
+                        },
+                    },
+                }),
+            ];
+        },
+    });
 
 const absorbPointerEvent = (event: Event) => {
     event.stopPropagation();
@@ -191,6 +283,21 @@ watch(
     () => props.modelValue,
     (value) => {
         syncExternalValue(value);
+    },
+);
+
+watch(
+    normalizedSearchQuery,
+    () => {
+        if (!editorInstance.value) {
+            return;
+        }
+        editorInstance.value.view.dispatch(
+            editorInstance.value.state.tr.setMeta(
+                SEARCH_HIGHLIGHT_META_KEY,
+                true,
+            ),
+        );
     },
 );
 
@@ -344,6 +451,7 @@ const createEditor = () => {
                 autolink: false,
                 linkOnPaste: false,
             }),
+            createSearchHighlightExtension(() => normalizedSearchQuery.value),
         ],
         editorProps: {
             attributes: {
@@ -452,6 +560,11 @@ onBeforeUnmount(() => {
     background: #fff;
 }
 
+.rich-text-field__surface.is-search-match {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
+}
+
 .rich-text-field__surface:focus-within {
     border-color: #111827;
     box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
@@ -515,6 +628,11 @@ onBeforeUnmount(() => {
         ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         "Liberation Mono", "Courier New", monospace;
     overflow-x: auto;
+}
+
+.rich-text-field__content :deep(.rich-text-field__search-hit) {
+    background: rgba(250, 204, 21, 0.35);
+    border-radius: 2px;
 }
 
 .rich-text-field__description {
