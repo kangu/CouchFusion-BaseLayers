@@ -1,9 +1,9 @@
 /**
  * Global CouchDB _users Database Changes Follower
- * 
+ *
  * This plugin creates a single global connection to CouchDB's _users database
  * _changes feed and broadcasts user document changes to connected SSE clients.
- * 
+ *
  * Features:
  * - Single global _changes follower for all users
  * - Auto-reconnect with exponential backoff
@@ -30,19 +30,24 @@ export default defineNitroPlugin(() => {
   let backoffMs = 1000
 
   const startChangesFollower = async () => {
-    const { couchUrl, couchAdminAuth } = config
-    
+    const { couchUrl, couchAdminAuth, skipUserChangesFeed } = config
+
     if (!couchUrl || !couchAdminAuth) {
       console.error('[UsersChanges] Missing CouchDB configuration')
       return
     }
 
+    if (skipUserChangesFeed) {
+        console.log('[UsersChanges] Skipping users feed as per config request')
+        return
+    }
+
     // Build _changes feed URL
     const changesUrl = `${couchUrl}/_users/_changes?feed=continuous&since=now&include_docs=true&heartbeat=30000`
-    
+
     try {
-      console.log('[UsersChanges] Starting _users changes follower...')
-      
+      console.log('[UsersChanges] Starting _users changes follower...', changesUrl)
+
       const response = await fetch(changesUrl, {
         headers: {
           'Accept': 'application/json',
@@ -68,14 +73,14 @@ export default defineNitroPlugin(() => {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        
+
         let newlineIndex
         while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, newlineIndex).trim()
           buffer = buffer.slice(newlineIndex + 1)
-          
+
           if (!line) continue // Skip empty lines (heartbeats)
-          
+
           try {
             const changeRow = JSON.parse(line)
             await handleUserChange(changeRow)
@@ -100,7 +105,7 @@ export default defineNitroPlugin(() => {
    */
   async function handleUserChange(changeRow: any) {
     const { id, seq, doc } = changeRow
-    
+
     // Only process user documents
     if (!id || !id.startsWith('org.couchdb.user:')) {
       return

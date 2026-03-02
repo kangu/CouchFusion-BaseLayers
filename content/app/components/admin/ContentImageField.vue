@@ -4,6 +4,118 @@
             <img :src="previewUrl" alt="" loading="lazy" />
         </div>
 
+        <div
+            v-if="previewUrl && isImageKitPreviewSource"
+            class="image-field__imagekit-panel"
+        >
+            <div class="image-field__imagekit-header">
+                <button
+                    type="button"
+                    class="image-field__imagekit-toggle"
+                    :aria-expanded="isImageKitPanelOpen ? 'true' : 'false'"
+                    @click="isImageKitPanelOpen = !isImageKitPanelOpen"
+                >
+                    <strong>ImageKit Adjustments</strong>
+                    <span>{{
+                        isImageKitPanelOpen ? "Hide controls" : "Show controls"
+                    }}</span>
+                </button>
+                <button
+                    type="button"
+                    class="image-field__button image-field__button--ghost"
+                    @click="resetImageKitAdjustments"
+                >
+                    Reset
+                </button>
+            </div>
+            <div v-if="isImageKitPanelOpen" class="image-field__imagekit-grid">
+                <label class="image-field__imagekit-field">
+                    <span>Width</span>
+                    <input
+                        v-model.trim="imageKitWidth"
+                        type="number"
+                        min="1"
+                        inputmode="numeric"
+                        placeholder="1000"
+                    />
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Height</span>
+                    <input
+                        v-model.trim="imageKitHeight"
+                        type="number"
+                        min="1"
+                        inputmode="numeric"
+                        placeholder="Auto"
+                    />
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Aspect Ratio</span>
+                    <select v-model="imageKitAspectRatio">
+                        <option value="">Auto</option>
+                        <option value="1-1">1:1</option>
+                        <option value="4-3">4:3</option>
+                        <option value="16-9">16:9</option>
+                        <option value="3-4">3:4</option>
+                        <option value="9-16">9:16</option>
+                    </select>
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Crop</span>
+                    <select v-model="imageKitCropMode">
+                        <option value="">Default</option>
+                        <option value="maintain_ratio">Maintain ratio</option>
+                        <option value="at_max">At max</option>
+                        <option value="at_least">At least</option>
+                        <option value="at_max_enlarge">At max enlarge</option>
+                        <option value="force">Force</option>
+                        <option value="pad_resize">Pad resize</option>
+                        <option value="extract">Extract</option>
+                    </select>
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Focus</span>
+                    <select v-model="imageKitFocus">
+                        <option value="">Auto</option>
+                        <option value="center">Center</option>
+                        <option value="top">Top</option>
+                        <option value="bottom">Bottom</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                    </select>
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Quality</span>
+                    <input
+                        v-model.trim="imageKitQuality"
+                        type="number"
+                        min="1"
+                        max="100"
+                        inputmode="numeric"
+                        placeholder="Auto"
+                    />
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Format</span>
+                    <select v-model="imageKitFormat">
+                        <option value="auto">Auto</option>
+                        <option value="avif">AVIF</option>
+                        <option value="webp">WebP</option>
+                        <option value="jpg">JPG</option>
+                        <option value="png">PNG</option>
+                    </select>
+                </label>
+            </div>
+            <label v-if="isImageKitPanelOpen" class="image-field__imagekit-url">
+                <span>Result URL (Preview)</span>
+                <input :value="previewUrl" type="text" readonly />
+            </label>
+            <p v-if="isImageKitPanelOpen" class="image-field__hint">
+                Preview transformations are applied live and do not change the
+                stored source path.
+            </p>
+        </div>
+
         <div class="image-field__controls">
             <input
                 v-model="localValue"
@@ -244,7 +356,10 @@ import type {
     ImageKitUploadResult,
 } from "#imagekit/utils/imagekit";
 import { useImageKit } from "#imagekit/composables/useImageKit";
-import { resolveImageKitUrl } from "#imagekit/utils/transform";
+import {
+    resolveImageKitUrl,
+    withImageKitTransformations,
+} from "#imagekit/utils/transform";
 
 interface FieldContext {
     propKey: string;
@@ -314,6 +429,14 @@ const libraryLimit = ref<number>(DEFAULT_LIBRARY_LIMIT);
 const libraryTotal = ref(0);
 const localUploadPending = ref(false);
 const localDeletePending = ref<string | null>(null);
+const imageKitWidth = ref("1000");
+const imageKitHeight = ref("");
+const imageKitAspectRatio = ref("");
+const imageKitCropMode = ref("");
+const imageKitFocus = ref("");
+const imageKitQuality = ref("");
+const imageKitFormat = ref("auto");
+const isImageKitPanelOpen = ref(false);
 
 const normalizeFolderName = (value?: string | null) => {
     if (!value) {
@@ -355,6 +478,68 @@ const libraryTitle = computed(() =>
     isLocalLibrary.value ? "Select Local Image" : "Select Image",
 );
 
+const toPositiveNumber = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+    }
+    return parsed;
+};
+
+const imageKitTransformString = computed(() => {
+    const transforms: string[] = [];
+
+    const width = toPositiveNumber(imageKitWidth.value);
+    if (width) {
+        transforms.push(`w-${width}`);
+    }
+
+    const height = toPositiveNumber(imageKitHeight.value);
+    if (height) {
+        transforms.push(`h-${height}`);
+    }
+
+    if (imageKitAspectRatio.value) {
+        transforms.push(`ar-${imageKitAspectRatio.value}`);
+    }
+
+    if (imageKitCropMode.value) {
+        transforms.push(`c-${imageKitCropMode.value}`);
+    }
+
+    if (imageKitFocus.value) {
+        transforms.push(`fo-${imageKitFocus.value}`);
+    }
+
+    const quality = toPositiveNumber(imageKitQuality.value);
+    if (quality) {
+        transforms.push(`q-${Math.min(100, quality)}`);
+    }
+
+    if (imageKitFormat.value) {
+        transforms.push(`f-${imageKitFormat.value}`);
+    }
+
+    return transforms.join(",");
+});
+
+const isImageKitPreviewSource = computed(() => {
+    if (!localValue.value) {
+        return false;
+    }
+
+    const resolved = resolveImageKitUrl(
+        localValue.value,
+        urlEndpoint.value || undefined,
+    );
+    const probe = withImageKitTransformations(resolved, {
+        transformations: "w-1",
+        endpoint: urlEndpoint.value || undefined,
+    });
+
+    return probe !== resolved;
+});
+
 const previewUrl = computed(() => buildPreviewUrl(localValue.value));
 const displayedCountLabel = computed(() => {
     if (!libraryTotal.value) {
@@ -395,7 +580,7 @@ function ensureAbsoluteUrl(value?: string | null) {
         return "";
     }
 
-    if (/^https?:\/\//i.test(value)) {
+    if (/^(data:|blob:)/i.test(value)) {
         return value;
     }
 
@@ -426,10 +611,6 @@ function buildPreviewUrl(filePath?: string) {
         return "";
     }
 
-    if (/^https?:\/\//i.test(filePath)) {
-        return filePath;
-    }
-
     if (/^(data:|blob:)/i.test(filePath)) {
         return filePath;
     }
@@ -442,8 +623,21 @@ function buildPreviewUrl(filePath?: string) {
         filePath,
         urlEndpoint.value || undefined,
     );
-    return resolved;
+    return withImageKitTransformations(resolved, {
+        transformations: imageKitTransformString.value || "w-1000,f-auto",
+        endpoint: urlEndpoint.value || undefined,
+    });
 }
+
+const resetImageKitAdjustments = () => {
+    imageKitWidth.value = "1000";
+    imageKitHeight.value = "";
+    imageKitAspectRatio.value = "";
+    imageKitCropMode.value = "";
+    imageKitFocus.value = "";
+    imageKitQuality.value = "";
+    imageKitFormat.value = "auto";
+};
 
 const commitValue = () => {
     error.value = null;
@@ -451,6 +645,13 @@ const commitValue = () => {
     localValue.value = normalized;
     emit("update:modelValue", normalized);
 };
+
+watch(imageKitTransformString, () => {
+    if (!localValue.value || !isImageKitPreviewSource.value) {
+        return;
+    }
+    commitValue();
+});
 
 const clearImage = () => {
     if (typeof window !== "undefined") {
@@ -806,6 +1007,75 @@ watch(isLibraryOpen, async (isOpen) => {
 .image-field__controls {
     display: flex;
     gap: 0.5rem;
+}
+
+.image-field__imagekit-panel {
+    display: grid;
+    gap: 0.625rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 0.75rem;
+    background: rgba(248, 250, 252, 0.75);
+}
+
+.image-field__imagekit-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.image-field__imagekit-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 0;
+    background: transparent;
+    color: #0f172a;
+    cursor: pointer;
+    padding: 0;
+}
+
+.image-field__imagekit-toggle span {
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.image-field__imagekit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0.5rem;
+}
+
+.image-field__imagekit-field {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: #475569;
+}
+
+.image-field__imagekit-field span,
+.image-field__imagekit-url span {
+    font-weight: 600;
+}
+
+.image-field__imagekit-field input,
+.image-field__imagekit-field select,
+.image-field__imagekit-url input {
+    width: 100%;
+    padding: 0.4rem 0.55rem;
+    border-radius: 0.45rem;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: #fff;
+    font-size: 0.8rem;
+}
+
+.image-field__imagekit-url {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: #475569;
 }
 
 .image-field__input {
