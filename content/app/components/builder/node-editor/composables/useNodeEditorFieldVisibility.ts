@@ -6,10 +6,23 @@ type MatchesSearch = (value: unknown) => boolean;
 export const useNodeEditorFieldVisibility = ({
     isSearchActive,
     matchesSearch,
+    normalizedSearchQuery,
 }: {
     isSearchActive: ComputedRef<boolean>;
     matchesSearch: MatchesSearch;
+    normalizedSearchQuery: ComputedRef<string>;
 }) => {
+    let stickyFieldsByContext = new WeakMap<object, Set<string>>();
+    let stickyQuery = "";
+
+    const ensureStickyScope = () => {
+        if (stickyQuery === normalizedSearchQuery.value) {
+            return;
+        }
+        stickyQuery = normalizedSearchQuery.value;
+        stickyFieldsByContext = new WeakMap<object, Set<string>>();
+    };
+
     const isFieldVisible = (
         schema: { visibleWhen?: VisibleWhenRule | VisibleWhenRule[] } | undefined,
         context: Record<string, any> | undefined,
@@ -53,6 +66,23 @@ export const useNodeEditorFieldVisibility = ({
             }
             if (!context) {
                 return false;
+            }
+            ensureStickyScope();
+            if (typeof context === "object" && context !== null) {
+                const contextObject = context as object;
+                let stickyVisible = stickyFieldsByContext.get(contextObject);
+                if (!stickyVisible) {
+                    stickyVisible = new Set<string>();
+                    stickyFieldsByContext.set(contextObject, stickyVisible);
+                }
+                if (stickyVisible.has(field.key)) {
+                    return true;
+                }
+                const matched = matchesSearch(context[field.key]);
+                if (matched) {
+                    stickyVisible.add(field.key);
+                }
+                return matched;
             }
             return matchesSearch(context[field.key]);
         });

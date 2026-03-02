@@ -14,6 +14,7 @@
                             class="node-panel__section-name-editor"
                         >
                             <input
+                                ref="sectionNameInputRef"
                                 v-model="sectionNameDraft"
                                 type="text"
                                 placeholder="Section name"
@@ -326,7 +327,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, toRaw, watch } from "vue";
 import type {
     BuilderNodeChild,
     BuilderResponsiveMargin,
@@ -416,8 +417,55 @@ const depth = computed(() => props.depth ?? 0);
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(props.searchQuery),
 );
-const matchesSearch = (value: unknown) =>
-    matchesSearchValue(value, normalizedSearchQuery.value);
+let stickyMatchQuery = "";
+let stickyObjectMatches = new WeakMap<object, boolean>();
+let stickyPrimitiveMatches = new Map<string, boolean>();
+let stickyArrayMatchesByScope = new Map<string, Set<number>>();
+
+const ensureStickyMatchScope = () => {
+    if (stickyMatchQuery === normalizedSearchQuery.value) {
+        return;
+    }
+    stickyMatchQuery = normalizedSearchQuery.value;
+    stickyObjectMatches = new WeakMap<object, boolean>();
+    stickyPrimitiveMatches = new Map<string, boolean>();
+    stickyArrayMatchesByScope = new Map<string, Set<number>>();
+};
+
+const stickyPrimitiveKey = (value: unknown): string => {
+    if (value === null) {
+        return "null";
+    }
+    if (value === undefined) {
+        return "undefined";
+    }
+    return `${typeof value}:${String(value)}`;
+};
+
+const matchesSearch = (value: unknown) => {
+    const query = normalizedSearchQuery.value;
+    if (!query) {
+        return true;
+    }
+    ensureStickyMatchScope();
+    if (typeof value === "object" && value !== null) {
+        const cached = stickyObjectMatches.get(value as object);
+        if (cached !== undefined) {
+            return cached;
+        }
+        const matched = matchesSearchValue(value, query);
+        stickyObjectMatches.set(value as object, matched);
+        return matched;
+    }
+    const key = stickyPrimitiveKey(value);
+    const cached = stickyPrimitiveMatches.get(key);
+    if (cached !== undefined) {
+        return cached;
+    }
+    const matched = matchesSearchValue(value, query);
+    stickyPrimitiveMatches.set(key, matched);
+    return matched;
+};
 const {
     isSearchActive,
     shouldHighlightText,
@@ -432,13 +480,37 @@ const componentDef = computed(() =>
         : undefined,
 );
 
+const stickyChildMatchUids = ref<Set<string> | null>(null);
+
+watch(
+    () => normalizedSearchQuery.value,
+    (query) => {
+        if (!query || props.node.type !== "component") {
+            stickyChildMatchUids.value = null;
+            return;
+        }
+        stickyChildMatchUids.value = new Set(
+            filterNodesBySearch(props.node.children || [], query).map(
+                (child) => child.uid,
+            ),
+        );
+    },
+    { immediate: true },
+);
+
 const filteredChildren = computed(() => {
     if (props.node.type !== "component") {
         return [] as BuilderNodeChild[];
     }
-    return filterNodesBySearch(
-        props.node.children || [],
-        normalizedSearchQuery.value,
+    if (!normalizedSearchQuery.value) {
+        return props.node.children || [];
+    }
+    const stickyMatches = stickyChildMatchUids.value;
+    if (!stickyMatches) {
+        return [];
+    }
+    return (props.node.children || []).filter((child) =>
+        stickyMatches.has(child.uid),
     );
 });
 
@@ -460,6 +532,7 @@ const isSectionNameEditable = computed(
 );
 const isSectionNameEditing = ref(false);
 const sectionNameDraft = ref("");
+const sectionNameInputRef = ref<HTMLInputElement | null>(null);
 const sectionNameDisplay = computed(() => {
     if (!isSectionNameEditable.value) {
         return "";
@@ -474,6 +547,10 @@ const beginSectionNameEdit = () => {
     }
     sectionNameDraft.value = props.sectionName ?? "";
     isSectionNameEditing.value = true;
+    nextTick(() => {
+        sectionNameInputRef.value?.focus();
+        sectionNameInputRef.value?.select();
+    });
 };
 
 const saveSectionNameEdit = () => {
@@ -528,6 +605,7 @@ const objectFieldErrors = reactive<
 const { filterVisibleFields } = useNodeEditorFieldVisibility({
     isSearchActive,
     matchesSearch,
+    normalizedSearchQuery,
 });
 const visibleProps = computed(() =>
     filterVisibleFields(componentDef.value?.props, propDraft),
@@ -551,22 +629,36 @@ type IndexedEntry<T> = { value: T; index: number };
 const toIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> =>
     values.map((value, index) => ({ value, index }));
 
-const filterIndexedEntries = <T,>(values: T[]): Array<IndexedEntry<T>> => {
+const filterIndexedEntries = <T,>(
+    values: T[],
+    scopeKey: string,
+): Array<IndexedEntry<T>> => {
     const entries = toIndexedEntries(values);
     if (!isSearchActive.value) {
         return entries;
     }
-    return entries.filter((entry) => matchesSearch(entry.value));
+    ensureStickyMatchScope();
+    let stickyIndexes = stickyArrayMatchesByScope.get(scopeKey);
+    if (!stickyIndexes) {
+        stickyIndexes = new Set<number>();
+        for (const entry of entries) {
+            if (matchesSearch(entry.value)) {
+                stickyIndexes.add(entry.index);
+            }
+        }
+        stickyArrayMatchesByScope.set(scopeKey, stickyIndexes);
+    }
+    return entries.filter((entry) => stickyIndexes.has(entry.index));
 };
 
 const getFilteredJsonArrayItems = (propKey: string) => {
     const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
-    return filterIndexedEntries(items);
+    return filterIndexedEntries(items, `top-json:${propKey}`);
 };
 
 const getFilteredStringArrayItems = (propKey: string) => {
     const items = Array.isArray(propDraft[propKey]) ? propDraft[propKey] : [];
-    return filterIndexedEntries(items);
+    return filterIndexedEntries(items, `top-string:${propKey}`);
 };
 
 const getFilteredArrayItemStringArrayItems = (
@@ -575,7 +667,10 @@ const getFilteredArrayItemStringArrayItems = (
     field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
 ) => {
     const items = getArrayItemStringArrayItems(propKey, parentIndex, field);
-    return filterIndexedEntries(items);
+    return filterIndexedEntries(
+        items,
+        `item-string:${propKey}:${parentIndex}:${field.key}`,
+    );
 };
 const textDraft = ref(props.node.type === "text" ? props.node.value : "");
 // selectedChildComponent is no longer needed

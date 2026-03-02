@@ -2,6 +2,7 @@
 import {
     computed,
     defineAsyncComponent,
+    nextTick,
     onBeforeUnmount,
     reactive,
     ref,
@@ -320,8 +321,28 @@ const searchQuery = computed<string>({
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(searchQuery.value),
 );
+const stickyRootMatchUids = ref<Set<string> | null>(null);
+
+watch(
+    () => normalizedSearchQuery.value,
+    (query) => {
+        if (!query) {
+            stickyRootMatchUids.value = null;
+            return;
+        }
+        stickyRootMatchUids.value = new Set(
+            filterNodesBySearch(builderTree.value, query).map((node) => node.uid),
+        );
+    },
+    { immediate: true },
+);
+
 const filteredBuilderTree = computed(() =>
-    filterNodesBySearch(builderTree.value, normalizedSearchQuery.value),
+    !normalizedSearchQuery.value
+        ? builderTree.value
+        : builderTree.value.filter((node) =>
+              Boolean(stickyRootMatchUids.value?.has(node.uid)),
+          ),
 );
 
 const isRootPickerOpen = ref(false);
@@ -331,6 +352,7 @@ const pendingRootInsertIndex = ref<number | null>(null);
 const isSectionNamePromptOpen = ref(false);
 const pendingSelectedComponentId = ref<string | null>(null);
 const pendingSectionNameDraft = ref("");
+const sectionNamePromptInputRef = ref<HTMLInputElement | null>(null);
 
 const spacingPresets: Array<{
     id: SpacingPresetId;
@@ -768,6 +790,9 @@ const handleRootComponentPicked = (componentId: string) => {
     pendingSectionNameDraft.value = "";
     isRootPickerOpen.value = false;
     isSectionNamePromptOpen.value = true;
+    nextTick(() => {
+        sectionNamePromptInputRef.value?.focus();
+    });
 };
 
 const confirmRootComponentWithName = () => {
@@ -1365,6 +1390,7 @@ const handleSaveDebugClick = () => {
                     <h3>Section Name</h3>
                     <p>{{ pendingSelectedComponentLabel }}</p>
                     <input
+                        ref="sectionNamePromptInputRef"
                         v-model="pendingSectionNameDraft"
                         type="text"
                         placeholder="Enter a section name"
