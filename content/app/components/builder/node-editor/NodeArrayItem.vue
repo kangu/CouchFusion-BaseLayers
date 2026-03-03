@@ -338,6 +338,16 @@
                                         :model-value="
                                             nestedEntry.value
                                         "
+                                        :transform-value="
+                                            isImageFieldSchema(field)
+                                                ? getStringArrayTransformValue(
+                                                      prop.key,
+                                                      arrayItemEntry.index,
+                                                      field,
+                                                      nestedEntry.index,
+                                                  )
+                                                : undefined
+                                        "
                                         :prop-definition="field"
                                         :field-context="{
                                             propKey: prop.key,
@@ -355,6 +365,23 @@
                                                     field,
                                                     nestedEntry.index,
                                                     value,
+                                                    {
+                                                        debounce: true,
+                                                    },
+                                                )
+                                        "
+                                        @update:transformValue="
+                                            (value: unknown) =>
+                                                handleArrayItemStringArrayChange(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                    imageKitStringArrayCompanionField(
+                                                        field,
+                                                    ),
+                                                    nestedEntry.index,
+                                                    normalizeImageKitTransformValue(
+                                                        value,
+                                                    ),
                                                     {
                                                         debounce: true,
                                                     },
@@ -471,6 +498,14 @@
                             :model-value="
                                 arrayItemEntry.value[field.key]
                             "
+                            :transform-value="
+                                isImageFieldSchema(field)
+                                    ? getImageKitTransformValue(
+                                          arrayItemEntry.value,
+                                          field.key,
+                                      )
+                                    : undefined
+                            "
                             :prop-definition="field"
                             :field-context="{
                                 propKey: prop.key,
@@ -484,6 +519,16 @@
                                         arrayItemEntry.index,
                                         field,
                                         value,
+                                        { debounce: true },
+                                    )
+                            "
+                            @update:transformValue="
+                                (value: unknown) =>
+                                    handleCustomArrayFieldUpdate(
+                                        prop.key,
+                                        arrayItemEntry.index,
+                                        imageKitTextCompanionField(field),
+                                        normalizeImageKitTransformValue(value),
                                         { debounce: true },
                                     )
                             "
@@ -843,6 +888,16 @@
                                                         nestedField.key
                                                     ]
                                                 "
+                                                :transform-value="
+                                                    isImageFieldSchema(
+                                                        nestedField,
+                                                    )
+                                                        ? getImageKitTransformValue(
+                                                              nestedItem,
+                                                              nestedField.key,
+                                                          )
+                                                        : undefined
+                                                "
                                                 :prop-definition="
                                                     nestedField
                                                 "
@@ -867,6 +922,26 @@
                                                             nestedIndex,
                                                             nestedField,
                                                             value,
+                                                            {
+                                                                debounce: true,
+                                                            },
+                                                        )
+                                                "
+                                                @update:transformValue="
+                                                    (
+                                                        value: unknown,
+                                                    ) =>
+                                                        updateCustomNestedArrayItemField(
+                                                            prop.key,
+                                                            arrayItemEntry.index,
+                                                            field,
+                                                            nestedIndex,
+                                                            imageKitTextCompanionField(
+                                                                nestedField,
+                                                            ),
+                                                            normalizeImageKitTransformValue(
+                                                                value,
+                                                            ),
                                                             {
                                                                 debounce: true,
                                                             },
@@ -999,6 +1074,20 @@
                                                             :model-value="
                                                                 nestedEntry.value
                                                             "
+                                                            :transform-value="
+                                                                isImageFieldSchema(
+                                                                    nestedField,
+                                                                )
+                                                                    ? getNestedStringArrayTransformValue(
+                                                                          prop.key,
+                                                                          arrayItemEntry.index,
+                                                                          field,
+                                                                          nestedIndex,
+                                                                          nestedField,
+                                                                          nestedEntry.index,
+                                                                      )
+                                                                    : undefined
+                                                            "
                                                             :prop-definition="
                                                                 nestedField
                                                             "
@@ -1026,6 +1115,27 @@
                                                                         nestedField,
                                                                         nestedEntry.index,
                                                                         value,
+                                                                        {
+                                                                            debounce: true,
+                                                                        },
+                                                                    )
+                                                            "
+                                                            @update:transformValue="
+                                                                (
+                                                                    value: unknown,
+                                                                ) =>
+                                                                    handleNestedArrayItemStringArrayChange(
+                                                                        prop.key,
+                                                                        arrayItemEntry.index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        imageKitStringArrayCompanionField(
+                                                                            nestedField,
+                                                                        ),
+                                                                        nestedEntry.index,
+                                                                        normalizeImageKitTransformValue(
+                                                                            value,
+                                                                        ),
                                                                         {
                                                                             debounce: true,
                                                                         },
@@ -1508,6 +1618,14 @@
                     :model-value="
                         propDraft[prop.key][stringEntry.index]
                     "
+                    :transform-value="
+                        isImageFieldSchema(prop)
+                            ? getTopLevelStringArrayTransformValue(
+                                  prop.key,
+                                  stringEntry.index,
+                              )
+                            : undefined
+                    "
                     :prop-definition="prop"
                     :field-context="{
                         propKey: prop.key,
@@ -1520,6 +1638,15 @@
                                 prop.key,
                                 stringEntry.index,
                                 value,
+                                { debounce: true },
+                            )
+                    "
+                    @update:transformValue="
+                        (value: unknown) =>
+                            handleStringArrayChange(
+                                imageKitTransformFieldKey(prop.key),
+                                stringEntry.index,
+                                normalizeImageKitTransformValue(value),
                                 { debounce: true },
                             )
                     "
@@ -1686,6 +1813,85 @@ const props = defineProps<{
 
 const arrayItemEntry = computed(() => props.entry);
 const stringEntry = computed(() => props.entry);
+
+const imageKitTransformFieldKey = (key: string) => `${key}ImagekitTransforms`;
+
+const isImageFieldSchema = (
+    schema: ComponentArrayItemField | ComponentPropSchema,
+) => schema.ui?.component === "ContentImageField";
+
+const normalizeImageKitTransformValue = (value: unknown) => {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const imageKitTextCompanionField = (
+    field: ComponentArrayItemField,
+): ComponentArrayItemField => ({
+    ...field,
+    key: imageKitTransformFieldKey(field.key),
+    type: "text",
+});
+
+const imageKitStringArrayCompanionField = (
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+): Extract<ComponentArrayItemField, { type: "stringarray" }> => ({
+    ...field,
+    key: imageKitTransformFieldKey(field.key),
+});
+
+const getImageKitTransformValue = (
+    value: Record<string, any> | undefined,
+    fieldKey: string,
+) => {
+    const source = value?.[imageKitTransformFieldKey(fieldKey)];
+    return typeof source === "string" ? source : "";
+};
+
+const getTopLevelStringArrayTransformValue = (
+    propKey: string,
+    index: number,
+) => {
+    const source = props.propDraft?.[imageKitTransformFieldKey(propKey)];
+    return Array.isArray(source) ? String(source[index] ?? "") : "";
+};
+
+const getStringArrayTransformValue = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    index: number,
+) => {
+    const companion = imageKitStringArrayCompanionField(field);
+    const items = props.getArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        companion,
+    );
+    return Array.isArray(items) ? String(items[index] ?? "") : "";
+};
+
+const getNestedStringArrayTransformValue = (
+    propKey: string,
+    parentIndex: number,
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }>,
+    nestedIndex: number,
+    nestedField: Extract<ComponentArrayItemField, { type: "stringarray" }>,
+    index: number,
+) => {
+    const companion = imageKitStringArrayCompanionField(nestedField);
+    const items = props.getNestedArrayItemStringArrayItems(
+        propKey,
+        parentIndex,
+        field,
+        nestedIndex,
+        companion,
+    );
+    return Array.isArray(items) ? String(items[index] ?? "") : "";
+};
 
 const shouldConfirmRemoval = () => {
     if (typeof window === "undefined") {

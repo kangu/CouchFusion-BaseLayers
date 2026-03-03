@@ -1,5 +1,11 @@
 import { defineNuxtPlugin, useRuntimeConfig } from '#imports'
-import { normalizeTransformInput, resolveImageKitUrl, withImageKitTransformations } from '#imagekit/utils/transform'
+import {
+  extractImageKitTransformations,
+  mergeImageKitTransformations,
+  normalizeTransformInput,
+  resolveImageKitUrl,
+  withImageKitTransformations,
+} from '#imagekit/utils/transform'
 
 const TRANSFORM_DATA_ATTR = 'ikTransforms'
 const ENDPOINT_DATA_ATTR = 'ikEndpoint'
@@ -8,6 +14,33 @@ const SSR_ENDPOINT_ATTR = 'data-ik-endpoint'
 
 const TRANSFORM_PROP = Symbol('imagekit:transform')
 const ENDPOINT_PROP = Symbol('imagekit:endpoint')
+
+type TransformInput = string | string[] | null | undefined
+
+const toTransformInput = (value: unknown): TransformInput => {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => `${entry ?? ''}`)
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  return `${value}`
+}
+
+const resolveBindingTransform = (value: unknown): string | null => {
+  // Tuple syntax: [fixedTransforms, dynamicTransforms]
+  if (Array.isArray(value) && value.length === 2) {
+    const [fixed, dynamic] = value
+    return mergeImageKitTransformations(
+      toTransformInput(fixed),
+      toTransformInput(dynamic),
+    )
+  }
+  return normalizeTransformInput(toTransformInput(value))
+}
 
 const setTransformMeta = (el: HTMLImageElement, transform: string | null, endpoint: string | undefined) => {
   if (transform) {
@@ -38,13 +71,17 @@ const applyImmediateTransform = (el: HTMLImageElement) => {
   }
 
   const absolute = resolveImageKitUrl(candidateSrc, endpoint)
-  const transformed =
-    transform && transform.length
-      ? withImageKitTransformations(absolute, {
-          transformations: transform,
-          endpoint,
-        })
-      : absolute
+  const sourceWithTransforms = extractImageKitTransformations(absolute, endpoint)
+  const mergedTransforms = mergeImageKitTransformations(
+    sourceWithTransforms.transformations,
+    transform,
+  )
+  const transformed = mergedTransforms
+    ? withImageKitTransformations(sourceWithTransforms.source, {
+        transformations: mergedTransforms,
+        endpoint,
+      })
+    : sourceWithTransforms.source
 
   if (el.getAttribute('data-lazy-src')) {
     el.setAttribute('data-lazy-src', transformed)
@@ -65,7 +102,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   nuxtApp.vueApp.directive('imagekit', {
     getSSRProps(binding) {
-      const transform = normalizeTransformInput(binding.value)
+      const transform = resolveBindingTransform(binding.value)
       if (!transform) {
         return {}
       }
@@ -78,12 +115,12 @@ export default defineNuxtPlugin((nuxtApp) => {
       return attrs
     },
     mounted(el, binding) {
-      const transform = normalizeTransformInput(binding.value)
+      const transform = resolveBindingTransform(binding.value)
       setTransformMeta(el, transform, endpoint)
       applyImmediateTransform(el)
     },
     updated(el, binding) {
-      const transform = normalizeTransformInput(binding.value)
+      const transform = resolveBindingTransform(binding.value)
       setTransformMeta(el, transform, endpoint)
       applyImmediateTransform(el)
     },

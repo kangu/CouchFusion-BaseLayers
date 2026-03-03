@@ -1,4 +1,20 @@
 const TRANSFORM_PREFIX = 'tr:'
+export const IMAGEKIT_TRANSFORM_PREFIX_WHITELIST = [
+  'w',
+  'h',
+  'ar',
+  'c',
+  'cm',
+  'fo',
+  'z',
+  'q',
+  'f',
+  'x',
+  'y',
+  'xc',
+  'yc',
+] as const
+type TransformInput = string | string[] | null | undefined
 
 const normalizeEndpoint = (endpoint?: string): string | null => {
   if (!endpoint) {
@@ -136,6 +152,142 @@ export interface TransformOptions {
   endpoint?: string
 }
 
+const transformPrefix = (entry: string): string => {
+  const normalized = entry.replace(/^tr:/i, '').trim()
+  const separatorIndex = normalized.indexOf('-')
+  if (separatorIndex === -1) {
+    return normalized
+  }
+  return normalized.slice(0, separatorIndex)
+}
+
+const normalizeTransformEntry = (entry: string): string => entry.replace(/^tr:/i, '').trim()
+
+export const splitImageKitTransformations = (transformations: TransformInput): string[] => {
+  if (!transformations) {
+    return []
+  }
+
+  if (Array.isArray(transformations)) {
+    return transformations.map((entry) => normalizeTransformEntry(`${entry ?? ''}`)).filter(Boolean)
+  }
+
+  return `${transformations ?? ''}`
+    .split(',')
+    .map((entry) => normalizeTransformEntry(entry))
+    .filter(Boolean)
+}
+
+export const sanitizeImageKitTransformations = (
+  transformations: TransformInput,
+  allowedPrefixes: readonly string[] = IMAGEKIT_TRANSFORM_PREFIX_WHITELIST
+): string[] => {
+  const allowed = new Set(allowedPrefixes.map((prefix) => `${prefix}`.trim()).filter(Boolean))
+  if (!allowed.size) {
+    return []
+  }
+  return splitImageKitTransformations(transformations).filter((entry) => allowed.has(transformPrefix(entry)))
+}
+
+export const mergeImageKitTransformations = (
+  fixed: TransformInput,
+  dynamic: TransformInput,
+  options: { allowedPrefixes?: readonly string[] } = {}
+): string | null => {
+  const allowed = options.allowedPrefixes ?? IMAGEKIT_TRANSFORM_PREFIX_WHITELIST
+  const base = sanitizeImageKitTransformations(fixed, allowed)
+  const overrides = sanitizeImageKitTransformations(dynamic, allowed)
+
+  if (base.length === 0 && overrides.length === 0) {
+    return null
+  }
+
+  const merged = [...base]
+  const indexByPrefix = new Map<string, number>()
+  merged.forEach((entry, index) => {
+    indexByPrefix.set(transformPrefix(entry), index)
+  })
+
+  overrides.forEach((entry) => {
+    const prefix = transformPrefix(entry)
+    if (indexByPrefix.has(prefix)) {
+      const targetIndex = indexByPrefix.get(prefix)
+      if (typeof targetIndex === 'number') {
+        merged[targetIndex] = entry
+      }
+      return
+    }
+    const insertedIndex = merged.push(entry) - 1
+    indexByPrefix.set(prefix, insertedIndex)
+  })
+
+  return merged.join(',')
+}
+
+export const extractImageKitTransformations = (
+  source: string,
+  endpoint?: string
+): { source: string; transformations: string[] } => {
+  const absolute = resolveAbsoluteSource(source, endpoint)
+  if (!absolute) {
+    return { source, transformations: [] }
+  }
+
+  const classification = classifySource(absolute, endpoint)
+  if (classification !== 'imagekit') {
+    return { source: absolute, transformations: [] }
+  }
+
+  const parsePath = (pathValue: string) => {
+    const segments = splitPathSegments(pathValue)
+    const transformIndex = segments.findIndex((segment, index) => {
+      if (!segment.startsWith(TRANSFORM_PREFIX)) {
+        return false
+      }
+      return index === 0 || index === 1
+    })
+    if (transformIndex === -1) {
+      return {
+        hasTransforms: false,
+        transformedPath: pathValue,
+        transformations: [] as string[],
+      }
+    }
+
+    const transformSegment = segments[transformIndex]
+    const transformations = splitImageKitTransformations(transformSegment.slice(TRANSFORM_PREFIX.length))
+    segments.splice(transformIndex, 1)
+    return {
+      hasTransforms: true,
+      transformedPath: `/${segments.join('/')}`,
+      transformations,
+    }
+  }
+
+  if (ABSOLUTE_URL_PATTERN.test(absolute)) {
+    try {
+      const parsed = new URL(absolute)
+      const extracted = parsePath(parsed.pathname)
+      if (!extracted.hasTransforms) {
+        return { source: absolute, transformations: [] }
+      }
+      parsed.pathname = extracted.transformedPath
+      return {
+        source: `${parsed.origin}${parsed.pathname}${parsed.search}${parsed.hash}`,
+        transformations: extracted.transformations,
+      }
+    } catch {
+      return { source: absolute, transformations: [] }
+    }
+  }
+
+  const extracted = parsePath(absolute)
+  return {
+    source: extracted.hasTransforms ? extracted.transformedPath : absolute,
+    transformations: extracted.transformations,
+  }
+}
+
 const resolveAbsoluteSource = (source: string, endpoint?: string): string | null => {
   if (!source) {
     return null
@@ -188,7 +340,7 @@ export const withImageKitTransformations = (source: string, options: TransformOp
     return absolute
   }
 
-  const transforms = normalizeTransformInput(options.transformations)
+  const transforms = normalizeTransformInput(sanitizeImageKitTransformations(options.transformations))
   if (!transforms) {
     return absolute
   }

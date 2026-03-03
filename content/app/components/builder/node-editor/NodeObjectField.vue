@@ -139,6 +139,14 @@
                     <component
                         :is="field.ui.component"
                         :model-value="objectValue[field.key]"
+                        :transform-value="
+                            isImageFieldSchema(field)
+                                ? getImageKitTransformValue(
+                                      objectValue,
+                                      field.key,
+                                  )
+                                : undefined
+                        "
                         :prop-definition="field"
                         :field-context="withSearchContext(fieldContext(field))"
                         @update:modelValue="
@@ -146,6 +154,14 @@
                                 applyFieldChange(field, value, {
                                     debounce: true,
                                 })
+                        "
+                        @update:transformValue="
+                            (value: unknown) =>
+                                applyFieldChange(
+                                    imageKitTextCompanionField(field),
+                                    normalizeImageKitTransformValue(value),
+                                    { debounce: true },
+                                )
                         "
                     />
                 </template>
@@ -418,6 +434,14 @@
                                             :model-value="
                                                 arrayItem[arrayField.key]
                                             "
+                                            :transform-value="
+                                                isImageFieldSchema(arrayField)
+                                                    ? getImageKitTransformValue(
+                                                          arrayItem,
+                                                          arrayField.key,
+                                                      )
+                                                    : undefined
+                                            "
                                             :prop-definition="arrayField"
                                             :field-context="
                                                 withSearchContext(
@@ -431,6 +455,20 @@
                                                         index,
                                                         arrayField,
                                                         value,
+                                                        { debounce: true },
+                                                    )
+                                            "
+                                            @update:transformValue="
+                                                (value: unknown) =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        imageKitTextCompanionField(
+                                                            arrayField,
+                                                        ),
+                                                        normalizeImageKitTransformValue(
+                                                            value,
+                                                        ),
                                                         { debounce: true },
                                                     )
                                             "
@@ -745,5 +783,34 @@ const buildArrayItem = (field: ComponentArrayItemField) => {
         item[entry.key] = "";
     });
     return item;
+};
+
+const imageKitTransformFieldKey = (key: string) => `${key}ImagekitTransforms`;
+
+const isImageFieldSchema = (schema: ComponentArrayItemField) =>
+    schema.ui?.component === "ContentImageField";
+
+const normalizeImageKitTransformValue = (value: unknown) => {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const imageKitTextCompanionField = (
+    field: ComponentArrayItemField,
+): ComponentArrayItemField => ({
+    ...field,
+    key: imageKitTransformFieldKey(field.key),
+    type: "text",
+});
+
+const getImageKitTransformValue = (
+    value: Record<string, any> | undefined,
+    fieldKey: string,
+) => {
+    const source = value?.[imageKitTransformFieldKey(fieldKey)];
+    return typeof source === "string" ? source : "";
 };
 </script>

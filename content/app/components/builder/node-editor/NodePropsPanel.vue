@@ -120,6 +120,12 @@
                 <component
                     :is="prop.ui.component"
                     :model-value="propDraft[prop.key]"
+                    :transform-value="
+                        isImageFieldSchema(prop)
+                            ? (propDraft[imageKitTransformPropKey(prop.key)] ??
+                              '')
+                            : undefined
+                    "
                     :prop-definition="prop"
                     :field-context="{ propKey: prop.key, searchQuery }"
                     @update:modelValue="
@@ -127,6 +133,21 @@
                             handleCustomPropUpdate(prop, value, {
                                 debounce: true,
                             })
+                    "
+                    @update:transformValue="
+                        (value: unknown) => {
+                            const normalized =
+                                normalizeImageKitTransformValue(value);
+                            const companionKey = imageKitTransformPropKey(
+                                prop.key,
+                            );
+                            propDraft[companionKey] = normalized ?? '';
+                            schedulePropUpdate(
+                                companionKey,
+                                normalized,
+                                'text',
+                            );
+                        }
                     "
                 />
             </template>
@@ -215,6 +236,12 @@
                 <component
                     :is="prop.ui.component"
                     :model-value="propDraft[prop.key]"
+                    :transform-value="
+                        isImageFieldSchema(prop)
+                            ? (propDraft[imageKitTransformPropKey(prop.key)] ??
+                              '')
+                            : undefined
+                    "
                     :prop-definition="prop"
                     :field-context="{ propKey: prop.key, searchQuery }"
                     @update:modelValue="
@@ -222,6 +249,21 @@
                             handleCustomPropUpdate(prop, value, {
                                 debounce: true,
                             })
+                    "
+                    @update:transformValue="
+                        (value: unknown) => {
+                            const normalized =
+                                normalizeImageKitTransformValue(value);
+                            const companionKey = imageKitTransformPropKey(
+                                prop.key,
+                            );
+                            propDraft[companionKey] = normalized ?? '';
+                            schedulePropUpdate(
+                                companionKey,
+                                normalized,
+                                'text',
+                            );
+                        }
                     "
                 />
             </template>
@@ -402,5 +444,18 @@ const fieldWrapperListeners = (schema: ComponentPropSchema) => {
         };
     }
     return {};
+};
+
+const imageKitTransformPropKey = (key: string) => `${key}ImagekitTransforms`;
+
+const isImageFieldSchema = (schema: ComponentPropSchema) =>
+    schema.ui?.component === "ContentImageField";
+
+const normalizeImageKitTransformValue = (value: unknown) => {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
 };
 </script>

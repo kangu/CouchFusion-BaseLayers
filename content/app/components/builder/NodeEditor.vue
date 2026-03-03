@@ -850,7 +850,8 @@ const extraPropEntries = computed(() => {
         .filter(
             ([key]) =>
                 !definedPropKeys.value.has(key) &&
-                !INTERNAL_NODE_PROP_KEYS.has(key),
+                !INTERNAL_NODE_PROP_KEYS.has(key) &&
+                !key.endsWith("ImagekitTransforms"),
         )
         .map(([key, value]) => ({ key, value }));
 });
@@ -1050,6 +1051,36 @@ const ensureStringArray = (value: unknown): string[] => {
         }
     }
     return [];
+};
+
+const IMAGEKIT_TRANSFORM_SUFFIX = "ImagekitTransforms";
+
+const isImageKitTransformCompanionKey = (key: string) =>
+    key.endsWith(IMAGEKIT_TRANSFORM_SUFFIX);
+
+const imageKitTransformCompanionKey = (key: string) =>
+    `${key}${IMAGEKIT_TRANSFORM_SUFFIX}`;
+
+const isImageFieldSchema = (schema: ComponentPropSchema) =>
+    schema.ui?.component === "ContentImageField";
+
+const imageKitTransformCompanionType = (schema: ComponentPropSchema) =>
+    schema.type === "stringarray" ? "stringarray" : "text";
+
+const normalizeImageKitTransformCompanionValue = (
+    rawValue: unknown,
+    type: "stringarray" | "text",
+) => {
+    if (type === "stringarray") {
+        return ensureStringArray(rawValue);
+    }
+    if (typeof rawValue === "string") {
+        return rawValue;
+    }
+    if (rawValue === null || rawValue === undefined) {
+        return "";
+    }
+    return String(rawValue);
 };
 
 const ensureNestedArrayValue = (
@@ -1842,6 +1873,26 @@ const hydrateDrafts = () => {
                 propDraft[key] = rawValue ?? "";
             }
         }
+
+        for (const schema of componentDef.value?.props || []) {
+            if (!isImageFieldSchema(schema)) {
+                continue;
+            }
+            const companionKey = imageKitTransformCompanionKey(schema.key);
+            const companionType = imageKitTransformCompanionType(schema);
+            const companionStorageKey = storageKeyForType(
+                companionKey,
+                companionType,
+            );
+            const companionRawValue =
+                props.node.props?.[companionStorageKey] ??
+                props.node.props?.[companionKey];
+            propDraft[companionKey] = normalizeImageKitTransformCompanionValue(
+                companionRawValue,
+                companionType,
+            );
+        }
+
         for (const entry of extraPropEntries.value) {
             extraPropsDraft[entry.key] = String(entry.value ?? "");
         }
@@ -2201,6 +2252,19 @@ const removeStringArrayItem = (propKey: string, index: number) => {
     current.splice(index, 1);
     propDraft[propKey] = current;
     commitPropChange(propKey, current, "stringarray");
+
+    if (isImageKitTransformCompanionKey(propKey)) {
+        return;
+    }
+
+    const companionKey = imageKitTransformCompanionKey(propKey);
+    const companion = ensureStringArray(propDraft[companionKey]);
+    if (!companion.length) {
+        return;
+    }
+    companion.splice(index, 1);
+    propDraft[companionKey] = companion;
+    commitPropChange(companionKey, companion, "stringarray");
 };
 
 const handleArrayItemDragStart = (
@@ -2263,6 +2327,24 @@ const reorderArrayItems = (
     current.splice(toIndex, 0, moved);
     propDraft[propKey] = current;
     commitPropChange(propKey, current, "stringarray");
+
+    if (isImageKitTransformCompanionKey(propKey)) {
+        return;
+    }
+
+    const companionKey = imageKitTransformCompanionKey(propKey);
+    const companion = ensureStringArray(propDraft[companionKey]);
+    if (!companion.length) {
+        return;
+    }
+    if (fromIndex < 0 || fromIndex >= companion.length) {
+        return;
+    }
+    const [companionMoved] = companion.splice(fromIndex, 1);
+    const targetIndex = Math.min(toIndex, companion.length);
+    companion.splice(targetIndex, 0, companionMoved);
+    propDraft[companionKey] = companion;
+    commitPropChange(companionKey, companion, "stringarray");
 };
 
 const handleArrayItemDrop = (

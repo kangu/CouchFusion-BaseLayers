@@ -52,7 +52,7 @@ export async function requireRoleSession(event: H3Event, roles: string | string[
  * Ensure the current request belongs to an admin user. Returns the session when valid.
  */
 export async function requireAdminSession(event: H3Event) {
-    return requireRoleSession(event, 'admin')
+    return requireRoleSession(event, ['admin', '_admin'])
 }
 
 /**

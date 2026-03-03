@@ -82,7 +82,21 @@
                         <option value="bottom">Bottom</option>
                         <option value="left">Left</option>
                         <option value="right">Right</option>
+                        <option value="face">Face</option>
+                        <option value="object">Object</option>
                     </select>
+                </label>
+                <label class="image-field__imagekit-field">
+                    <span>Zoom</span>
+                    <input
+                        v-model.trim="imageKitZoom"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        inputmode="decimal"
+                        placeholder="1.00"
+                    />
+<!--                    <small>Use with object/face focus; &lt;1 zooms out, &gt;1 zooms in.</small>-->
                 </label>
                 <label class="image-field__imagekit-field">
                     <span>Quality</span>
@@ -98,6 +112,7 @@
                 <label class="image-field__imagekit-field">
                     <span>Format</span>
                     <select v-model="imageKitFormat">
+                        <option value="">Unset</option>
                         <option value="auto">Auto</option>
                         <option value="avif">AVIF</option>
                         <option value="webp">WebP</option>
@@ -357,6 +372,9 @@ import type {
 } from "#imagekit/utils/imagekit";
 import { useImageKit } from "#imagekit/composables/useImageKit";
 import {
+    extractImageKitTransformations,
+    mergeImageKitTransformations,
+    normalizeTransformInput,
     resolveImageKitUrl,
     withImageKitTransformations,
 } from "#imagekit/utils/transform";
@@ -370,6 +388,7 @@ interface FieldContext {
 
 interface Props {
     modelValue?: string;
+    transformValue?: string;
     propDefinition: ComponentPropSchema | ComponentArrayItemField;
     fieldContext?: FieldContext;
 }
@@ -404,6 +423,7 @@ interface LibraryItem {
 const props = defineProps<Props>();
 const emit = defineEmits<{
     (event: "update:modelValue", value: string | undefined): void;
+    (event: "update:transformValue", value: string | undefined): void;
 }>();
 
 const runtimeConfig = useRuntimeConfig();
@@ -429,13 +449,14 @@ const libraryLimit = ref<number>(DEFAULT_LIBRARY_LIMIT);
 const libraryTotal = ref(0);
 const localUploadPending = ref(false);
 const localDeletePending = ref<string | null>(null);
-const imageKitWidth = ref("1000");
+const imageKitWidth = ref("");
 const imageKitHeight = ref("");
 const imageKitAspectRatio = ref("");
 const imageKitCropMode = ref("");
 const imageKitFocus = ref("");
+const imageKitZoom = ref("");
 const imageKitQuality = ref("");
-const imageKitFormat = ref("auto");
+const imageKitFormat = ref("");
 const isImageKitPanelOpen = ref(false);
 
 const normalizeFolderName = (value?: string | null) => {
@@ -486,6 +507,14 @@ const toPositiveNumber = (value: string) => {
     return parsed;
 };
 
+const toPositiveDecimal = (value: string) => {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+    }
+    return parsed;
+};
+
 const imageKitTransformString = computed(() => {
     const transforms: string[] = [];
 
@@ -509,6 +538,11 @@ const imageKitTransformString = computed(() => {
 
     if (imageKitFocus.value) {
         transforms.push(`fo-${imageKitFocus.value}`);
+    }
+
+    const zoom = toPositiveDecimal(imageKitZoom.value);
+    if (zoom) {
+        transforms.push(`z-${zoom}`);
     }
 
     const quality = toPositiveNumber(imageKitQuality.value);
@@ -588,7 +622,11 @@ function ensureAbsoluteUrl(value?: string | null) {
         return value;
     }
 
-    return buildPreviewUrl(value);
+    const resolved = resolveImageKitUrl(value, urlEndpoint.value || undefined);
+    return extractImageKitTransformations(
+        resolved,
+        urlEndpoint.value || undefined,
+    ).source;
 }
 
 watch(
@@ -598,10 +636,72 @@ watch(
             localValue.value = "";
             return;
         }
-        const normalized = ensureAbsoluteUrl(next);
+
+        const resolved = resolveImageKitUrl(
+            next,
+            urlEndpoint.value || undefined,
+        );
+        const extracted = extractImageKitTransformations(
+            resolved,
+            urlEndpoint.value || undefined,
+        );
+        const normalized = ensureAbsoluteUrl(extracted.source);
+
         if (normalized !== localValue.value) {
             localValue.value = normalized;
         }
+
+        if (next !== normalized) {
+            emit("update:modelValue", normalized || undefined);
+        }
+
+        if (
+            (!props.transformValue || !props.transformValue.trim()) &&
+            extracted.transformations.length
+        ) {
+            emit(
+                "update:transformValue",
+                extracted.transformations.join(","),
+            );
+        }
+    },
+    { immediate: true },
+);
+
+const parseImageKitTransformState = (value?: string | null) => {
+    const tokens = (normalizeTransformInput(value ?? "") || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    const byPrefix = new Map<string, string>();
+    for (const token of tokens) {
+        const normalized = token.replace(/^tr:/i, "");
+        const separatorIndex = normalized.indexOf("-");
+        if (separatorIndex === -1) {
+            continue;
+        }
+        const prefix = normalized.slice(0, separatorIndex);
+        const tokenValue = normalized.slice(separatorIndex + 1);
+        if (!prefix || !tokenValue) {
+            continue;
+        }
+        byPrefix.set(prefix, tokenValue);
+    }
+
+    imageKitWidth.value = byPrefix.get("w") ?? "";
+    imageKitHeight.value = byPrefix.get("h") ?? "";
+    imageKitAspectRatio.value = byPrefix.get("ar") ?? "";
+    imageKitCropMode.value = byPrefix.get("c") ?? "";
+    imageKitFocus.value = byPrefix.get("fo") ?? "";
+    imageKitZoom.value = byPrefix.get("z") ?? "";
+    imageKitQuality.value = byPrefix.get("q") ?? "";
+    imageKitFormat.value = byPrefix.get("f") ?? "";
+};
+
+watch(
+    () => props.transformValue,
+    (next) => {
+        parseImageKitTransformState(next);
     },
     { immediate: true },
 );
@@ -623,20 +723,26 @@ function buildPreviewUrl(filePath?: string) {
         filePath,
         urlEndpoint.value || undefined,
     );
+    const previewTransforms =
+        mergeImageKitTransformations(
+            "w-1000,f-auto",
+            imageKitTransformString.value,
+        ) || "w-1000,f-auto";
     return withImageKitTransformations(resolved, {
-        transformations: imageKitTransformString.value || "w-1000,f-auto",
+        transformations: previewTransforms,
         endpoint: urlEndpoint.value || undefined,
     });
 }
 
 const resetImageKitAdjustments = () => {
-    imageKitWidth.value = "1000";
+    imageKitWidth.value = "";
     imageKitHeight.value = "";
     imageKitAspectRatio.value = "";
     imageKitCropMode.value = "";
     imageKitFocus.value = "";
+    imageKitZoom.value = "";
     imageKitQuality.value = "";
-    imageKitFormat.value = "auto";
+    imageKitFormat.value = "";
 };
 
 const commitValue = () => {
@@ -647,10 +753,19 @@ const commitValue = () => {
 };
 
 watch(imageKitTransformString, () => {
-    if (!localValue.value || !isImageKitPreviewSource.value) {
+    if (!isImageKitPreviewSource.value) {
         return;
     }
-    commitValue();
+    const nextTransformValue = normalizeTransformInput(
+        imageKitTransformString.value,
+    );
+    const currentTransformValue = normalizeTransformInput(
+        props.transformValue || "",
+    );
+    if (nextTransformValue === currentTransformValue) {
+        return;
+    }
+    emit("update:transformValue", nextTransformValue || undefined);
 });
 
 const clearImage = () => {
@@ -664,6 +779,7 @@ const clearImage = () => {
     }
 
     localValue.value = "";
+    emit("update:transformValue", undefined);
     commitValue();
 };
 
@@ -1053,6 +1169,11 @@ watch(isLibraryOpen, async (isOpen) => {
     gap: 0.25rem;
     font-size: 0.75rem;
     color: #475569;
+}
+
+.image-field__imagekit-field small {
+    font-size: 0.65rem;
+    color: #64748b;
 }
 
 .image-field__imagekit-field span,
