@@ -15,6 +15,9 @@
                             field,
                             objectValue?.[field.key],
                         ),
+                        'node-panel__field--localized': Boolean(
+                            field.localized,
+                        ),
                     },
                 ]"
             >
@@ -227,6 +230,10 @@
                                                     arrayItem?.[
                                                         arrayField.key
                                                     ],
+                                                ),
+                                            'node-panel__field--localized':
+                                                Boolean(
+                                                    arrayField.localized,
                                                 ),
                                         },
                                     ]"

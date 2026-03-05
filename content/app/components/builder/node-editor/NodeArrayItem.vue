@@ -61,6 +61,9 @@
                                         field.key
                                     ],
                                 ),
+                            'node-panel__field--localized': Boolean(
+                                field.localized,
+                            ),
                         },
                     ]"
                 >
@@ -322,7 +325,14 @@
                                 "
                             >
                                 <label
-                                    class="node-panel__field node-panel__field--nested"
+                                    :class="[
+                                        'node-panel__field',
+                                        'node-panel__field--nested',
+                                        {
+                                            'node-panel__field--localized':
+                                                Boolean(field.localized),
+                                        },
+                                    ]"
                                 >
                                     <span
                                         >{{ field.label }}
@@ -640,6 +650,10 @@
                                                         nestedItem?.[
                                                             nestedField.key
                                                         ],
+                                                    ),
+                                                'node-panel__field--localized':
+                                                    Boolean(
+                                                        nestedField.localized,
                                                     ),
                                             },
                                         ]"
@@ -1051,7 +1065,16 @@
                                                     "
                                                 >
                                                     <label
-                                                        class="node-panel__field node-panel__field--nested"
+                                                        :class="[
+                                                            'node-panel__field',
+                                                            'node-panel__field--nested',
+                                                            {
+                                                                'node-panel__field--localized':
+                                                                    Boolean(
+                                                                        nestedField.localized,
+                                                                    ),
+                                                            },
+                                                        ]"
                                                     >
                                                         <span
                                                             >{{
@@ -1610,7 +1633,16 @@
             @dragend.stop="handleArrayItemDragEnd"
             v-show="!collapsedArrays[prop.key]"
         >
-            <label class="node-panel__field">
+            <label
+                :class="[
+                    'node-panel__field',
+                    {
+                        'node-panel__field--localized': Boolean(
+                            prop.localized,
+                        ),
+                    },
+                ]"
+            >
                 <span>{{ prop.label }} {{ stringEntry.index + 1 }}</span>
                 <component
                     v-if="prop.ui?.component"

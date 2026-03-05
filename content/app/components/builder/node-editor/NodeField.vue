@@ -5,6 +5,7 @@
         :class="{
             'is-row': isRow,
             'node-panel__field--match': isMatch,
+            'node-panel__field--localized': isLocalized,
         }"
         :role="role"
         v-on="listeners"
@@ -25,6 +26,7 @@ withDefaults(
         listeners?: Record<string, (event: Event) => void>;
         isRow?: boolean;
         isMatch?: boolean;
+        isLocalized?: boolean;
         description?: string;
         error?: string | null;
     }>(),
@@ -33,6 +35,7 @@ withDefaults(
         listeners: () => ({}),
         isRow: false,
         isMatch: false,
+        isLocalized: false,
         description: undefined,
         error: null,
     },

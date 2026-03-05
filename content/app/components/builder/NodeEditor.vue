@@ -2619,6 +2619,14 @@ const applyTextValue = () => {
     border-radius: 6px;
 }
 
+.node-panel :deep(.node-panel__field--localized) {
+    border-radius: 6px;
+    box-shadow:
+        0 0 0 1px rgba(59, 130, 246, 0.45),
+        0 0 12px rgba(56, 189, 248, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 .node-panel :deep(.node-panel__field.is-row) {
     flex-direction: row;
     align-items: center;
