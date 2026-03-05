@@ -931,18 +931,61 @@ const filteredExtraPropEntries = computed(() => {
 const getPropSchema = (key: string) =>
     componentDef.value?.props?.find((prop) => prop.key === key);
 
+const toCloneablePlainValue = (
+    value: unknown,
+    seen = new WeakMap<object, unknown>(),
+): unknown => {
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    if (typeof value !== "object") {
+        return value;
+    }
+
+    const raw = toRaw(value as object);
+    if (seen.has(raw)) {
+        return seen.get(raw);
+    }
+
+    if (Array.isArray(raw)) {
+        const next: unknown[] = [];
+        seen.set(raw, next);
+        raw.forEach((entry) => {
+            next.push(toCloneablePlainValue(entry, seen));
+        });
+        return next;
+    }
+
+    if (raw instanceof Date) {
+        return new Date(raw.getTime());
+    }
+
+    const next: Record<string, unknown> = {};
+    seen.set(raw, next);
+    Object.entries(raw as Record<string, unknown>).forEach(([key, entry]) => {
+        next[key] = toCloneablePlainValue(entry, seen);
+    });
+    return next;
+};
+
 const cloneValue = <T,>(value: T): T => {
-    const raw =
-        value && typeof value === "object" ? (toRaw(value) as T) : value;
+    const raw = toCloneablePlainValue(value) as T;
 
     if (typeof structuredClone === "function") {
         try {
             return structuredClone(raw);
         } catch (error) {
-            console.warn(
-                "structuredClone failed, falling back to JSON clone:",
-                error,
-            );
+            const isDataCloneError =
+                typeof DOMException !== "undefined" &&
+                error instanceof DOMException &&
+                error.name === "DataCloneError";
+            if (!isDataCloneError) {
+                console.warn(
+                    "structuredClone failed, falling back to JSON clone:",
+                    error,
+                );
+            }
         }
     }
 
