@@ -12,7 +12,11 @@ import {
 } from "vue";
 import { storeToRefs } from "pinia";
 import { normalizePagePath } from "#content/utils/page";
-import { resolveContentI18nConfig } from "#content/utils/i18n";
+import {
+    buildLocalizedPath,
+    resolveContentI18nConfig,
+    resolveContentLocalePath,
+} from "#content/utils/i18n";
 import { createDocumentFromTree } from "#content/app/utils/contentBuilder";
 import type {
     MinimalContentDocument,
@@ -129,7 +133,24 @@ const contentI18nConfig = computed(() =>
         runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
     ),
 );
-const activeLocale = ref(contentI18nConfig.value.defaultLocale);
+const initialTarget = computed<{
+    basePath: string;
+    locale: string;
+} | null>(() => {
+    const value = initialPath.value;
+    if (!value) {
+        return null;
+    }
+
+    const resolved = resolveContentLocalePath(value, contentI18nConfig.value);
+    return {
+        basePath: resolved.basePath,
+        locale: resolved.locale,
+    };
+});
+const activeLocale = ref(
+    initialTarget.value?.locale ?? contentI18nConfig.value.defaultLocale,
+);
 const availableLocales = computed(() => contentI18nConfig.value.locales);
 const isDefaultActiveLocale = computed(
     () => activeLocale.value === contentI18nConfig.value.defaultLocale,
@@ -253,20 +274,28 @@ const selectedSummary = computed<ContentPageSummary | null>(() => {
 });
 const currentEditedPath = computed(
     () => {
-        const basePath =
+        const rawPath =
             selectedSummary.value?.path ?? latestDocument.value?.path ?? null;
 
-        if (!basePath) {
+        if (!rawPath) {
             return title.value;
         }
+
+        const resolved = resolveContentLocalePath(
+            rawPath,
+            contentI18nConfig.value,
+        );
+        const basePath = resolved.basePath;
 
         if (activeLocale.value === contentI18nConfig.value.defaultLocale) {
             return basePath;
         }
 
-        return basePath === "/"
-            ? `/${activeLocale.value}`
-            : `/${activeLocale.value}${basePath}`;
+        return buildLocalizedPath(
+            basePath,
+            activeLocale.value,
+            contentI18nConfig.value,
+        );
     },
 );
 
@@ -340,7 +369,7 @@ watch(
             return;
         }
 
-        const target = initialPath.value;
+        const target = initialTarget.value?.basePath ?? initialPath.value;
         if (target) {
             const match = pages.find(
                 (entry) => normalizePagePath(entry.path) === target,
