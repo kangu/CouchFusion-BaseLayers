@@ -27,6 +27,7 @@
             :key="`${prop.key}-${entry.index}`"
             :prop="prop"
             :entry="entry"
+            :path-prefix="[...pathPrefix, entry.index]"
             :prop-draft="propDraft"
             :collapsed-arrays="collapsedArrays"
             :drag-over-array-item="dragOverArrayItem"
@@ -75,6 +76,7 @@
             :update-nested-array-item-field="updateNestedArrayItemField"
             :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
             :format-json-value="formatJsonValue"
+            :on-translate-field="onTranslateField"
         />
     </div>
 </template>
@@ -98,6 +100,7 @@ type FilterVisibleFields = <
 
 const props = defineProps<{
     prop: ComponentPropSchema;
+    pathPrefix: Array<string | number>;
     propDraft: Record<string, any>;
     collapsedArrays: Record<string, boolean>;
     dragOverArrayItem: DragOverArrayItem;
@@ -157,6 +160,10 @@ const props = defineProps<{
     updateNestedArrayItemField: AnyHandler;
     updateCustomNestedArrayItemField: AnyHandler;
     formatJsonValue: (value: unknown) => string;
+    onTranslateField?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+    }) => void;
 }>();
 
 const itemEntries = computed(() => {

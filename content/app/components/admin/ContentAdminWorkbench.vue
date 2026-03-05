@@ -35,6 +35,11 @@ import type {
     ContentPageHistoryEntry,
 } from "#content/types/content-page";
 import { useContentPagesStore } from "#content/app/stores/pages";
+import {
+    useLlmTranslations,
+    type LlmTranslationOverwriteMode,
+    type LlmTranslationScopeMode,
+} from "#content/app/composables/useLlmTranslations";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
 );
@@ -155,6 +160,15 @@ const availableLocales = computed(() => contentI18nConfig.value.locales);
 const isDefaultActiveLocale = computed(
     () => activeLocale.value === contentI18nConfig.value.defaultLocale,
 );
+const translationLocaleOptions = computed(() =>
+    availableLocales.value.filter((locale) => locale !== activeLocale.value),
+);
+const stagedLocaleCount = computed(
+    () => Object.keys(stagedDocumentsByLocale.value).length,
+);
+const hasActiveLocaleStagedDocument = computed(
+    () => Boolean(stagedDocumentsByLocale.value[activeLocale.value]),
+);
 
 type BuilderWorkbenchInstance = ComponentPublicInstance<{
     getSerializedDocument: () => MinimalContentDocument;
@@ -178,6 +192,35 @@ const latestDocument = ref<MinimalContentDocument | null>(null);
 const hasUnsavedChanges = ref(false);
 const lastSavedSnapshot = ref<string | null>(null);
 const forcePreviewMotion = ref(false);
+const stagedDocumentsByLocale = ref<Record<string, MinimalContentDocument>>({});
+const translationTargetLocales = ref<string[]>([]);
+const translationOverwriteMode = ref<LlmTranslationOverwriteMode>("missing");
+const translationScopeLabel = ref<string | null>(null);
+const isTranslationDialogOpen = ref(false);
+const isTranslationPersistPendingByLocale = ref<Record<string, boolean>>({});
+const persistedTranslationLocales = ref<Record<string, string>>({});
+const translationDebugByLocale = ref<
+    Record<
+        string,
+        {
+            updatedAt: string;
+            stagedMinimalDocument: MinimalContentDocument | null;
+            persistRequestDocument: Record<string, any> | null;
+            persistResponseDocument: Record<string, any> | null;
+        }
+    >
+>({});
+const translationNotice = ref<{
+    type: "success" | "error";
+    message: string;
+} | null>(null);
+const {
+    pending: isTranslationPending,
+    error: translationError,
+    lastResult: translationLastResult,
+    runTranslation,
+    reset: resetTranslationState,
+} = useLlmTranslations();
 
 const isCreateModalOpen = ref(false);
 const isCreatingPage = ref(false);
@@ -331,6 +374,31 @@ const lastUpdatedDisplay = computed(() =>
 const missingLocalizedCount = computed(
     () => selectedSummary.value?.localization?.missingLocalizedCount ?? 0,
 );
+const translationLocaleResults = computed(
+    () => translationLastResult.value?.report.localeResults ?? [],
+);
+const translationCompletedAtDisplay = computed(() =>
+    formatTimestamp(translationLastResult.value?.report.completedAt ?? null),
+);
+const translationModalTitle = computed(() => {
+    if (isTranslationPending.value) {
+        return "Translation in progress";
+    }
+    return "Translation report";
+});
+const translationModalSubtitle = computed(() => {
+    const scopeLabel = translationScopeLabel.value?.trim() || "Page";
+    const targets = translationTargetLocales.value.length
+        ? translationTargetLocales.value.join(", ")
+        : "none selected";
+    return `Scope: ${scopeLabel}. From ${activeLocale.value} to ${targets}.`;
+});
+const translationHasDialogContent = computed(
+    () =>
+        isTranslationPending.value ||
+        !!translationNotice.value ||
+        !!translationLastResult.value,
+);
 const pageListId = "content-admin-pages-datalist";
 
 const searchPlaceholder = computed(() => {
@@ -354,9 +422,16 @@ const selectedHistoryDocument = computed<MinimalContentDocument | null>(() => {
 });
 
 const selectedDocument = computed<MinimalContentDocument | null>(() => {
-    return (
-        selectedHistoryDocument.value ?? resolveDocument(selectedSummary.value)
-    );
+    if (selectedHistoryDocument.value) {
+        return selectedHistoryDocument.value;
+    }
+
+    const staged = stagedDocumentsByLocale.value[activeLocale.value];
+    if (staged) {
+        return clonePlain(staged);
+    }
+
+    return resolveDocument(selectedSummary.value);
 });
 
 watch(
@@ -405,6 +480,31 @@ watch(
         contentStore
             .fetchHistory(path, false, { locale: activeLocale.value })
             .catch(() => {});
+    },
+);
+
+watch(
+    () => translationLocaleOptions.value,
+    (options) => {
+        const allowed = new Set(options);
+        translationTargetLocales.value = translationTargetLocales.value.filter(
+            (locale) => allowed.has(locale),
+        );
+    },
+    { immediate: true },
+);
+
+watch(
+    () => translationError.value,
+    (message) => {
+        if (!message) {
+            return;
+        }
+        translationNotice.value = {
+            type: "error",
+            message,
+        };
+        isTranslationDialogOpen.value = true;
     },
 );
 
@@ -591,6 +691,15 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
 
     if (isSelectingPage.value) {
         return;
+    }
+
+    if (normalizedPath !== selectedPath.value) {
+        stagedDocumentsByLocale.value = {};
+        resetTranslationPersistenceState();
+        translationScopeLabel.value = null;
+        translationNotice.value = null;
+        isTranslationDialogOpen.value = false;
+        resetTranslationState();
     }
 
     hasLoadedInitialDocument.value = false;
@@ -1066,7 +1175,7 @@ function handleDocumentChange(document: MinimalContentDocument): void {
 
     if (!wasBootstrapped || lastSavedSnapshot.value === null) {
         lastSavedSnapshot.value = serialized;
-        updateUnsavedState(false);
+        updateUnsavedState(hasActiveLocaleStagedDocument.value);
     } else {
         updateUnsavedState(serialized !== lastSavedSnapshot.value);
     }
@@ -1103,6 +1212,386 @@ function handleNodeFocus(
     });
 }
 
+type TranslateScopePayload = {
+    scopeMode: LlmTranslationScopeMode;
+    scopePointer: string | null;
+    label?: string;
+};
+
+const setTranslationNotice = (
+    type: "success" | "error",
+    message: string,
+) => {
+    translationNotice.value = { type, message };
+    if (type === "error") {
+        console.warn("[content][llm-translations]", message);
+    }
+};
+
+const cloneMinimalForDebug = (
+    document: MinimalContentDocument | null | undefined,
+): MinimalContentDocument | null =>
+    document ? clonePlain(document) : null;
+
+const cloneRecordForDebug = (
+    value: Record<string, any> | null | undefined,
+): Record<string, any> | null => (value ? clonePlain(value) : null);
+
+function mergeTranslationLocaleDebug(
+    locale: string,
+    patch: Partial<{
+        stagedMinimalDocument: MinimalContentDocument | null;
+        persistRequestDocument: Record<string, any> | null;
+        persistResponseDocument: Record<string, any> | null;
+    }>,
+): void {
+    const current = translationDebugByLocale.value[locale] ?? {
+        updatedAt: new Date().toISOString(),
+        stagedMinimalDocument: null,
+        persistRequestDocument: null,
+        persistResponseDocument: null,
+    };
+    const next = {
+        ...current,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+    };
+    translationDebugByLocale.value = {
+        ...translationDebugByLocale.value,
+        [locale]: next,
+    };
+}
+
+const toTranslationDebugDocumentDump = (document: unknown) => {
+    if (!document || typeof document !== "object") {
+        return null;
+    }
+    const raw = document as Record<string, any>;
+    const body = raw.body && typeof raw.body === "object" ? raw.body : null;
+    const bodyValue = Array.isArray(body?.value) ? body.value : null;
+    const meta = raw.meta && typeof raw.meta === "object" ? raw.meta : null;
+    const contentI18n =
+        meta &&
+        meta.contentI18n &&
+        typeof meta.contentI18n === "object" &&
+        !Array.isArray(meta.contentI18n)
+            ? meta.contentI18n
+            : null;
+
+    return {
+        id:
+            typeof raw.id === "string"
+                ? raw.id
+                : typeof raw._id === "string"
+                    ? raw._id
+                    : null,
+        path: typeof raw.path === "string" ? raw.path : null,
+        contentI18n,
+        bodyValue,
+    };
+};
+
+function getTranslationLocaleDebugDump(locale: string): string {
+    const reportEntry =
+        translationLastResult.value?.report.localeResults.find(
+            (entry) => entry.locale === locale,
+        ) ?? null;
+    const debugState = translationDebugByLocale.value[locale] ?? null;
+    const stagedLiveDocument =
+        stagedDocumentsByLocale.value[locale] ?? null;
+
+    const payload = {
+        locale,
+        sourceLocale: translationLastResult.value?.sourceLocale ?? null,
+        overwriteMode: translationLastResult.value?.overwriteMode ?? null,
+        report: reportEntry
+            ? {
+                  status: reportEntry.status,
+                  translatedCount: reportEntry.translatedCount,
+                  appliedCount: reportEntry.appliedCount,
+                  skippedCount: reportEntry.skippedCount,
+                  returnedTranslations: Array.isArray(reportEntry.translations)
+                      ? reportEntry.translations
+                      : [],
+              }
+            : null,
+        stagedMinimal: toTranslationDebugDocumentDump(
+            debugState?.stagedMinimalDocument ?? stagedLiveDocument,
+        ),
+        persistRequest: toTranslationDebugDocumentDump(
+            debugState?.persistRequestDocument ?? null,
+        ),
+        persistResponse: toTranslationDebugDocumentDump(
+            debugState?.persistResponseDocument ?? null,
+        ),
+        debugUpdatedAt: debugState?.updatedAt ?? null,
+    };
+
+    return JSON.stringify(payload, null, 2);
+}
+
+function resetTranslationPersistenceState(): void {
+    isTranslationPersistPendingByLocale.value = {};
+    persistedTranslationLocales.value = {};
+    translationDebugByLocale.value = {};
+}
+
+function isLocaleTranslationPersistPending(locale: string): boolean {
+    return Boolean(isTranslationPersistPendingByLocale.value[locale]);
+}
+
+function isLocaleTranslationPersisted(locale: string): boolean {
+    return Boolean(persistedTranslationLocales.value[locale]);
+}
+
+function setLocaleTranslationPersistPending(
+    locale: string,
+    value: boolean,
+): void {
+    const next = { ...isTranslationPersistPendingByLocale.value };
+    if (value) {
+        next[locale] = true;
+    } else {
+        delete next[locale];
+    }
+    isTranslationPersistPendingByLocale.value = next;
+}
+
+const applyStagedTranslations = (
+    stagedByLocale: Record<string, MinimalContentDocument> | null | undefined,
+) => {
+    const entries = Object.entries(stagedByLocale ?? {});
+    if (!entries.length) {
+        return [];
+    }
+
+    const next = { ...stagedDocumentsByLocale.value };
+    const appliedLocales: string[] = [];
+
+    for (const [locale, document] of entries) {
+        next[locale] = clonePlain(document);
+        appliedLocales.push(locale);
+        mergeTranslationLocaleDebug(locale, {
+            stagedMinimalDocument: cloneMinimalForDebug(document),
+            persistRequestDocument: null,
+            persistResponseDocument: null,
+        });
+    }
+
+    stagedDocumentsByLocale.value = next;
+    return appliedLocales;
+};
+
+const runScopedTranslation = async (
+    payload: TranslateScopePayload,
+): Promise<void> => {
+    translationNotice.value = null;
+    resetTranslationPersistenceState();
+
+    if (!selectedSummary.value) {
+        setTranslationNotice("error", "Select a page before translating.");
+        return;
+    }
+
+    if (selectedHistoryId.value) {
+        const message = "Switch to Current version before running translation.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    if (!translationTargetLocales.value.length) {
+        const message = "Select at least one target locale.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    const builder = builderRef.value;
+    if (!builder) {
+        const message = "Builder not ready.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    const sourceDocument = builder.getSerializedDocument();
+    const path = selectedPath.value ?? selectedSummary.value.path;
+    translationScopeLabel.value = payload.label ?? null;
+    isTranslationDialogOpen.value = true;
+
+    const result = await runTranslation({
+        path,
+        sourceLocale: activeLocale.value,
+        targetLocales: translationTargetLocales.value,
+        sourceDocument,
+        scopeMode: payload.scopeMode,
+        scopePointer: payload.scopePointer,
+        overwriteMode: translationOverwriteMode.value,
+    });
+
+    const appliedLocales = applyStagedTranslations(result.stagedDocumentsByLocale);
+    if (appliedLocales.includes(activeLocale.value)) {
+        const staged = stagedDocumentsByLocale.value[activeLocale.value];
+        if (staged) {
+            builder.loadDocument(clonePlain(staged));
+            updateUnsavedState(true);
+        }
+    }
+
+    const successCount = result.report.localeResults.filter(
+        (entry) => entry.status === "ok",
+    ).length;
+    const errorCount = result.report.localeResults.length - successCount;
+    const firstError = result.report.localeResults.find(
+        (entry) => entry.status === "error" && typeof entry.error === "string",
+    );
+    const scopeLabel = payload.label?.trim() || payload.scopeMode;
+    if (successCount > 0) {
+        const message = `Translation (${scopeLabel}) completed for ${successCount} locale(s)${
+            errorCount > 0 ? `, ${errorCount} failed` : ""
+        }.`;
+        setTranslationNotice("success", message);
+        feedback.value.success?.(message);
+    } else {
+        const message = firstError?.error
+            ? `Translation (${scopeLabel}) failed for all selected locales. ${firstError.locale}: ${firstError.error}`
+            : `Translation (${scopeLabel}) failed for all selected locales.`;
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+    }
+};
+
+const closeTranslationDialog = (): void => {
+    if (isTranslationPending.value) {
+        return;
+    }
+    isTranslationDialogOpen.value = false;
+};
+
+const persistTranslatedLocale = async (locale: string): Promise<void> => {
+    if (isTranslationPending.value || isLocaleTranslationPersistPending(locale)) {
+        return;
+    }
+
+    if (selectedHistoryId.value) {
+        const message =
+            "Switch to Current version before persisting translated locales.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    const staged = stagedDocumentsByLocale.value[locale];
+    if (!staged) {
+        const message = `No staged translation available for ${locale}.`;
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    try {
+        setLocaleTranslationPersistPending(locale, true);
+
+        const contentDocument = minimalToContentDocument(clonePlain(staged));
+        const existing = contentStore.getPage(
+            selectedPath.value ?? staged.path,
+            locale,
+        )?.document;
+
+        if (existing?._id) {
+            contentDocument._id = existing._id;
+        }
+        if (existing?._rev) {
+            contentDocument._rev = existing._rev;
+        }
+        if (existing?.createdAt) {
+            contentDocument.createdAt = existing.createdAt;
+        }
+
+        mergeTranslationLocaleDebug(locale, {
+            stagedMinimalDocument: cloneMinimalForDebug(staged),
+            persistRequestDocument: cloneRecordForDebug(
+                contentDocument as unknown as Record<string, any>,
+            ),
+        });
+
+        const savedSummary = await contentStore.saveDocument(contentDocument, {
+            locale,
+        });
+
+        mergeTranslationLocaleDebug(locale, {
+            persistResponseDocument: cloneRecordForDebug(
+                savedSummary.document as unknown as Record<string, any>,
+            ),
+        });
+
+        const nextPersisted = { ...persistedTranslationLocales.value };
+        nextPersisted[locale] = new Date().toISOString();
+        persistedTranslationLocales.value = nextPersisted;
+
+        const nextStaged = { ...stagedDocumentsByLocale.value };
+        delete nextStaged[locale];
+        stagedDocumentsByLocale.value = nextStaged;
+
+        const message = `Persisted translation for ${locale}.`;
+        setTranslationNotice("success", message);
+        feedback.value.success?.(message, {
+            label: "View Page",
+            href: savedSummary.path,
+        });
+    } catch (error: any) {
+        const message =
+            error instanceof Error
+                ? error.message
+                : String(error?.message ?? `Failed to persist locale ${locale}.`);
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+    } finally {
+        setLocaleTranslationPersistPending(locale, false);
+    }
+};
+
+const handleTranslateScope = async (
+    payload: TranslateScopePayload,
+): Promise<void> => {
+    try {
+        await runScopedTranslation(payload);
+    } catch (error: any) {
+        const message =
+            error instanceof Error
+                ? error.message
+                : String(error?.message ?? "Translation failed");
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+    }
+};
+
+const handleTranslatePage = async (): Promise<void> => {
+    await handleTranslateScope({
+        scopeMode: "page",
+        scopePointer: null,
+        label: "Page",
+    });
+};
+
+const openTranslatedLocale = async (locale: string): Promise<void> => {
+    if (!availableLocales.value.includes(locale)) {
+        return;
+    }
+
+    if (locale === activeLocale.value) {
+        const staged = stagedDocumentsByLocale.value[locale];
+        if (staged) {
+            builderRef.value?.loadDocument(clonePlain(staged));
+            updateUnsavedState(true);
+        }
+        return;
+    }
+
+    activeLocale.value = locale;
+};
+
 async function handleSaveDocument(): Promise<void> {
     if (isSavePending.value || !selectedSummary.value) {
         return;
@@ -1136,6 +1625,11 @@ async function handleSaveDocument(): Promise<void> {
         selectedPath.value = savedSummary.path;
         lastSavedAt.value = savedSummary.updatedAt ?? new Date().toISOString();
         selectedHistoryId.value = null;
+        if (stagedDocumentsByLocale.value[activeLocale.value]) {
+            const next = { ...stagedDocumentsByLocale.value };
+            delete next[activeLocale.value];
+            stagedDocumentsByLocale.value = next;
+        }
         lastSavedSnapshot.value = JSON.stringify(serialized);
         updateUnsavedState(false);
 
@@ -1263,6 +1757,11 @@ async function handleDeletePage(): Promise<void> {
         feedback.value.success?.(`Page "${label}" deleted.`);
 
         const remaining = contentStore.index.data;
+        stagedDocumentsByLocale.value = {};
+        resetTranslationPersistenceState();
+        translationScopeLabel.value = null;
+        isTranslationDialogOpen.value = false;
+        resetTranslationState();
         lastSavedAt.value = null;
         if (remaining.length) {
             await openPageForEditing(remaining[0].path, true);
@@ -1471,6 +1970,53 @@ defineExpose({
                             </option>
                         </select>
                     </label>
+                    <div
+                        class="editor-header__translation-controls"
+                        v-if="selectedSummary"
+                    >
+                        <div class="editor-header__translation-targets">
+                            <span>Translate to</span>
+                            <label
+                                v-for="locale in translationLocaleOptions"
+                                :key="`target-${locale}`"
+                                class="editor-header__translation-target"
+                            >
+                                <input
+                                    v-model="translationTargetLocales"
+                                    type="checkbox"
+                                    :value="locale"
+                                    :disabled="isTranslationPending"
+                                />
+                                <span>{{ locale }}</span>
+                            </label>
+                        </div>
+                        <label class="editor-header__translation-overwrite">
+                            <span>Overwrite</span>
+                            <select
+                                v-model="translationOverwriteMode"
+                                :disabled="isTranslationPending"
+                            >
+                                <option value="missing">Missing only</option>
+                                <option value="all">All values</option>
+                            </select>
+                        </label>
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted"
+                            :disabled="
+                                isTranslationPending ||
+                                !translationTargetLocales.length ||
+                                !!selectedHistoryId
+                            "
+                            @click="handleTranslatePage"
+                        >
+                            <span>{{
+                                isTranslationPending
+                                    ? "Translating..."
+                                    : "Translate Page"
+                            }}</span>
+                        </button>
+                    </div>
                     <label class="editor-header__motion-toggle" title="Preview motion preference">
                       <input
                           v-model="forcePreviewMotion"
@@ -1571,6 +2117,12 @@ defineExpose({
                     >
                         Missing localized values: {{ missingLocalizedCount }}
                     </span>
+                    <span
+                        v-if="stagedLocaleCount > 0"
+                        class="editor-header__status"
+                    >
+                        Staged locales: {{ stagedLocaleCount }}
+                    </span>
                 </div>
 
                 <div class="editor-header__fullrow">
@@ -1637,6 +2189,7 @@ defineExpose({
                                 @document-preview-change="
                                     handleDocumentPreviewChange
                                 "
+                                @translate-scope="handleTranslateScope"
                                 @node-focus="handleNodeFocus"
                                 @update:search-query="
                                     (value) => (builderSearchQuery = value)
@@ -2014,6 +2567,216 @@ defineExpose({
                 </div>
             </Transition>
         </Teleport>
+
+        <Teleport to="body">
+            <Transition name="fade">
+                <div
+                    v-if="isTranslationDialogOpen && translationHasDialogContent"
+                    class="content-admin-workbench__modal"
+                >
+                    <div
+                        class="modal__backdrop"
+                        @click="closeTranslationDialog"
+                    />
+                    <div
+                        class="modal__panel modal__panel--translation"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div class="modal__header">
+                            <div>
+                                <h2 class="modal__title">{{ translationModalTitle }}</h2>
+                                <p class="modal__subtitle">
+                                    {{ translationModalSubtitle }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="modal__close"
+                                aria-label="Close"
+                                :disabled="isTranslationPending"
+                                @click="closeTranslationDialog"
+                            >
+                                <svg
+                                    class="h-5 w-5"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12Z"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div
+                            v-if="translationNotice"
+                            class="modal__notice"
+                            :class="
+                                translationNotice.type === 'error'
+                                    ? 'modal__notice--error'
+                                    : 'modal__notice--success'
+                            "
+                        >
+                            {{ translationNotice.message }}
+                        </div>
+
+                        <div
+                            v-if="isTranslationPending"
+                            class="editor-header__translation-progress"
+                        >
+                            <div class="editor-header__translation-progress-head">
+                                <strong>Translating selected scope</strong>
+                                <span>Please wait…</span>
+                            </div>
+                            <div class="editor-header__translation-progress-track">
+                                <div class="editor-header__translation-progress-bar" />
+                            </div>
+                        </div>
+
+                        <div
+                            v-if="translationLastResult"
+                            class="editor-header__translation-report"
+                        >
+                            <span class="editor-header__translation-report-text">
+                                Source entries:
+                                {{ translationLastResult.report.totalSourceEntries }}.
+                                {{
+                                    translationCompletedAtDisplay
+                                        ? `Completed ${translationCompletedAtDisplay}.`
+                                        : ""
+                                }}
+                            </span>
+                            <div
+                                v-if="translationLastResult.report.keyPoints.length"
+                                class="translation-modal__key-points"
+                            >
+                                <p class="translation-modal__key-points-title">Key points</p>
+                                <p
+                                    v-for="(point, index) in translationLastResult.report.keyPoints"
+                                    :key="`translation-point-${index}`"
+                                    class="translation-modal__key-point"
+                                >
+                                    {{ point }}
+                                </p>
+                            </div>
+                            <div class="translation-modal__locale-results">
+                                <article
+                                    v-for="entry in translationLocaleResults"
+                                    :key="`translation-result-${entry.locale}`"
+                                    class="translation-modal__locale-card"
+                                >
+                                    <div class="translation-modal__locale-head">
+                                        <strong>{{ entry.locale }}</strong>
+                                        <span
+                                            class="translation-modal__locale-status"
+                                            :class="
+                                                entry.status === 'ok'
+                                                    ? 'translation-modal__locale-status--ok'
+                                                    : 'translation-modal__locale-status--error'
+                                            "
+                                        >
+                                            {{
+                                                entry.status === "ok"
+                                                    ? `${entry.translatedCount} translated`
+                                                    : "failed"
+                                            }}
+                                        </span>
+                                    </div>
+
+                                    <div
+                                        v-if="entry.status === 'ok'"
+                                        class="translation-modal__locale-actions"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="editor-header__translation-locale-button"
+                                            :disabled="
+                                                isLocaleTranslationPersistPending(entry.locale) ||
+                                                isLocaleTranslationPersisted(entry.locale)
+                                            "
+                                            @click="persistTranslatedLocale(entry.locale)"
+                                        >
+                                            {{
+                                                isLocaleTranslationPersistPending(entry.locale)
+                                                    ? `Persisting ${entry.locale}…`
+                                                    : isLocaleTranslationPersisted(entry.locale)
+                                                        ? `Persisted ${entry.locale}`
+                                                        : `Persist ${entry.locale}`
+                                            }}
+                                        </button>
+                                        <button
+                                            v-if="isLocaleTranslationPersisted(entry.locale)"
+                                            type="button"
+                                            class="editor-header__translation-locale-button"
+                                            @click="openTranslatedLocale(entry.locale)"
+                                        >
+                                            Open {{ entry.locale }}
+                                        </button>
+                                    </div>
+
+                                    <p
+                                        v-if="entry.status !== 'ok'"
+                                        class="translation-modal__locale-error"
+                                    >
+                                        {{ entry.error || "Unknown error" }}
+                                    </p>
+
+                                    <div
+                                        v-if="
+                                            entry.status === 'ok' &&
+                                            Array.isArray(entry.translations) &&
+                                            entry.translations.length
+                                        "
+                                        class="translation-modal__translations"
+                                    >
+                                        <div
+                                            v-for="(translation, index) in entry.translations"
+                                            :key="`${entry.locale}-translation-${index}`"
+                                            class="translation-modal__translation-row"
+                                        >
+                                            <code class="translation-modal__translation-key">
+                                                {{ translation.key }}
+                                            </code>
+                                            <p class="translation-modal__translation-value">
+                                                {{ translation.value }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p
+                                        v-else-if="entry.status === 'ok'"
+                                        class="translation-modal__translations-empty"
+                                    >
+                                        No translated keys returned for this locale.
+                                    </p>
+
+                                    <details class="translation-modal__debug-dump">
+                                        <summary>Debug target doc body</summary>
+                                        <pre>{{
+                                            getTranslationLocaleDebugDump(entry.locale)
+                                        }}</pre>
+                                    </details>
+                                </article>
+                            </div>
+                        </div>
+
+                        <div class="modal__actions">
+                            <button
+                                type="button"
+                                class="content-admin-workbench__button content-admin-workbench__button--muted"
+                                :class="ui.modalCancelButton"
+                                :disabled="isTranslationPending"
+                                @click="closeTranslationDialog"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </div>
 </template>
 
@@ -2351,8 +3114,14 @@ defineExpose({
     color: #6b7280;
 }
 
+.editor-header__status--error,
 .editor-header__status-error {
     color: #dc2626;
+    font-weight: 500;
+}
+
+.editor-header__status--success {
+    color: #0f766e;
     font-weight: 500;
 }
 
@@ -2364,6 +3133,7 @@ defineExpose({
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .editor-header__locale {
@@ -2383,6 +3153,64 @@ defineExpose({
     background: #ffffff;
     color: #111827;
     font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.editor-header__translation-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+}
+
+.editor-header__translation-targets {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: #334155;
+}
+
+.editor-header__translation-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #1e293b;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.editor-header__translation-target input {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+}
+
+.editor-header__translation-overwrite {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.editor-header__translation-overwrite select {
+    min-width: 110px;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.75rem;
     font-weight: 600;
 }
 
@@ -2409,8 +3237,295 @@ defineExpose({
 .editor-header__status-line {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.75rem;
     margin-top: 0.5rem;
+}
+
+.editor-header__translation-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.35rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid #bfdbfe;
+    background: #f1f7ff;
+}
+
+.editor-header__translation-progress-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    color: #1e3a8a;
+}
+
+.editor-header__translation-progress-track {
+    position: relative;
+    overflow: hidden;
+    height: 8px;
+    border-radius: 999px;
+    background: #dbeafe;
+}
+
+.editor-header__translation-progress-bar {
+    position: absolute;
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #1d4ed8, #3b82f6);
+    animation: editor-header-progress-slide 1.15s ease-in-out infinite;
+}
+
+@keyframes editor-header-progress-slide {
+    0% {
+        left: -40%;
+    }
+    50% {
+        left: 35%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+.editor-header__translation-progress-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.72rem;
+    color: #1e40af;
+}
+
+.modal__panel--translation .editor-header__translation-progress,
+.modal__panel--translation .editor-header__translation-report {
+    margin-top: 0;
+}
+
+.editor-header__translation-report {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    margin-top: 0.35rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid #dbeafe;
+    background: #f8fbff;
+}
+
+.editor-header__translation-report-text {
+    width: 100%;
+    font-size: 0.75rem;
+    color: #334155;
+}
+
+.editor-header__translation-report-locales {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.editor-header__translation-locale-button {
+    border: 1px solid #93c5fd;
+    border-radius: 0.45rem;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.4rem 0.5rem;
+    cursor: pointer;
+}
+
+.editor-header__translation-locale-button:disabled {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #b91c1c;
+    cursor: not-allowed;
+}
+
+.editor-header__translation-errors {
+    width: 100%;
+    border-top: 1px dashed #bfdbfe;
+    padding-top: 0.45rem;
+}
+
+.editor-header__translation-errors-title {
+    margin: 0 0 0.2rem;
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: #9f1239;
+}
+
+.editor-header__translation-error-line {
+    margin: 0;
+    font-size: 0.72rem;
+    color: #be123c;
+    word-break: break-word;
+}
+
+.translation-modal__key-points {
+    width: 100%;
+    border-radius: 0.45rem;
+    border: 1px solid #dbeafe;
+    background: #f8fbff;
+    padding: 0.5rem;
+}
+
+.translation-modal__key-points-title {
+    margin: 0 0 0.3rem;
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: #1e3a8a;
+}
+
+.translation-modal__key-point {
+    margin: 0.2rem 0 0;
+    font-size: 0.72rem;
+    color: #334155;
+    word-break: break-word;
+}
+
+.translation-modal__locale-results {
+    width: 100%;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.translation-modal__locale-card {
+    border: 1px solid #dbeafe;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    padding: 0.55rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.translation-modal__locale-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.translation-modal__locale-status {
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid transparent;
+}
+
+.translation-modal__locale-status--ok {
+    color: #0f766e;
+    background: #f0fdfa;
+    border-color: #99f6e4;
+}
+
+.translation-modal__locale-status--error {
+    color: #b91c1c;
+    background: #fff1f2;
+    border-color: #fecaca;
+}
+
+.translation-modal__locale-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.translation-modal__locale-error {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #be123c;
+    word-break: break-word;
+}
+
+.translation-modal__translations {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.45rem;
+    background: #f8fafc;
+    max-height: 220px;
+    overflow: auto;
+}
+
+.translation-modal__translation-row {
+    border-top: 1px solid #e2e8f0;
+    padding: 0.4rem 0.5rem;
+    display: grid;
+    gap: 0.25rem;
+}
+
+.translation-modal__translation-row:first-child {
+    border-top: none;
+}
+
+.translation-modal__translation-key {
+    font-size: 0.68rem;
+    color: #1d4ed8;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.3rem;
+    padding: 0.1rem 0.35rem;
+    width: fit-content;
+}
+
+.translation-modal__translation-value {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.translation-modal__translations-empty {
+    margin: 0;
+    font-size: 0.72rem;
+    color: #64748b;
+}
+
+.translation-modal__debug-dump {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.45rem;
+    background: #f8fafc;
+    overflow: hidden;
+}
+
+.translation-modal__debug-dump summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    margin: 0;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.71rem;
+    font-weight: 600;
+    color: #334155;
+    background: #eff6ff;
+    border-bottom: 1px solid #dbeafe;
+}
+
+.translation-modal__debug-dump summary::-webkit-details-marker {
+    display: none;
+}
+
+.translation-modal__debug-dump pre {
+    margin: 0;
+    padding: 0.5rem;
+    max-height: 260px;
+    overflow: auto;
+    font-size: 0.67rem;
+    line-height: 1.45;
+    color: #0f172a;
+    white-space: pre;
 }
 
 .editor-header__fullrow {
@@ -2616,6 +3731,12 @@ defineExpose({
     box-shadow: 0 25px 50px -12px rgba(30, 64, 175, 0.35);
 }
 
+.modal__panel--translation {
+    width: min(100% - 2rem, 44rem);
+    display: grid;
+    gap: 0.75rem;
+}
+
 .modal__header {
     display: flex;
     align-items: flex-start;
@@ -2644,6 +3765,31 @@ defineExpose({
 
 .modal__close:hover {
     color: #1f2937;
+}
+
+.modal__close:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.modal__notice {
+    border-radius: 0.5rem;
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    border: 1px solid transparent;
+}
+
+.modal__notice--success {
+    border-color: #99f6e4;
+    color: #0f766e;
+    background: #f0fdfa;
+}
+
+.modal__notice--error {
+    border-color: #fecaca;
+    color: #b91c1c;
+    background: #fef2f2;
 }
 
 .modal__form {

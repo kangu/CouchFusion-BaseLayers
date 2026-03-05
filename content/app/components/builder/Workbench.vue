@@ -178,6 +178,14 @@ const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
+    (
+        e: "translate-scope",
+        payload: {
+            scopeMode: "page" | "section" | "field";
+            scopePointer: string | null;
+            label?: string;
+        },
+    ): void;
     (e: "update:searchQuery", value: string): void;
 }>();
 
@@ -1015,6 +1023,92 @@ const handleNodeFocus = (payload: {
     });
 };
 
+const escapePointerToken = (token: string | number): string =>
+    String(token).replace(/~/g, "~0").replace(/\//g, "~1");
+
+const toJsonPointer = (segments: Array<string | number>): string =>
+    `/${segments.map((segment) => escapePointerToken(segment)).join("/")}`;
+
+const findBuilderNodePathByUid = (
+    nodes: BuilderNodeChild[],
+    uid: string,
+    currentPath: number[] = [],
+): number[] | null => {
+    for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        const nextPath = [...currentPath, index];
+
+        if (node.uid === uid) {
+            return nextPath;
+        }
+
+        if (node.type === "component") {
+            const nested = findBuilderNodePathByUid(node.children, uid, nextPath);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+
+    return null;
+};
+
+const toBodyNodePointerSegments = (
+    builderPath: number[],
+): Array<string | number> => {
+    if (!builderPath.length) {
+        return [];
+    }
+
+    const [rootIndex, ...childIndices] = builderPath;
+    const bodySegments: Array<string | number> = [rootIndex];
+    childIndices.forEach((index) => {
+        bodySegments.push(index + 2);
+    });
+    return bodySegments;
+};
+
+const handleTranslateField = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+    label?: string;
+}) => {
+    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
+    if (!builderPath) {
+        return;
+    }
+
+    const nodePointer = toBodyNodePointerSegments(builderPath);
+    const fieldPointer = toJsonPointer([
+        ...nodePointer,
+        1,
+        ...payload.propPath,
+    ]);
+
+    emit("translate-scope", {
+        scopeMode: "field",
+        scopePointer: fieldPointer,
+        label: payload.label,
+    });
+};
+
+const handleTranslateSection = (payload: {
+    uid: string;
+    label?: string;
+}) => {
+    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
+    if (!builderPath) {
+        return;
+    }
+
+    const sectionPointer = toJsonPointer(toBodyNodePointerSegments(builderPath));
+    emit("translate-scope", {
+        scopeMode: "section",
+        scopePointer: sectionPointer,
+        label: payload.label,
+    });
+};
+
 const serializedDocument = computed(() =>
     (() => {
         const document = createDocumentFromTree(
@@ -1412,14 +1506,16 @@ const handleSaveDebugClick = () => {
                     :on-clone="cloneNode"
                     :on-toggle-expanded="handleRootExpansion"
                     :on-focus-node="handleNodeFocus"
+                    :on-translate-field="handleTranslateField"
+                    :on-translate-section="handleTranslateSection"
                     :section-name="getLocalSectionName(node.uid)"
                     :on-save-section-name="saveLocalSectionName"
                 />
                 <button
                     type="button"
                     class="builder-root-item__insert"
-                    aria-label="Add section after this section"
-                    title="Add section after this section"
+                    aria-label="Insert new section here"
+                    title="Insert new section here"
                     @click="openRootPicker(getRootInsertIndexAfter(node.uid))"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">

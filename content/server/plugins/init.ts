@@ -1,5 +1,6 @@
 import { initializeDatabase, validateCouchDBEnvironment } from '#database/utils/couchdb'
 import { contentDesignDocument } from '../../utils/design-documents'
+import { refreshLlmTranslationsRuntimeConfig } from '../utils/llm-translations-config'
 
 async function initializeContentLayer(): Promise<void> {
     console.log('🧩 Initializing CouchDB for content layer...')
@@ -17,6 +18,7 @@ async function initializeContentLayer(): Promise<void> {
         const contentDatabaseName = `${dbLoginPrefix}-content`
 
         await initializeDatabase(contentDatabaseName, [contentDesignDocument])
+        await refreshLlmTranslationsRuntimeConfig()
 
         console.log(`📄 Content database ready: ${contentDatabaseName}`)
     } catch (error) {

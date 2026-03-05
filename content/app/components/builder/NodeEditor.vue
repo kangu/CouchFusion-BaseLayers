@@ -96,6 +96,25 @@
                         </svg>
                     </button>
                     <button
+                        v-if="isSectionNameEditable && onTranslateSection"
+                        class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--translate"
+                        type="button"
+                        @click="triggerTranslateSection"
+                        aria-label="Translate section"
+                        title="Translate section"
+                    >
+                        <svg
+                            class="node-panel__toggle-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 3a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-1.1a10.2 10.2 0 0 1-1.7 4.1c.9.8 1.9 1.4 2.9 1.8a1 1 0 1 1-.7 1.9c-1.2-.5-2.4-1.2-3.5-2.2c-1.1 1-2.3 1.7-3.5 2.2a1 1 0 1 1-.7-1.9c1.1-.4 2-1 2.9-1.8A10.2 10.2 0 0 1 9.1 7H8a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1Zm-1 4a8.2 8.2 0 0 0 1 2.6A8.2 8.2 0 0 0 13 7h-2Zm6 10.6l.7 1.9a1 1 0 1 1-1.9.7l-.6-1.7h-4.4l-.6 1.7a1 1 0 0 1-1.9-.7l2.9-7.8a1 1 0 0 1 1.9 0l1.8 4.9ZM14.5 16l-1.5-4.1L11.5 16h3Z"
+                            />
+                        </svg>
+                    </button>
+                    <button
                         class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--clone"
                         type="button"
                         @click="onClone(node.uid)"
@@ -201,6 +220,7 @@
                 :update-nested-array-item-field="updateNestedArrayItemField"
                 :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                 :format-json-value="formatJsonValue"
+                :on-translate-field="triggerTranslateField"
             />
 
             <!-- New props are not enabled for the moment, keep it here for possible future use -->
@@ -249,6 +269,8 @@
                         :on-remove="onRemove"
                         :on-clone="onClone"
                         :on-toggle-expanded="onToggleExpanded"
+                        :on-translate-field="onTranslateField"
+                        :on-translate-section="onTranslateSection"
                     />
                 </template>
             </NodeChildrenPanel>
@@ -410,6 +432,15 @@ const props = defineProps<{
         uid: string;
         mode: "flash" | "lock" | "clear";
     }) => void;
+    onTranslateField?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+        label?: string;
+    }) => void;
+    onTranslateSection?: (payload: {
+        uid: string;
+        label?: string;
+    }) => void;
     sectionName?: string;
     onSaveSectionName?: (uid: string, value: string) => void;
 }>();
@@ -537,6 +568,34 @@ const requestRemoveNode = (uid: string) => {
 
 const triggerFocus = () => {
     notifyFocus("flash");
+};
+
+const triggerTranslateSection = () => {
+    if (!props.onTranslateSection || props.node.type !== "component") {
+        return;
+    }
+
+    props.onTranslateSection({
+        uid: props.node.uid,
+        label:
+            sectionNameDisplay.value ||
+            (props.node.type === "component" ? props.node.component : "Section"),
+    });
+};
+
+const triggerTranslateField = (payload: {
+    propPath: Array<string | number>;
+    label?: string;
+}) => {
+    if (!props.onTranslateField) {
+        return;
+    }
+
+    props.onTranslateField({
+        uid: props.node.uid,
+        propPath: payload.propPath,
+        label: payload.label,
+    });
 };
 
 const isSectionNameEditable = computed(
@@ -2611,6 +2670,52 @@ const applyTextValue = () => {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.node-panel :deep(.node-panel__field-inline-control) {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.node-panel :deep(.node-panel__field-inline-control > .node-panel__input-wrap) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.node-panel :deep(.node-panel__field-inline-control > input),
+.node-panel :deep(.node-panel__field-inline-control > textarea),
+.node-panel :deep(.node-panel__field-inline-control > select),
+.node-panel :deep(.node-panel__field-inline-control > [class*="content-"]) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.node-panel :deep(.node-panel__translate-inline) {
+    align-self: stretch;
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 120ms ease,
+        color 120ms ease,
+        border-color 120ms ease,
+        box-shadow 120ms ease;
+}
+
+.node-panel :deep(.node-panel__translate-inline:hover),
+.node-panel :deep(.node-panel__translate-inline:focus-visible) {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #1d4ed8;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
 }
 
 .node-panel :deep(.node-panel__field--match) {

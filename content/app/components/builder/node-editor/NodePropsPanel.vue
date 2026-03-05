@@ -14,32 +14,48 @@
             :error="jsonErrors[prop.key]"
         >
             <template v-if="prop.type === 'textarea'">
-                <NodeTextareaField
-                    v-model="propDraft[prop.key]"
-                    :placeholder="prop.placeholder"
-                    :rows="3"
-                    :show-highlight="
-                        shouldHighlightText(propDraft[prop.key], prop.type)
-                    "
-                    :highlight-markup="getHighlightMarkup(propDraft[prop.key])"
-                    @input="
-                        () =>
-                            schedulePropUpdate(
-                                prop.key,
-                                propDraft[prop.key],
-                                prop.type,
-                            )
-                    "
-                    @blur="
-                        () =>
-                            flushPropUpdate(
-                                prop.key,
-                                propDraft[prop.key],
-                                prop.type,
-                            )
-                    "
-                    @scroll="syncHighlightScroll"
-                />
+                <div class="node-panel__field-inline-control">
+                    <NodeTextareaField
+                        v-model="propDraft[prop.key]"
+                        :placeholder="prop.placeholder"
+                        :rows="3"
+                        :show-highlight="
+                            shouldHighlightText(propDraft[prop.key], prop.type)
+                        "
+                        :highlight-markup="getHighlightMarkup(propDraft[prop.key])"
+                        @input="
+                            () =>
+                                schedulePropUpdate(
+                                    prop.key,
+                                    propDraft[prop.key],
+                                    prop.type,
+                                )
+                        "
+                        @blur="
+                            () =>
+                                flushPropUpdate(
+                                    prop.key,
+                                    propDraft[prop.key],
+                                    prop.type,
+                                )
+                        "
+                        @scroll="syncHighlightScroll"
+                    />
+                    <button
+                        v-if="canTranslateField(prop)"
+                        type="button"
+                        class="node-panel__translate-inline"
+                        @click="
+                            () =>
+                                requestTranslateField(
+                                    [prop.key],
+                                    prop.label,
+                                )
+                        "
+                    >
+                        Translate
+                    </button>
+                </div>
             </template>
             <template v-else-if="prop.type === 'boolean'">
                 <span class="node-panel__checkbox">
@@ -156,6 +172,7 @@
                 <NodeObjectField
                     :schema="prop"
                     :value="propDraft[prop.key]"
+                    :path-prefix="[prop.key]"
                     :field-errors="objectFieldErrors[prop.key]"
                     :field-key="(field) => `${prop.key}-${field.key}`"
                     :field-context="() => ({ propKey: prop.key, searchQuery })"
@@ -174,11 +191,13 @@
                     :json-value="formatJsonValue(propDraft[prop.key])"
                     :json-rows="6"
                     :json-highlight-type="prop.type"
+                    :on-translate-field="onTranslateField"
                 />
             </template>
             <template v-else-if="prop.type === 'jsonarray' || prop.type === 'stringarray'">
                 <NodeArrayField
                     :prop="prop"
+                    :path-prefix="[prop.key]"
                     :prop-draft="propDraft"
                     :collapsed-arrays="collapsedArrays"
                     :drag-over-array-item="dragOverArrayItem"
@@ -231,69 +250,102 @@
                     :update-nested-array-item-field="updateNestedArrayItemField"
                     :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                     :format-json-value="formatJsonValue"
+                    :on-translate-field="onTranslateField"
                 />
             </template>
             <template v-else-if="prop.ui?.component">
-                <component
-                    :is="prop.ui.component"
-                    :model-value="propDraft[prop.key]"
-                    :transform-value="
-                        isImageFieldSchema(prop)
-                            ? (propDraft[imageKitTransformPropKey(prop.key)] ??
-                              '')
-                            : undefined
-                    "
-                    :prop-definition="prop"
-                    :field-context="{ propKey: prop.key, searchQuery }"
-                    @update:modelValue="
-                        (value: unknown) =>
-                            handleCustomPropUpdate(prop, value, {
-                                debounce: true,
-                            })
-                    "
-                    @update:transformValue="
-                        (value: unknown) => {
-                            const normalized =
-                                normalizeImageKitTransformValue(value);
-                            const companionKey = imageKitTransformPropKey(
-                                prop.key,
-                            );
-                            propDraft[companionKey] = normalized ?? '';
-                            schedulePropUpdate(
-                                companionKey,
-                                normalized,
-                                'text',
-                            );
-                        }
-                    "
-                />
+                <div class="node-panel__field-inline-control">
+                    <component
+                        :is="prop.ui.component"
+                        :model-value="propDraft[prop.key]"
+                        :transform-value="
+                            isImageFieldSchema(prop)
+                                ? (propDraft[imageKitTransformPropKey(prop.key)] ??
+                                  '')
+                                : undefined
+                        "
+                        :prop-definition="prop"
+                        :field-context="{ propKey: prop.key, searchQuery }"
+                        @update:modelValue="
+                            (value: unknown) =>
+                                handleCustomPropUpdate(prop, value, {
+                                    debounce: true,
+                                })
+                        "
+                        @update:transformValue="
+                            (value: unknown) => {
+                                const normalized =
+                                    normalizeImageKitTransformValue(value);
+                                const companionKey = imageKitTransformPropKey(
+                                    prop.key,
+                                );
+                                propDraft[companionKey] = normalized ?? '';
+                                schedulePropUpdate(
+                                    companionKey,
+                                    normalized,
+                                    'text',
+                                );
+                            }
+                        "
+                    />
+                    <button
+                        v-if="canTranslateField(prop)"
+                        type="button"
+                        class="node-panel__translate-inline"
+                        @click="
+                            () =>
+                                requestTranslateField(
+                                    [prop.key],
+                                    prop.label,
+                                )
+                        "
+                    >
+                        Translate
+                    </button>
+                </div>
             </template>
             <template v-else>
-                <NodeTextField
-                    v-model="propDraft[prop.key]"
-                    :placeholder="prop.placeholder"
-                    :input-type="prop.type === 'number' ? 'number' : 'text'"
-                    :show-highlight="
-                        shouldHighlightText(propDraft[prop.key], prop.type)
-                    "
-                    :highlight-markup="getHighlightMarkup(propDraft[prop.key])"
-                    @input="
-                        () =>
-                            schedulePropUpdate(
-                                prop.key,
-                                propDraft[prop.key],
-                                prop.type,
-                            )
-                    "
-                    @blur="
-                        () =>
-                            flushPropUpdate(
-                                prop.key,
-                                propDraft[prop.key],
-                                prop.type,
-                            )
-                    "
-                />
+                <div class="node-panel__field-inline-control">
+                    <NodeTextField
+                        v-model="propDraft[prop.key]"
+                        :placeholder="prop.placeholder"
+                        :input-type="prop.type === 'number' ? 'number' : 'text'"
+                        :show-highlight="
+                            shouldHighlightText(propDraft[prop.key], prop.type)
+                        "
+                        :highlight-markup="getHighlightMarkup(propDraft[prop.key])"
+                        @input="
+                            () =>
+                                schedulePropUpdate(
+                                    prop.key,
+                                    propDraft[prop.key],
+                                    prop.type,
+                                )
+                        "
+                        @blur="
+                            () =>
+                                flushPropUpdate(
+                                    prop.key,
+                                    propDraft[prop.key],
+                                    prop.type,
+                                )
+                        "
+                    />
+                    <button
+                        v-if="canTranslateField(prop)"
+                        type="button"
+                        class="node-panel__translate-inline"
+                        @click="
+                            () =>
+                                requestTranslateField(
+                                    [prop.key],
+                                    prop.label,
+                                )
+                        "
+                    >
+                        Translate
+                    </button>
+                </div>
             </template>
         </NodeField>
     </div>
@@ -345,7 +397,7 @@ import NodeTextareaField from "./NodeTextareaField.vue";
 type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;
 
-defineProps<{
+const props = defineProps<{
     searchQuery?: string;
     visibleProps: ComponentPropSchema[];
     propDraft: Record<string, any>;
@@ -424,6 +476,10 @@ defineProps<{
     updateNestedArrayItemField: AnyHandler;
     updateCustomNestedArrayItemField: AnyHandler;
     formatJsonValue: (value: unknown) => string;
+    onTranslateField?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+    }) => void;
 }>();
 
 const fieldWrapperTag = (schema: ComponentPropSchema) =>
@@ -458,5 +514,31 @@ const normalizeImageKitTransformValue = (value: unknown) => {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const canTranslateField = (schema: ComponentPropSchema): boolean => {
+    if (!schema.localized || !schema.key) {
+        return false;
+    }
+
+    if (schema.type === "text" || schema.type === "textarea") {
+        return true;
+    }
+
+    return schema.ui?.component === "ContentRichTextField";
+};
+
+const requestTranslateField = (
+    propPath: Array<string | number>,
+    label?: string,
+) => {
+    if (!propPath.length) {
+        return;
+    }
+
+    props.onTranslateField?.({
+        propPath,
+        label,
+    });
 };
 </script>
