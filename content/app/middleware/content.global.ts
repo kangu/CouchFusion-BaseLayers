@@ -10,6 +10,10 @@ import {
   resolveIgnoredPrefixes,
   isContentRoute,
 } from "#content/utils/content-route";
+import {
+  resolveContentI18nConfig,
+  resolveContentLocalePath,
+} from "#content/utils/i18n";
 
 interface RoutePrefixConfig {
   ignoredPrefixes: string[];
@@ -18,13 +22,15 @@ interface RoutePrefixConfig {
 
 const buildRoutePrefixConfig = (): RoutePrefixConfig => {
   const runtimeConfig = useRuntimeConfig();
+  const contentConfig =
+    runtimeConfig.content ?? runtimeConfig.public?.content ?? {};
 
-  const runtimeIgnore = Array.isArray(runtimeConfig.content?.ignore)
-    ? runtimeConfig.content.ignore
+  const runtimeIgnore = Array.isArray(contentConfig.ignore)
+    ? contentConfig.ignore
     : [];
 
-  const runtimeAllow = Array.isArray(runtimeConfig.content?.allow)
-    ? runtimeConfig.content.allow
+  const runtimeAllow = Array.isArray(contentConfig.allow)
+    ? contentConfig.allow
     : [];
 
   return {
@@ -45,8 +51,14 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   const { ignoredPrefixes, allowedPrefixes } = buildRoutePrefixConfig();
+  const runtimeConfig = useRuntimeConfig();
+  const contentI18nConfig = resolveContentI18nConfig(
+    runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+  );
+  const localizedPath = resolveContentLocalePath(to.path, contentI18nConfig);
+  const contentPath = localizedPath.basePath;
 
-  if (to.path.startsWith("/api")) {
+  if (to.path.startsWith("/api") || contentPath.startsWith("/api")) {
     // API endpoints are reserved for Nitro server routes; return a hard 404 when a page route
     // attempts to handle them so consuming apps don't need per-page guards.
     return abortNavigation(
@@ -57,14 +69,14 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     );
   }
 
-  if (!isContentRoute(to.path, ignoredPrefixes, allowedPrefixes)) {
+  if (!isContentRoute(contentPath, ignoredPrefixes, allowedPrefixes)) {
     return;
   }
 
   const store = useContentPagesStore();
 
   try {
-    await store.fetchPage(to.path);
+    await store.fetchPage(contentPath, false, { locale: localizedPath.locale });
   } catch (error: any) {
     if (error?.statusCode === 404) {
       if (import.meta.client) {
@@ -72,7 +84,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
         return;
       }
 
-      console.warn("Content page not found, triggering 404:", to.path);
+      console.warn("Content page not found, triggering 404:", contentPath);
       return abortNavigation(
         createError({
           statusCode: 404,

@@ -12,6 +12,21 @@ import {
 
 export { contentIdFromPath } from '#content/utils/page-documents'
 
+export const localeContentIdFromPath = (
+    path: string,
+    locale: string,
+    defaultLocale: string,
+): string => {
+    const normalizedPath = normalizePagePath(path)
+    const masterId = contentIdFromPath(normalizedPath)
+
+    if (locale === defaultLocale) {
+        return masterId
+    }
+
+    return `${masterId}::${locale}`
+}
+
 export interface StoredContentPageDocument extends ContentPageDocument {
     createdAt: string
     updatedAt: string
@@ -20,7 +35,7 @@ export interface StoredContentPageDocument extends ContentPageDocument {
 
 export const sanitiseIncomingDocument = (
     payload: any,
-    options: { existing?: any; isCreate: boolean }
+    options: { existing?: any; isCreate: boolean; documentId?: string }
 ): StoredContentPageDocument => {
     if (!payload || typeof payload !== 'object') {
         throw createError({
@@ -34,7 +49,7 @@ export const sanitiseIncomingDocument = (
     const now = new Date().toISOString()
 
     const normalizedPath = normalizePagePath(raw.path ?? existing.path ?? payload.path ?? '/')
-    const id = raw._id ?? existing._id ?? contentIdFromPath(normalizedPath)
+    const id = options.documentId ?? raw._id ?? existing._id ?? contentIdFromPath(normalizedPath)
     const layout = raw.layout && typeof raw.layout === 'object' ? ensureLayout(raw.layout) : ensureLayout(existing.layout)
     const body = raw.body && typeof raw.body === 'object' ? ensureMinimalBody(raw.body) : (existing.body ? ensureMinimalBody(existing.body) : { type: 'minimal', value: [] })
     const seo = raw.seo && typeof raw.seo === 'object'

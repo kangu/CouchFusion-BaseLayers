@@ -45,8 +45,19 @@ export default defineNuxtConfig({
         maxCommands: 0,
       },
     },
+    content: {
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en"] as string[],
+      },
+    },
     public: {
-      content: {},
+      content: {
+        i18n: {
+          defaultLocale: "en",
+          locales: ["en"] as string[],
+        },
+      },
       featureCodexSessions: true,
     },
   },

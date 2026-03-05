@@ -28,6 +28,11 @@ import {
     type SpacingPresetId,
 } from "../../utils/contentBuilder";
 import type { ComponentPropSchema } from "~/types/builder";
+import { CONTENT_META_I18N_KEY } from "#content/utils/i18n";
+import {
+    buildComponentDefinitionLookup,
+    collectFixedBodyPaths,
+} from "#content/utils/i18n-body";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -178,6 +183,9 @@ const emit = defineEmits<{
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
 const componentOptions = computed(() => registry.list);
+const componentDefinitionLookup = computed(() =>
+    buildComponentDefinitionLookup(registry.list),
+);
 
 const builderTree = ref<BuilderTree>([]);
 const pageConfig = reactive<PageConfigInput>({
@@ -1008,26 +1016,64 @@ const handleNodeFocus = (payload: {
 };
 
 const serializedDocument = computed(() =>
-    createDocumentFromTree(
-        builderTree.value,
-        {
-            ...pageConfig,
-            meta: pageConfig.meta ?? {},
-        },
-        { spacing: layout.spacing },
-    ),
+    (() => {
+        const document = createDocumentFromTree(
+            builderTree.value,
+            {
+                ...pageConfig,
+                meta: pageConfig.meta ?? {},
+            },
+            { spacing: layout.spacing },
+        );
+
+        const fixedBodyPaths = collectFixedBodyPaths(
+            document.body?.value ?? [],
+            componentDefinitionLookup.value,
+        );
+        const meta = toPlainRecord(document.meta);
+        const i18nMeta = toPlainRecord(meta[CONTENT_META_I18N_KEY]);
+
+        document.meta = {
+            ...meta,
+            [CONTENT_META_I18N_KEY]: {
+                ...i18nMeta,
+                fixedBodyPaths,
+            },
+        };
+
+        return document;
+    })(),
 );
 
 const previewDocument = computed(() =>
-    createDocumentFromTree(
-        builderTree.value,
-        {
-            ...pageConfig,
-            meta: pageConfig.meta ?? {},
-        },
-        { spacing: layout.spacing },
-        { annotateBuilderUids: true },
-    ),
+    (() => {
+        const document = createDocumentFromTree(
+            builderTree.value,
+            {
+                ...pageConfig,
+                meta: pageConfig.meta ?? {},
+            },
+            { spacing: layout.spacing },
+            { annotateBuilderUids: true },
+        );
+
+        const fixedBodyPaths = collectFixedBodyPaths(
+            document.body?.value ?? [],
+            componentDefinitionLookup.value,
+        );
+        const meta = toPlainRecord(document.meta);
+        const i18nMeta = toPlainRecord(meta[CONTENT_META_I18N_KEY]);
+
+        document.meta = {
+            ...meta,
+            [CONTENT_META_I18N_KEY]: {
+                ...i18nMeta,
+                fixedBodyPaths,
+            },
+        };
+
+        return document;
+    })(),
 );
 
 let documentEmitTimeout: ReturnType<typeof setTimeout> | null = null;

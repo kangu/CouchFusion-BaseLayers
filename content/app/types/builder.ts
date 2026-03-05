@@ -39,6 +39,7 @@ export interface ComponentArrayItemFieldBase {
   key: string;
   label: string;
   description?: string;
+  localized?: boolean;
   ui?: ComponentFieldUiConfig;
   default?: BuilderValue;
   options?: ComponentSelectOption[];
@@ -74,6 +75,7 @@ export interface ComponentPropSchema {
   key: string;
   label: string;
   type: ComponentFieldType;
+  localized?: boolean;
   required?: boolean;
   placeholder?: string;
   options?: ComponentSelectOption[];

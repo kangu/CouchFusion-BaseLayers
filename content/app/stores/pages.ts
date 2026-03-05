@@ -3,7 +3,7 @@ import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 import { createDocumentFromTree } from '#content/app/utils/contentBuilder'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
 import type { ContentPageDocument, ContentPageSummary, ContentPageHistoryEntry } from '#content/types/content-page'
-import { createError } from '#imports'
+import { createError, useRuntimeConfig } from '#imports'
 import {
     ensureMinimalBody,
     ensureLayout,
@@ -12,6 +12,12 @@ import {
     minimalToContentDocument,
     normalizeSeoImage
 } from '#content/utils/page-documents'
+import {
+    buildLocalizedPath,
+    normalizeLocaleCode,
+    resolveContentI18nConfig,
+    resolveContentLocalePath
+} from '#content/utils/i18n'
 
 type Maybe<T> = T | null | undefined
 
@@ -34,6 +40,45 @@ const createEmptyFetchState = <T>(initialValue: T): FetchState<T> => ({
     error: null,
     data: initialValue
 })
+
+interface ResolvedStoreTarget {
+    basePath: string
+    locale: string
+    storeKey: string
+}
+
+const resolveStoreTarget = (
+    path: string,
+    localeOverride?: string | null,
+): ResolvedStoreTarget => {
+    const normalizedPath = normalizePagePath(path)
+
+    try {
+        const runtimeConfig = useRuntimeConfig()
+        const i18nConfig = resolveContentI18nConfig(
+            runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n
+        )
+
+        const fromPath = resolveContentLocalePath(normalizedPath, i18nConfig)
+        const normalizedOverride = normalizeLocaleCode(localeOverride ?? null)
+        const locale =
+            normalizedOverride && i18nConfig.locales.includes(normalizedOverride)
+                ? normalizedOverride
+                : fromPath.locale
+
+        return {
+            basePath: fromPath.basePath,
+            locale,
+            storeKey: buildLocalizedPath(fromPath.basePath, locale, i18nConfig)
+        }
+    } catch {
+        return {
+            basePath: normalizedPath,
+            locale: 'en',
+            storeKey: normalizedPath
+        }
+    }
+}
 
 const normalizeDocument = (
     payload: ContentPayload | null | undefined,
@@ -90,6 +135,10 @@ const extractSummary = (payload: any): ContentPageSummary => {
         {}
 
     const updatedAt = payload?.updatedAt ?? document.updatedAt ?? null
+    const localization =
+        payload?.localization && typeof payload.localization === 'object'
+            ? payload.localization
+            : null
 
     return {
         id: document._id,
@@ -100,7 +149,8 @@ const extractSummary = (payload: any): ContentPageSummary => {
         seoImage: document.seo.image ?? fallbackSeoImage ?? null,
         meta,
         updatedAt,
-        document
+        document,
+        localization
     }
 }
 
@@ -127,6 +177,7 @@ const normalizeHistoryEntry = (payload: any, fallbackPath: string): ContentPageH
     return {
         id: payload?.id ?? contentDoc._id,
         path: normalizePagePath(contentDoc.path ?? fallbackPath),
+        locale: payload?.locale ?? null,
         title: payload?.title ?? contentDoc.title ?? null,
         timestamp,
         document: contentDoc
@@ -141,13 +192,13 @@ export const useContentPagesStore = defineStore('content-pages', {
     }),
 
     getters: {
-        getPage: (state) => (path: string): Maybe<ContentPageSummary> => {
-            const normalizedPath = normalizePagePath(path)
-            return state.pages[normalizedPath]?.data ?? null
+        getPage: (state) => (path: string, locale?: string | null): Maybe<ContentPageSummary> => {
+            const target = resolveStoreTarget(path, locale)
+            return state.pages[target.storeKey]?.data ?? null
         },
-        getHistoryState: (state) => (path: string): FetchState<ContentPageHistoryEntry[]> | null => {
-            const normalizedPath = normalizePagePath(path)
-            return state.history[normalizedPath] ?? null
+        getHistoryState: (state) => (path: string, locale?: string | null): FetchState<ContentPageHistoryEntry[]> | null => {
+            const target = resolveStoreTarget(path, locale)
+            return state.history[target.storeKey] ?? null
         }
     },
 
@@ -177,19 +228,23 @@ export const useContentPagesStore = defineStore('content-pages', {
             }
         },
 
-        async fetchPage(path: string, force = false): Promise<Maybe<ContentPageSummary>> {
-            const normalizedPath = normalizePagePath(path)
-            const existing = this.pages[normalizedPath]
+        async fetchPage(
+            path: string,
+            force = false,
+            options: { locale?: string | null } = {},
+        ): Promise<Maybe<ContentPageSummary>> {
+            const target = resolveStoreTarget(path, options.locale)
+            const existing = this.pages[target.storeKey]
 
             if (!force && existing?.data && !existing.pending) {
                 return existing.data
             }
 
-            if (!this.pages[normalizedPath]) {
-                this.pages[normalizedPath] = createEmptyFetchState<Maybe<ContentPageSummary>>(null)
+            if (!this.pages[target.storeKey]) {
+                this.pages[target.storeKey] = createEmptyFetchState<Maybe<ContentPageSummary>>(null)
             }
 
-            const state = this.pages[normalizedPath]
+            const state = this.pages[target.storeKey]
             state.pending = true
             state.error = null
 
@@ -198,7 +253,11 @@ export const useContentPagesStore = defineStore('content-pages', {
             try {
                 const cacheBuster = Date.now().toString()
                 const response: any = await $f('/api/content/pages', {
-                    params: { path: normalizedPath, _ts: cacheBuster },
+                    params: {
+                        path: target.basePath,
+                        locale: target.locale,
+                        _ts: cacheBuster
+                    },
                     headers: {
                         'Cache-Control': 'no-cache',
                         Pragma: 'no-cache'
@@ -217,8 +276,12 @@ export const useContentPagesStore = defineStore('content-pages', {
             }
         },
 
-        async fetchPageOrThrow(path: string, force = false): Promise<ContentPageSummary> {
-            const summary = await this.fetchPage(path, force)
+        async fetchPageOrThrow(
+            path: string,
+            force = false,
+            options: { locale?: string | null } = {},
+        ): Promise<ContentPageSummary> {
+            const summary = await this.fetchPage(path, force, options)
 
             if (!summary) {
                 throw createError({
@@ -230,14 +293,18 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
-        async fetchHistory(path: string, force = false): Promise<ContentPageHistoryEntry[]> {
-            const normalizedPath = normalizePagePath(path)
+        async fetchHistory(
+            path: string,
+            force = false,
+            options: { locale?: string | null } = {},
+        ): Promise<ContentPageHistoryEntry[]> {
+            const target = resolveStoreTarget(path, options.locale)
 
-            if (!this.history[normalizedPath]) {
-                this.history[normalizedPath] = createEmptyFetchState<ContentPageHistoryEntry[]>([])
+            if (!this.history[target.storeKey]) {
+                this.history[target.storeKey] = createEmptyFetchState<ContentPageHistoryEntry[]>([])
             }
 
-            const state = this.history[normalizedPath]
+            const state = this.history[target.storeKey]
 
             if (!force && state.data.length && !state.pending) {
                 return state.data
@@ -251,7 +318,11 @@ export const useContentPagesStore = defineStore('content-pages', {
             try {
                 const cacheBuster = Date.now().toString()
                 const response: any = await $f('/api/content/pages/history', {
-                    params: { path: normalizedPath, _ts: cacheBuster },
+                    params: {
+                        path: target.basePath,
+                        locale: target.locale,
+                        _ts: cacheBuster
+                    },
                     headers: {
                         'Cache-Control': 'no-cache',
                         Pragma: 'no-cache'
@@ -259,7 +330,7 @@ export const useContentPagesStore = defineStore('content-pages', {
                 })
 
                 const history = Array.isArray(response?.history) ? response.history : []
-                const entries = history.map((entry: any) => normalizeHistoryEntry(entry, normalizedPath))
+                const entries = history.map((entry: any) => normalizeHistoryEntry(entry, target.basePath))
                 state.data = entries
                 return entries
             } catch (error: any) {
@@ -278,7 +349,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             seoTitle?: string | null
             seoDescription?: string | null
             seoImage?: string | null
-        }): Promise<ContentPageSummary> {
+        }, options: { locale?: string | null } = {}): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
             const minimal = createDocumentFromTree(
                 [],
@@ -296,12 +367,19 @@ export const useContentPagesStore = defineStore('content-pages', {
             )
 
             const document = minimalToContentDocument(minimal)
-            return await this.saveDocument(document, { method: 'POST' })
+            return await this.saveDocument(document, {
+                method: 'POST',
+                locale: options.locale
+            })
         },
 
-        async saveDocument(document: ContentPageDocument, options: { method?: 'POST' | 'PUT' } = {}): Promise<ContentPageSummary> {
+        async saveDocument(
+            document: ContentPageDocument,
+            options: { method?: 'POST' | 'PUT'; locale?: string | null } = {},
+        ): Promise<ContentPageSummary> {
             const method = options.method ?? 'PUT'
             const normalizedPath = normalizePagePath(document.path)
+            const target = resolveStoreTarget(normalizedPath, options.locale)
             const $f = useRequestFetch()
 
             const cleanDocument: ContentPageDocument = {
@@ -322,19 +400,20 @@ export const useContentPagesStore = defineStore('content-pages', {
             const response: any = await $f('/api/content/pages', {
                 method,
                 body: {
-                    document: cleanDocument
+                    document: cleanDocument,
+                    locale: target.locale
                 }
             })
 
             const summary = extractSummary(response?.page ?? response)
-            this.pages[normalizedPath] = createEmptyFetchState(summary)
+            this.pages[target.storeKey] = createEmptyFetchState(summary)
 
             const existingIndex = this.index.data.filter((entry) => entry.id !== summary.id)
             existingIndex.push(summary)
             this.index.data = existingIndex.sort((a, b) => a.path.localeCompare(b.path))
 
             try {
-                await this.fetchHistory(normalizedPath, true)
+                await this.fetchHistory(target.basePath, true, { locale: target.locale })
             } catch (error) {
                 console.error('Failed to refresh history after save:', error)
             }
@@ -344,20 +423,20 @@ export const useContentPagesStore = defineStore('content-pages', {
 
         applyLiveDocument(document: MinimalContentDocument): ContentPageSummary {
             const contentDocument = minimalToContentDocument(document)
-            const normalizedPath = normalizePagePath(contentDocument.path)
+            const target = resolveStoreTarget(contentDocument.path)
             const summary = extractSummary({ document: contentDocument })
 
-            if (!this.pages[normalizedPath]) {
-                this.pages[normalizedPath] = createEmptyFetchState<Maybe<ContentPageSummary>>(null)
+            if (!this.pages[target.storeKey]) {
+                this.pages[target.storeKey] = createEmptyFetchState<Maybe<ContentPageSummary>>(null)
             }
 
-            const state = this.pages[normalizedPath]
+            const state = this.pages[target.storeKey]
             state.pending = false
             state.error = null
             state.data = summary
 
             const filteredIndex = this.index.data.filter(
-                (entry) => normalizePagePath(entry.path) !== normalizedPath
+                (entry) => normalizePagePath(entry.path) !== target.basePath
             )
             filteredIndex.push(summary)
             this.index.data = filteredIndex.sort((a, b) => a.path.localeCompare(b.path))
@@ -365,19 +444,31 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
-        async deletePage(path: string): Promise<void> {
-            const normalizedPath = normalizePagePath(path)
+        async deletePage(path: string, options: { locale?: string | null } = {}): Promise<void> {
+            const target = resolveStoreTarget(path, options.locale)
+            const runtimeConfig = useRuntimeConfig()
+            const i18nConfig = resolveContentI18nConfig(
+                runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n
+            )
             const $f = useRequestFetch()
 
             await $f('/api/content/pages', {
                 method: 'DELETE',
-                params: { path: normalizedPath }
+                params: {
+                    path: target.basePath,
+                    locale: target.locale
+                }
             })
 
-            delete this.pages[normalizedPath]
-            delete this.history[normalizedPath]
+            const aliases = i18nConfig.locales.map((locale) =>
+                buildLocalizedPath(target.basePath, locale, i18nConfig)
+            )
+            for (const key of aliases) {
+                delete this.pages[key]
+                delete this.history[key]
+            }
             this.index.data = this.index.data
-                .filter((entry) => normalizePagePath(entry.path) !== normalizedPath)
+                .filter((entry) => normalizePagePath(entry.path) !== target.basePath)
         }
     }
 })

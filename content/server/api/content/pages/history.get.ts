@@ -3,6 +3,7 @@ import { requireAdminSession } from '../../../utils/auth'
 import { fetchPageHistory } from '../../../utils/page-history'
 import { normalizePagePath } from '#content/utils/page'
 import { contentToMinimalDocument } from '#content/utils/page-documents'
+import { resolveRequestedLocale, resolveRuntimeContentI18nConfig } from '../../../utils/content-i18n'
 
 export default defineEventHandler(async (event) => {
     await requireAdminSession(event)
@@ -12,6 +13,7 @@ export default defineEventHandler(async (event) => {
 
     const query = getQuery(event)
     const requestedPath = typeof query.path === 'string' ? query.path : null
+    const locale = query.locale
     const limitParam = typeof query.limit === 'string' ? Number.parseInt(query.limit, 10) : null
 
     if (!requestedPath) {
@@ -22,15 +24,19 @@ export default defineEventHandler(async (event) => {
     }
 
     const normalizedPath = normalizePagePath(requestedPath)
+    const contentI18nConfig = resolveRuntimeContentI18nConfig()
+    const resolvedLocale = resolveRequestedLocale(locale, contentI18nConfig)
     const limit = Number.isFinite(limitParam) && limitParam! > 0 ? Math.min(limitParam!, 10) : undefined
 
-    const history = await fetchPageHistory(normalizedPath, limit)
+    const history = await fetchPageHistory(normalizedPath, resolvedLocale, limit)
 
     return {
         success: true,
+        locale: resolvedLocale,
         history: history.map((entry) => ({
             id: entry.id,
             path: entry.path,
+            locale: entry.locale,
             timestamp: entry.timestamp,
             title: entry.title,
             document: contentToMinimalDocument(entry.document)

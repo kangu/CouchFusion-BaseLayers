@@ -12,6 +12,7 @@ import {
 } from "vue";
 import { storeToRefs } from "pinia";
 import { normalizePagePath } from "#content/utils/page";
+import { resolveContentI18nConfig } from "#content/utils/i18n";
 import { createDocumentFromTree } from "#content/app/utils/contentBuilder";
 import type {
     MinimalContentDocument,
@@ -122,6 +123,17 @@ const initialPath = computed(() => {
 const contentStore = useContentPagesStore();
 await contentStore.fetchIndex();
 const { index: indexState } = storeToRefs(contentStore);
+const runtimeConfig = useRuntimeConfig();
+const contentI18nConfig = computed(() =>
+    resolveContentI18nConfig(
+        runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+    ),
+);
+const activeLocale = ref(contentI18nConfig.value.defaultLocale);
+const availableLocales = computed(() => contentI18nConfig.value.locales);
+const isDefaultActiveLocale = computed(
+    () => activeLocale.value === contentI18nConfig.value.defaultLocale,
+);
 
 type BuilderWorkbenchInstance = ComponentPublicInstance<{
     getSerializedDocument: () => MinimalContentDocument;
@@ -237,17 +249,35 @@ const selectedSummary = computed<ContentPageSummary | null>(() => {
     if (!selectedPath.value) {
         return null;
     }
-    return contentStore.getPage(selectedPath.value);
+    return contentStore.getPage(selectedPath.value, activeLocale.value);
 });
 const currentEditedPath = computed(
-    () => selectedSummary.value?.path ?? latestDocument.value?.path ?? title.value,
+    () => {
+        const basePath =
+            selectedSummary.value?.path ?? latestDocument.value?.path ?? null;
+
+        if (!basePath) {
+            return title.value;
+        }
+
+        if (activeLocale.value === contentI18nConfig.value.defaultLocale) {
+            return basePath;
+        }
+
+        return basePath === "/"
+            ? `/${activeLocale.value}`
+            : `/${activeLocale.value}${basePath}`;
+    },
 );
 
 const historyState = computed(() => {
     if (!selectedSummary.value?.path) {
         return null;
     }
-    return contentStore.getHistoryState(selectedSummary.value.path);
+    return contentStore.getHistoryState(
+        selectedSummary.value.path,
+        activeLocale.value,
+    );
 });
 
 const historyEntries = computed<ContentPageHistoryEntry[]>(
@@ -261,9 +291,16 @@ const indexError = computed(() => indexState.value.error);
 const hasPages = computed(() => (availablePages.value?.length ?? 0) > 0);
 const lastUpdatedDisplay = computed(() =>
     formatTimestamp(
-        selectedSummary.value?.updatedAt ?? null,
+        selectedSummary.value?.localization?.updatedAtByLocale?.[
+            activeLocale.value
+        ] ??
+            selectedSummary.value?.updatedAt ??
+            null,
         lastSavedAt.value,
     ),
+);
+const missingLocalizedCount = computed(
+    () => selectedSummary.value?.localization?.missingLocalizedCount ?? 0,
 );
 const pageListId = "content-admin-pages-datalist";
 
@@ -336,7 +373,30 @@ watch(
         selectedPath.value = path;
         selectedHistoryId.value = null;
         emit("page-selected", selectedSummary.value ?? null);
-        contentStore.fetchHistory(path).catch(() => {});
+        contentStore
+            .fetchHistory(path, false, { locale: activeLocale.value })
+            .catch(() => {});
+    },
+);
+
+watch(
+    () => activeLocale.value,
+    async (nextLocale, previousLocale) => {
+        if (!selectedPath.value || nextLocale === previousLocale) {
+            return;
+        }
+
+        if (hasUnsavedChanges.value) {
+            const confirmed = await confirmDiscardUnsavedChanges();
+            if (!confirmed) {
+                activeLocale.value = previousLocale;
+                return;
+            }
+            updateUnsavedState(false);
+            lastSavedSnapshot.value = null;
+        }
+
+        await openPageForEditing(selectedPath.value, true);
     },
 );
 
@@ -511,12 +571,16 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
     saveError.value = null;
 
     try {
-        await contentStore.fetchPage(normalizedPath, force);
+        await contentStore.fetchPage(normalizedPath, force, {
+            locale: activeLocale.value,
+        });
         selectedPath.value = normalizedPath;
         lastSavedAt.value = null;
         selectedHistoryId.value = null;
         updateUnsavedState(false);
-        contentStore.fetchHistory(normalizedPath, force).catch(() => {});
+        contentStore
+            .fetchHistory(normalizedPath, force, { locale: activeLocale.value })
+            .catch(() => {});
     } catch (error: any) {
         selectionError.value = error?.message || "Failed to load page content.";
     } finally {
@@ -838,7 +902,7 @@ async function handleCreatePage(): Promise<void> {
             seoDescription: newPageForm.seoDescription || "SEO description.",
             seoImage,
             meta: metaPayload,
-        });
+        }, { locale: contentI18nConfig.value.defaultLocale });
         await contentStore.fetchIndex(true);
         await openPageForEditing(normalizedPath, true);
         filterTerm.value = "";
@@ -933,10 +997,10 @@ async function handleDuplicatePage(): Promise<void> {
         };
 
         const contentDocument = minimalToContentDocument(duplicatedMinimal);
-        const duplicatedSummary = await contentStore.saveDocument(
-            contentDocument,
-            { method: "POST" },
-        );
+        const duplicatedSummary = await contentStore.saveDocument(contentDocument, {
+            method: "POST",
+            locale: contentI18nConfig.value.defaultLocale,
+        });
 
         await contentStore.fetchIndex(true);
         closeDuplicateModal();
@@ -1037,7 +1101,9 @@ async function handleSaveDocument(): Promise<void> {
                 selectedSummary.value.document.createdAt ?? null;
         }
 
-        const savedSummary = await contentStore.saveDocument(contentDocument);
+        const savedSummary = await contentStore.saveDocument(contentDocument, {
+            locale: activeLocale.value,
+        });
         selectedPath.value = savedSummary.path;
         lastSavedAt.value = savedSummary.updatedAt ?? new Date().toISOString();
         selectedHistoryId.value = null;
@@ -1093,7 +1159,9 @@ async function handleSelectHistory(entryId: string): Promise<void> {
     }
 
     try {
-        await contentStore.fetchHistory(selectedSummary.value.path);
+        await contentStore.fetchHistory(selectedSummary.value.path, false, {
+            locale: activeLocale.value,
+        });
         selectedHistoryId.value = targetId;
     } catch (error: any) {
         const wrapped =
@@ -1159,7 +1227,7 @@ async function handleDeletePage(): Promise<void> {
         isDeletePending.value = true;
         saveError.value = null;
 
-        await contentStore.deletePage(target.path);
+        await contentStore.deletePage(target.path, { locale: activeLocale.value });
         await contentStore.fetchIndex(true);
 
         emit("delete-success", target);
@@ -1359,6 +1427,21 @@ defineExpose({
                         <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="m383.5 128l.5-24a56.16 56.16 0 0 0-56-56H112a64.19 64.19 0 0 0-64 64v216a56.16 56.16 0 0 0 56 56h24m168-168v160m80-80H216" />
                       </svg>
                     </button>
+                    <label class="editor-header__locale">
+                        <span>Locale</span>
+                        <select
+                            v-model="activeLocale"
+                            :disabled="!selectedSummary"
+                        >
+                            <option
+                                v-for="locale in availableLocales"
+                                :key="locale"
+                                :value="locale"
+                            >
+                                {{ locale }}
+                            </option>
+                        </select>
+                    </label>
                     <label class="editor-header__motion-toggle" title="Preview motion preference">
                       <input
                           v-model="forcePreviewMotion"
@@ -1447,6 +1530,18 @@ defineExpose({
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div class="editor-header__status-line">
+                    <span v-if="lastUpdatedDisplay" class="editor-header__status-time">
+                        Updated {{ lastUpdatedDisplay }}
+                    </span>
+                    <span
+                        v-if="selectedSummary && !isDefaultActiveLocale"
+                        class="editor-header__status"
+                    >
+                        Missing localized values: {{ missingLocalizedCount }}
+                    </span>
                 </div>
 
                 <div class="editor-header__fullrow">
@@ -2242,6 +2337,26 @@ defineExpose({
     gap: 0.75rem;
 }
 
+.editor-header__locale {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.editor-header__locale select {
+    min-width: 84px;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #111827;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
 .editor-header__motion-toggle {
     display: inline-flex;
     align-items: center;
@@ -2260,6 +2375,13 @@ defineExpose({
     width: 14px;
     height: 14px;
     margin: 0;
+}
+
+.editor-header__status-line {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
 }
 
 .editor-header__fullrow {

@@ -9,6 +9,7 @@ import {
     toRaw,
 } from "vue";
 import type { AsyncComponentLoader, PropType, VNodeChild } from "vue";
+import { useRoute, useRuntimeConfig } from "#imports";
 import { kebabCase, pascalCase } from "./utils/case";
 import { toHast } from "minimark/hast";
 import type { MinimarkTree } from "minimark";
@@ -21,12 +22,23 @@ import type {
     Renderable,
 } from "./types";
 import { HTML_TAGS } from "./utils/htmlTags";
+import {
+    CONTENT_NODE_I18N_KEY,
+    mergeLocalizedValue,
+    normalizeLocaleCode,
+    parseNodeI18nState,
+    resolveContentI18nConfig,
+    resolveContentLocalePath,
+} from "#content/utils/i18n";
 
 const renderFunctions = ["render", "ssrRender", "__ssrInlineRender"] as const;
 
 type RenderContext = {
     tags: Record<string, unknown>;
     resolvers: ComponentResolverMap;
+    locale: string;
+    defaultLocale: string;
+    i18nEnabled: boolean;
 };
 
 type SlotRenderer = {
@@ -99,16 +111,25 @@ function normalizeClass(value: unknown) {
     return value;
 }
 
-function normalizeProps(raw: Record<string, unknown>) {
+function normalizeProps(
+    raw: Record<string, unknown>,
+    localeContext: Pick<RenderContext, "locale" | "defaultLocale" | "i18nEnabled">,
+) {
     const props = { ...raw };
     const boundEntries: Record<string, unknown> = {};
+    const rawNodeI18n = props[CONTENT_NODE_I18N_KEY];
 
     if ("__ignoreMap" in props) {
         delete props.__ignoreMap;
     }
+    delete props[CONTENT_NODE_I18N_KEY];
 
     for (const key of Object.keys(props)) {
         if (key.startsWith("__builder")) {
+            delete props[key];
+            continue;
+        }
+        if (key.startsWith("__content")) {
             delete props[key];
             continue;
         }
@@ -149,6 +170,24 @@ function normalizeProps(raw: Record<string, unknown>) {
 
     if (Object.keys(boundEntries).length > 0) {
         Object.assign(props, boundEntries);
+    }
+
+    if (
+        localeContext.i18nEnabled &&
+        localeContext.locale !== localeContext.defaultLocale
+    ) {
+        const i18nState = parseNodeI18nState(rawNodeI18n);
+        const localeState = i18nState.locales?.[localeContext.locale];
+        const localeProps = localeState?.props;
+
+        if (localeProps && typeof localeProps === "object") {
+            for (const [rootKey, patchValue] of Object.entries(localeProps)) {
+                props[rootKey] = mergeLocalizedValue(
+                    props[rootKey],
+                    patchValue,
+                );
+            }
+        }
     }
 
     return props;
@@ -319,7 +358,11 @@ function renderNode(
         const rawTag = getNodeTag(element);
         const mapped = mapTagName(rawTag, element, ctx.tags);
         const component = resolveComponentReference(mapped, ctx);
-        const props = normalizeProps(getNodeProps(element));
+        const props = normalizeProps(getNodeProps(element), {
+            locale: ctx.locale,
+            defaultLocale: ctx.defaultLocale,
+            i18nEnabled: ctx.i18nEnabled,
+        });
         const isTemplate =
             typeof rawTag === "string" && rawTag.toLowerCase() === "template";
 
@@ -414,9 +457,48 @@ export default defineComponent({
             type: Object as PropType<ComponentResolverMap>,
             default: () => ({}),
         },
+        locale: {
+            type: String,
+            default: undefined,
+        },
+        defaultLocale: {
+            type: String,
+            default: undefined,
+        },
     },
     setup(props, { slots }) {
         const debug = import.meta.dev || import.meta.preview;
+        const runtimeConfig = useRuntimeConfig();
+        const route = useRoute();
+        const contentI18nConfig = computed(() =>
+            resolveContentI18nConfig(
+                runtimeConfig.content?.i18n ??
+                    runtimeConfig.public?.content?.i18n,
+            ),
+        );
+        const resolvedDefaultLocale = computed(
+            () =>
+                normalizeLocaleCode(props.defaultLocale) ??
+                contentI18nConfig.value.defaultLocale,
+        );
+        const resolvedLocale = computed(() => {
+            const overrideLocale = normalizeLocaleCode(props.locale);
+            if (
+                overrideLocale &&
+                contentI18nConfig.value.locales.includes(overrideLocale)
+            ) {
+                return overrideLocale;
+            }
+
+            const routePath =
+                typeof route.path === "string" && route.path.length
+                    ? route.path
+                    : "/";
+            return resolveContentLocalePath(
+                routePath,
+                contentI18nConfig.value,
+            ).locale;
+        });
 
         const body = computed<HastRoot | undefined>(() => {
             const value = props.value || {};
@@ -470,6 +552,9 @@ export default defineComponent({
             const ctx: RenderContext = {
                 tags: (tags.value || {}) as Record<string, unknown>,
                 resolvers: (resolvers.value || {}) as ComponentResolverMap,
+                locale: resolvedLocale.value,
+                defaultLocale: resolvedDefaultLocale.value,
+                i18nEnabled: contentI18nConfig.value.enabled,
             };
 
             if (!body.value || isEmpty.value) {
