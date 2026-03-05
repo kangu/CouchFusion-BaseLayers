@@ -60,6 +60,12 @@ const normalizeFixedBodyPaths = (value: unknown): string[] => {
   ).sort()
 }
 
+const mergeFixedBodyPaths = (...entries: Array<unknown>): string[] => {
+  return Array.from(
+    new Set(entries.flatMap((entry) => normalizeFixedBodyPaths(entry))),
+  ).sort()
+}
+
 const getIncomingFixedBodyPaths = (document: Record<string, any>): string[] => {
   const rawMeta = isPlainObject(document.meta) ? document.meta : {}
   const rawI18n = isPlainObject(rawMeta[CONTENT_META_I18N_KEY])
@@ -218,10 +224,10 @@ export const saveLocalizedPageDocument = async (
       contentI18nConfig,
     )
 
-    fixedBodyPaths = getIncomingFixedBodyPaths(payload.document)
-    if (!fixedBodyPaths.length) {
-      fixedBodyPaths = existingMasterMeta.fixedBodyPaths
-    }
+    fixedBodyPaths = mergeFixedBodyPaths(
+      existingMasterMeta.fixedBodyPaths,
+      getIncomingFixedBodyPaths(payload.document),
+    )
 
     const mergedUpdatedAt = mergeUpdatedAtByLocale(existingMasterMeta.updatedAtByLocale)
     mergedUpdatedAt[defaultLocale] = now
@@ -319,10 +325,10 @@ export const saveLocalizedPageDocument = async (
       masterBase,
       contentI18nConfig,
     )
-    fixedBodyPaths = masterMeta.fixedBodyPaths
-    if (!fixedBodyPaths.length) {
-      fixedBodyPaths = getIncomingFixedBodyPaths(payload.document)
-    }
+    fixedBodyPaths = mergeFixedBodyPaths(
+      masterMeta.fixedBodyPaths,
+      getIncomingFixedBodyPaths(payload.document),
+    )
 
     const localeBase = localeExisting ?? masterBase
     const localeUpdated = sanitiseIncomingDocument(payload.document, {
@@ -390,7 +396,7 @@ export const saveLocalizedPageDocument = async (
 
     const shouldInitializeMasterMetadata =
       !masterMeta.updatedAtByLocale[defaultLocale] ||
-      (!masterMeta.fixedBodyPaths.length && fixedBodyPaths.length > 0)
+      !valuesDeepEqual(masterMeta.fixedBodyPaths, fixedBodyPaths)
 
     if (
       shouldInitializeMasterMetadata ||
