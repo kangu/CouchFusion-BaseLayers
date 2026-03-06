@@ -29,6 +29,14 @@ export interface TranslationLocaleExecutionResult {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+const parseJsonString = (value: string): unknown | null => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
 const normalizePointer = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null
@@ -157,6 +165,20 @@ const collectMinimarkStringPointers = (
         if (shouldSkipPropKey(propKey)) {
           continue
         }
+
+        if (propKey.startsWith(':') && typeof propValue === 'string') {
+          const normalizedKey = propKey.slice(1)
+          if (normalizedKey.length > 0) {
+            const parsed = parseJsonString(propValue)
+            collectStringPointersFromPropValue(
+              parsed ?? propValue,
+              [...path, propsIndex, normalizedKey],
+              pointers,
+            )
+            continue
+          }
+        }
+
         collectStringPointersFromPropValue(
           propValue,
           [...path, propsIndex, propKey],
@@ -177,6 +199,70 @@ const collectMinimarkStringPointers = (
   }
 }
 
+type ResolvedPointerTarget =
+  | {
+      mode: 'direct'
+      value: unknown
+      path: PathSegment[]
+    }
+  | {
+      mode: 'encoded'
+      value: unknown
+      encodedPath: PathSegment[]
+      nestedPath: PathSegment[]
+      parsedRoot: unknown
+    }
+
+const resolvePointerTarget = (
+  bodyValue: unknown,
+  path: PathSegment[],
+): ResolvedPointerTarget | null => {
+  const directValue = getValueAtPath(bodyValue, path)
+  if (typeof directValue !== 'undefined') {
+    return {
+      mode: 'direct',
+      value: directValue,
+      path,
+    }
+  }
+
+  for (let index = 0; index < path.length; index += 1) {
+    const segment = path[index]
+    if (typeof segment !== 'string' || segment.startsWith(':')) {
+      continue
+    }
+
+    const encodedPath = [...path.slice(0, index), `:${segment}`]
+    const encodedRaw = getValueAtPath(bodyValue, encodedPath)
+    if (typeof encodedRaw !== 'string') {
+      continue
+    }
+
+    const parsedRoot = parseJsonString(encodedRaw)
+    if (parsedRoot === null) {
+      continue
+    }
+
+    const nestedPath = path.slice(index + 1)
+    const encodedValue =
+      nestedPath.length > 0 ? getValueAtPath(parsedRoot, nestedPath) : parsedRoot
+
+    if (typeof encodedValue === 'undefined') {
+      continue
+    }
+
+    return {
+      mode: 'encoded',
+      value: encodedValue,
+      encodedPath,
+      nestedPath,
+      parsedRoot,
+    }
+  }
+
+  return null
+}
+
 export const collectTranslatableTextEntries = (
   bodyValue: unknown,
   fixedBodyPaths: string[],
@@ -189,11 +275,28 @@ export const collectTranslatableTextEntries = (
   return Array.from(new Set(stringPointers))
     .filter((pointer) => pointerMatchesScope(pointer, scopeMode, scopePointer))
     .filter((pointer) => !pointerIsFixed(pointer, fixedBodyPaths))
-    .map((pointer) => ({
-      pointer,
-      text: String(getValueAtPath(bodyValue, parseBodyPathPointer(pointer)) ?? ''),
-    }))
+    .map((pointer) => {
+      const path = parseBodyPathPointer(pointer)
+      const resolved = resolvePointerTarget(bodyValue, path)
+      return {
+        pointer,
+        text: String(resolved?.value ?? ''),
+      }
+    })
     .filter((entry) => entry.text.trim().length > 0)
+}
+
+export const readPointerTextValue = (
+  bodyValue: unknown,
+  pointer: string,
+): string => {
+  const path = parseBodyPathPointer(pointer)
+  if (!path.length) {
+    return ''
+  }
+
+  const resolved = resolvePointerTarget(bodyValue, path)
+  return typeof resolved?.value === 'string' ? resolved.value : ''
 }
 
 interface ParsedTranslationResponse {
@@ -456,13 +559,31 @@ export const applyTranslationsToBody = (
       continue
     }
 
-    const currentValue = getValueAtPath(nextBody, path)
+    const target = resolvePointerTarget(nextBody, path)
+    if (!target) {
+      skippedCount += 1
+      continue
+    }
+
+    const currentValue = target.value
     if (overwriteMode === 'missing' && !isLocalizedValueMissing(currentValue)) {
       skippedCount += 1
       continue
     }
 
-    nextBody = setValueAtPath(nextBody, path, translatedValue)
+    if (target.mode === 'direct') {
+      nextBody = setValueAtPath(nextBody, target.path, translatedValue)
+    } else {
+      const nextParsedRoot =
+        target.nestedPath.length > 0
+          ? setValueAtPath(target.parsedRoot, target.nestedPath, translatedValue)
+          : translatedValue
+      nextBody = setValueAtPath(
+        nextBody,
+        target.encodedPath,
+        JSON.stringify(nextParsedRoot),
+      )
+    }
     appliedCount += 1
   }
 
@@ -488,10 +609,9 @@ export const resolveFixedBodyPaths = (
   incomingFixedBodyPaths: unknown,
   existingFixedBodyPaths: unknown,
 ): string[] => {
-  return Array.from(
-    new Set([
-      ...normalizeFixedBodyPaths(existingFixedBodyPaths),
-      ...normalizeFixedBodyPaths(incomingFixedBodyPaths),
-    ]),
-  ).sort()
+  const incoming = normalizeFixedBodyPaths(incomingFixedBodyPaths)
+  if (incoming.length > 0) {
+    return incoming
+  }
+  return normalizeFixedBodyPaths(existingFixedBodyPaths)
 }

@@ -60,10 +60,18 @@ const normalizeFixedBodyPaths = (value: unknown): string[] => {
   ).sort()
 }
 
-const mergeFixedBodyPaths = (...entries: Array<unknown>): string[] => {
-  return Array.from(
-    new Set(entries.flatMap((entry) => normalizeFixedBodyPaths(entry))),
-  ).sort()
+const resolveEffectiveFixedBodyPaths = (
+  existingFixedBodyPaths: unknown,
+  incomingFixedBodyPaths: unknown,
+): string[] => {
+  const incoming = normalizeFixedBodyPaths(incomingFixedBodyPaths)
+  if (incoming.length > 0) {
+    // Builder-supplied fixed paths reflect the current component schema and
+    // prevent stale master metadata from forcing unrelated propagation.
+    return incoming
+  }
+
+  return normalizeFixedBodyPaths(existingFixedBodyPaths)
 }
 
 const getIncomingFixedBodyPaths = (document: Record<string, any>): string[] => {
@@ -224,7 +232,7 @@ export const saveLocalizedPageDocument = async (
       contentI18nConfig,
     )
 
-    fixedBodyPaths = mergeFixedBodyPaths(
+    fixedBodyPaths = resolveEffectiveFixedBodyPaths(
       existingMasterMeta.fixedBodyPaths,
       getIncomingFixedBodyPaths(payload.document),
     )
@@ -325,7 +333,7 @@ export const saveLocalizedPageDocument = async (
       masterBase,
       contentI18nConfig,
     )
-    fixedBodyPaths = mergeFixedBodyPaths(
+    fixedBodyPaths = resolveEffectiveFixedBodyPaths(
       masterMeta.fixedBodyPaths,
       getIncomingFixedBodyPaths(payload.document),
     )

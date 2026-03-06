@@ -196,6 +196,9 @@ const stagedDocumentsByLocale = ref<Record<string, MinimalContentDocument>>({});
 const translationTargetLocales = ref<string[]>([]);
 const translationOverwriteMode = ref<LlmTranslationOverwriteMode>("missing");
 const translationScopeLabel = ref<string | null>(null);
+const pendingTranslationPayload = ref<TranslateScopePayload | null>(null);
+const translationConfigError = ref<string | null>(null);
+const isTranslationConfigDialogOpen = ref(false);
 const isTranslationDialogOpen = ref(false);
 const isTranslationPersistPendingByLocale = ref<Record<string, boolean>>({});
 const persistedTranslationLocales = ref<Record<string, string>>({});
@@ -392,6 +395,10 @@ const translationModalSubtitle = computed(() => {
         ? translationTargetLocales.value.join(", ")
         : "none selected";
     return `Scope: ${scopeLabel}. From ${activeLocale.value} to ${targets}.`;
+});
+const translationConfigModalSubtitle = computed(() => {
+    const scopeLabel = pendingTranslationPayload.value?.label?.trim() || "Page";
+    return `Scope: ${scopeLabel}. Source locale: ${activeLocale.value}.`;
 });
 const translationHasDialogContent = computed(
     () =>
@@ -697,6 +704,9 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
         stagedDocumentsByLocale.value = {};
         resetTranslationPersistenceState();
         translationScopeLabel.value = null;
+        pendingTranslationPayload.value = null;
+        translationConfigError.value = null;
+        isTranslationConfigDialogOpen.value = false;
         translationNotice.value = null;
         isTranslationDialogOpen.value = false;
         resetTranslationState();
@@ -1469,6 +1479,67 @@ const closeTranslationDialog = (): void => {
     isTranslationDialogOpen.value = false;
 };
 
+const openTranslationConfigDialog = (payload: TranslateScopePayload): void => {
+    if (!selectedSummary.value) {
+        setTranslationNotice("error", "Select a page before translating.");
+        return;
+    }
+
+    if (selectedHistoryId.value) {
+        const message = "Switch to Current version before running translation.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    pendingTranslationPayload.value = payload;
+    translationConfigError.value = null;
+    if (!translationTargetLocales.value.length) {
+        translationTargetLocales.value = [...translationLocaleOptions.value];
+    }
+    isTranslationConfigDialogOpen.value = true;
+};
+
+const closeTranslationConfigDialog = (): void => {
+    if (isTranslationPending.value) {
+        return;
+    }
+    isTranslationConfigDialogOpen.value = false;
+    pendingTranslationPayload.value = null;
+    translationConfigError.value = null;
+};
+
+const confirmTranslationConfigAndRun = async (): Promise<void> => {
+    if (isTranslationPending.value) {
+        return;
+    }
+
+    const payload = pendingTranslationPayload.value;
+    if (!payload) {
+        return;
+    }
+
+    if (!translationTargetLocales.value.length) {
+        translationConfigError.value = "Select at least one target locale.";
+        return;
+    }
+
+    isTranslationConfigDialogOpen.value = false;
+    pendingTranslationPayload.value = null;
+    translationConfigError.value = null;
+
+    try {
+        await runScopedTranslation(payload);
+    } catch (error: any) {
+        const message =
+            error instanceof Error
+                ? error.message
+                : String(error?.message ?? "Translation failed");
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+    }
+};
+
 const persistTranslatedLocale = async (locale: string): Promise<void> => {
     if (isTranslationPending.value || isLocaleTranslationPersistPending(locale)) {
         return;
@@ -1555,16 +1626,7 @@ const persistTranslatedLocale = async (locale: string): Promise<void> => {
 const handleTranslateScope = async (
     payload: TranslateScopePayload,
 ): Promise<void> => {
-    try {
-        await runScopedTranslation(payload);
-    } catch (error: any) {
-        const message =
-            error instanceof Error
-                ? error.message
-                : String(error?.message ?? "Translation failed");
-        setTranslationNotice("error", message);
-        feedback.value.error?.(message);
-    }
+    openTranslationConfigDialog(payload);
 };
 
 const handleTranslatePage = async (): Promise<void> => {
@@ -1760,6 +1822,9 @@ async function handleDeletePage(): Promise<void> {
         stagedDocumentsByLocale.value = {};
         resetTranslationPersistenceState();
         translationScopeLabel.value = null;
+        pendingTranslationPayload.value = null;
+        translationConfigError.value = null;
+        isTranslationConfigDialogOpen.value = false;
         isTranslationDialogOpen.value = false;
         resetTranslationState();
         lastSavedAt.value = null;
@@ -1970,53 +2035,23 @@ defineExpose({
                             </option>
                         </select>
                     </label>
-                    <div
-                        class="editor-header__translation-controls"
+                    <button
                         v-if="selectedSummary"
+                        type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--muted"
+                        :disabled="
+                            isTranslationPending ||
+                            !translationLocaleOptions.length ||
+                            !!selectedHistoryId
+                        "
+                        @click="handleTranslatePage"
                     >
-                        <div class="editor-header__translation-targets">
-                            <span>Translate to</span>
-                            <label
-                                v-for="locale in translationLocaleOptions"
-                                :key="`target-${locale}`"
-                                class="editor-header__translation-target"
-                            >
-                                <input
-                                    v-model="translationTargetLocales"
-                                    type="checkbox"
-                                    :value="locale"
-                                    :disabled="isTranslationPending"
-                                />
-                                <span>{{ locale }}</span>
-                            </label>
-                        </div>
-                        <label class="editor-header__translation-overwrite">
-                            <span>Overwrite</span>
-                            <select
-                                v-model="translationOverwriteMode"
-                                :disabled="isTranslationPending"
-                            >
-                                <option value="missing">Missing only</option>
-                                <option value="all">All values</option>
-                            </select>
-                        </label>
-                        <button
-                            type="button"
-                            class="content-admin-workbench__button content-admin-workbench__button--muted"
-                            :disabled="
-                                isTranslationPending ||
-                                !translationTargetLocales.length ||
-                                !!selectedHistoryId
-                            "
-                            @click="handleTranslatePage"
-                        >
-                            <span>{{
-                                isTranslationPending
-                                    ? "Translating..."
-                                    : "Translate Page"
-                            }}</span>
-                        </button>
-                    </div>
+                        <span>{{
+                            isTranslationPending
+                                ? "Translating..."
+                                : "Translate"
+                        }}</span>
+                    </button>
                     <label class="editor-header__motion-toggle" title="Preview motion preference">
                       <input
                           v-model="forcePreviewMotion"
@@ -2563,6 +2598,121 @@ defineExpose({
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <Teleport to="body">
+            <Transition name="fade">
+                <div
+                    v-if="isTranslationConfigDialogOpen"
+                    class="content-admin-workbench__modal"
+                >
+                    <div
+                        class="modal__backdrop"
+                        @click="closeTranslationConfigDialog"
+                    />
+                    <div
+                        class="modal__panel modal__panel--translation"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div class="modal__header">
+                            <div>
+                                <h2 class="modal__title">Start translation</h2>
+                                <p class="modal__subtitle">
+                                    {{ translationConfigModalSubtitle }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="modal__close"
+                                aria-label="Close"
+                                :disabled="isTranslationPending"
+                                @click="closeTranslationConfigDialog"
+                            >
+                                <svg
+                                    class="h-5 w-5"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill="currentColor"
+                                        d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12Z"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="translation-config__content">
+                            <label class="translation-config__field">
+                                <span class="translation-config__label">
+                                    Destination locales
+                                </span>
+                                <div class="translation-config__targets">
+                                    <label
+                                        v-for="locale in translationLocaleOptions"
+                                        :key="`target-${locale}`"
+                                        class="editor-header__translation-target"
+                                    >
+                                        <input
+                                            v-model="translationTargetLocales"
+                                            type="checkbox"
+                                            :value="locale"
+                                            :disabled="isTranslationPending"
+                                        />
+                                        <span>{{ locale }}</span>
+                                    </label>
+                                </div>
+                            </label>
+
+                            <label class="translation-config__field">
+                                <span class="translation-config__label">
+                                    Overwrite mode
+                                </span>
+                                <select
+                                    v-model="translationOverwriteMode"
+                                    class="translation-config__select"
+                                    :disabled="isTranslationPending"
+                                >
+                                    <option value="missing">Missing only</option>
+                                    <option value="all">All values</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div
+                            v-if="translationConfigError"
+                            class="modal__notice modal__notice--error"
+                        >
+                            {{ translationConfigError }}
+                        </div>
+
+                        <div class="modal__actions">
+                            <button
+                                type="button"
+                                class="content-admin-workbench__button content-admin-workbench__button--muted"
+                                :class="ui.modalCancelButton"
+                                :disabled="isTranslationPending"
+                                @click="closeTranslationConfigDialog"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                class="content-admin-workbench__button content-admin-workbench__button--primary"
+                                :class="ui.modalSaveButton"
+                                :disabled="
+                                    isTranslationPending ||
+                                    !translationTargetLocales.length
+                                "
+                                @click="confirmTranslationConfigAndRun"
+                            >
+                                Start translation
+                            </button>
+                        </div>
                     </div>
                 </div>
             </Transition>
@@ -3211,6 +3361,43 @@ defineExpose({
     background: #ffffff;
     color: #0f172a;
     font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.translation-config__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.translation-config__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.translation-config__label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.translation-config__targets {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.translation-config__select {
+    min-width: 140px;
+    width: fit-content;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.8rem;
     font-weight: 600;
 }
 

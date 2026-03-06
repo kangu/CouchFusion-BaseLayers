@@ -111,6 +111,24 @@ function normalizeClass(value: unknown) {
     return value;
 }
 
+const JSON_NUMBER_PATTERN = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+const isLikelyJsonString = (value: string) => {
+    if (!value.length || value === "undefined") {
+        return false;
+    }
+    const first = value[0];
+    if (first === "{" || first === "[" || first === '"') {
+        return true;
+    }
+    return (
+        value === "true" ||
+        value === "false" ||
+        value === "null" ||
+        JSON_NUMBER_PATTERN.test(value)
+    );
+};
+
 function normalizeProps(
     raw: Record<string, unknown>,
     localeContext: Pick<RenderContext, "locale" | "defaultLocale" | "i18nEnabled">,
@@ -138,13 +156,27 @@ function normalizeProps(
             const value = props[key];
 
             if (typeof value === "string") {
+                const trimmed = value.trim();
+                if (!trimmed.length || trimmed === "undefined") {
+                    delete props[key];
+                    continue;
+                }
+
+                if (!isLikelyJsonString(trimmed)) {
+                    boundEntries[targetKey] = value;
+                    delete props[key];
+                    continue;
+                }
+
                 try {
-                    boundEntries[targetKey] = JSON.parse(value);
+                    boundEntries[targetKey] = JSON.parse(trimmed);
                 } catch (error) {
+                    const reason =
+                        error instanceof Error
+                            ? error.message
+                            : String(error);
                     console.warn(
-                        "[content-layer] Failed to parse bound prop JSON:",
-                        targetKey,
-                        error,
+                        `[content-layer] Failed to parse bound prop JSON: ${targetKey} (${reason})`,
                     );
                     boundEntries[targetKey] = value;
                 }

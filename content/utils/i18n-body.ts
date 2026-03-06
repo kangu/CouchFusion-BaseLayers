@@ -36,6 +36,18 @@ const toPointer = (segments: PathSegment[]): string =>
 const propShouldBeSkipped = (key: string): boolean =>
   key.startsWith("__builder") || key.startsWith("__content");
 
+const parseSerializedPropValue = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
 const collectFixedValuePaths = (
   value: unknown,
   schema: ComponentPropSchema | ComponentArrayItemField | undefined,
@@ -163,10 +175,18 @@ export const collectFixedBodyPaths = (
       (definition?.props ?? []).map((schema) => [schema.key, schema]),
     );
 
-    for (const [propKey, propValue] of Object.entries(rawProps)) {
-      if (propShouldBeSkipped(propKey)) {
+    for (const [rawPropKey, rawPropValue] of Object.entries(rawProps)) {
+      if (propShouldBeSkipped(rawPropKey)) {
         continue;
       }
+
+      const normalizedPropKey = rawPropKey.startsWith(":")
+        ? rawPropKey.slice(1)
+        : rawPropKey;
+      const propKey = normalizedPropKey || rawPropKey;
+      const propValue = rawPropKey.startsWith(":")
+        ? parseSerializedPropValue(rawPropValue)
+        : rawPropValue;
 
       collectFixedValuePaths(
         propValue,

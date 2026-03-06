@@ -246,6 +246,107 @@ const deepValueEqual = (left: unknown, right: unknown): boolean => {
 export const valuesDeepEqual = (left: unknown, right: unknown): boolean =>
   deepValueEqual(left, right)
 
+const parseJsonString = (value: string): unknown | null => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+type ResolvedBodyPointerTarget =
+  | {
+      mode: 'direct'
+      value: unknown
+      path: PathSegment[]
+    }
+  | {
+      mode: 'encoded'
+      value: unknown
+      encodedPath: PathSegment[]
+      nestedPath: PathSegment[]
+      parsedRoot: unknown
+    }
+
+const resolveBodyPointerTarget = (
+  bodyValue: unknown,
+  path: PathSegment[],
+): ResolvedBodyPointerTarget | null => {
+  const directValue = getValueAtPath(bodyValue, path)
+  if (typeof directValue !== 'undefined') {
+    return {
+      mode: 'direct',
+      value: directValue,
+      path,
+    }
+  }
+
+  for (let index = 0; index < path.length; index += 1) {
+    const segment = path[index]
+    if (typeof segment !== 'string' || segment.startsWith(':')) {
+      continue
+    }
+
+    const encodedPath = [...path.slice(0, index), `:${segment}`]
+    const encodedRaw = getValueAtPath(bodyValue, encodedPath)
+    if (typeof encodedRaw !== 'string') {
+      continue
+    }
+
+    const parsedRoot = parseJsonString(encodedRaw)
+    if (parsedRoot === null) {
+      continue
+    }
+
+    const nestedPath = path.slice(index + 1)
+    const encodedValue =
+      nestedPath.length > 0 ? getValueAtPath(parsedRoot, nestedPath) : parsedRoot
+
+    if (typeof encodedValue === 'undefined') {
+      continue
+    }
+
+    return {
+      mode: 'encoded',
+      value: encodedValue,
+      encodedPath,
+      nestedPath,
+      parsedRoot,
+    }
+  }
+
+  return null
+}
+
+const getBodyPointerValue = (bodyValue: unknown, path: PathSegment[]): unknown =>
+  resolveBodyPointerTarget(bodyValue, path)?.value
+
+const setBodyPointerValue = (
+  bodyValue: unknown,
+  path: PathSegment[],
+  value: unknown,
+): unknown => {
+  const target = resolveBodyPointerTarget(bodyValue, path)
+  if (!target) {
+    return bodyValue
+  }
+
+  if (target.mode === 'direct') {
+    return setValueAtPath(bodyValue, target.path, clonePlain(value))
+  }
+
+  const nextParsedRoot =
+    target.nestedPath.length > 0
+      ? setValueAtPath(target.parsedRoot, target.nestedPath, clonePlain(value))
+      : clonePlain(value)
+
+  return setValueAtPath(
+    bodyValue,
+    target.encodedPath,
+    JSON.stringify(nextParsedRoot),
+  )
+}
+
 export const collectChangedFixedBodyPaths = (
   previousBodyValue: unknown,
   nextBodyValue: unknown,
@@ -259,8 +360,8 @@ export const collectChangedFixedBodyPaths = (
       continue
     }
 
-    const previousValue = getValueAtPath(previousBodyValue, path)
-    const nextValue = getValueAtPath(nextBodyValue, path)
+    const previousValue = getBodyPointerValue(previousBodyValue, path)
+    const nextValue = getBodyPointerValue(nextBodyValue, path)
 
     if (!deepValueEqual(previousValue, nextValue)) {
       changed.push(pointer)
@@ -283,8 +384,11 @@ export const applyFixedBodyPaths = (
       continue
     }
 
-    const masterValueAtPath = getValueAtPath(masterBodyValue, path)
-    nextBodyValue = setValueAtPath(nextBodyValue, path, clonePlain(masterValueAtPath))
+    const masterValueAtPath = getBodyPointerValue(masterBodyValue, path)
+    if (typeof masterValueAtPath === 'undefined') {
+      continue
+    }
+    nextBodyValue = setBodyPointerValue(nextBodyValue, path, masterValueAtPath)
   }
 
   return nextBodyValue
@@ -303,8 +407,11 @@ export const applyBodyPathsFromSource = (
       continue
     }
 
-    const sourceValueAtPath = getValueAtPath(sourceBodyValue, path)
-    nextBodyValue = setValueAtPath(nextBodyValue, path, clonePlain(sourceValueAtPath))
+    const sourceValueAtPath = getBodyPointerValue(sourceBodyValue, path)
+    if (typeof sourceValueAtPath === 'undefined') {
+      continue
+    }
+    nextBodyValue = setBodyPointerValue(nextBodyValue, path, sourceValueAtPath)
   }
 
   return nextBodyValue

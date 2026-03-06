@@ -2,7 +2,6 @@ import { createError, defineEventHandler, readBody } from 'h3'
 import { getAllDocs } from '#database/utils/couchdb'
 import {
   buildLocalizedPath,
-  getValueAtPath,
   isLocalizedValueMissing,
   resolveContentLocalePath,
 } from '#content/utils/i18n'
@@ -13,7 +12,6 @@ import { requireAdminSession } from '../../../utils/auth'
 import {
   buildLocaleDocumentIds,
   getLocaleDocumentId,
-  parseBodyPathPointer,
   readContentDocumentLocalizationMeta,
   resolveRequestedLocale,
   resolveRuntimeContentI18nConfig,
@@ -22,6 +20,7 @@ import {
 import {
   applyTranslationsToBody,
   collectTranslatableTextEntries,
+  readPointerTextValue,
   resolveFixedBodyPaths,
   resolveScopePointer,
   runLocaleTranslation,
@@ -298,12 +297,10 @@ export default defineEventHandler(async (event) => {
 
       const eligibleEntries = sourceEntries
         .map((entry) => {
-          const targetValue = getValueAtPath(
+          const normalizedTargetText = readPointerTextValue(
             baseMinimal.body.value,
-            parseBodyPathPointer(entry.pointer),
+            entry.pointer,
           )
-          const normalizedTargetText =
-            typeof targetValue === 'string' ? targetValue : ''
 
           return {
             ...entry,
