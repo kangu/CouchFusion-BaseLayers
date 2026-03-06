@@ -175,9 +175,13 @@ function normalizeProps(
                         error instanceof Error
                             ? error.message
                             : String(error);
-                    console.warn(
-                        `[content-layer] Failed to parse bound prop JSON: ${targetKey} (${reason})`,
-                    );
+                    const incompleteJson =
+                        reason.includes("Unexpected end of JSON input");
+                    if (!incompleteJson) {
+                        console.warn(
+                            `[content-layer] Failed to parse bound prop JSON: ${targetKey} (${reason})`,
+                        );
+                    }
                     boundEntries[targetKey] = value;
                 }
             } else {

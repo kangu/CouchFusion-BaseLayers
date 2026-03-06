@@ -37,6 +37,7 @@ import type {
 import { useContentPagesStore } from "#content/app/stores/pages";
 import {
     useLlmTranslations,
+    type LlmTranslationLocaleReportEntry,
     type LlmTranslationOverwriteMode,
     type LlmTranslationScopeMode,
 } from "#content/app/composables/useLlmTranslations";
@@ -200,8 +201,13 @@ const pendingTranslationPayload = ref<TranslateScopePayload | null>(null);
 const translationConfigError = ref<string | null>(null);
 const isTranslationConfigDialogOpen = ref(false);
 const isTranslationDialogOpen = ref(false);
+const selectedTranslationResultLocale = ref<string | null>(null);
+const isPersistAllTranslationsPending = ref(false);
 const isTranslationPersistPendingByLocale = ref<Record<string, boolean>>({});
 const persistedTranslationLocales = ref<Record<string, string>>({});
+const translationDraftValuesByLocale = ref<Record<string, Record<string, string>>>(
+    {},
+);
 const translationDebugByLocale = ref<
     Record<
         string,
@@ -380,6 +386,26 @@ const missingLocalizedCount = computed(
 const translationLocaleResults = computed(
     () => translationLastResult.value?.report.localeResults ?? [],
 );
+const activeTranslationLocaleResult = computed(() => {
+    const current = selectedTranslationResultLocale.value;
+    if (current) {
+        const matched = translationLocaleResults.value.find(
+            (entry) => entry.locale === current,
+        );
+        if (matched) {
+            return matched;
+        }
+    }
+    return translationLocaleResults.value[0] ?? null;
+});
+const hasPersistableTranslationLocales = computed(() =>
+    translationLocaleResults.value.some(
+        (entry) =>
+            entry.status === "ok" &&
+            !!stagedDocumentsByLocale.value[entry.locale] &&
+            !isLocaleTranslationPersisted(entry.locale),
+    ),
+);
 const translationCompletedAtDisplay = computed(() =>
     formatTimestamp(translationLastResult.value?.report.completedAt ?? null),
 );
@@ -513,6 +539,59 @@ watch(
         };
         isTranslationDialogOpen.value = true;
     },
+);
+
+watch(
+    () => translationLocaleResults.value.map((entry) => entry.locale),
+    (locales) => {
+        if (!locales.length) {
+            selectedTranslationResultLocale.value = null;
+            return;
+        }
+        if (
+            !selectedTranslationResultLocale.value ||
+            !locales.includes(selectedTranslationResultLocale.value)
+        ) {
+            selectedTranslationResultLocale.value = locales[0];
+        }
+    },
+    { immediate: true },
+);
+
+watch(
+    () => translationLastResult.value,
+    (result) => {
+        if (!result) {
+            translationDraftValuesByLocale.value = {};
+            return;
+        }
+
+        const nextDrafts: Record<string, Record<string, string>> = {};
+        for (const entry of result.report.localeResults) {
+            if (entry.status !== "ok" || !Array.isArray(entry.translations)) {
+                continue;
+            }
+            nextDrafts[entry.locale] = Object.fromEntries(
+                entry.translations
+                    .filter(
+                        (
+                            row,
+                        ): row is {
+                            key: string;
+                            value: string;
+                        } =>
+                            Boolean(
+                                row &&
+                                    typeof row.key === "string" &&
+                                    typeof row.value === "string",
+                            ),
+                    )
+                    .map((row) => [row.key, row.value]),
+            );
+        }
+        translationDraftValuesByLocale.value = nextDrafts;
+    },
+    { immediate: true },
 );
 
 watch(
@@ -1340,9 +1419,229 @@ function getTranslationLocaleDebugDump(locale: string): string {
     return JSON.stringify(payload, null, 2);
 }
 
+function getTranslationDraftValue(
+    locale: string,
+    key: string,
+    fallback = "",
+): string {
+    const localeDrafts = translationDraftValuesByLocale.value[locale];
+    const value = localeDrafts?.[key];
+    return typeof value === "string" ? value : fallback;
+}
+
+function isTranslationDraftChanged(
+    locale: string,
+    key: string,
+    original: string,
+): boolean {
+    return getTranslationDraftValue(locale, key, original) !== original;
+}
+
+function isTranslationDraftEditable(locale: string): boolean {
+    return (
+        !isLocaleTranslationPersistPending(locale) &&
+        !isLocaleTranslationPersisted(locale)
+    );
+}
+
+const INTEGER_POINTER_SEGMENT = /^(?:0|[1-9]\d*)$/;
+
+function decodePointerSegment(segment: string): string {
+    return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function parseBodyPointer(pointer: string): string[] | null {
+    if (typeof pointer !== "string" || !pointer.startsWith("/")) {
+        return null;
+    }
+    const segments = pointer
+        .split("/")
+        .slice(1)
+        .map((segment) => decodePointerSegment(segment));
+    return segments.length ? segments : null;
+}
+
+function resolveContainerSegment(
+    container: unknown,
+    segment: string,
+): string | number {
+    if (Array.isArray(container) && INTEGER_POINTER_SEGMENT.test(segment)) {
+        return Number.parseInt(segment, 10);
+    }
+    return segment;
+}
+
+function setBodyPointerStringValue(
+    bodyValue: unknown,
+    pointer: string,
+    value: string,
+): boolean {
+    const segments = parseBodyPointer(pointer);
+    if (!segments || !segments.length) {
+        return false;
+    }
+
+    let cursor: any = bodyValue;
+    for (let index = 0; index < segments.length - 1; index += 1) {
+        const key = resolveContainerSegment(cursor, segments[index]);
+        if (Array.isArray(cursor)) {
+            if (
+                typeof key !== "number" ||
+                key < 0 ||
+                key >= cursor.length ||
+                typeof cursor[key] === "undefined"
+            ) {
+                return false;
+            }
+            cursor = cursor[key];
+            continue;
+        }
+        if (!cursor || typeof cursor !== "object" || !(key in cursor)) {
+            return false;
+        }
+        cursor = cursor[key];
+    }
+
+    const leafKey = resolveContainerSegment(cursor, segments[segments.length - 1]);
+    if (Array.isArray(cursor)) {
+        if (
+            typeof leafKey !== "number" ||
+            leafKey < 0 ||
+            leafKey >= cursor.length
+        ) {
+            return false;
+        }
+        cursor[leafKey] = value;
+        return true;
+    }
+    if (!cursor || typeof cursor !== "object" || !(leafKey in cursor)) {
+        return false;
+    }
+    cursor[leafKey] = value;
+    return true;
+}
+
+function applyTranslationDraftToStagedDocument(
+    locale: string,
+    pointer: string,
+    value: string,
+): boolean {
+    const staged = stagedDocumentsByLocale.value[locale];
+    if (!staged?.body || !Array.isArray(staged.body.value)) {
+        return false;
+    }
+
+    const nextStaged = clonePlain(staged);
+    const applied = setBodyPointerStringValue(nextStaged.body.value, pointer, value);
+    if (!applied) {
+        return false;
+    }
+
+    stagedDocumentsByLocale.value = {
+        ...stagedDocumentsByLocale.value,
+        [locale]: nextStaged,
+    };
+    mergeTranslationLocaleDebug(locale, {
+        stagedMinimalDocument: cloneMinimalForDebug(nextStaged),
+    });
+    return true;
+}
+
+function applyAllDraftsToStagedDocument(locale: string): MinimalContentDocument | null {
+    const staged = stagedDocumentsByLocale.value[locale];
+    if (!staged?.body || !Array.isArray(staged.body.value)) {
+        return null;
+    }
+
+    const localeDrafts = translationDraftValuesByLocale.value[locale] ?? {};
+    const nextStaged = clonePlain(staged);
+    for (const [pointer, value] of Object.entries(localeDrafts)) {
+        setBodyPointerStringValue(nextStaged.body.value, pointer, value);
+    }
+
+    stagedDocumentsByLocale.value = {
+        ...stagedDocumentsByLocale.value,
+        [locale]: nextStaged,
+    };
+    mergeTranslationLocaleDebug(locale, {
+        stagedMinimalDocument: cloneMinimalForDebug(nextStaged),
+    });
+    return nextStaged;
+}
+
+function updateTranslationDraft(
+    locale: string,
+    key: string,
+    value: string,
+): void {
+    const localeDrafts = translationDraftValuesByLocale.value[locale] ?? {};
+    translationDraftValuesByLocale.value = {
+        ...translationDraftValuesByLocale.value,
+        [locale]: {
+            ...localeDrafts,
+            [key]: value,
+        },
+    };
+
+    if (!isTranslationDraftEditable(locale)) {
+        return;
+    }
+
+    const applied = applyTranslationDraftToStagedDocument(locale, key, value);
+    if (!applied) {
+        console.warn(
+            `[content][llm-translations] Unable to apply staged draft value for ${locale} at ${key}`,
+        );
+    }
+}
+
+function handleTranslationDraftInput(
+    locale: string,
+    key: string,
+    event: Event,
+): void {
+    const target = event.target as HTMLTextAreaElement | null;
+    if (!target) {
+        return;
+    }
+    updateTranslationDraft(locale, key, target.value);
+}
+
+function getTranslationLocalePersistState(
+    entry: LlmTranslationLocaleReportEntry,
+): {
+    label: string;
+    className: string;
+} {
+    if (entry.status !== "ok") {
+        return {
+            label: "failed",
+            className: "translation-modal__locale-persist-state--error",
+        };
+    }
+    if (isLocaleTranslationPersistPending(entry.locale)) {
+        return {
+            label: "persisting",
+            className: "translation-modal__locale-persist-state--pending",
+        };
+    }
+    if (isLocaleTranslationPersisted(entry.locale)) {
+        return {
+            label: "persisted",
+            className: "translation-modal__locale-persist-state--persisted",
+        };
+    }
+    return {
+        label: "not persisted",
+        className: "translation-modal__locale-persist-state--staged",
+    };
+}
+
 function resetTranslationPersistenceState(): void {
     isTranslationPersistPendingByLocale.value = {};
     persistedTranslationLocales.value = {};
+    isPersistAllTranslationsPending.value = false;
+    translationDraftValuesByLocale.value = {};
     translationDebugByLocale.value = {};
 }
 
@@ -1553,7 +1852,9 @@ const persistTranslatedLocale = async (locale: string): Promise<void> => {
         return;
     }
 
-    const staged = stagedDocumentsByLocale.value[locale];
+    const staged =
+        applyAllDraftsToStagedDocument(locale) ??
+        stagedDocumentsByLocale.value[locale];
     if (!staged) {
         const message = `No staged translation available for ${locale}.`;
         setTranslationNotice("error", message);
@@ -1620,6 +1921,36 @@ const persistTranslatedLocale = async (locale: string): Promise<void> => {
         feedback.value.error?.(message);
     } finally {
         setLocaleTranslationPersistPending(locale, false);
+    }
+};
+
+const persistAllTranslatedLocales = async (): Promise<void> => {
+    if (isTranslationPending.value || isPersistAllTranslationsPending.value) {
+        return;
+    }
+
+    const locales = translationLocaleResults.value
+        .filter((entry) => entry.status === "ok")
+        .map((entry) => entry.locale)
+        .filter(
+            (locale) =>
+                !!stagedDocumentsByLocale.value[locale] &&
+                !isLocaleTranslationPersistPending(locale) &&
+                !isLocaleTranslationPersisted(locale),
+        );
+
+    if (!locales.length) {
+        setTranslationNotice("error", "No staged locale translations to persist.");
+        return;
+    }
+
+    isPersistAllTranslationsPending.value = true;
+    try {
+        for (const locale of locales) {
+            await persistTranslatedLocale(locale);
+        }
+    } finally {
+        isPersistAllTranslationsPending.value = false;
     }
 };
 
@@ -2729,7 +3060,7 @@ defineExpose({
                         @click="closeTranslationDialog"
                     />
                     <div
-                        class="modal__panel modal__panel--translation"
+                        class="modal__panel modal__panel--translation modal__panel--translation-results"
                         role="dialog"
                         aria-modal="true"
                     >
@@ -2761,154 +3092,292 @@ defineExpose({
                             </button>
                         </div>
 
-                        <div
-                            v-if="translationNotice"
-                            class="modal__notice"
-                            :class="
-                                translationNotice.type === 'error'
-                                    ? 'modal__notice--error'
-                                    : 'modal__notice--success'
-                            "
-                        >
-                            {{ translationNotice.message }}
-                        </div>
-
-                        <div
-                            v-if="isTranslationPending"
-                            class="editor-header__translation-progress"
-                        >
-                            <div class="editor-header__translation-progress-head">
-                                <strong>Translating selected scope</strong>
-                                <span>Please wait…</span>
-                            </div>
-                            <div class="editor-header__translation-progress-track">
-                                <div class="editor-header__translation-progress-bar" />
-                            </div>
-                        </div>
-
-                        <div
-                            v-if="translationLastResult"
-                            class="editor-header__translation-report"
-                        >
-                            <span class="editor-header__translation-report-text">
-                                Source entries:
-                                {{ translationLastResult.report.totalSourceEntries }}.
-                                {{
-                                    translationCompletedAtDisplay
-                                        ? `Completed ${translationCompletedAtDisplay}.`
-                                        : ""
-                                }}
-                            </span>
+                        <div class="translation-modal__body">
                             <div
-                                v-if="translationLastResult.report.keyPoints.length"
-                                class="translation-modal__key-points"
+                                v-if="translationNotice"
+                                class="modal__notice"
+                                :class="
+                                    translationNotice.type === 'error'
+                                        ? 'modal__notice--error'
+                                        : 'modal__notice--success'
+                                "
                             >
-                                <p class="translation-modal__key-points-title">Key points</p>
-                                <p
-                                    v-for="(point, index) in translationLastResult.report.keyPoints"
-                                    :key="`translation-point-${index}`"
-                                    class="translation-modal__key-point"
-                                >
-                                    {{ point }}
-                                </p>
+                                {{ translationNotice.message }}
                             </div>
-                            <div class="translation-modal__locale-results">
-                                <article
-                                    v-for="entry in translationLocaleResults"
-                                    :key="`translation-result-${entry.locale}`"
-                                    class="translation-modal__locale-card"
+
+                            <div
+                                v-if="isTranslationPending"
+                                class="editor-header__translation-progress"
+                            >
+                                <div class="editor-header__translation-progress-head">
+                                    <strong>Translating selected scope</strong>
+                                    <span>Please wait…</span>
+                                </div>
+                                <div class="editor-header__translation-progress-track">
+                                    <div class="editor-header__translation-progress-bar" />
+                                </div>
+                            </div>
+
+                            <div
+                                v-if="translationLastResult"
+                                class="editor-header__translation-report"
+                            >
+                                <span class="editor-header__translation-report-text">
+                                    Source entries:
+                                    {{ translationLastResult.report.totalSourceEntries }}.
+                                    {{
+                                        translationCompletedAtDisplay
+                                            ? `Completed ${translationCompletedAtDisplay}.`
+                                            : ""
+                                    }}
+                                </span>
+                                <div
+                                    v-if="translationLastResult.report.keyPoints.length"
+                                    class="translation-modal__key-points"
                                 >
-                                    <div class="translation-modal__locale-head">
-                                        <strong>{{ entry.locale }}</strong>
-                                        <span
-                                            class="translation-modal__locale-status"
-                                            :class="
-                                                entry.status === 'ok'
-                                                    ? 'translation-modal__locale-status--ok'
-                                                    : 'translation-modal__locale-status--error'
-                                            "
-                                        >
-                                            {{
-                                                entry.status === "ok"
-                                                    ? `${entry.translatedCount} translated`
-                                                    : "failed"
-                                            }}
-                                        </span>
-                                    </div>
-
-                                    <div
-                                        v-if="entry.status === 'ok'"
-                                        class="translation-modal__locale-actions"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="editor-header__translation-locale-button"
-                                            :disabled="
-                                                isLocaleTranslationPersistPending(entry.locale) ||
-                                                isLocaleTranslationPersisted(entry.locale)
-                                            "
-                                            @click="persistTranslatedLocale(entry.locale)"
-                                        >
-                                            {{
-                                                isLocaleTranslationPersistPending(entry.locale)
-                                                    ? `Persisting ${entry.locale}…`
-                                                    : isLocaleTranslationPersisted(entry.locale)
-                                                        ? `Persisted ${entry.locale}`
-                                                        : `Persist ${entry.locale}`
-                                            }}
-                                        </button>
-                                        <button
-                                            v-if="isLocaleTranslationPersisted(entry.locale)"
-                                            type="button"
-                                            class="editor-header__translation-locale-button"
-                                            @click="openTranslatedLocale(entry.locale)"
-                                        >
-                                            Open {{ entry.locale }}
-                                        </button>
-                                    </div>
-
+                                    <p class="translation-modal__key-points-title">Key points</p>
                                     <p
-                                        v-if="entry.status !== 'ok'"
-                                        class="translation-modal__locale-error"
+                                        v-for="(point, index) in translationLastResult.report.keyPoints"
+                                        :key="`translation-point-${index}`"
+                                        class="translation-modal__key-point"
                                     >
-                                        {{ entry.error || "Unknown error" }}
+                                        {{ point }}
                                     </p>
-
+                                </div>
+                                <div class="translation-modal__locale-results">
                                     <div
-                                        v-if="
-                                            entry.status === 'ok' &&
-                                            Array.isArray(entry.translations) &&
-                                            entry.translations.length
-                                        "
-                                        class="translation-modal__translations"
+                                        v-if="translationLocaleResults.length"
+                                        class="translation-modal__tabs-head"
                                     >
-                                        <div
-                                            v-for="(translation, index) in entry.translations"
-                                            :key="`${entry.locale}-translation-${index}`"
-                                            class="translation-modal__translation-row"
-                                        >
-                                            <code class="translation-modal__translation-key">
-                                                {{ translation.key }}
-                                            </code>
-                                            <p class="translation-modal__translation-value">
-                                                {{ translation.value }}
-                                            </p>
+                                        <div class="translation-modal__tabs">
+                                            <button
+                                                v-for="entry in translationLocaleResults"
+                                                :key="`translation-tab-${entry.locale}`"
+                                                type="button"
+                                                class="translation-modal__tab"
+                                                :class="{
+                                                    'is-active':
+                                                        activeTranslationLocaleResult?.locale ===
+                                                        entry.locale,
+                                                }"
+                                                @click="selectedTranslationResultLocale = entry.locale"
+                                            >
+                                                <span>{{ entry.locale }}</span>
+                                                <span
+                                                    class="translation-modal__tab-status"
+                                                    :class="
+                                                        getTranslationLocalePersistState(entry).className
+                                                    "
+                                                >
+                                                    {{
+                                                        getTranslationLocalePersistState(entry).label
+                                                    }}
+                                                </span>
+                                            </button>
+                                        </div>
+                                        <div class="translation-modal__tabs-actions">
+                                            <button
+                                                type="button"
+                                                class="editor-header__translation-locale-button"
+                                                :disabled="
+                                                    isPersistAllTranslationsPending ||
+                                                    !hasPersistableTranslationLocales
+                                                "
+                                                @click="persistAllTranslatedLocales"
+                                            >
+                                                {{
+                                                    isPersistAllTranslationsPending
+                                                        ? "Persisting all…"
+                                                        : "Persist all"
+                                                }}
+                                            </button>
                                         </div>
                                     </div>
+
+                                    <article
+                                        v-if="activeTranslationLocaleResult"
+                                        :key="`translation-result-${activeTranslationLocaleResult.locale}`"
+                                        class="translation-modal__locale-card"
+                                    >
+                                        <div class="translation-modal__locale-head">
+                                            <strong>{{
+                                                activeTranslationLocaleResult.locale
+                                            }}</strong>
+                                            <div class="translation-modal__locale-head-status">
+                                                <span
+                                                    class="translation-modal__locale-status"
+                                                    :class="
+                                                        activeTranslationLocaleResult.status === 'ok'
+                                                            ? 'translation-modal__locale-status--ok'
+                                                            : 'translation-modal__locale-status--error'
+                                                    "
+                                                >
+                                                    {{
+                                                        activeTranslationLocaleResult.status === "ok"
+                                                            ? `${activeTranslationLocaleResult.translatedCount} translated`
+                                                            : "failed"
+                                                    }}
+                                                </span>
+                                                <span
+                                                    class="translation-modal__locale-persist-state"
+                                                    :class="
+                                                        getTranslationLocalePersistState(
+                                                            activeTranslationLocaleResult,
+                                                        ).className
+                                                    "
+                                                >
+                                                    {{
+                                                        getTranslationLocalePersistState(
+                                                            activeTranslationLocaleResult,
+                                                        ).label
+                                                    }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div
+                                            v-if="activeTranslationLocaleResult.status === 'ok'"
+                                            class="translation-modal__locale-actions"
+                                        >
+                                            <button
+                                                type="button"
+                                                class="editor-header__translation-locale-button"
+                                                :disabled="
+                                                    isLocaleTranslationPersistPending(
+                                                        activeTranslationLocaleResult.locale,
+                                                    ) ||
+                                                    isLocaleTranslationPersisted(
+                                                        activeTranslationLocaleResult.locale,
+                                                    )
+                                                "
+                                                @click="
+                                                    persistTranslatedLocale(
+                                                        activeTranslationLocaleResult.locale,
+                                                    )
+                                                "
+                                            >
+                                                {{
+                                                    isLocaleTranslationPersistPending(
+                                                        activeTranslationLocaleResult.locale,
+                                                    )
+                                                        ? `Persisting ${activeTranslationLocaleResult.locale}…`
+                                                        : isLocaleTranslationPersisted(
+                                                                activeTranslationLocaleResult.locale,
+                                                            )
+                                                            ? `Persisted ${activeTranslationLocaleResult.locale}`
+                                                            : `Persist ${activeTranslationLocaleResult.locale}`
+                                                }}
+                                            </button>
+                                            <button
+                                                v-if="
+                                                    isLocaleTranslationPersisted(
+                                                        activeTranslationLocaleResult.locale,
+                                                    )
+                                                "
+                                                type="button"
+                                                class="editor-header__translation-locale-button"
+                                                @click="
+                                                    openTranslatedLocale(
+                                                        activeTranslationLocaleResult.locale,
+                                                    )
+                                                "
+                                            >
+                                                Open {{ activeTranslationLocaleResult.locale }}
+                                            </button>
+                                        </div>
+
+                                        <p
+                                            v-if="activeTranslationLocaleResult.status !== 'ok'"
+                                            class="translation-modal__locale-error"
+                                        >
+                                            {{
+                                                activeTranslationLocaleResult.error ||
+                                                "Unknown error"
+                                            }}
+                                        </p>
+
+                                        <div
+                                            v-if="
+                                                activeTranslationLocaleResult.status === 'ok' &&
+                                                Array.isArray(
+                                                    activeTranslationLocaleResult.translations,
+                                                ) &&
+                                                activeTranslationLocaleResult.translations.length
+                                            "
+                                            class="translation-modal__translations"
+                                        >
+                                            <div
+                                                v-for="(
+                                                    translation, index
+                                                ) in activeTranslationLocaleResult.translations"
+                                                :key="`${activeTranslationLocaleResult.locale}-translation-${index}`"
+                                                class="translation-modal__translation-row"
+                                            >
+                                                <code class="translation-modal__translation-key">
+                                                    {{ translation.key }}
+                                                </code>
+                                                <textarea
+                                                    class="translation-modal__translation-input"
+                                                    rows="2"
+                                                    :value="
+                                                        getTranslationDraftValue(
+                                                            activeTranslationLocaleResult.locale,
+                                                            translation.key,
+                                                            translation.value,
+                                                        )
+                                                    "
+                                                    :disabled="
+                                                        !isTranslationDraftEditable(
+                                                            activeTranslationLocaleResult.locale,
+                                                        )
+                                                    "
+                                                    @input="
+                                                        handleTranslationDraftInput(
+                                                            activeTranslationLocaleResult.locale,
+                                                            translation.key,
+                                                            $event,
+                                                        )
+                                                    "
+                                                />
+                                                <p
+                                                    v-if="
+                                                        isTranslationDraftChanged(
+                                                            activeTranslationLocaleResult.locale,
+                                                            translation.key,
+                                                            translation.value,
+                                                        )
+                                                    "
+                                                    class="translation-modal__translation-changed"
+                                                >
+                                                    Edited locally. Persist to save this change.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <p
+                                            v-else-if="
+                                                activeTranslationLocaleResult.status === 'ok'
+                                            "
+                                            class="translation-modal__translations-empty"
+                                        >
+                                            No translated keys returned for this locale.
+                                        </p>
+
+                                        <details class="translation-modal__debug-dump">
+                                            <summary>Debug target doc body</summary>
+                                            <pre>{{
+                                                getTranslationLocaleDebugDump(
+                                                    activeTranslationLocaleResult.locale,
+                                                )
+                                            }}</pre>
+                                        </details>
+                                    </article>
                                     <p
-                                        v-else-if="entry.status === 'ok'"
+                                        v-else
                                         class="translation-modal__translations-empty"
                                     >
-                                        No translated keys returned for this locale.
+                                        No locale results available for this translation run.
                                     </p>
-
-                                    <details class="translation-modal__debug-dump">
-                                        <summary>Debug target doc body</summary>
-                                        <pre>{{
-                                            getTranslationLocaleDebugDump(entry.locale)
-                                        }}</pre>
-                                    </details>
-                                </article>
+                                </div>
                             </div>
                         </div>
 
@@ -3587,6 +4056,56 @@ defineExpose({
     gap: 0.55rem;
 }
 
+.translation-modal__tabs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.translation-modal__tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.translation-modal__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid #dbeafe;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #1e293b;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.translation-modal__tab.is-active {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.translation-modal__tab-status {
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.63rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.translation-modal__tabs-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
 .translation-modal__locale-card {
     border: 1px solid #dbeafe;
     border-radius: 0.5rem;
@@ -3601,6 +4120,13 @@ defineExpose({
     align-items: center;
     justify-content: space-between;
     gap: 0.6rem;
+}
+
+.translation-modal__locale-head-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
 }
 
 .translation-modal__locale-status {
@@ -3618,6 +4144,39 @@ defineExpose({
 }
 
 .translation-modal__locale-status--error {
+    color: #b91c1c;
+    background: #fff1f2;
+    border-color: #fecaca;
+}
+
+.translation-modal__locale-persist-state {
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid transparent;
+    line-height: 1.1;
+}
+
+.translation-modal__locale-persist-state--persisted {
+    color: #0f766e;
+    background: #f0fdfa;
+    border-color: #99f6e4;
+}
+
+.translation-modal__locale-persist-state--pending {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.translation-modal__locale-persist-state--staged {
+    color: #475569;
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.translation-modal__locale-persist-state--error {
     color: #b91c1c;
     background: #fff1f2;
     border-color: #fecaca;
@@ -3672,6 +4231,35 @@ defineExpose({
     color: #334155;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.translation-modal__translation-input {
+    width: 100%;
+    border-radius: 0.45rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #1e293b;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    resize: vertical;
+}
+
+.translation-modal__translation-input:focus {
+    outline: none;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+.translation-modal__translation-input:disabled {
+    background: #f8fafc;
+    color: #64748b;
+}
+
+.translation-modal__translation-changed {
+    margin: 0;
+    font-size: 0.68rem;
+    color: #1d4ed8;
 }
 
 .translation-modal__translations-empty {
@@ -3896,7 +4484,7 @@ defineExpose({
 .content-admin-workbench__modal {
     position: fixed;
     inset: 0;
-    z-index: 50;
+    z-index: 2100;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3922,6 +4510,25 @@ defineExpose({
     width: min(100% - 2rem, 44rem);
     display: grid;
     gap: 0.75rem;
+}
+
+.modal__panel--translation-results {
+    max-height: min(calc(100vh - 1rem), 100%);
+    max-height: min(calc(100dvh - 1rem), 100%);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+}
+
+.modal__panel--translation-results .modal__header {
+    margin-bottom: 0;
+}
+
+.translation-modal__body {
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    gap: 0.75rem;
+    padding-right: 0.2rem;
 }
 
 .modal__header {
