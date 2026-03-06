@@ -2199,9 +2199,9 @@ defineExpose({
         >
             <div class="content-admin-workbench__header">
                 <div class="content-admin-workbench__header-copy">
-                    <h1 class="content-admin-workbench__title">
+                    <div class="content-admin-workbench__title">
                         {{ currentEditedPath }}
-                    </h1>
+                    </div>
                 </div>
                 <div class="content-admin-workbench__header-actions">
                     <button
