@@ -268,19 +268,10 @@ type ResolvedBodyPointerTarget =
       parsedRoot: unknown
     }
 
-const resolveBodyPointerTarget = (
+const resolveEncodedBodyPointerTarget = (
   bodyValue: unknown,
   path: PathSegment[],
 ): ResolvedBodyPointerTarget | null => {
-  const directValue = getValueAtPath(bodyValue, path)
-  if (typeof directValue !== 'undefined') {
-    return {
-      mode: 'direct',
-      value: directValue,
-      path,
-    }
-  }
-
   for (let index = 0; index < path.length; index += 1) {
     const segment = path[index]
     if (typeof segment !== 'string' || segment.startsWith(':')) {
@@ -302,16 +293,33 @@ const resolveBodyPointerTarget = (
     const encodedValue =
       nestedPath.length > 0 ? getValueAtPath(parsedRoot, nestedPath) : parsedRoot
 
-    if (typeof encodedValue === 'undefined') {
-      continue
-    }
-
     return {
       mode: 'encoded',
       value: encodedValue,
       encodedPath,
       nestedPath,
       parsedRoot,
+    }
+  }
+
+  return null
+}
+
+const resolveBodyPointerTarget = (
+  bodyValue: unknown,
+  path: PathSegment[],
+): ResolvedBodyPointerTarget | null => {
+  const encodedTarget = resolveEncodedBodyPointerTarget(bodyValue, path)
+  if (encodedTarget) {
+    return encodedTarget
+  }
+
+  const directValue = getValueAtPath(bodyValue, path)
+  if (typeof directValue !== 'undefined') {
+    return {
+      mode: 'direct',
+      value: directValue,
+      path,
     }
   }
 
@@ -340,11 +348,19 @@ const setBodyPointerValue = (
       ? setValueAtPath(target.parsedRoot, target.nestedPath, clonePlain(value))
       : clonePlain(value)
 
-  return setValueAtPath(
+  let nextBodyValue = setValueAtPath(
     bodyValue,
     target.encodedPath,
     JSON.stringify(nextParsedRoot),
   )
+
+  // Keep legacy direct mirror props (if present) in sync with encoded values.
+  const directExistingValue = getValueAtPath(nextBodyValue, path)
+  if (typeof directExistingValue !== 'undefined') {
+    nextBodyValue = setValueAtPath(nextBodyValue, path, clonePlain(value))
+  }
+
+  return nextBodyValue
 }
 
 export const collectChangedFixedBodyPaths = (

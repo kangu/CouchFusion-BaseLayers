@@ -24,6 +24,9 @@ export default defineNuxtConfig({
 
   plugins: [
     fileURLToPath(
+      new URL("./app/plugins/content-locale-html-lang", import.meta.url),
+    ),
+    fileURLToPath(
       new URL(
         "./app/plugins/register-project-content-components",
         import.meta.url,

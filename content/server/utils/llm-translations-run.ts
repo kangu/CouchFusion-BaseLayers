@@ -4,6 +4,7 @@ import { clonePlain } from '#content/utils/page-documents'
 import { parseBodyPathPointer, toBodyPathPointer } from './content-i18n'
 import type { LlmTranslationsRuntimeConfig } from './llm-translations-config'
 import { assertLlmTranslationsApiKey } from './llm-translations-config'
+import { persistLlmTranslationLog } from './llm-translations-logs'
 
 type PathSegment = string | number
 
@@ -213,19 +214,11 @@ type ResolvedPointerTarget =
       parsedRoot: unknown
     }
 
-const resolvePointerTarget = (
+const resolveEncodedPointerTarget = (
   bodyValue: unknown,
   path: PathSegment[],
+  sourceBodyValue?: unknown,
 ): ResolvedPointerTarget | null => {
-  const directValue = getValueAtPath(bodyValue, path)
-  if (typeof directValue !== 'undefined') {
-    return {
-      mode: 'direct',
-      value: directValue,
-      path,
-    }
-  }
-
   for (let index = 0; index < path.length; index += 1) {
     const segment = path[index]
     if (typeof segment !== 'string' || segment.startsWith(':')) {
@@ -235,7 +228,37 @@ const resolvePointerTarget = (
     const encodedPath = [...path.slice(0, index), `:${segment}`]
     const encodedRaw = getValueAtPath(bodyValue, encodedPath)
     if (typeof encodedRaw !== 'string') {
-      continue
+      if (typeof encodedRaw !== 'undefined') {
+        continue
+      }
+
+      if (!sourceBodyValue) {
+        continue
+      }
+
+      const sourceEncodedRaw = getValueAtPath(sourceBodyValue, encodedPath)
+      if (typeof sourceEncodedRaw !== 'string') {
+        continue
+      }
+
+      const sourceParsedRoot = parseJsonString(sourceEncodedRaw)
+      if (sourceParsedRoot === null) {
+        continue
+      }
+
+      const nestedPath = path.slice(index + 1)
+      const encodedValue =
+        nestedPath.length > 0
+          ? getValueAtPath(sourceParsedRoot, nestedPath)
+          : sourceParsedRoot
+
+      return {
+        mode: 'encoded',
+        value: encodedValue,
+        encodedPath,
+        nestedPath,
+        parsedRoot: sourceParsedRoot,
+      }
     }
 
     const parsedRoot = parseJsonString(encodedRaw)
@@ -247,16 +270,62 @@ const resolvePointerTarget = (
     const encodedValue =
       nestedPath.length > 0 ? getValueAtPath(parsedRoot, nestedPath) : parsedRoot
 
-    if (typeof encodedValue === 'undefined') {
-      continue
-    }
-
     return {
       mode: 'encoded',
       value: encodedValue,
       encodedPath,
       nestedPath,
       parsedRoot,
+    }
+  }
+
+  return null
+}
+
+const resolvePointerTarget = (
+  bodyValue: unknown,
+  path: PathSegment[],
+  sourceBodyValue?: unknown,
+): ResolvedPointerTarget | null => {
+  const encodedTarget = resolveEncodedPointerTarget(
+    bodyValue,
+    path,
+    sourceBodyValue,
+  )
+  if (encodedTarget) {
+    return encodedTarget
+  }
+
+  const directValue = getValueAtPath(bodyValue, path)
+  if (typeof directValue !== 'undefined') {
+    return {
+      mode: 'direct',
+      value: directValue,
+      path,
+    }
+  }
+
+  if (path.length > 0) {
+    const parentPath = path.slice(0, -1)
+    const leaf = path[path.length - 1]
+    const parentValue = parentPath.length > 0
+      ? getValueAtPath(bodyValue, parentPath)
+      : bodyValue
+
+    if (Array.isArray(parentValue) && typeof leaf === 'number') {
+      if (leaf >= 0 && leaf < parentValue.length) {
+        return {
+          mode: 'direct',
+          value: parentValue[leaf],
+          path,
+        }
+      }
+    } else if (isPlainObject(parentValue) && typeof leaf === 'string') {
+      return {
+        mode: 'direct',
+        value: parentValue[leaf],
+        path,
+      }
     }
   }
 
@@ -417,10 +486,12 @@ export const runLocaleTranslation = async (
     sourceLocale: string
     targetLocale: string
     entries: TranslationTextEntry[]
+    logContext?: Record<string, unknown>
   },
 ): Promise<TranslationLocaleExecutionResult> => {
   const apiKey = assertLlmTranslationsApiKey(runtimeConfig.apiKey)
   const config = runtimeConfig.document.config
+  const runStartedAt = Date.now()
   const requestEntries = payload.entries.map((entry) => ({
     index: entry.pointer,
     source_translation: entry.text,
@@ -465,6 +536,37 @@ export const runLocaleTranslation = async (
     JSON.stringify(requestBody, null, 2),
   )
 
+  const persistLog = async (
+    details: {
+      status: 'success' | 'provider_error' | 'response_error'
+      responseBody?: Record<string, any> | null
+      responseContent?: string | null
+      translationsByPointer?: Record<string, string>
+      notes?: string[]
+      error?: {
+        message: string
+        status?: number
+        statusText?: string | null
+        responseText?: string | null
+      }
+    },
+  ): Promise<void> => {
+    await persistLlmTranslationLog({
+      sourceLocale: payload.sourceLocale,
+      targetLocale: payload.targetLocale,
+      entryCount: requestEntries.length,
+      requestBody,
+      status: details.status,
+      durationMs: Date.now() - runStartedAt,
+      context: payload.logContext,
+      responseBody: details.responseBody ?? null,
+      responseContent: details.responseContent ?? null,
+      translationsByPointer: details.translationsByPointer,
+      notes: details.notes,
+      error: details.error,
+    })
+  }
+
   const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -488,6 +590,15 @@ export const runLocaleTranslation = async (
         2,
       ),
     )
+    await persistLog({
+      status: 'provider_error',
+      error: {
+        message: 'Translation API request failed',
+        status: response.status,
+        statusText: response.statusText || null,
+        responseText: typeof text === 'string' ? text : null,
+      },
+    })
     const providerResponseText = typeof text === 'string' ? text.trim() : ''
     const providerDetails = providerResponseText || 'Unknown provider error'
     const providerStatus = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
@@ -511,13 +622,38 @@ export const runLocaleTranslation = async (
   const rawContent = completion?.choices?.[0]?.message?.content
 
   if (typeof rawContent !== 'string' || !rawContent.trim()) {
+    await persistLog({
+      status: 'response_error',
+      responseBody: completion,
+      responseContent: typeof rawContent === 'string' ? rawContent : null,
+      error: {
+        message: 'Translation API returned empty content',
+      },
+    })
     throw createError({
       statusCode: 502,
       statusMessage: 'Translation API returned empty content',
     })
   }
 
-  const parsed = parseTranslationResponse(rawContent)
+  let parsed: ParsedTranslationResponse
+  try {
+    parsed = parseTranslationResponse(rawContent)
+  } catch (error: any) {
+    const message =
+      typeof error?.message === 'string' && error.message.trim().length > 0
+        ? error.message.trim()
+        : 'Invalid translation response payload'
+    await persistLog({
+      status: 'response_error',
+      responseBody: completion,
+      responseContent: rawContent,
+      error: {
+        message,
+      },
+    })
+    throw error
+  }
   const translationsByPointer: Record<string, string> = {}
 
   const pointerSet = new Set(payload.entries.map((entry) => entry.pointer))
@@ -528,6 +664,14 @@ export const runLocaleTranslation = async (
     }
     translationsByPointer[index] = translated
   }
+
+  await persistLog({
+    status: 'success',
+    responseBody: completion,
+    responseContent: rawContent,
+    translationsByPointer,
+    notes: parsed.notes,
+  })
 
   return {
     locale: payload.targetLocale,
@@ -543,6 +687,9 @@ export const applyTranslationsToBody = (
   bodyValue: unknown,
   translationsByPointer: Record<string, string>,
   overwriteMode: TranslationOverwriteMode,
+  options?: {
+    sourceBodyValue?: unknown
+  },
 ): {
   nextBodyValue: unknown
   appliedCount: number
@@ -559,7 +706,11 @@ export const applyTranslationsToBody = (
       continue
     }
 
-    const target = resolvePointerTarget(nextBody, path)
+    const target = resolvePointerTarget(
+      nextBody,
+      path,
+      options?.sourceBodyValue,
+    )
     if (!target) {
       skippedCount += 1
       continue
@@ -583,6 +734,12 @@ export const applyTranslationsToBody = (
         target.encodedPath,
         JSON.stringify(nextParsedRoot),
       )
+
+      // Keep legacy direct mirror props (if present) in sync with encoded values.
+      const directExistingValue = getValueAtPath(nextBody, path)
+      if (typeof directExistingValue !== 'undefined') {
+        nextBody = setValueAtPath(nextBody, path, translatedValue)
+      }
     }
     appliedCount += 1
   }

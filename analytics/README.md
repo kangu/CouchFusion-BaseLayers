@@ -63,6 +63,10 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
 - Provide `excludedPaths` (array or CSV string) to skip tracking for sensitive routes such as `/login` or `/admin/*`. When exclusions are set, the layer disables Umami's auto-tracking and manually emits page views for allowed routes.
 - Override `public.analytics.endpoint` if your frontend should post analytics to a different proxy route than `/api/stats`.
 - Toggle `includeTitle`, `sendReferrer`, or `debug` under `public.analytics.umami` to adjust payload metadata without touching code.
+- Server-side analytics fallback can read from CouchDB `_config` using section `cf_env_[slug]` (default slug is the app folder name). Set `runtimeConfig.analytics.umami.couchEnvSlug` to override.
+- `_config` keys currently read by the analytics proxy fallback:
+  - `UMAMI_WEBSITE_ID` (or `NUXT_PUBLIC_UMAMI_WEBSITE_ID`)
+  - `NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS`
 
 ### Environment Examples
 Create a `.env` (auto-loaded by Nuxt/bun dev server) with a development website ID:

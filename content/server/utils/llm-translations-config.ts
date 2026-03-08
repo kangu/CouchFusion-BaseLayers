@@ -1,5 +1,6 @@
 import type { CouchDBDocument } from '#database/utils/couchdb'
-import { couchDBRequest, getDocument, putDocument } from '#database/utils/couchdb'
+import { getDocument, putDocument } from '#database/utils/couchdb'
+import { readCouchConfigValue } from '#database/utils/couch-config'
 import { createError } from 'h3'
 import { getContentDatabaseName } from './database'
 
@@ -133,40 +134,13 @@ const normalizeConfigDocument = (value: Record<string, any>): LlmTranslationsCon
   }
 }
 
-const parseConfigString = (value: string): string | null => {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (typeof parsed === 'string' && parsed.trim()) {
-        return parsed.trim()
-      }
-    } catch {
-      return trimmed.slice(1, -1).trim() || null
-    }
-  }
-
-  return trimmed
-}
-
 const readOpenAiApiKeyFromCouchConfig = async (): Promise<string | null> => {
   try {
-    const baseUrl = process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL
-    const response = await couchDBRequest(
-      `${baseUrl}/_node/_local/_config/cf_openai/api_key`,
-      { method: 'GET' },
+    return await readCouchConfigValue(
+      'cf_openai',
+      'api_key',
+      process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL,
     )
-
-    if (!response.ok) {
-      return null
-    }
-
-    const raw = await response.text()
-    return parseConfigString(raw)
   } catch (error) {
     console.warn('[content][llm-translations] failed to read cf_openai.api_key:', error)
     return null

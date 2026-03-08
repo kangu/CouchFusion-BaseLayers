@@ -14,6 +14,7 @@ import { storeToRefs } from "pinia";
 import { normalizePagePath } from "#content/utils/page";
 import {
     buildLocalizedPath,
+    setValueAtPath,
     resolveContentI18nConfig,
     resolveContentLocalePath,
 } from "#content/utils/i18n";
@@ -1461,27 +1462,48 @@ function parseBodyPointer(pointer: string): string[] | null {
     return segments.length ? segments : null;
 }
 
-function resolveContainerSegment(
-    container: unknown,
-    segment: string,
-): string | number {
-    if (Array.isArray(container) && INTEGER_POINTER_SEGMENT.test(segment)) {
-        return Number.parseInt(segment, 10);
+function parseJsonString(value: string): unknown | null {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
     }
-    return segment;
 }
 
-function setBodyPointerStringValue(
-    bodyValue: unknown,
-    pointer: string,
-    value: string,
+function readPointerValue(container: unknown, segments: string[]): unknown {
+    let cursor: any = container;
+    for (let index = 0; index < segments.length; index += 1) {
+        const key = resolveContainerSegment(cursor, segments[index]);
+        if (Array.isArray(cursor)) {
+            if (
+                typeof key !== "number" ||
+                key < 0 ||
+                key >= cursor.length ||
+                typeof cursor[key] === "undefined"
+            ) {
+                return undefined;
+            }
+            cursor = cursor[key];
+            continue;
+        }
+        if (!cursor || typeof cursor !== "object" || !(key in cursor)) {
+            return undefined;
+        }
+        cursor = cursor[key];
+    }
+    return cursor;
+}
+
+function writePointerValue(
+    container: unknown,
+    segments: string[],
+    value: unknown,
 ): boolean {
-    const segments = parseBodyPointer(pointer);
-    if (!segments || !segments.length) {
+    if (!segments.length) {
         return false;
     }
 
-    let cursor: any = bodyValue;
+    let cursor: any = container;
     for (let index = 0; index < segments.length - 1; index += 1) {
         const key = resolveContainerSegment(cursor, segments[index]);
         if (Array.isArray(cursor)) {
@@ -1514,11 +1536,110 @@ function setBodyPointerStringValue(
         cursor[leafKey] = value;
         return true;
     }
-    if (!cursor || typeof cursor !== "object" || !(leafKey in cursor)) {
+    if (!cursor || typeof cursor !== "object" || typeof leafKey !== "string") {
         return false;
     }
-    cursor[leafKey] = value;
+    (cursor as Record<string, unknown>)[leafKey] = value;
     return true;
+}
+
+type EncodedPointerWriteTarget = {
+    encodedSegments: string[];
+    nestedSegments: string[];
+    parsedRoot: unknown;
+};
+
+function resolveEncodedPointerWriteTarget(
+    bodyValue: unknown,
+    segments: string[],
+): EncodedPointerWriteTarget | null {
+    for (let index = 0; index < segments.length; index += 1) {
+        const segment = segments[index];
+        if (segment.startsWith(":")) {
+            continue;
+        }
+
+        const encodedSegments = [
+            ...segments.slice(0, index),
+            `:${segment}`,
+        ];
+        const encodedRaw = readPointerValue(bodyValue, encodedSegments);
+        if (typeof encodedRaw !== "string") {
+            continue;
+        }
+
+        const parsedRoot = parseJsonString(encodedRaw);
+        if (parsedRoot === null) {
+            continue;
+        }
+
+        return {
+            encodedSegments,
+            nestedSegments: segments.slice(index + 1),
+            parsedRoot,
+        };
+    }
+
+    return null;
+}
+
+function toPathSegments(segments: string[]): Array<string | number> {
+    return segments.map((segment) =>
+        INTEGER_POINTER_SEGMENT.test(segment)
+            ? Number.parseInt(segment, 10)
+            : segment,
+    );
+}
+
+function resolveContainerSegment(
+    container: unknown,
+    segment: string,
+): string | number {
+    if (Array.isArray(container) && INTEGER_POINTER_SEGMENT.test(segment)) {
+        return Number.parseInt(segment, 10);
+    }
+    return segment;
+}
+
+function setBodyPointerStringValue(
+    bodyValue: unknown,
+    pointer: string,
+    value: string,
+): boolean {
+    const segments = parseBodyPointer(pointer);
+    if (!segments || !segments.length) {
+        return false;
+    }
+
+    const encodedTarget = resolveEncodedPointerWriteTarget(bodyValue, segments);
+    if (encodedTarget) {
+        const nextParsedRoot =
+            encodedTarget.nestedSegments.length > 0
+                ? setValueAtPath(
+                      encodedTarget.parsedRoot,
+                      toPathSegments(encodedTarget.nestedSegments),
+                      value,
+                  )
+                : value;
+
+        const didWriteEncoded = writePointerValue(
+            bodyValue,
+            encodedTarget.encodedSegments,
+            JSON.stringify(nextParsedRoot),
+        );
+        if (!didWriteEncoded) {
+            return false;
+        }
+
+        // Keep legacy direct mirror props (if present) in sync with encoded values.
+        const directExistingValue = readPointerValue(bodyValue, segments);
+        if (typeof directExistingValue !== "undefined") {
+            writePointerValue(bodyValue, segments, value);
+        }
+        return true;
+    }
+
+    return writePointerValue(bodyValue, segments, value);
 }
 
 function applyTranslationDraftToStagedDocument(

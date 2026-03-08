@@ -317,12 +317,23 @@ export default defineEventHandler(async (event) => {
         sourceLocale,
         targetLocale,
         entries: eligibleEntries,
+        logContext: {
+          path: basePath,
+          scopeMode,
+          scopePointer,
+          overwriteMode,
+          sourceEntryCount: sourceEntries.length,
+          eligibleEntryCount: eligibleEntries.length,
+        },
       })
 
       const applied = applyTranslationsToBody(
         baseMinimal.body.value,
         translationResult.translationsByPointer,
         overwriteMode,
+        {
+          sourceBodyValue: sourceDocument.body.value,
+        },
       )
       baseMinimal.body.value = Array.isArray(applied.nextBodyValue)
         ? applied.nextBodyValue

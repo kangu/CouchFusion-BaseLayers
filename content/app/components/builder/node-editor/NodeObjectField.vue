@@ -945,7 +945,11 @@ const canTranslateField = (
         return false;
     }
 
-    if (schema.type === "text" || schema.type === "textarea") {
+    if (
+        schema.type === "text" ||
+        schema.type === "textarea" ||
+        schema.type === "stringarray"
+    ) {
         return true;
     }
 
