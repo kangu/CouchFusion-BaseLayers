@@ -1,0 +1,139 @@
+{
+  "capturedAt": "2026-03-08T18:53:53.673Z",
+  "document": {
+    "_id": "page-/",
+    "body": {
+      "type": "minimal",
+      "value": [
+        [
+          "home-hero",
+          {
+            ":highlights": "[{\"icon\":\"lucide:zap\",\"label\":\"Velocity: scaffold apps or layers in minutes with CLI handoffs.\"},{\"icon\":\"lucide:square-stack\",\"label\":\"Reliability: shared layers keep auth, data, and content patterns consistent.\"},{\"icon\":\"lucide:refresh-ccw\",\"label\":\"Automation: workspace docs + CouchDB seeding stay in sync every run.\"}]",
+            ":pillars": "[{\"eyebrow\":\"Stack\",\"title\":\"Nuxt 4 + CouchDB\",\"description\":\"Vue 3, Tailwind, Pinia, ImageKit, and CouchDB replication are preconfigured so every app inherits the same runtime guarantees.\"},{\"eyebrow\":\"Workspace\",\"title\":\"/apps · /layers · /docs\",\"description\":\"Keep product code, reusable layers, and living documentation aligned with a single repository.\"},{\"eyebrow\":\"Automation\",\"title\":\"CLI handoffs\",\"description\":\"The couchfusion CLI seeds CouchDB, writes module setup files, and validates prerequisites every time you scaffold.\"}]",
+            "activeColor": "#27FF64",
+            "baseColor": "#27FF64",
+            "copiedAriaLabel": "Command copied to clipboard",
+            "copiedLabel": "Copied!",
+            "copyAriaLabel": "Copy command to clipboard",
+            "copyLabel": "Copy command",
+            "description": "CouchFusion unifies Nuxt 4, Bun, and CouchDB into a batteries-included platform so teams can ship offline-ready products without reinventing auth, content, or analytics.",
+            "dotSize": "7",
+            "eyebrow": "The CouchApp vision",
+            "flashDuration": 1400,
+            "gap": 32,
+            "highlightText": "Stack + workspace + automation = the fastest path from idea to production.",
+            "imageAlt": "CouchFusion logo",
+            "imageSrc": "/images/couchfusion-logo.svg",
+            "maxForce": 6,
+            "pillarsEyebrow": "Platform pillars",
+            "primaryLabel": "Read the Docs",
+            "primaryLink": "/docs",
+            "proximity": 150,
+            "quickStartCommand": "git clone couchfusion && cd nuxt-apps\ncouchfusion init --path ./workspace --layers-branch main\ncouchfusion create_app --name couchfusioncom --modules analytics,auth,content,imagekit",
+            "quickStartHint": "Clone the workspace, extend the layers listed in docs/module_setup.json, and let CouchDB seeding give you live pages instantly.",
+            "quickStartLabel": "Platform quick tour",
+            "resistance": 0.95,
+            "returnSpeed": 0.12,
+            "rippleFade": 0.03,
+            "rippleSpeed": 210,
+            "secondaryLabel": "Start Learning",
+            "secondaryLink": "/learn",
+            "title": "One workspace, shared layers, instant CouchDB + Nuxt apps"
+          }
+        ],
+        [
+          "home-feature-grid",
+          {
+            ":features": "[{\"title\":\"Realtime Sync\",\"description\":\"Use CouchDB replication to keep clients, devices, and services in sync without writing custom APIs.\",\"icon\":\"lucide:refresh-cw\"},{\"title\":\"Composable Content\",\"description\":\"Publish pages, layouts, and components from a visual content workbench with live preview.\",\"icon\":\"lucide:component\"},{\"title\":\"Secure Auth\",\"description\":\"Authenticate users with the shared auth layer and session middleware, ready for production.\",\"icon\":\"lucide:shield-check\"}]",
+            "description": "CouchFusion delivers CouchDB-backed data workflows, server-rendered Nuxt experiences, and a streamlined content system out of the box.",
+            "heading": "Everything you need to ship production apps"
+          }
+        ],
+        [
+          "home-foundations",
+          {
+            "description": "CouchFusion unifies your backend and frontend so teams can launch ideas quickly. CouchDB handles persistence and sync, while Nuxt delivers performant UI with server rendering and islands where you need them.",
+            "eyebrow": "Built on foundations",
+            "heading": "CouchDB data, Nuxt rendering, one cohesive system",
+            "pointFour": "Customize every layer while keeping a consistent DX",
+            "pointOne": "Provision CouchDB databases per tenant or project automatically",
+            "pointThree": "Ship offline-ready experiences with PouchDB-compatible sync",
+            "pointTwo": "Use Nuxt server routes to bridge content, orders, and auth flows"
+          }
+        ],
+        [
+          "home-quickstart",
+          {
+            "command": "couchfusion init --path ./workspace --layers-branch main\\ncouchfusion create_app --name couchfusioncom --modules analytics,auth,content,imagekit",
+            "description": "Install the couchfusion CLI, point it at your workspace, and seed minimark documents to go live with a production-ready stack.",
+            "documentSnippet": "{\\n  \"id\": \"page-/\",\\n  \"title\": \"CouchFusion\",\\n  \"body\": {\\n    \"type\": \"minimal\",\\n    \"value\": [[\"home-hero\", {\"title\": \"Build with CouchFusion\"}]]\\n  }\\n}",
+            "envSnippet": "COUCHDB_URL=http://localhost:5984\\nCOUCHDB_ADMIN_AUTH=cmFkdTpzaXJpdXM=\\nPUBLIC_SITE_URL=http://localhost:7123",
+            "eyebrow": "Get started fast",
+            "heading": "Bootstrap, configure, and publish in minutes"
+          }
+        ],
+        [
+          "home-learn-preview",
+          {
+            "ctaLabel": "Explore the course",
+            "ctaLink": "/learn",
+            "description": "Move from fundamentals to advanced patterns with a project-based curriculum that pairs Vue best practices with CouchDB expertise.",
+            "eyebrow": "Learning Path",
+            "heading": "Learn CouchFusion with a guided course",
+            "moduleOneDescription": "Understand reactivity, components, and composition API essentials.",
+            "moduleOneTitle": "Vue Foundations",
+            "moduleThreeDescription": "Connect auth, content, and payments to build a launch-ready experience.",
+            "moduleThreeTitle": "Shipping a Production App",
+            "moduleTwoDescription": "Configure databases, replication, and security for CouchFusion projects.",
+            "moduleTwoTitle": "CouchDB Basics"
+          }
+        ],
+        [
+          "home-community-callout",
+          {
+            "description": "Join developers building the future of CouchDB-powered apps. Contribute to layers, share templates, and help shape the roadmap.",
+            "heading": "Be part of the CouchFusion community",
+            "primaryHref": "https://discord.gg/couchfusion",
+            "primaryLabel": "Join Discord",
+            "secondaryHref": "https://github.com/couchfusion/couchfusion",
+            "secondaryLabel": "Star on GitHub"
+          }
+        ],
+        [
+          "lightning-donation",
+          {
+            ":amounts": "[\"250\",\"500\",\"10000\"]",
+            "ctaLabel": "Generate invoice",
+            "description": "Test our payments infrastructure for the fastest and cheapest money transfers.",
+            "emptySubtitle": "Reuse this widget on your CouchFusion website.",
+            "expiredText": "Invoice expired. Please generate a new one.",
+            "headline": "Send a ⚡ Lightning tip",
+            "memo": "CouchFusion donation",
+            "status": "pending",
+            "successText": "Payment received. Thank you!"
+          }
+        ]
+      ]
+    },
+    "extension": "json",
+    "layout": {
+      "spacing": "none"
+    },
+    "meta": {},
+    "navigation": true,
+    "path": "/",
+    "seo": {
+      "description": "CouchFusion combines CouchDB sync, Nuxt full-stack rendering, and a visual content layer so teams can launch offline-ready apps fast.",
+      "image": "https://ik.imagekit.io/kangu/cf/couchfusion-cover_d3PuOo9D0.png",
+      "title": "CouchFusion — Build CouchDB-powered Nuxt apps"
+    },
+    "title": "CouchFusion — Build CouchDB-powered Nuxt apps",
+    "type": "page"
+  },
+  "source": {
+    "database": "couchfusion-com--content",
+    "id": "page-/",
+    "name": "couchfusion-home",
+    "url": "http://localhost:5984/couchfusion-com--content/page-%2F"
+  }
+}

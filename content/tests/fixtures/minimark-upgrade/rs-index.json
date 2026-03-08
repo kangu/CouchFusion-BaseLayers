@@ -1,0 +1,501 @@
+{
+  "capturedAt": "2026-03-08T18:53:53.673Z",
+  "document": {
+    "_id": "page-/index",
+    "body": {
+      "type": "minimal",
+      "value": [
+        [
+          "landing",
+          {
+            "__builderSectionId": "sec_ea5eb0ef-96f0-4cfa-80ef-7d6a3ff243b5",
+            ":primaryButton": "{\"event\":\"Get in Touch\",\"href\":\"#contact\",\"label\":\"Get in touch\"}",
+            ":secondaryButton": "{\"event\":\"See my work\",\"href\":\"#experience\",\"label\":\"See my work\"}",
+            "greetingText": "AI-enabled, sovereign tech stack",
+            "headlinePrefix": "Let's build software",
+            "subtitle": "Everything software",
+            "title": ""
+          }
+        ],
+        [
+          "phil",
+          {
+            "__builderSectionId": "sec_baa3bf26-008d-4168-a17e-90e7423ab620",
+            ":coreToolkit": "[{\"name\":\"CouchDB\",\"icon\":\"couchdb\",\"tagline\":\"The rock\"},{\"name\":\"Bun\",\"icon\":\"bun\",\"tagline\":\"Performant\\nJS Runtime\"},{\"name\":\"Vue.js\",\"icon\":\"vuejs\",\"tagline\":\"Stable\\nFrontend\"},{\"name\":\"GO\",\"icon\":\"go\",\"tagline\":\"High\\nPerformance\\nServer\"},{\"name\":\"Lightning\",\"icon\":\"lightning\",\"tagline\":\"Payment\\nNetwork\"},{\"name\":\"Bitcoin\",\"icon\":\"btc\",\"tagline\":\"Digital\\nCurrency\"}]",
+            ":narrativeSection": "{\"focus\":\"\",\"intro\":\"\",\"optimism\":\"\"}",
+            ":principles": "",
+            ":principlesSection": "{\"items\":[],\"title\":\"Core Principles\"}",
+            ":signalSection": "{\"callout\":\"I'm passionate about science and software development. Bitcoiner. You can just build stuff.\",\"heading\":\"About me\",\"items\":[{\"value\":\"20+\",\"label\":\"Years shipping software\",\"tone\":\"default\"},{\"value\":\"1000+\",\"label\":\"Deployed CouchDB instances\",\"tone\":\"default\"},{\"value\":\"100%\",\"label\":\"Open-source-first core apps\",\"tone\":\"default\"},{\"value\":\"99%\",\"label\":\"Uptime and reliability\",\"tone\":\"default\"}],\"title\":\"\"}",
+            ":toolkitSection": "{\"items\":[{\"name\":\"CouchDB\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 128 128\\\">\\n\\t<path fill=\\\"currentColor\\\" d=\\\"M101.4 77.2c0 5-2.7 7.5-7.6 7.7H33.9c-4.9 0-7.6-2.5-7.6-7.7c0-5 2.7-7.5 7.6-7.7h60.2c4.9.2 7.3 2.7 7.3 7.7m-7.3 11.5H33.9c-4.9 0-7.6 2.4-7.6 7.7c0 5 2.7 7.4 7.6 7.7h60.2c4.9 0 7.6-2.5 7.6-7.7c-.3-5.3-2.7-7.7-7.6-7.7m18.6-42.1c-4.9 0-7.6 2.5-7.6 7.4v42.1c0 5 2.7 7.5 7.6 7.7c7.4-.2 11.3-7.7 11.3-22.9V62c0-10.2-3.9-15.2-11.3-15.4m-97.4 0C7.9 46.8 4 51.8 4 62v18.9c0 15.2 3.9 22.7 11.3 22.9c4.9 0 7.6-2.4 7.6-7.7V54.3c-.2-5-2.7-7.5-7.6-7.7m97.4-3.8c0-12.7-6.6-18.7-18.6-18.9H33.9c-12.2.2-18.6 6.5-18.6 18.9c7.4 0 11.3 4 11.3 11.5s3.9 11.4 11.3 11.4h52.5c7.3 0 11.3-3.9 11.3-11.4c-.3-7.7 3.9-11.2 11-11.5\\\" stroke-width=\\\"3\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"DB\",\"tagline\":\"Offline-first distributed data\",\"weight\":\"featured\"},{\"name\":\"JavaScript\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 24 24\\\">\\n\\t<path fill=\\\"currentColor\\\" d=\\\"M6 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3zm7.334 13.055q1.08.87 2.156.858q.66 0 1.012-.242a.75.75 0 0 0 .341-.66a.97.97 0 0 0-.34-.748q-.352-.307-1.332-.616q-1.177-.34-1.815-.88q-.626-.54-.638-1.507q0-.913.792-1.529q.77-.616 1.97-.616q1.672 0 2.683.814l-.77 1.199a2.6 2.6 0 0 0-.935-.462a3.2 3.2 0 0 0-.946-.165q-.57 0-.913.209q-.34.21-.34.55q0 .374.417.638q.42.254 1.43.561q1.221.363 1.738.968t.517 1.54q0 .957-.737 1.65q-.726.682-2.112.715q-1.815 0-3.036-1.089zm-5.53.638q.352.22.847.22q.517 0 .858-.297q.34-.308.341-1.067v-5.302h1.485v5.588q-.033 1.298-.748 1.87a2.5 2.5 0 0 1-.891.484a3.3 3.3 0 0 1-.935.143q-.825 0-1.463-.286q-.682-.307-1.144-1.089l1.034-.847q.285.385.616.583\\\" stroke-width=\\\"0.5\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"JS\",\"tagline\":\"Bun, Vue and Nuxt\"},{\"name\":\"Debian\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 8 8\\\">\\n\\t<path fill=\\\"currentColor\\\" d=\\\"M5 8q-7-4-2-8q5-1 4 4q-4 2-2-2q-2 1-1 2q2 1 2-2q-3-3-4 2\\\" stroke-width=\\\"0.5\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"Vue\",\"tagline\":\"Solid foundation\"},{\"name\":\"Go\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 32 32\\\">\\n\\t<path fill=\\\"currentColor\\\" d=\\\"M2.417 14.286c-.063 0-.078-.031-.047-.078l.328-.422c.031-.047.104-.078.167-.078h5.563c.063 0 .078.047.047.094l-.266.406a.23.23 0 0 1-.156.094zM.063 15.719c-.063 0-.078-.031-.047-.078l.328-.422c.031-.042.109-.073.172-.073H7.62c.063 0 .094.047.078.094l-.125.37c-.016.063-.078.094-.141.094zm3.77 1.432c-.063 0-.078-.047-.047-.089l.219-.391c.031-.047.094-.094.156-.094h3.115c.063 0 .094.047.094.109l-.031.375c0 .063-.063.109-.109.109zm16.172-3.146c-.979.25-1.651.438-2.62.688c-.234.063-.245.078-.453-.156c-.229-.266-.401-.438-.729-.594c-.984-.479-1.932-.344-2.818.234c-1.063.688-1.604 1.698-1.589 2.958c.01 1.25.87 2.276 2.099 2.448c1.063.141 1.948-.234 2.651-1.026c.141-.172.266-.359.422-.578h-3.01c-.323 0-.406-.203-.297-.469a26 26 0 0 1 .797-1.698a.43.43 0 0 1 .391-.25h5.672c-.031.422-.031.844-.094 1.266a6.65 6.65 0 0 1-1.281 3.052c-1.12 1.479-2.583 2.401-4.438 2.646c-1.526.203-2.948-.094-4.193-1.026c-1.151-.87-1.807-2.026-1.979-3.458c-.198-1.698.297-3.224 1.328-4.568c1.104-1.448 2.568-2.365 4.359-2.693c1.464-.266 2.87-.094 4.13.76c.828.547 1.417 1.297 1.807 2.198c.094.141.031.219-.156.266zm5.156 8.62c-1.417-.036-2.708-.438-3.802-1.375a4.9 4.9 0 0 1-1.682-3.005c-.281-1.76.203-3.318 1.26-4.708c1.141-1.495 2.51-2.271 4.365-2.599c1.589-.281 3.083-.125 4.443.797c1.229.839 1.995 1.974 2.193 3.469c.266 2.104-.339 3.818-1.792 5.286c-1.026 1.042-2.286 1.698-3.74 1.99c-.417.083-.839.094-1.245.146zm3.709-6.297c-.016-.203-.016-.359-.047-.516c-.281-1.542-1.698-2.411-3.177-2.073c-1.448.328-2.385 1.25-2.729 2.714c-.276 1.214.313 2.448 1.438 2.943c.854.375 1.714.328 2.536-.094c1.234-.641 1.901-1.635 1.979-2.974\\\" stroke-width=\\\"1\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"Go\",\"tagline\":\"Reliable backend services\"},{\"name\":\"Lightning\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 24 24\\\">\\n\\t<path fill=\\\"currentColor\\\" d=\\\"M15.425 2.25c.841 0 1.404.798 1.212 1.563l-.049.153L14.49 9.35H17c.985 0 1.532 1.054 1.1 1.854l-.1.156l-7.47 10.047c-.54.725-1.621.224-1.527-.605l.785-6.91H7c-.907 0-1.487-.924-1.155-1.735l.005-.011l3.906-9.128a1.25 1.25 0 0 1 1.151-.768z\\\" stroke-width=\\\"0.5\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"Ln\",\"tagline\":\"Instant payment rails\"},{\"name\":\"Bitcoin\",\"icon\":\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"16px\\\" height=\\\"16px\\\" viewBox=\\\"0 0 24 24\\\">\\n\\t<path fill=\\\"currentColor\\\" fill-rule=\\\"evenodd\\\" d=\\\"M23.64 14.905c-1.602 6.429-8.114 10.342-14.544 8.738C2.669 22.041-1.244 15.528.359 9.1S8.473-1.244 14.902.36c6.43 1.603 10.342 8.116 8.739 14.546m-6.349-4.613c.24-1.597-.977-2.456-2.64-3.028l.54-2.164l-1.317-.328l-.525 2.106a55 55 0 0 0-1.055-.248l.53-2.12l-1.317-.328l-.54 2.162a44 44 0 0 1-.84-.197l.001-.007l-1.816-.453l-.35 1.406s.977.224.956.238c.534.133.63.486.614.766l-.615 2.464q.057.014.137.044l-.139-.035l-.86 3.453c-.066.162-.231.405-.604.312c.013.02-.957-.239-.957-.239l-.654 1.508l1.713.427q.479.122.94.242l-.546 2.188l1.316.328l.54-2.164q.537.145 1.049.272l-.538 2.155l1.317.328l.544-2.184c2.246.425 3.934.253 4.645-1.778c.573-1.635-.029-2.578-1.21-3.193c.86-.198 1.508-.764 1.681-1.933m-3.008 4.219c-.407 1.635-3.16.75-4.053.53l.723-2.9c.893.223 3.755.664 3.33 2.37m.407-4.243c-.371 1.487-2.663.732-3.406.547l.656-2.63c.743.186 3.137.532 2.75 2.083\\\" stroke-width=\\\"0.5\\\" stroke=\\\"currentColor\\\" />\\n</svg>\",\"badge\":\"B\",\"tagline\":\"Hard-money native product thinking\",\"weight\":\"featured\"}],\"title\":\"Proof of Work Stack\"}",
+            "focus": "My focus is on helping businesses identify opportunities, streamline operations, and connect digitally with a global audience — enabling them to own and control their online presence.",
+            "heading": "20+ years of software",
+            "intro": "",
+            "optimism": "I am hopeful and optimistic that decentralized solutions and large scale applied cryptography systems can bring forward a fairer and more prosperous future.",
+            "principlesIntro": "",
+            "toolkitTitle": "Core toolkit"
+          }
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_5d8bdb01-91f5-4bf5-ade9-4117ca06b999",
+            ":badges": "[]",
+            "company": "Bitvocation",
+            "contentSide": "left",
+            "description": "<p>I believe working on and around bitcoin tools and infrastructure is a very interesting prospect for myself and surely others, so I have decided to bring my energy and help out the Bitvocation team push forward in its mission to fill in an important gap between professionals and companies.</p>",
+            "detailed": "<p>My journey into Bitcoin development started with a fascination for truly decentralized systems and the potential for creating uncensorable, permissionless financial infrastructure. Bitcoin represents more than just digital money - it's a paradigm shift toward individual sovereignty and freedom from traditional banking and trust systems.</p><p>I have tinkered with various Lightning Network implementations, focusing on payment infrastructure and management strategies. Lightning's second-layer approach to scaling Bitcoin while maintaining decentralization principles aligns perfectly with my engineering philosophy of building robust, distributed systems.</p>",
+            "detailedContent": "",
+            "id": "experience",
+            "image": "https://ik.imagekit.io/kangu/rs/26d2cf4c-023a-4bb2-825f-40713dfc22bf_1280x720_uStjxeAl0.webp?updatedAt=1772305210420",
+            "imageAlt": "First job in bitcoin",
+            "jobTitle": "Development + consultancy",
+            "readMoreText": "Read more",
+            "yearRange": "2025 - Present"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "This is where I heal my hurts",
+              "Yo that's quite nice",
+              ". Text"
+            ]
+          ]
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_d718a457-5e33-4f6c-8056-ee0cdf13d438",
+            ":badges": "[\"Social network for roommates\",\"Large scale financial projects\"]",
+            "company": "Freelance",
+            "contentSide": "right",
+            "description": "<p>The 2008 financial crisis showed me that having a single stream of income is prone to failure and I started diversifying my client portfolio. Took on quite a bunch on interesting projects from whive I've learned a lot, with clients both domestic and international.</p><p>Around 2010 I launched a social network for roommates together with a partner, that was a nice experiment that lasted for a few years.</p>",
+            "detailed": "<p>More recently, I've been exploring NOSTR (Notes and Other Stuff Transmitted by Relays), a decentralized social protocol that shares Bitcoin's principles of censorship resistance and user sovereignty.</p><p>My contributions include open-source libraries for Lightning integration, CouchDB applications and tools, NOSTR relay implementations, and educational content to help developers understand these impactful technologies. </p><p>I am inspired by the technology we all share and use, and I am committed to building the infrastructure for a more open and equitable digital future.</p>",
+            "detailedContent": "",
+            "image": "/webdev.jpg",
+            "imageAlt": "Web development",
+            "jobTitle": "Full stack software developer",
+            "readMoreText": "Read more",
+            "yearRange": "2009 - Present"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "The 2008 financial crisis showed me that having a single stream of income is prone to failure and I started diversifying my client portfolio. Took on quite a bunch on interesting projects from whive I've learned a lot, with clients both domestic and international."
+            ],
+            [
+              "p",
+              {},
+              "Around 2010 I launched a social network for roommates together with a partner, that was a nice experiment that lasted for a few years."
+            ]
+          ],
+          [
+            "template",
+            {
+              "v-slot:detailed": ""
+            },
+            [
+              "p",
+              {},
+              "I need to look back thoughtfully through my freelance projects and extract what relevant lessons I learned from them."
+            ]
+          ]
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_289ce0f4-b7b0-4d04-b1b2-ea6d41621d80",
+            ":badges": "[]",
+            "company": "InduX / Indunor",
+            "contentSide": "right",
+            "description": "<p>I joined an energetic company from Norway providing high quality glass solutions for the construction industry.</p><p>The company was struggling to use an off-the-shelf webshop solution so we re-architectured a custom performant e-commerce solution based on the specific products being handled.</p>",
+            "detailedContent": "Working with InduX/Indunor has been an incredible journey of building enterprise-level solutions from the ground up. The company specializes in high-end glass installations and construction materials, serving clients across Europe with premium architectural glass solutions.<br><br>My role involves architecting and developing a comprehensive business management platform that handles everything from inventory management to customer relations, project tracking, and financial operations. The system integrates multiple third-party services including logistics providers, suppliers, and payment gateways.<br><br>Key technical challenges include handling complex product configurations (glass comes in thousands of variations), real-time inventory synchronization across multiple warehouses, and building mobile-responsive interfaces for field workers to update project status on-site.<br><br>The technology stack includes modern web technologies with a focus on performance and scalability, ensuring the platform can handle the company's rapid growth while maintaining excellent user experience for both internal teams and external clients.",
+            "id": "",
+            "image": "/indux-indunor.jpg",
+            "imageAlt": "InduX / Indunor office space",
+            "jobTitle": "Development + consultancy",
+            "readMoreText": "Read more",
+            "yearRange": "2024 - Present"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "I joined an energetic company from Norway providing high quality glass solutions for the construction industry."
+            ],
+            [
+              "p",
+              {},
+              "The company was struggling to use an off-the-shelf webshop solution so we re-architectured a custom performant e-commerce solution based on the specific products being handled."
+            ]
+          ]
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_d70681f3-dcc5-4dcb-b2ed-2c6f76af3156",
+            ":badges": "[]",
+            "company": "Digital Information",
+            "contentSide": "left",
+            "description": "<p>Architected and developed comprehensive tooling solutions to enhance color accuracy and quality across the company's flagship software portfolio, delivering measurable improvements in product performance and client satisfaction.</p><p>Led the implementation of cutting-edge web-based UI technologies, establishing industry-leading interface standards that position our product suite among the most sophisticated and user-friendly solutions in the market.</p>",
+            "detailed": "<p>I was fortunate enough to join forces with a company that allowed me the technical creative freedom to explore tools and development stacks without imposing and restrictions other than the final product in a great shape both in functionality and design. </p><p>During my tenure at Digital Information, I spearheaded the development of cutting-edge color management and quality assurance tools for the printing and publishing industry. Digital Information specializes in providing software solutions that ensure consistent, high-quality color reproduction across various printing devices and media types.</p><p>My primary focus was developing hybrid desktop and web applications that could handle complex color science algorithms while maintaining intuitive user interfaces. These tools were used by printing professionals worldwide to calibrate equipment, create custom color profiles, and maintain quality standards throughout the printing workflow.</p><p>The technical challenges were substantial - working with color spaces, gamma correction, spectral data analysis, and ensuring sub-millisecond response times for industrial applications. </p><p>I led the transition from legacy desktop applications to modern web-based hybrid solutions, enabling customers to access our tools from anywhere while maintaining the precision and reliability required in professional printing environments.</p>",
+            "detailedContent": "I was fortunate enough to join forces with a company that allowed me to choose my toolset for building solutions they needed. During my tenure at Digital Information, I spearheaded the development of cutting-edge color management and quality assurance tools for the printing and publishing industry. Digital Information specializes in providing software solutions that ensure consistent, high-quality color reproduction across various printing devices and media types.<br><br>My primary focus was developing hybrid desktop and web applications that could handle complex color science algorithms while maintaining intuitive user interfaces. These tools were used by printing professionals worldwide to calibrate equipment, create custom color profiles, and maintain quality standards throughout the printing workflow.<br><br>Key achievements include architecting a real-time color measurement system that integrated with industrial printing equipment, developing machine learning algorithms for automatic color correction, and creating web-based dashboards for quality control managers to monitor printing operations remotely.<br><br>The technical challenges were substantial - working with color spaces, gamma correction, spectral data analysis, and ensuring sub-millisecond response times for industrial applications. I also led the transition from legacy desktop applications to modern web-based solutions, enabling customers to access our tools from anywhere while maintaining the precision and reliability required in professional printing environments.",
+            "image": "/di.jpg",
+            "imageAlt": "Digital printing equipment",
+            "jobTitle": "Senior software developer",
+            "readMoreText": "Read more",
+            "yearRange": "2011 - Present"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "Architected and developed comprehensive tooling solutions to enhance color accuracy and quality across the company's flagship software portfolio, delivering measurable improvements in product performance and client satisfaction."
+            ],
+            [
+              "p",
+              {},
+              "Led the implementation of cutting-edge web-based UI technologies, establishing industry-leading interface standards that position our product suite among the most sophisticated and user-friendly solutions in the market."
+            ]
+          ],
+          [
+            "template",
+            {
+              "v-slot:detailed": ""
+            },
+            [
+              "p",
+              {},
+              "Specialized in designing and optimizing industrial-grade user interfaces for time-sensitive manufacturing environments, where millisecond response times and zero-downtime performance are essential. Developed robust UI architectures capable of handling real-time data processing and critical workflow operations under strict temporal constraints, ensuring seamless user experiences in high-pressure production scenarios."
+            ],
+            [
+              "p",
+              {},
+              "Successfully transitioned from full-time development role to strategic consultancy position, providing specialized technical expertise and architectural guidance while maintaining project continuity. Currently delivering high-value consulting services that leverage deep institutional knowledge and established technical frameworks to support ongoing product evolution and strategic initiatives."
+            ]
+          ]
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_cab5575e-6f62-489b-870e-24701d9585bc",
+            ":badges": "[\"Global Collaboration with Teams in the UK and US\",\"Large Amazon-scale inventory processing\"]",
+            "company": "SellerEngine",
+            "contentSide": "left",
+            "description": "<p>Around 21, after my success with Dial-Up Monitor, I was approached by a friend of my older brother who was running a US-based software company building tools for Amazon sellers.</p><p>I was the original employee of the Romanian branch of the company and helped with building out the development team.</p><p>I took over the project built with Delphi from a Chinese developer who was the original creator of the tool for automating sales price and inventory on the Amazon marketplace through their extensive (and pioneering at that time) API. I led the development effort for that with an international team spread across two continents.</p><p>I experimented with working in offices and locations far from home, all the way to Portland, USA and London in the UK. I gathered a great deal of experience collaborating across different cultures, projects and teams.</p>",
+            "detailedContent": "The Romanian branch of the US-based software company started with me and grew over the years to 30+ people. A challenging and interesting experience was working with the recruiting team for hiring new developers while I was myself not a subject of that experience from the interviewee's position  For a while I worked from London to design and develop a warehouse management software to support the book-selling business's inventory and order management, Integrated various automation systems like barcode scanners for tracking stock in the shelving warehouse area.",
+            "image": "/seplus.jpg",
+            "imageAlt": "Bitcoin development artwork",
+            "jobTitle": "First software developer job",
+            "readMoreText": "Read more",
+            "yearRange": "2003 - 2008"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "Around 21, after my success with Dial-Up Monitor, I was approached by a friend of my older brother who was running a US-based software company building tools for Amazon sellers."
+            ],
+            [
+              "p",
+              {},
+              "I was the original employee of the Romanian branch of the company and helped with building out the development team."
+            ],
+            [
+              "p",
+              {},
+              "I worked across the US and UK offices and gathered a great deal of experience collaborating across different projects and teams."
+            ]
+          ],
+          [
+            "template",
+            {
+              "v-slot:detailed": ""
+            },
+            [
+              "p",
+              {},
+              "I took over the project built with Delphi from a Chinese developer who was the original inventor of the tool. I led the development effort for that with an international team spread across two continents."
+            ]
+          ]
+        ],
+        [
+          "work",
+          {
+            "__builderSectionId": "sec_9e4b6100-dbbd-4b58-bbd3-775236d4b027",
+            ":badges": "[\"First software product launched at 16\",\"Exit at 21\",\"300+ international clients\"]",
+            "company": "How it all started",
+            "contentSide": "right",
+            "description": "<p>I built a desktop application called Dial-Up Monitor making use of the Windows RAS API for modems built at the down of the Internet age.</p><p>Back in the era of 56k screeches and \"Get off the Internet, I need to use the phone!\" battles, around high-school age I started tinkering with the crazy thought of building commercial software.</p>",
+            "detailed": "<p>Together with a friend, we hatched a scheme born from teenage necessity - we wanted to share an Internet package with its precious allotment of hours, but we needed a way to track our usage independently so nobody would hog all the time online. This was the era of \"pay-per-hour\" Internet plans, when every minute online was literally money, and going over your monthly hours meant getting cut off.</p><p>Armed with Visual Basic 6 and a couple of books from the library, I crafted something that actually worked. The software garnered rave reviews on the legendary download portals of yesteryear - those digital bazaars where shareware dreams were made and broken, one ZIP file at a time.</p><p>But like true Internet prophets, I saw the writing on the wall: broadband was coming to devour the dial-up kingdom. So I did what any savvy pioneers would do - sold the digital homestead to an American company who needed it for their internal operations, just as the great broadband migration began.</p>",
+            "image": "/visual-dialup-monitor.jpg",
+            "imageAlt": "Dial-Up Monitor screenshot",
+            "jobTitle": "Young entrepreneur",
+            "readMoreText": "Read more",
+            "yearRange": "1999 - 2003"
+          },
+          [
+            "template",
+            {
+              "v-slot:description": ""
+            },
+            [
+              "p",
+              {},
+              "I built a desktop application called Dial-Up Monitor making use of the Windows RAS API for modems built at the down of the Internet age."
+            ],
+            [
+              "p",
+              {},
+              "Back in the era of 56k screeches and \"Get off the Internet, I need to use the phone!\" battles, around high-school age I started tinkering with the crazy thought of building commercial software."
+            ]
+          ],
+          [
+            "template",
+            {
+              "v-slot:detailed": ""
+            },
+            [
+              "p",
+              {},
+              "Together with a friend, we hatched a scheme born from teenage necessity - we wanted to share an Internet package with its precious allotment of hours, but we needed a way to track our usage independently so nobody would hog all the time online. This was the era of \"pay-per-hour\" Internet plans, when every minute online was literally money, and going over your monthly hours meant getting cut off."
+            ],
+            [
+              "p",
+              {},
+              "Armed with Visual Basic 6 and a couple of books from the library, I crafted something that actually worked. The software garnered rave reviews on the legendary download portals of yesteryear - those digital bazaars where shareware dreams were made and broken, one ZIP file at a time."
+            ],
+            [
+              "p",
+              {},
+              "But like true Internet prophets, I saw the writing on the wall: broadband was coming to devour the dial-up kingdom. So I did what any savvy pioneers would do - sold the digital homestead to an American company who needed it for their internal operations, just as the great broadband migration began."
+            ]
+          ]
+        ],
+        [
+          "services",
+          {
+            "__builderSectionId": "sec_a27dcf2c-6892-497d-a061-ff5cee22fcd3",
+            ":coreToolkit": "[{\"icon\":\"database\",\"title\":\"Large scale database implementations\"},{\"icon\":\"speed\",\"title\":\"High performance applications\"},{\"icon\":\"industry\",\"title\":\"Industrial software design & development\"},{\"icon\":\"stack\",\"title\":\"Full stack implementations\"},{\"icon\":\"consultancy\",\"title\":\"Digital development consultancy\"},{\"icon\":\"lightning\",\"title\":\"Lightning payments implementation\"}]",
+            ":principles": "[]",
+            "heading": "Services",
+            "intro": "Partnering on end-to-end product development, from data foundations to customer-facing experiences.",
+            "principlesIntro": "How we work"
+          }
+        ],
+        [
+          "contact",
+          {
+            "__builderSectionId": "sec_4b6cc37c-acfd-4621-a09c-a347360505c6",
+            ":coreToolkit": "[{\"icon\":\"email\",\"label\":\"hello@radustanciu.ro\",\"href\":\"mailto:hello@radustanciu.ro\",\"ariaLabel\":\"Send email\"},{\"icon\":\"linkedin\",\"label\":\"LinkedIn Profile\",\"href\":\"https://www.linkedin.com/in/radu-stanciu-a9411bb/\",\"ariaLabel\":\"Connect on LinkedIn\"},{\"icon\":\"location\",\"label\":\"Cluj-Napoca, Romania (UTC+3)\",\"href\":\"https://www.google.com/maps/place/Cluj-Napoca/@46.7834736,2.5227606,4z/\",\"ariaLabel\":\"View location\"}]",
+            ":principles": "[]",
+            "companyLabel": "Company",
+            "companyPlaceholder": "If any",
+            "emailLabel": "Email Address *",
+            "emailPlaceholder": "your.email@definitely-not-spam.com",
+            "errorCtaLabel": "Try Again",
+            "errorDescription": "Something went wrong. Please try again later.",
+            "errorMessage": "Failed to send message",
+            "footerText": "© 2026 Radu Stanciu. Empowering software through passionate architecture solutions.<br>Built with modern web technologies and a commitment to open source.",
+            "heading": "Let's work together",
+            "linkGithub": "https://github.com/kangu",
+            "linkLinkedIn": "https://www.linkedin.com/in/radu-stanciu-a9411bb/",
+            "linkNostr": "https://primal.net/p/npub1v7rkjwwt95lrxwl5rdf942jk4s4uj3an6zk7ej33vl8havktgd8svx887m",
+            "messageLabel": "Tell me about your project *",
+            "messagePlaceholder": "Who are you making the project for? What do you want to achieve?",
+            "nameLabel": "How do I have the pleasure with?",
+            "namePlaceholder": "Your actual name (or superhero alias)",
+            "principlesIntro": "What to expect:",
+            "sendingDescription": "Please wait while we process your request.",
+            "sendingMessage": "Sending your message...",
+            "submitLabel": "Let's Build Something Awesome",
+            "submitSendingLabel": "Sending...",
+            "subtitle": "Ready to transform your ideas into powerful software solutions?\nLet's analyze your project and build a roadmap.",
+            "successCtaLabel": "Send Another Message",
+            "successDescription": "Thank you for reaching out. I'll get back to you within 24 hours.",
+            "successMessage": "Message sent successfully!"
+          }
+        ]
+      ]
+    },
+    "extension": "md",
+    "layout": {
+      "spacing": "none"
+    },
+    "meta": {
+      "builder": {
+        "sectionNamesById": {
+          "sec_289ce0f4-b7b0-4d04-b1b2-ea6d41621d80": "InduX",
+          "sec_4b6cc37c-acfd-4621-a09c-a347360505c6": "Contact",
+          "sec_5d8bdb01-91f5-4bf5-ade9-4117ca06b999": "Bitvocation",
+          "sec_9e4b6100-dbbd-4b58-bbd3-775236d4b027": "Dial-Up Monitor",
+          "sec_a27dcf2c-6892-497d-a061-ff5cee22fcd3": "Services",
+          "sec_baa3bf26-008d-4168-a17e-90e7423ab620": "About me",
+          "sec_cab5575e-6f62-489b-870e-24701d9585bc": "SellerEngine",
+          "sec_d70681f3-dcc5-4dcb-b2ed-2c6f76af3156": "Digital Information",
+          "sec_d718a457-5e33-4f6c-8056-ee0cdf13d438": "Freelance",
+          "sec_ea5eb0ef-96f0-4cfa-80ef-7d6a3ff243b5": "Intro"
+        }
+      },
+      "contentI18n": {
+        "basePath": "/",
+        "defaultLocale": "en",
+        "fixedBodyPaths": [
+          "/0/1/primaryButton/event",
+          "/0/1/primaryButton/href",
+          "/0/1/secondaryButton/event",
+          "/0/1/secondaryButton/href",
+          "/0/1/subtitle",
+          "/0/1/title",
+          "/1/1/coreToolkit",
+          "/1/1/focus",
+          "/1/1/heading",
+          "/1/1/intro",
+          "/1/1/narrativeSection/focus",
+          "/1/1/narrativeSection/intro",
+          "/1/1/narrativeSection/optimism",
+          "/1/1/optimism",
+          "/1/1/principles",
+          "/1/1/principlesIntro",
+          "/1/1/principlesSection/title",
+          "/1/1/signalSection/items/0/tone",
+          "/1/1/signalSection/items/0/value",
+          "/1/1/signalSection/items/1/tone",
+          "/1/1/signalSection/items/1/value",
+          "/1/1/signalSection/items/2/tone",
+          "/1/1/signalSection/items/2/value",
+          "/1/1/signalSection/items/3/tone",
+          "/1/1/signalSection/items/3/value",
+          "/1/1/signalSection/title",
+          "/1/1/toolkitSection/items/0/badge",
+          "/1/1/toolkitSection/items/0/icon",
+          "/1/1/toolkitSection/items/0/name",
+          "/1/1/toolkitSection/items/0/weight",
+          "/1/1/toolkitSection/items/1/badge",
+          "/1/1/toolkitSection/items/1/icon",
+          "/1/1/toolkitSection/items/1/name",
+          "/1/1/toolkitSection/items/1/weight",
+          "/1/1/toolkitSection/items/2/badge",
+          "/1/1/toolkitSection/items/2/icon",
+          "/1/1/toolkitSection/items/2/name",
+          "/1/1/toolkitSection/items/2/weight",
+          "/1/1/toolkitSection/items/3/badge",
+          "/1/1/toolkitSection/items/3/icon",
+          "/1/1/toolkitSection/items/3/name",
+          "/1/1/toolkitSection/items/3/weight",
+          "/1/1/toolkitSection/items/4/badge",
+          "/1/1/toolkitSection/items/4/icon",
+          "/1/1/toolkitSection/items/4/name",
+          "/1/1/toolkitSection/items/4/weight",
+          "/1/1/toolkitSection/items/5/badge",
+          "/1/1/toolkitSection/items/5/icon",
+          "/1/1/toolkitSection/items/5/name",
+          "/1/1/toolkitSection/items/5/weight",
+          "/1/1/toolkitSection/title",
+          "/1/1/toolkitTitle",
+          "/2/1/company",
+          "/2/1/contentSide",
+          "/2/1/detailedContent",
+          "/2/1/id",
+          "/2/1/image",
+          "/2/1/imageAlt",
+          "/2/1/yearRange",
+          "/2/2/1/v-slot:description",
+          "/3/1/company",
+          "/3/1/contentSide",
+          "/3/1/detailedContent",
+          "/3/1/image",
+          "/3/1/imageAlt",
+          "/3/1/yearRange",
+          "/3/2/1/v-slot:description",
+          "/3/3/1/v-slot:detailed",
+          "/4/1/company",
+          "/4/1/contentSide",
+          "/4/1/detailedContent",
+          "/4/1/id",
+          "/4/1/image",
+          "/4/1/imageAlt",
+          "/4/1/yearRange",
+          "/4/2/1/v-slot:description",
+          "/5/1/company",
+          "/5/1/contentSide",
+          "/5/1/detailedContent",
+          "/5/1/image",
+          "/5/1/imageAlt",
+          "/5/1/yearRange",
+          "/5/2/1/v-slot:description",
+          "/5/3/1/v-slot:detailed",
+          "/6/1/company",
+          "/6/1/contentSide",
+          "/6/1/detailedContent",
+          "/6/1/image",
+          "/6/1/imageAlt",
+          "/6/1/yearRange",
+          "/6/2/1/v-slot:description",
+          "/6/3/1/v-slot:detailed",
+          "/7/1/company",
+          "/7/1/contentSide",
+          "/7/1/image",
+          "/7/1/imageAlt",
+          "/7/1/yearRange",
+          "/7/2/1/v-slot:description",
+          "/7/3/1/v-slot:detailed",
+          "/8/1/coreToolkit/0/icon",
+          "/8/1/coreToolkit/1/icon",
+          "/8/1/coreToolkit/2/icon",
+          "/8/1/coreToolkit/3/icon",
+          "/8/1/coreToolkit/4/icon",
+          "/8/1/coreToolkit/5/icon",
+          "/9/1/coreToolkit/0/href",
+          "/9/1/coreToolkit/0/icon",
+          "/9/1/coreToolkit/1/href",
+          "/9/1/coreToolkit/1/icon",
+          "/9/1/coreToolkit/2/href",
+          "/9/1/coreToolkit/2/icon",
+          "/9/1/linkGithub",
+          "/9/1/linkLinkedIn",
+          "/9/1/linkNostr"
+        ],
+        "locale": "en",
+        "masterId": "page-/index",
+        "version": 1
+      }
+    },
+    "navigation": true,
+    "path": "/",
+    "seo": {
+      "description": "Professional software architecture and development services",
+      "image": "https://ik.imagekit.io/kangu/rs/top-image_D4EGCDCIo.jpg?updatedAt=1772970010637",
+      "title": "Radu Stanciu - Software Consultancy and Development"
+    },
+    "title": "Homepage",
+    "type": "page"
+  },
+  "source": {
+    "database": "rs--content",
+    "id": "page-/index",
+    "name": "rs-index",
+    "url": "http://localhost:5984/rs--content/page-%2Findex"
+  }
+}
