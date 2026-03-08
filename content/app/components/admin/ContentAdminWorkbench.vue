@@ -41,6 +41,7 @@ import {
     type LlmTranslationLocaleReportEntry,
     type LlmTranslationOverwriteMode,
     type LlmTranslationScopeMode,
+    type LlmTranslationTokenUsage,
 } from "#content/app/composables/useLlmTranslations";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
@@ -413,6 +414,54 @@ const hasPersistableTranslationLocales = computed(() =>
 const translationCompletedAtDisplay = computed(() =>
     formatTimestamp(translationLastResult.value?.report.completedAt ?? null),
 );
+type TranslationReportTokenUsageSummary = LlmTranslationTokenUsage & {
+    localeCount: number;
+};
+const translationReportTokenUsage = computed<TranslationReportTokenUsageSummary | null>(
+    () => {
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let totalTokens = 0;
+        let reasoningTokens = 0;
+        let cachedPromptTokens = 0;
+        let localeCount = 0;
+
+        for (const entry of translationLocaleResults.value) {
+            const usage = entry.tokenUsage;
+            if (!usage) {
+                continue;
+            }
+
+            localeCount += 1;
+            promptTokens += usage.promptTokens || 0;
+            completionTokens += usage.completionTokens || 0;
+            totalTokens += usage.totalTokens || 0;
+            reasoningTokens += usage.reasoningTokens || 0;
+            cachedPromptTokens += usage.cachedPromptTokens || 0;
+        }
+
+        if (!localeCount) {
+            return null;
+        }
+
+        return {
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            reasoningTokens: reasoningTokens > 0 ? reasoningTokens : null,
+            cachedPromptTokens: cachedPromptTokens > 0 ? cachedPromptTokens : null,
+            localeCount,
+        };
+    },
+);
+const translationReportTokenUsageText = computed(() =>
+    formatTokenUsageSummary(translationReportTokenUsage.value, {
+        includeLocaleCount: true,
+    }),
+);
+const activeTranslationLocaleTokenUsageText = computed(() =>
+    formatTokenUsageSummary(activeTranslationLocaleResult.value?.tokenUsage ?? null),
+);
 const translationResultTargetLocales = computed(() =>
     translationLastResult.value?.report.localeResults.map((entry) => entry.locale) ??
     [],
@@ -753,6 +802,52 @@ function formatTimestamp(
         return null;
     }
     return date.toLocaleString();
+}
+
+function formatTokenUsageSummary(
+    usage: LlmTranslationTokenUsage | TranslationReportTokenUsageSummary | null,
+    options?: {
+        includeLocaleCount?: boolean;
+    },
+): string | null {
+    if (!usage) {
+        return null;
+    }
+
+    const summary = [
+        `Total ${usage.totalTokens.toLocaleString()}`,
+        `Prompt ${usage.promptTokens.toLocaleString()}`,
+        `Completion ${usage.completionTokens.toLocaleString()}`,
+    ];
+
+    if (
+        typeof usage.reasoningTokens === "number" &&
+        Number.isFinite(usage.reasoningTokens) &&
+        usage.reasoningTokens > 0
+    ) {
+        summary.push(`Reasoning ${usage.reasoningTokens.toLocaleString()}`);
+    }
+
+    if (
+        typeof usage.cachedPromptTokens === "number" &&
+        Number.isFinite(usage.cachedPromptTokens) &&
+        usage.cachedPromptTokens > 0
+    ) {
+        summary.push(
+            `Cached prompt ${usage.cachedPromptTokens.toLocaleString()}`,
+        );
+    }
+
+    if (
+        options?.includeLocaleCount &&
+        "localeCount" in usage &&
+        typeof usage.localeCount === "number" &&
+        usage.localeCount > 0
+    ) {
+        summary.push(`Across ${usage.localeCount} locale(s)`);
+    }
+
+    return summary.join(" · ");
 }
 
 function formatHistoryLabel(value: string): string {
@@ -3356,6 +3451,12 @@ defineExpose({
                                             : ""
                                     }}
                                 </span>
+                                <span
+                                    v-if="translationReportTokenUsageText"
+                                    class="editor-header__translation-report-text"
+                                >
+                                    Token usage: {{ translationReportTokenUsageText }}.
+                                </span>
                                 <div
                                     v-if="translationLastResult.report.keyPoints.length"
                                     class="translation-modal__key-points"
@@ -3459,6 +3560,13 @@ defineExpose({
                                                 </span>
                                             </div>
                                         </div>
+                                        <p
+                                            v-if="activeTranslationLocaleTokenUsageText"
+                                            class="translation-modal__locale-token-usage"
+                                        >
+                                            Token usage:
+                                            {{ activeTranslationLocaleTokenUsageText }}.
+                                        </p>
 
                                         <div
                                             v-if="activeTranslationLocaleResult.status === 'ok'"
@@ -4437,6 +4545,13 @@ defineExpose({
     align-items: center;
     gap: 0.4rem;
     flex-wrap: wrap;
+}
+
+.translation-modal__locale-token-usage {
+    margin: 0;
+    font-size: 0.73rem;
+    color: #334155;
+    word-break: break-word;
 }
 
 .translation-modal__locale-error {

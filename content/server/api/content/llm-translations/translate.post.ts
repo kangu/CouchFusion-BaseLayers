@@ -26,6 +26,7 @@ import {
   runLocaleTranslation,
   type TranslationOverwriteMode,
   type TranslationScopeMode,
+  type TranslationTokenUsage,
 } from '../../../utils/llm-translations-run'
 import { getLlmTranslationsRuntimeConfig } from '../../../utils/llm-translations-config'
 
@@ -181,6 +182,40 @@ const toLocaleTranslationEntries = (
         typeof sourceTextByPointer[key] === 'string' ? sourceTextByPointer[key] : '',
       value,
     }))
+
+const normalizeTokenUsage = (value: unknown): TranslationTokenUsage | null => {
+  if (!isPlainObject(value)) {
+    return null
+  }
+
+  const promptTokens = Number.isFinite(value.promptTokens)
+    ? Number(value.promptTokens)
+    : 0
+  const completionTokens = Number.isFinite(value.completionTokens)
+    ? Number(value.completionTokens)
+    : 0
+  const totalTokens = Number.isFinite(value.totalTokens)
+    ? Number(value.totalTokens)
+    : 0
+  const reasoningTokens = Number.isFinite(value.reasoningTokens)
+    ? Number(value.reasoningTokens)
+    : null
+  const cachedPromptTokens = Number.isFinite(value.cachedPromptTokens)
+    ? Number(value.cachedPromptTokens)
+    : null
+
+  if (promptTokens + completionTokens + totalTokens === 0) {
+    return null
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reasoningTokens,
+    cachedPromptTokens,
+  }
+}
 
 export default defineEventHandler(async (event) => {
   await requireAdminSession(event)
@@ -364,6 +399,7 @@ export default defineEventHandler(async (event) => {
         appliedCount: translationResult.appliedCount,
         skippedCount: translationResult.skippedCount,
         notes: translationResult.notes,
+        tokenUsage: translationResult.tokenUsage ?? null,
         translations: toLocaleTranslationEntries(
           translationResult.translationsByPointer,
           sourceTextByPointer,
@@ -381,6 +417,7 @@ export default defineEventHandler(async (event) => {
         appliedCount: 0,
         skippedCount: 0,
         error: resolveLocaleTranslationError(error),
+        tokenUsage: normalizeTokenUsage(error?.data?.tokenUsage),
         translations: [],
       })
     }

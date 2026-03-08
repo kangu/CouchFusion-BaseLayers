@@ -25,6 +25,15 @@ export interface TranslationLocaleExecutionResult {
   notes: string[]
   error?: string
   translationsByPointer: Record<string, string>
+  tokenUsage?: TranslationTokenUsage
+}
+
+export interface TranslationTokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  reasoningTokens?: number | null
+  cachedPromptTokens?: number | null
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -373,6 +382,48 @@ interface ParsedTranslationResponse {
   notes: string[]
 }
 
+const normalizeNumber = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+  return Math.floor(value)
+}
+
+const readTokenUsageFromCompletion = (
+  completion: Record<string, any> | null | undefined,
+): TranslationTokenUsage | undefined => {
+  if (!completion || typeof completion !== 'object') {
+    return undefined
+  }
+
+  const usage = completion.usage
+  if (!usage || typeof usage !== 'object') {
+    return undefined
+  }
+
+  const promptTokens = normalizeNumber(usage.prompt_tokens)
+  const completionTokens = normalizeNumber(usage.completion_tokens)
+  const totalTokens = normalizeNumber(usage.total_tokens)
+  const reasoningTokens = normalizeNumber(
+    usage.completion_tokens_details?.reasoning_tokens,
+  )
+  const cachedPromptTokens = normalizeNumber(
+    usage.prompt_tokens_details?.cached_tokens,
+  )
+
+  if (promptTokens + completionTokens + totalTokens === 0) {
+    return undefined
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reasoningTokens: reasoningTokens > 0 ? reasoningTokens : null,
+    cachedPromptTokens: cachedPromptTokens > 0 ? cachedPromptTokens : null,
+  }
+}
+
 const stripJsonCodeFence = (value: string): string => {
   const trimmed = value.trim()
   if (!trimmed.startsWith('```')) {
@@ -531,10 +582,10 @@ export const runLocaleTranslation = async (
     ],
   }
 
-  console.log(
-    '[content][llm-translations] /chat/completions request body:',
-    JSON.stringify(requestBody, null, 2),
-  )
+  // console.log(
+  //   '[content][llm-translations] /chat/completions request body:',
+  //   JSON.stringify(requestBody, null, 2),
+  // )
 
   const persistLog = async (
     details: {
@@ -615,10 +666,11 @@ export const runLocaleTranslation = async (
   }
 
   const completion = await response.json() as Record<string, any>
-  console.log(
-    '[content][llm-translations] /chat/completions success response:',
-    JSON.stringify(completion, null, 2),
-  )
+  const tokenUsage = readTokenUsageFromCompletion(completion)
+  // console.log(
+  //   '[content][llm-translations] /chat/completions success response:',
+  //   JSON.stringify(completion, null, 2),
+  // )
   const rawContent = completion?.choices?.[0]?.message?.content
 
   if (typeof rawContent !== 'string' || !rawContent.trim()) {
@@ -633,6 +685,9 @@ export const runLocaleTranslation = async (
     throw createError({
       statusCode: 502,
       statusMessage: 'Translation API returned empty content',
+      data: {
+        tokenUsage: tokenUsage ?? null,
+      },
     })
   }
 
@@ -652,7 +707,13 @@ export const runLocaleTranslation = async (
         message,
       },
     })
-    throw error
+    throw createError({
+      statusCode: typeof error?.statusCode === 'number' ? error.statusCode : 502,
+      statusMessage: message,
+      data: {
+        tokenUsage: tokenUsage ?? null,
+      },
+    })
   }
   const translationsByPointer: Record<string, string> = {}
 
@@ -680,6 +741,7 @@ export const runLocaleTranslation = async (
     skippedCount: 0,
     notes: parsed.notes,
     translationsByPointer,
+    tokenUsage,
   }
 }
 

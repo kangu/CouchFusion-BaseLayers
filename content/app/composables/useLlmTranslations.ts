@@ -3,6 +3,14 @@ import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
 export type LlmTranslationScopeMode = 'page' | 'section' | 'field'
 export type LlmTranslationOverwriteMode = 'missing' | 'all'
 
+export interface LlmTranslationTokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  reasoningTokens?: number | null
+  cachedPromptTokens?: number | null
+}
+
 export interface LlmTranslationRunRequest {
   path: string
   sourceLocale: string
@@ -19,6 +27,7 @@ export interface LlmTranslationLocaleReportEntry {
   translatedCount: number
   appliedCount: number
   skippedCount: number
+  tokenUsage?: LlmTranslationTokenUsage | null
   notes?: string[]
   error?: string
   translations?: Array<{
