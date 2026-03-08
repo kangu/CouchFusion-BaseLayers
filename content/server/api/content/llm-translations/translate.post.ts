@@ -167,14 +167,20 @@ const resolveLocaleTranslationError = (error: any): string => {
 
 const toLocaleTranslationEntries = (
   translationsByPointer: Record<string, string>,
-): Array<{ key: string; value: string }> =>
+  sourceTextByPointer: Record<string, string>,
+): Array<{ key: string; original: string; value: string }> =>
   Object.entries(translationsByPointer)
     .filter(
       (entry): entry is [string, string] =>
         typeof entry[0] === 'string' && typeof entry[1] === 'string',
     )
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, value]) => ({ key, value }))
+    .map(([key, value]) => ({
+      key,
+      original:
+        typeof sourceTextByPointer[key] === 'string' ? sourceTextByPointer[key] : '',
+      value,
+    }))
 
 export default defineEventHandler(async (event) => {
   await requireAdminSession(event)
@@ -255,6 +261,9 @@ export default defineEventHandler(async (event) => {
     fixedBodyPaths,
     scopeMode,
     scopePointer,
+  )
+  const sourceTextByPointer = Object.fromEntries(
+    sourceEntries.map((entry) => [entry.pointer, entry.text]),
   )
 
   if (!sourceEntries.length) {
@@ -357,6 +366,7 @@ export default defineEventHandler(async (event) => {
         notes: translationResult.notes,
         translations: toLocaleTranslationEntries(
           translationResult.translationsByPointer,
+          sourceTextByPointer,
         ),
       })
 

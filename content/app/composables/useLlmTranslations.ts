@@ -23,6 +23,7 @@ export interface LlmTranslationLocaleReportEntry {
   error?: string
   translations?: Array<{
     key: string
+    original?: string
     value: string
   }>
 }

@@ -159,11 +159,14 @@ const activeLocale = ref(
     initialTarget.value?.locale ?? contentI18nConfig.value.defaultLocale,
 );
 const availableLocales = computed(() => contentI18nConfig.value.locales);
+const translationSourceLocale = ref(activeLocale.value);
 const isDefaultActiveLocale = computed(
     () => activeLocale.value === contentI18nConfig.value.defaultLocale,
 );
 const translationLocaleOptions = computed(() =>
-    availableLocales.value.filter((locale) => locale !== activeLocale.value),
+    availableLocales.value.filter(
+        (locale) => locale !== translationSourceLocale.value,
+    ),
 );
 const stagedLocaleCount = computed(
     () => Object.keys(stagedDocumentsByLocale.value).length,
@@ -410,6 +413,10 @@ const hasPersistableTranslationLocales = computed(() =>
 const translationCompletedAtDisplay = computed(() =>
     formatTimestamp(translationLastResult.value?.report.completedAt ?? null),
 );
+const translationResultTargetLocales = computed(() =>
+    translationLastResult.value?.report.localeResults.map((entry) => entry.locale) ??
+    [],
+);
 const translationModalTitle = computed(() => {
     if (isTranslationPending.value) {
         return "Translation in progress";
@@ -418,14 +425,18 @@ const translationModalTitle = computed(() => {
 });
 const translationModalSubtitle = computed(() => {
     const scopeLabel = translationScopeLabel.value?.trim() || "Page";
-    const targets = translationTargetLocales.value.length
-        ? translationTargetLocales.value.join(", ")
+    const sourceLocale =
+        translationLastResult.value?.sourceLocale ?? translationSourceLocale.value;
+    const targets = translationResultTargetLocales.value.length
+        ? translationResultTargetLocales.value.join(", ")
+        : translationTargetLocales.value.length
+            ? translationTargetLocales.value.join(", ")
         : "none selected";
-    return `Scope: ${scopeLabel}. From ${activeLocale.value} to ${targets}.`;
+    return `Scope: ${scopeLabel}. From ${sourceLocale} to ${targets}.`;
 });
 const translationConfigModalSubtitle = computed(() => {
     const scopeLabel = pendingTranslationPayload.value?.label?.trim() || "Page";
-    return `Scope: ${scopeLabel}. Source locale: ${activeLocale.value}.`;
+    return `Scope: ${scopeLabel}. Source locale: ${translationSourceLocale.value}.`;
 });
 const translationHasDialogContent = computed(
     () =>
@@ -524,6 +535,22 @@ watch(
         translationTargetLocales.value = translationTargetLocales.value.filter(
             (locale) => allowed.has(locale),
         );
+    },
+    { immediate: true },
+);
+
+watch(
+    () => availableLocales.value,
+    (locales) => {
+        if (locales.includes(translationSourceLocale.value)) {
+            return;
+        }
+        if (locales.includes(activeLocale.value)) {
+            translationSourceLocale.value = activeLocale.value;
+            return;
+        }
+        translationSourceLocale.value =
+            locales[0] ?? contentI18nConfig.value.defaultLocale;
     },
     { immediate: true },
 );
@@ -1812,6 +1839,29 @@ const applyStagedTranslations = (
     return appliedLocales;
 };
 
+const resolveTranslationSourceDocument = async (
+    path: string,
+    sourceLocale: string,
+    builder: BuilderWorkbenchInstance,
+): Promise<MinimalContentDocument> => {
+    const stagedSource = stagedDocumentsByLocale.value[sourceLocale];
+    if (stagedSource) {
+        return clonePlain(stagedSource);
+    }
+
+    if (sourceLocale === activeLocale.value) {
+        return builder.getSerializedDocument();
+    }
+
+    await contentStore.fetchPage(path, false, { locale: sourceLocale });
+    const sourceSummary = contentStore.getPage(path, sourceLocale);
+    if (!sourceSummary?.document) {
+        throw new Error(`Source locale document not found for ${sourceLocale}.`);
+    }
+
+    return contentToMinimalDocument(sourceSummary.document);
+};
+
 const runScopedTranslation = async (
     payload: TranslateScopePayload,
 ): Promise<void> => {
@@ -1845,14 +1895,33 @@ const runScopedTranslation = async (
         return;
     }
 
-    const sourceDocument = builder.getSerializedDocument();
     const path = selectedPath.value ?? selectedSummary.value.path;
+    const sourceLocale = translationSourceLocale.value;
+    if (!availableLocales.value.includes(sourceLocale)) {
+        const message = "Select a valid source locale.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    if (translationTargetLocales.value.includes(sourceLocale)) {
+        const message = "Source locale cannot also be a destination locale.";
+        setTranslationNotice("error", message);
+        feedback.value.error?.(message);
+        return;
+    }
+
+    const sourceDocument = await resolveTranslationSourceDocument(
+        path,
+        sourceLocale,
+        builder,
+    );
     translationScopeLabel.value = payload.label ?? null;
     isTranslationDialogOpen.value = true;
 
     const result = await runTranslation({
         path,
-        sourceLocale: activeLocale.value,
+        sourceLocale,
         targetLocales: translationTargetLocales.value,
         sourceDocument,
         scopeMode: payload.scopeMode,
@@ -1914,6 +1983,11 @@ const openTranslationConfigDialog = (payload: TranslateScopePayload): void => {
 
     pendingTranslationPayload.value = payload;
     translationConfigError.value = null;
+    translationSourceLocale.value = activeLocale.value;
+    const allowedTargets = new Set(translationLocaleOptions.value);
+    translationTargetLocales.value = translationTargetLocales.value.filter(
+        (locale) => allowedTargets.has(locale),
+    );
     if (!translationTargetLocales.value.length) {
         translationTargetLocales.value = [...translationLocaleOptions.value];
     }
@@ -1936,6 +2010,17 @@ const confirmTranslationConfigAndRun = async (): Promise<void> => {
 
     const payload = pendingTranslationPayload.value;
     if (!payload) {
+        return;
+    }
+
+    if (!availableLocales.value.includes(translationSourceLocale.value)) {
+        translationConfigError.value = "Select a valid source locale.";
+        return;
+    }
+
+    if (translationTargetLocales.value.includes(translationSourceLocale.value)) {
+        translationConfigError.value =
+            "Source locale cannot also be a destination locale.";
         return;
     }
 
@@ -3101,6 +3186,25 @@ defineExpose({
                         <div class="translation-config__content">
                             <label class="translation-config__field">
                                 <span class="translation-config__label">
+                                    Source locale
+                                </span>
+                                <select
+                                    v-model="translationSourceLocale"
+                                    class="translation-config__select"
+                                    :disabled="isTranslationPending"
+                                >
+                                    <option
+                                        v-for="locale in availableLocales"
+                                        :key="`source-${locale}`"
+                                        :value="locale"
+                                    >
+                                        {{ locale }}
+                                    </option>
+                                </select>
+                            </label>
+
+                            <label class="translation-config__field">
+                                <span class="translation-config__label">
                                     Destination locales
                                 </span>
                                 <div class="translation-config__targets">
@@ -3427,52 +3531,77 @@ defineExpose({
                                             "
                                             class="translation-modal__translations"
                                         >
-                                            <div
-                                                v-for="(
-                                                    translation, index
-                                                ) in activeTranslationLocaleResult.translations"
-                                                :key="`${activeTranslationLocaleResult.locale}-translation-${index}`"
-                                                class="translation-modal__translation-row"
-                                            >
-                                                <code class="translation-modal__translation-key">
-                                                    {{ translation.key }}
-                                                </code>
-                                                <textarea
-                                                    class="translation-modal__translation-input"
-                                                    rows="2"
-                                                    :value="
-                                                        getTranslationDraftValue(
-                                                            activeTranslationLocaleResult.locale,
-                                                            translation.key,
-                                                            translation.value,
-                                                        )
-                                                    "
-                                                    :disabled="
-                                                        !isTranslationDraftEditable(
-                                                            activeTranslationLocaleResult.locale,
-                                                        )
-                                                    "
-                                                    @input="
-                                                        handleTranslationDraftInput(
-                                                            activeTranslationLocaleResult.locale,
-                                                            translation.key,
-                                                            $event,
-                                                        )
-                                                    "
-                                                />
-                                                <p
-                                                    v-if="
-                                                        isTranslationDraftChanged(
-                                                            activeTranslationLocaleResult.locale,
-                                                            translation.key,
-                                                            translation.value,
-                                                        )
-                                                    "
-                                                    class="translation-modal__translation-changed"
-                                                >
-                                                    Edited locally. Persist to save this change.
-                                                </p>
-                                            </div>
+                                            <table class="translation-modal__translations-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Key</th>
+                                                        <th>Original</th>
+                                                        <th>Translation</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr
+                                                        v-for="(
+                                                            translation, index
+                                                        ) in activeTranslationLocaleResult.translations"
+                                                        :key="`${activeTranslationLocaleResult.locale}-translation-${index}`"
+                                                        class="translation-modal__translations-row"
+                                                    >
+                                                        <td class="translation-modal__translations-cell translation-modal__translations-cell--key">
+                                                            <code class="translation-modal__translation-key">
+                                                                {{ translation.key }}
+                                                            </code>
+                                                        </td>
+                                                        <td class="translation-modal__translations-cell translation-modal__translations-cell--original">
+                                                            <p class="translation-modal__translation-original">
+                                                                {{
+                                                                    translation.original &&
+                                                                    translation.original.length
+                                                                        ? translation.original
+                                                                        : "—"
+                                                                }}
+                                                            </p>
+                                                        </td>
+                                                        <td class="translation-modal__translations-cell translation-modal__translations-cell--translation">
+                                                            <textarea
+                                                                class="translation-modal__translation-input"
+                                                                rows="3"
+                                                                :value="
+                                                                    getTranslationDraftValue(
+                                                                        activeTranslationLocaleResult.locale,
+                                                                        translation.key,
+                                                                        translation.value,
+                                                                    )
+                                                                "
+                                                                :disabled="
+                                                                    !isTranslationDraftEditable(
+                                                                        activeTranslationLocaleResult.locale,
+                                                                    )
+                                                                "
+                                                                @input="
+                                                                    handleTranslationDraftInput(
+                                                                        activeTranslationLocaleResult.locale,
+                                                                        translation.key,
+                                                                        $event,
+                                                                    )
+                                                                "
+                                                            />
+                                                            <p
+                                                                v-if="
+                                                                    isTranslationDraftChanged(
+                                                                        activeTranslationLocaleResult.locale,
+                                                                        translation.key,
+                                                                        translation.value,
+                                                                    )
+                                                                "
+                                                                class="translation-modal__translation-changed"
+                                                            >
+                                                                Edited locally. Persist to save this change.
+                                                            </p>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         </div>
                                         <p
                                             v-else-if="
@@ -4321,19 +4450,48 @@ defineExpose({
     border: 1px solid #e2e8f0;
     border-radius: 0.45rem;
     background: #f8fafc;
-    max-height: 220px;
+    max-height: 420px;
     overflow: auto;
 }
 
-.translation-modal__translation-row {
-    border-top: 1px solid #e2e8f0;
-    padding: 0.4rem 0.5rem;
-    display: grid;
-    gap: 0.25rem;
+.translation-modal__translations-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
 }
 
-.translation-modal__translation-row:first-child {
-    border-top: none;
+.translation-modal__translations-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #0f172a;
+    background: #eff6ff;
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid #bfdbfe;
+}
+
+.translation-modal__translations-row {
+    border-top: 1px solid #e2e8f0;
+}
+
+.translation-modal__translations-cell {
+    vertical-align: top;
+    padding: 0.5rem 0.6rem;
+}
+
+.translation-modal__translations-cell--key {
+    width: 16%;
+}
+
+.translation-modal__translations-cell--original {
+    width: 34%;
+}
+
+.translation-modal__translations-cell--translation {
+    width: 50%;
 }
 
 .translation-modal__translation-key {
@@ -4346,12 +4504,13 @@ defineExpose({
     width: fit-content;
 }
 
-.translation-modal__translation-value {
+.translation-modal__translation-original {
     margin: 0;
-    font-size: 0.74rem;
+    font-size: 0.9rem;
     color: #334155;
     white-space: pre-wrap;
     word-break: break-word;
+    line-height: 1.45;
 }
 
 .translation-modal__translation-input {
@@ -4361,8 +4520,8 @@ defineExpose({
     background: #ffffff;
     color: #1e293b;
     padding: 0.35rem 0.45rem;
-    font-size: 0.75rem;
-    line-height: 1.35;
+    font-size: 0.95rem;
+    line-height: 1.5;
     resize: vertical;
 }
 
@@ -4634,6 +4793,7 @@ defineExpose({
 }
 
 .modal__panel--translation-results {
+    width: min(100% - 1rem, 82rem);
     max-height: min(calc(100vh - 1rem), 100%);
     max-height: min(calc(100dvh - 1rem), 100%);
     grid-template-rows: auto minmax(0, 1fr) auto;
