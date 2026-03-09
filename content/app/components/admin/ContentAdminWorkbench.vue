@@ -43,6 +43,7 @@ import {
     type LlmTranslationScopeMode,
     type LlmTranslationTokenUsage,
 } from "#content/app/composables/useLlmTranslations";
+import { resolveLocaleMeta } from "#content/app/utils/locales-meta";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
 );
@@ -330,6 +331,8 @@ const selectedSummary = computed<ContentPageSummary | null>(() => {
     }
     return contentStore.getPage(selectedPath.value, activeLocale.value);
 });
+const toBasePath = (path: string): string =>
+    resolveContentLocalePath(path, contentI18nConfig.value).basePath;
 const currentEditedPath = computed(
     () => {
         const rawPath =
@@ -569,11 +572,12 @@ watch(
             emit("page-selected", null);
             return;
         }
-        selectedPath.value = path;
+        const basePath = toBasePath(path);
+        selectedPath.value = basePath;
         selectedHistoryId.value = null;
         emit("page-selected", selectedSummary.value ?? null);
         contentStore
-            .fetchHistory(path, false, { locale: activeLocale.value })
+            .fetchHistory(basePath, false, { locale: activeLocale.value })
             .catch(() => {});
     },
 );
@@ -883,7 +887,7 @@ function resolveDocument(
 }
 
 async function openPageForEditing(path: string, force = false): Promise<void> {
-    const normalizedPath = normalizePagePath(path);
+    const normalizedPath = toBasePath(normalizePagePath(path));
     if (!force && normalizedPath === selectedPath.value) {
         return;
     }
@@ -1458,9 +1462,24 @@ const normalizeSelectedTranslationPointers = (value: unknown): string[] => {
     ).sort();
 };
 
+const pendingSelectedScopePointers = computed(() =>
+    normalizeSelectedTranslationPointers(
+        pendingTranslationPayload.value?.selectedScopePointers,
+    ),
+);
+const pendingSelectedScopeCount = computed(
+    () => pendingSelectedScopePointers.value.length,
+);
+
 const handleSelectedTranslationPointersUpdate = (value: unknown): void => {
     selectedTranslationPointers.value = normalizeSelectedTranslationPointers(value);
 };
+
+const getLocaleLabel = (locale: string): string =>
+    resolveLocaleMeta(locale).label;
+
+const getLocaleFlagSvg = (locale: string): string =>
+    resolveLocaleMeta(locale).flagSvg;
 
 const cloneMinimalForDebug = (
     document: MinimalContentDocument | null | undefined,
@@ -2110,6 +2129,9 @@ const runScopedTranslation = async (
         }.`;
         setTranslationNotice("success", message);
         feedback.value.success?.(message);
+        if (selectedTranslationPointers.value.length > 0) {
+            selectedTranslationPointers.value = [];
+        }
     } else {
         const message = firstError?.error
             ? `Translation (${scopeLabel}) failed for all selected locales. ${firstError.locale}: ${firstError.error}`
@@ -2159,6 +2181,26 @@ const closeTranslationConfigDialog = (): void => {
     isTranslationConfigDialogOpen.value = false;
     pendingTranslationPayload.value = null;
     translationConfigError.value = null;
+};
+
+const clearPendingTranslationSelection = (): void => {
+    if (isTranslationPending.value || !pendingTranslationPayload.value) {
+        return;
+    }
+
+    if (!pendingSelectedScopeCount.value) {
+        return;
+    }
+
+    selectedTranslationPointers.value = [];
+    pendingTranslationPayload.value = {
+        ...pendingTranslationPayload.value,
+        label:
+            pendingTranslationPayload.value.scopeMode === "page"
+                ? "Page"
+                : pendingTranslationPayload.value.label,
+        selectedScopePointers: undefined,
+    };
 };
 
 const confirmTranslationConfigAndRun = async (): Promise<void> => {
@@ -2387,7 +2429,7 @@ async function handleSaveDocument(): Promise<void> {
         const savedSummary = await contentStore.saveDocument(contentDocument, {
             locale: activeLocale.value,
         });
-        selectedPath.value = savedSummary.path;
+        selectedPath.value = toBasePath(savedSummary.path);
         lastSavedAt.value = savedSummary.updatedAt ?? new Date().toISOString();
         selectedHistoryId.value = null;
         if (stagedDocumentsByLocale.value[activeLocale.value]) {
@@ -2395,7 +2437,17 @@ async function handleSaveDocument(): Promise<void> {
             delete next[activeLocale.value];
             stagedDocumentsByLocale.value = next;
         }
-        lastSavedSnapshot.value = JSON.stringify(serialized);
+
+        const savedMinimalDocument = savedSummary.document
+            ? contentToMinimalDocument(savedSummary.document)
+            : clonePlain(serialized);
+        const savedSnapshot = JSON.stringify(savedMinimalDocument);
+        const currentSnapshot = JSON.stringify(serialized);
+        latestDocument.value = clonePlain(savedMinimalDocument);
+        lastSavedSnapshot.value = savedSnapshot;
+        if (savedSnapshot !== currentSnapshot) {
+            builder.loadDocument(clonePlain(savedMinimalDocument));
+        }
         updateUnsavedState(false);
 
         emit("save-success", savedSummary);
@@ -3324,7 +3376,7 @@ defineExpose({
                         @click="closeTranslationConfigDialog"
                     />
                     <div
-                        class="modal__panel modal__panel--translation"
+                        class="modal__panel modal__panel--translation modal__panel--translation-config"
                         role="dialog"
                         aria-modal="true"
                     >
@@ -3357,6 +3409,29 @@ defineExpose({
                         </div>
 
                         <div class="translation-config__content">
+                            <div
+                                v-if="pendingSelectedScopeCount > 0"
+                                class="translation-config__selection-summary"
+                            >
+                                <div class="translation-config__selection-copy">
+                                    <p class="translation-config__selection-title">
+                                        Selected fields
+                                    </p>
+                                    <p class="translation-config__selection-text">
+                                        {{ pendingSelectedScopeCount }} selected for
+                                        translation.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="content-admin-workbench__button content-admin-workbench__button--muted translation-config__selection-clear"
+                                    :disabled="isTranslationPending"
+                                    @click="clearPendingTranslationSelection"
+                                >
+                                    Clear selection
+                                </button>
+                            </div>
+
                             <label class="translation-config__field">
                                 <span class="translation-config__label">
                                     Source locale
@@ -3371,28 +3446,72 @@ defineExpose({
                                         :key="`source-${locale}`"
                                         :value="locale"
                                     >
-                                        {{ locale }}
+                                        {{ getLocaleLabel(locale) }} ({{ locale }})
                                     </option>
                                 </select>
                             </label>
 
                             <label class="translation-config__field">
-                                <span class="translation-config__label">
-                                    Destination locales
-                                </span>
+                                <div class="translation-config__targets-header">
+                                    <span class="translation-config__label">
+                                        Destination locales
+                                    </span>
+                                    <div class="translation-config__target-actions">
+                                        <button
+                                            type="button"
+                                            class="translation-config__target-action"
+                                            :disabled="
+                                                isTranslationPending ||
+                                                !translationLocaleOptions.length
+                                            "
+                                            @click="
+                                                translationTargetLocales = [
+                                                    ...translationLocaleOptions,
+                                                ]
+                                            "
+                                        >
+                                            Select all
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="translation-config__target-action"
+                                            :disabled="
+                                                isTranslationPending ||
+                                                !translationTargetLocales.length
+                                            "
+                                            @click="translationTargetLocales = []"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
                                 <div class="translation-config__targets">
                                     <label
                                         v-for="locale in translationLocaleOptions"
                                         :key="`target-${locale}`"
-                                        class="editor-header__translation-target"
+                                        class="translation-config__target-chip"
+                                        :class="{
+                                            'is-selected':
+                                                translationTargetLocales.includes(
+                                                    locale,
+                                                ),
+                                        }"
                                     >
                                         <input
                                             v-model="translationTargetLocales"
                                             type="checkbox"
                                             :value="locale"
                                             :disabled="isTranslationPending"
+                                            class="translation-config__target-input"
                                         />
-                                        <span>{{ locale }}</span>
+                                        <span
+                                            v-if="getLocaleFlagSvg(locale)"
+                                            class="translation-config__target-flag"
+                                            v-html="getLocaleFlagSvg(locale)"
+                                        />
+                                        <span class="translation-config__target-label">
+                                            {{ getLocaleLabel(locale) }}
+                                        </span>
                                     </label>
                                 </div>
                             </label>
@@ -4272,38 +4391,155 @@ defineExpose({
 .translation-config__content {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 1rem;
+}
+
+.translation-config__selection-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid #dbeafe;
+    border-radius: 0.7rem;
+    background: linear-gradient(180deg, #f8fbff 0%, #f1f5ff 100%);
+    padding: 0.75rem 0.9rem;
+}
+
+.translation-config__selection-copy {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.translation-config__selection-title {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.translation-config__selection-text {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.translation-config__selection-clear {
+    padding: 0.38rem 0.65rem;
+    white-space: nowrap;
 }
 
 .translation-config__field {
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.55rem;
 }
 
 .translation-config__label {
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: 0.82rem;
+    font-weight: 700;
     color: #334155;
 }
 
-.translation-config__targets {
+.translation-config__targets-header {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.translation-config__target-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.translation-config__target-action {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.2rem 0.55rem;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.translation-config__target-action:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.translation-config__targets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.55rem;
+}
+
+.translation-config__target-chip {
+    display: flex;
+    align-items: center;
     gap: 0.45rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.7rem;
+    background: #ffffff;
+    min-height: 2.65rem;
+    padding: 0.55rem 0.65rem;
+    color: #0f172a;
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        background-color 0.18s ease;
+}
+
+.translation-config__target-chip:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 6px 16px -12px rgba(59, 130, 246, 0.85);
+}
+
+.translation-config__target-chip.is-selected {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.translation-config__target-input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.translation-config__target-flag {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.translation-config__target-flag :deep(svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.translation-config__target-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
 }
 
 .translation-config__select {
-    min-width: 140px;
+    min-width: 260px;
     width: fit-content;
-    padding: 0.45rem 0.55rem;
+    max-width: 100%;
+    padding: 0.55rem 0.65rem;
     border: 1px solid #cbd5e1;
-    border-radius: 0.45rem;
+    border-radius: 0.6rem;
     background: #ffffff;
     color: #0f172a;
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-size: 0.87rem;
+    font-weight: 700;
 }
 
 .editor-header__motion-toggle {
@@ -4983,6 +5219,11 @@ defineExpose({
     width: min(100% - 2rem, 44rem);
     display: grid;
     gap: 0.75rem;
+}
+
+.modal__panel--translation-config {
+    width: min(100% - 2rem, 56rem);
+    padding: 1.75rem;
 }
 
 .modal__panel--translation-results {

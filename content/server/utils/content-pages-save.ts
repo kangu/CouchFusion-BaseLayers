@@ -285,15 +285,18 @@ export const saveLocalizedPageDocument = async (
         previousBody,
         fixedBodyPaths,
       )
+      const bodyChanged = !valuesDeepEqual(previousBody, nextBody)
 
-      if (!valuesDeepEqual(previousBody, nextBody)) {
+      if (bodyChanged) {
         setBodyValue(translationDocument, nextBody)
-        translationDocument.updatedAt = now
-        mergedUpdatedAt[locale] = now
-      } else if (pathChanged) {
-        translationDocument.updatedAt = now
-        mergedUpdatedAt[locale] = now
       }
+      const shouldPersistTranslation = bodyChanged || pathChanged
+      if (!shouldPersistTranslation) {
+        continue
+      }
+
+      translationDocument.updatedAt = now
+      mergedUpdatedAt[locale] = now
 
       ensureDocumentLocalizationMeta(translationDocument, {
         locale,
@@ -402,14 +405,12 @@ export const saveLocalizedPageDocument = async (
     })
     docsToPersist.set(localeDocument._id, localeDocument)
 
-    const shouldInitializeMasterMetadata =
-      !masterMeta.updatedAtByLocale[defaultLocale] ||
-      !valuesDeepEqual(masterMeta.fixedBodyPaths, fixedBodyPaths)
+    const masterBodyChanged = !valuesDeepEqual(
+      getBodyValue(masterBase),
+      activeMasterBody,
+    )
 
-    if (
-      shouldInitializeMasterMetadata ||
-      !valuesDeepEqual(getBodyValue(masterBase), activeMasterBody)
-    ) {
+    if (masterBodyChanged) {
       ensureDocumentLocalizationMeta(activeMaster, {
         locale: defaultLocale,
         masterId,
@@ -453,15 +454,18 @@ export const saveLocalizedPageDocument = async (
         previousBody,
         fixedBodyPaths,
       )
+      const bodyChanged = !valuesDeepEqual(previousBody, nextBody)
 
-      if (!valuesDeepEqual(previousBody, nextBody)) {
+      if (bodyChanged) {
         setBodyValue(translationDocument, nextBody)
-        translationDocument.updatedAt = now
-        mergedUpdatedAt[locale] = now
-      } else if (pathChanged) {
-        translationDocument.updatedAt = now
-        mergedUpdatedAt[locale] = now
       }
+      const shouldPersistTranslation = bodyChanged || pathChanged
+      if (!shouldPersistTranslation) {
+        continue
+      }
+
+      translationDocument.updatedAt = now
+      mergedUpdatedAt[locale] = now
 
       ensureDocumentLocalizationMeta(translationDocument, {
         locale,
