@@ -7,7 +7,20 @@
                 :disabled="pending"
                 @click="openLibrary('imagekit')"
             >
-                <img v-if="previewUrl" :src="previewUrl" alt="" loading="lazy" />
+                <picture
+                    v-if="shouldUsePicturePreview"
+                    class="image-field__preview-picture"
+                >
+                    <source
+                        v-for="source in responsivePicturePreviewSources"
+                        :key="`${source.media}-${source.transforms}`"
+                        :media="source.media"
+                        :srcset="source.srcset"
+                        :type="source.type"
+                    />
+                    <img :src="previewUrl" alt="" loading="lazy" />
+                </picture>
+                <img v-else-if="previewUrl" :src="previewUrl" alt="" loading="lazy" />
                 <div v-else class="image-field__placeholder">
                     <strong>No image selected</strong>
                     <span>Click to browse</span>
@@ -428,6 +441,16 @@ interface LibraryItem {
     raw?: ImageKitFile | ImageKitUploadResult;
 }
 
+interface ResponsivePictureSourceConfig {
+    media: string;
+    transforms: string;
+    type?: string;
+}
+
+interface ResponsivePicturePreviewSource extends ResponsivePictureSourceConfig {
+    srcset: string;
+}
+
 const props = defineProps<Props>();
 const emit = defineEmits<{
     (event: "update:modelValue", value: string | undefined): void;
@@ -506,6 +529,49 @@ const isLocalLibrary = computed(() => libraryMode.value === "local");
 const libraryTitle = computed(() =>
     isLocalLibrary.value ? "Select Local Image" : "Select Image",
 );
+const responsivePictureSourceConfig = computed<ResponsivePictureSourceConfig[]>(
+    () => {
+        const uiDefinition =
+            props.propDefinition?.ui && typeof props.propDefinition.ui === "object"
+                ? (props.propDefinition.ui as Record<string, unknown>)
+                : undefined;
+        if (!uiDefinition || uiDefinition.usePicturePreview !== true) {
+            return [];
+        }
+
+        const pictureSources = uiDefinition.pictureSources;
+        if (!Array.isArray(pictureSources)) {
+            return [];
+        }
+
+        const normalized = pictureSources
+            .map((entry) => {
+                if (!entry || typeof entry !== "object") {
+                    return null;
+                }
+
+                const record = entry as Record<string, unknown>;
+                const media =
+                    typeof record.media === "string" ? record.media.trim() : "";
+                const transforms =
+                    typeof record.transforms === "string"
+                        ? normalizeTransformInput(record.transforms) || ""
+                        : "";
+                const type = typeof record.type === "string" ? record.type.trim() : "";
+                if (!media || !transforms) {
+                    return null;
+                }
+                return {
+                    media,
+                    transforms,
+                    type: type || undefined,
+                };
+            })
+            .filter((entry): entry is ResponsivePictureSourceConfig => Boolean(entry));
+
+        return normalized;
+    },
+);
 
 const toPositiveNumber = (value: string) => {
     const parsed = Number.parseInt(value, 10);
@@ -583,6 +649,32 @@ const isImageKitPreviewSource = computed(() => {
 });
 
 const previewUrl = computed(() => buildPreviewUrl(localValue.value));
+const responsivePicturePreviewSources = computed<ResponsivePicturePreviewSource[]>(
+    () => {
+        if (!isImageKitPreviewSource.value || !localValue.value) {
+            return [];
+        }
+        return responsivePictureSourceConfig.value
+            .map((source) => {
+                const srcset = buildPreviewUrl(localValue.value, source.transforms);
+                if (!srcset) {
+                    return null;
+                }
+                return {
+                    ...source,
+                    srcset,
+                };
+            })
+            .filter(
+                (entry): entry is ResponsivePicturePreviewSource => Boolean(entry),
+            );
+    },
+);
+const shouldUsePicturePreview = computed(
+    () =>
+        Boolean(previewUrl.value) &&
+        responsivePicturePreviewSources.value.length > 0,
+);
 const displayedCountLabel = computed(() => {
     if (!libraryTotal.value) {
         return "";
@@ -714,7 +806,10 @@ watch(
     { immediate: true },
 );
 
-function buildPreviewUrl(filePath?: string) {
+function buildPreviewUrl(
+    filePath?: string,
+    baseTransforms: string = "w-1000,f-auto",
+) {
     if (!filePath) {
         return "";
     }
@@ -733,9 +828,11 @@ function buildPreviewUrl(filePath?: string) {
     );
     const previewTransforms =
         mergeImageKitTransformations(
-            "w-1000,f-auto",
+            baseTransforms,
             imageKitTransformString.value,
-        ) || "w-1000,f-auto";
+        ) ||
+        normalizeTransformInput(baseTransforms) ||
+        "w-1000,f-auto";
     return withImageKitTransformations(resolved, {
         transformations: previewTransforms,
         endpoint: urlEndpoint.value || undefined,
@@ -1138,6 +1235,11 @@ watch(isLibraryOpen, async (isOpen) => {
     display: block;
     width: 100%;
     height: auto;
+}
+
+.image-field__preview-picture {
+    display: block;
+    width: 100%;
 }
 
 .image-field__placeholder {

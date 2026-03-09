@@ -1,4 +1,3 @@
-import flagAr from '../assets/flags/ar.svg?raw'
 import flagBg from '../assets/flags/bg.svg?raw'
 import flagCs from '../assets/flags/cs.svg?raw'
 import flagDa from '../assets/flags/da.svg?raw'
@@ -11,6 +10,8 @@ import flagFr from '../assets/flags/fr.svg?raw'
 import flagHr from '../assets/flags/hr.svg?raw'
 import flagHu from '../assets/flags/hu.svg?raw'
 import flagIt from '../assets/flags/it.svg?raw'
+import flagJa from '../assets/flags/ja.svg?raw'
+import flagKo from '../assets/flags/ko.svg?raw'
 import flagNl from '../assets/flags/nl.svg?raw'
 import flagNo from '../assets/flags/no.svg?raw'
 import flagPl from '../assets/flags/pl.svg?raw'
@@ -45,6 +46,14 @@ const LOCALE_META_BY_CODE: Record<string, LocaleMeta> = {
   it: {
     label: 'Italiano',
     flagSvg: flagIt,
+  },
+  ja: {
+    label: '日本語',
+    flagSvg: flagJa,
+  },
+  ko: {
+    label: '한국어',
+    flagSvg: flagKo,
   },
   pt: {
     label: 'Portugues',
@@ -109,10 +118,6 @@ const LOCALE_META_BY_CODE: Record<string, LocaleMeta> = {
   el: {
     label: 'Ελληνικά',
     flagSvg: flagEl,
-  },
-  ar: {
-    label: 'العربية',
-    flagSvg: flagAr,
   },
   tr: {
     label: 'Türkçe',
