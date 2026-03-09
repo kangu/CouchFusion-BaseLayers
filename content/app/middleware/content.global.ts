@@ -3,6 +3,7 @@ import {
   createError,
   abortNavigation,
   navigateTo,
+  useCookie,
   useRequestEvent,
   useRuntimeConfig,
 } from "#imports";
@@ -26,6 +27,7 @@ interface RoutePrefixConfig {
 
 const CRAWLER_UA_PATTERN =
   /(bot|crawler|spider|slurp|bingpreview|facebookexternalhit|linkedinbot|twitterbot|applebot|duckduckbot|baiduspider|yandex|semrushbot|ahrefsbot|mj12bot|whatsapp|whatsappbot)/i;
+const LOCALE_REDIRECT_SESSION_COOKIE = "cf_content_locale_redirect_done";
 
 type ParsedLanguage = {
   code: string;
@@ -35,6 +37,12 @@ type ParsedLanguage = {
 
 const isCrawlerUserAgent = (userAgent: string | undefined): boolean =>
   typeof userAgent === "string" && CRAWLER_UA_PATTERN.test(userAgent);
+
+const hasLocaleRedirectSessionCookie = (
+  cookieHeader: string | undefined,
+): boolean =>
+  typeof cookieHeader === "string" &&
+  /(?:^|;\s*)cf_content_locale_redirect_done=1(?:;|$)/.test(cookieHeader);
 
 const parseAcceptLanguage = (headerValue: string | undefined): string[] => {
   if (!headerValue || !headerValue.trim()) {
@@ -122,11 +130,6 @@ const buildRoutePrefixConfig = (): RoutePrefixConfig => {
 };
 
 export default defineNuxtRouteMiddleware(async (to, from) => {
-  if (import.meta.client && (!from || from.path === to.path)) {
-    // Skip duplicate client execution during initial hydration; SSR already fetched the page.
-    return;
-  }
-
   const { ignoredPrefixes, allowedPrefixes } = buildRoutePrefixConfig();
   const runtimeConfig = useRuntimeConfig();
   const contentI18nConfig = resolveContentI18nConfig(
@@ -150,6 +153,22 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     return;
   }
 
+  if (import.meta.client && (!from || from.path === to.path)) {
+    // Skip duplicate client execution during initial hydration; SSR already fetched the page.
+    // Persist a session marker so subsequent visits to default paths don't trigger browser-locale redirect.
+    if (contentI18nConfig.enabled) {
+      const localeRedirectSessionCookie = useCookie<string | null>(
+        LOCALE_REDIRECT_SESSION_COOKIE,
+        {
+          path: "/",
+          sameSite: "lax",
+        },
+      );
+      localeRedirectSessionCookie.value = "1";
+    }
+    return;
+  }
+
   const store = useContentPagesStore();
 
   if (
@@ -166,50 +185,60 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     // Redirect only when request entered through a non-prefixed/default-locale path.
     if (to.path === defaultPath) {
       const requestEvent = useRequestEvent();
-      const acceptLanguageHeader = Array.isArray(requestEvent?.node.req.headers["accept-language"])
-        ? requestEvent?.node.req.headers["accept-language"][0]
-        : requestEvent?.node.req.headers["accept-language"];
-      const userAgentHeader = Array.isArray(requestEvent?.node.req.headers["user-agent"])
-        ? requestEvent?.node.req.headers["user-agent"][0]
-        : requestEvent?.node.req.headers["user-agent"];
-
-      if (!isCrawlerUserAgent(userAgentHeader)) {
-        const preferredLocales = resolvePreferredSupportedLocales(
-          typeof acceptLanguageHeader === "string" ? acceptLanguageHeader : undefined,
-          contentI18nConfig.locales,
+      const cookieHeader = Array.isArray(requestEvent?.node.req.headers.cookie)
+        ? requestEvent?.node.req.headers.cookie[0]
+        : requestEvent?.node.req.headers.cookie;
+      const localeRedirectAlreadyHandled =
+        hasLocaleRedirectSessionCookie(
+          typeof cookieHeader === "string" ? cookieHeader : undefined,
         );
 
-        for (const preferredLocale of preferredLocales) {
-          if (preferredLocale === contentI18nConfig.defaultLocale) {
-            continue;
-          }
+      if (!localeRedirectAlreadyHandled) {
+        const acceptLanguageHeader = Array.isArray(requestEvent?.node.req.headers["accept-language"])
+          ? requestEvent?.node.req.headers["accept-language"][0]
+          : requestEvent?.node.req.headers["accept-language"];
+        const userAgentHeader = Array.isArray(requestEvent?.node.req.headers["user-agent"])
+          ? requestEvent?.node.req.headers["user-agent"][0]
+          : requestEvent?.node.req.headers["user-agent"];
 
-          try {
-            const localizedSummary = await store.fetchPage(contentPath, false, {
-              locale: preferredLocale,
-            });
+        if (!isCrawlerUserAgent(userAgentHeader)) {
+          const preferredLocales = resolvePreferredSupportedLocales(
+            typeof acceptLanguageHeader === "string" ? acceptLanguageHeader : undefined,
+            contentI18nConfig.locales,
+          );
 
-            if (!localizedSummary?.localization?.hasLocaleDocument) {
+          for (const preferredLocale of preferredLocales) {
+            if (preferredLocale === contentI18nConfig.defaultLocale) {
               continue;
             }
 
-            const targetPath = buildLocalizedPath(
-              contentPath,
-              preferredLocale,
-              contentI18nConfig,
-            );
-            if (targetPath !== to.path) {
-              return navigateTo(targetPath, { redirectCode: 307 });
+            try {
+              const localizedSummary = await store.fetchPage(contentPath, false, {
+                locale: preferredLocale,
+              });
+
+              if (!localizedSummary?.localization?.hasLocaleDocument) {
+                continue;
+              }
+
+              const targetPath = buildLocalizedPath(
+                contentPath,
+                preferredLocale,
+                contentI18nConfig,
+              );
+              if (targetPath !== to.path) {
+                return navigateTo(targetPath, { redirectCode: 307 });
+              }
+              break;
+            } catch (error: any) {
+              if (error?.statusCode === 404) {
+                continue;
+              }
+              console.warn(
+                `[content-layer] Locale redirect check failed for ${preferredLocale}:`,
+                error instanceof Error ? error.message : String(error),
+              );
             }
-            break;
-          } catch (error: any) {
-            if (error?.statusCode === 404) {
-              continue;
-            }
-            console.warn(
-              `[content-layer] Locale redirect check failed for ${preferredLocale}:`,
-              error instanceof Error ? error.message : String(error),
-            );
           }
         }
       }
