@@ -1,25 +1,60 @@
 <template>
     <div class="image-field">
-        <div class="image-field__preview" v-if="previewUrl">
-            <img :src="previewUrl" alt="" loading="lazy" />
+        <div class="image-field__preview-shell">
+            <button
+                type="button"
+                class="image-field__preview"
+                :disabled="pending"
+                @click="openLibrary('imagekit')"
+            >
+                <img v-if="previewUrl" :src="previewUrl" alt="" loading="lazy" />
+                <div v-else class="image-field__placeholder">
+                    <strong>No image selected</strong>
+                    <span>Click to browse</span>
+                </div>
+            </button>
+            <button
+                v-if="previewUrl && isImageKitPreviewSource"
+                type="button"
+                class="image-field__preview-tools"
+                :aria-expanded="isImageKitPanelOpen ? 'true' : 'false'"
+                aria-label="Toggle ImageKit adjustments"
+                :disabled="pending"
+                @click="isImageKitPanelOpen = !isImageKitPanelOpen"
+            >
+                <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                >
+                    <path
+                        d="M14.59 4.59 13.17 6l1.83 1.83 1.41-1.41a2 2 0 1 0-2.82-2.83ZM11.76 7.41 5 14.17V17h2.83l6.76-6.76-2.83-2.83Z"
+                        fill="currentColor"
+                    />
+                    <path
+                        d="M4 20h16v2H4z"
+                        fill="currentColor"
+                    />
+                </svg>
+            </button>
+            <button
+                v-if="previewUrl"
+                type="button"
+                class="image-field__preview-clear"
+                aria-label="Clear image"
+                :disabled="pending"
+                @click="clearImage"
+            >
+                ✕
+            </button>
         </div>
 
         <div
-            v-if="previewUrl && isImageKitPreviewSource"
+            v-if="previewUrl && isImageKitPreviewSource && isImageKitPanelOpen"
             class="image-field__imagekit-panel"
         >
             <div class="image-field__imagekit-header">
-                <button
-                    type="button"
-                    class="image-field__imagekit-toggle"
-                    :aria-expanded="isImageKitPanelOpen ? 'true' : 'false'"
-                    @click="isImageKitPanelOpen = !isImageKitPanelOpen"
-                >
-                    <strong>ImageKit Adjustments</strong>
-                    <span>{{
-                        isImageKitPanelOpen ? "Hide controls" : "Show controls"
-                    }}</span>
-                </button>
+                <strong>ImageKit Adjustments</strong>
                 <button
                     type="button"
                     class="image-field__button image-field__button--ghost"
@@ -141,33 +176,6 @@
                 @change="commitValue"
                 @blur="commitValue"
             />
-            <div class="image-field__actions">
-                <button
-                    type="button"
-                    class="image-field__button"
-                    @click="openLibrary('imagekit')"
-                    :disabled="pending"
-                >
-                    Browse
-                </button>
-                <button
-                    v-if="previewUrl"
-                    type="button"
-                    class="image-field__button image-field__button--danger"
-                    @click="clearImage"
-                    :disabled="pending"
-                >
-                    Clear
-                </button>
-<!--                <button-->
-<!--                    type="button"-->
-<!--                    class="image-field__button"-->
-<!--                    @click="openLibrary('local')"-->
-<!--                    :disabled="pending"-->
-<!--                >-->
-<!--                    Browse Local-->
-<!--                </button>-->
-            </div>
         </div>
 
         <input
@@ -1108,9 +1116,21 @@ watch(isLibraryOpen, async (isOpen) => {
 
 .image-field__preview {
     position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 10.5rem;
     border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: 0.75rem;
     overflow: hidden;
+    max-width: 16rem;
+    padding: 0;
+    cursor: pointer;
+    background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.85));
+}
+
+.image-field__preview-shell {
+    position: relative;
     max-width: 16rem;
 }
 
@@ -1120,9 +1140,75 @@ watch(isLibraryOpen, async (isOpen) => {
     height: auto;
 }
 
+.image-field__placeholder {
+    display: grid;
+    gap: 0.2rem;
+    text-align: center;
+    color: #334155;
+    padding: 1rem;
+}
+
+.image-field__placeholder strong {
+    font-size: 0.9rem;
+}
+
+.image-field__placeholder span {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.image-field__preview-tools,
+.image-field__preview-clear {
+    position: absolute;
+    z-index: 2;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: opacity 0.18s ease;
+}
+
+.image-field__preview-tools {
+    left: 0.45rem;
+    bottom: 0.45rem;
+    width: 1.95rem;
+    height: 1.95rem;
+}
+
+.image-field__preview-tools svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.image-field__preview-clear {
+    top: 0.45rem;
+    right: 0.45rem;
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.95rem;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.image-field__preview-shell:hover .image-field__preview-clear,
+.image-field__preview-shell:focus-within .image-field__preview-clear {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.image-field__preview:disabled,
+.image-field__preview-tools:disabled,
+.image-field__preview-clear:disabled {
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
 .image-field__controls {
-    display: flex;
-    gap: 0.5rem;
+    display: block;
 }
 
 .image-field__imagekit-panel {
@@ -1139,23 +1225,6 @@ watch(isLibraryOpen, async (isOpen) => {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-}
-
-.image-field__imagekit-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    border: 0;
-    background: transparent;
-    color: #0f172a;
-    cursor: pointer;
-    padding: 0;
-}
-
-.image-field__imagekit-toggle span {
-    color: #64748b;
-    font-size: 0.75rem;
-    font-weight: 500;
 }
 
 .image-field__imagekit-grid {
@@ -1205,12 +1274,6 @@ watch(isLibraryOpen, async (isOpen) => {
     border-radius: 0.5rem;
     border: 1px solid rgba(148, 163, 184, 0.5);
     font-family: inherit;
-}
-
-.image-field__actions {
-    display: flex;
-    flex-wrap: no-wrap;
-    gap: 0.5rem;
 }
 
 .image-field__button {
