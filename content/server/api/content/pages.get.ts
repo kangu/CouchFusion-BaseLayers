@@ -17,6 +17,7 @@ import {
     setBodyValue,
     toPageDocumentRecord,
 } from '../../utils/content-i18n'
+import { normalizeSeoImage } from '#content/utils/page-documents'
 
 const toResponseEntry = (
     document: Record<string, any>,
@@ -149,6 +150,21 @@ export default defineEventHandler(async (event) => {
                     masterMeta.fixedBodyPaths,
                 )
                 setBodyValue(responseDocument, mergedBodyValue)
+
+                // Keep locale SEO image optional in locale docs while guaranteeing a share image fallback.
+                const localizedSeo = responseDocument.seo && typeof responseDocument.seo === 'object'
+                    ? responseDocument.seo
+                    : {}
+                const localizedImage = normalizeSeoImage(localizedSeo.image)
+                if (!localizedImage) {
+                    const masterImage = normalizeSeoImage(masterDocument.seo?.image)
+                    if (masterImage) {
+                        responseDocument.seo = {
+                            ...localizedSeo,
+                            image: masterImage,
+                        }
+                    }
+                }
             }
 
             const missingLocalizedCount =

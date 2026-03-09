@@ -25,7 +25,7 @@ interface RoutePrefixConfig {
 }
 
 const CRAWLER_UA_PATTERN =
-  /(bot|crawler|spider|slurp|bingpreview|facebookexternalhit|linkedinbot|twitterbot|applebot|duckduckbot|baiduspider|yandex|semrushbot|ahrefsbot|mj12bot)/i;
+  /(bot|crawler|spider|slurp|bingpreview|facebookexternalhit|linkedinbot|twitterbot|applebot|duckduckbot|baiduspider|yandex|semrushbot|ahrefsbot|mj12bot|whatsapp|whatsappbot)/i;
 
 type ParsedLanguage = {
   code: string;

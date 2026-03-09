@@ -1,11 +1,23 @@
+import flagAr from '../assets/flags/ar.svg?raw'
+import flagBg from '../assets/flags/bg.svg?raw'
+import flagCs from '../assets/flags/cs.svg?raw'
+import flagDa from '../assets/flags/da.svg?raw'
 import flagDe from '../assets/flags/de.svg?raw'
+import flagEl from '../assets/flags/el.svg?raw'
 import flagEn from '../assets/flags/en.svg?raw'
 import flagEs from '../assets/flags/es.svg?raw'
+import flagFi from '../assets/flags/fi.svg?raw'
 import flagFr from '../assets/flags/fr.svg?raw'
+import flagHr from '../assets/flags/hr.svg?raw'
+import flagHu from '../assets/flags/hu.svg?raw'
 import flagIt from '../assets/flags/it.svg?raw'
 import flagNl from '../assets/flags/nl.svg?raw'
+import flagNo from '../assets/flags/no.svg?raw'
+import flagPl from '../assets/flags/pl.svg?raw'
 import flagPt from '../assets/flags/pt.svg?raw'
 import flagRo from '../assets/flags/ro.svg?raw'
+import flagSv from '../assets/flags/sv.svg?raw'
+import flagTr from '../assets/flags/tr.svg?raw'
 import flagZh from '../assets/flags/zh.svg?raw'
 
 export interface LocaleMeta {
@@ -49,6 +61,62 @@ const LOCALE_META_BY_CODE: Record<string, LocaleMeta> = {
   ro: {
     label: 'Romana',
     flagSvg: flagRo,
+  },
+  hu: {
+    label: 'Magyar',
+    flagSvg: flagHu,
+  },
+  pl: {
+    label: 'Polski',
+    flagSvg: flagPl,
+  },
+  bg: {
+    label: 'Български',
+    flagSvg: flagBg,
+  },
+  no: {
+    label: 'Norsk',
+    flagSvg: flagNo,
+  },
+  nb: {
+    label: 'Norsk',
+    flagSvg: flagNo,
+  },
+  nn: {
+    label: 'Norsk',
+    flagSvg: flagNo,
+  },
+  sv: {
+    label: 'Svenska',
+    flagSvg: flagSv,
+  },
+  fi: {
+    label: 'Suomi',
+    flagSvg: flagFi,
+  },
+  da: {
+    label: 'Dansk',
+    flagSvg: flagDa,
+  },
+  hr: {
+    label: 'Hrvatski',
+    flagSvg: flagHr,
+  },
+  cs: {
+    label: 'Čeština',
+    flagSvg: flagCs,
+  },
+  el: {
+    label: 'Ελληνικά',
+    flagSvg: flagEl,
+  },
+  ar: {
+    label: 'العربية',
+    flagSvg: flagAr,
+  },
+  tr: {
+    label: 'Türkçe',
+    flagSvg: flagTr,
   },
 }
 

@@ -50,7 +50,7 @@ const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
 const workbenchInstanceKey = ref(0);
 const hasUnsavedChanges = ref(false);
-const sidebarWidth = ref(420);
+const sidebarWidth = ref(630);
 const pendingFocusTarget = ref<{
     uid: string;
     path: string;
@@ -780,7 +780,7 @@ onBeforeRouteLeave(() => {
 
 <style scoped>
 .inline-live-editor {
-    --inline-sidebar-width: 420px;
+    --inline-sidebar-width: 630px;
     display: grid;
     grid-template-columns: var(--inline-sidebar-width) minmax(4px, 8px) 1fr;
     gap: 0;
