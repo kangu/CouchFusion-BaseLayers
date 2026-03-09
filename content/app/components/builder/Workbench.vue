@@ -173,6 +173,7 @@ const props = defineProps<{
     initialDocument?: MinimalContentDocument | null;
     hidePreview?: boolean;
     searchQuery?: string;
+    selectedTranslationPointers?: string[];
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
@@ -187,6 +188,7 @@ const emit = defineEmits<{
         },
     ): void;
     (e: "update:searchQuery", value: string): void;
+    (e: "update:selectedTranslationPointers", value: string[]): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
@@ -269,6 +271,58 @@ const syncRootSectionNamesMetadata = () => {
     }
     setSectionNamesById(next);
 };
+
+const normalizeSelectedTranslationPointers = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(
+        new Set(
+            value
+                .filter((entry): entry is string => typeof entry === "string")
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.startsWith("/")),
+        ),
+    ).sort();
+};
+
+const selectedTranslationPointers = computed(() =>
+    normalizeSelectedTranslationPointers(props.selectedTranslationPointers),
+);
+
+const selectedTranslationPointerSet = computed(
+    () => new Set(selectedTranslationPointers.value),
+);
+
+const emitSelectedTranslationPointers = (nextPointers: string[]) => {
+    emit(
+        "update:selectedTranslationPointers",
+        normalizeSelectedTranslationPointers(nextPointers),
+    );
+};
+
+const setTranslationPointerSelection = (
+    pointer: string,
+    selected: boolean,
+) => {
+    if (typeof pointer !== "string" || !pointer.startsWith("/")) {
+        return;
+    }
+
+    const next = new Set(selectedTranslationPointers.value);
+    if (selected) {
+        next.add(pointer);
+    } else {
+        next.delete(pointer);
+    }
+
+    emitSelectedTranslationPointers(Array.from(next));
+};
+
+const isTranslationPointerSelected = (pointer: string): boolean =>
+    selectedTranslationPointerSet.value.has(pointer);
+
 const seoDraft = reactive({
     path: pageConfig.path,
     title: pageConfig.title,
@@ -1068,28 +1122,68 @@ const toBodyNodePointerSegments = (
     return bodySegments;
 };
 
+const SEO_TITLE_POINTER = "/__seo/title";
+const SEO_DESCRIPTION_POINTER = "/__seo/description";
+
+const resolveFieldPointer = (
+    payload: {
+        uid: string;
+        propPath: Array<string | number>;
+    },
+): string | null => {
+    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
+    if (!builderPath || !payload.propPath.length) {
+        return null;
+    }
+
+    const nodePointer = toBodyNodePointerSegments(builderPath);
+    return toJsonPointer([
+        ...nodePointer,
+        1,
+        ...payload.propPath,
+    ]);
+};
+
 const handleTranslateField = (payload: {
     uid: string;
     propPath: Array<string | number>;
     label?: string;
 }) => {
-    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
-    if (!builderPath) {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
         return;
     }
-
-    const nodePointer = toBodyNodePointerSegments(builderPath);
-    const fieldPointer = toJsonPointer([
-        ...nodePointer,
-        1,
-        ...payload.propPath,
-    ]);
 
     emit("translate-scope", {
         scopeMode: "field",
         scopePointer: fieldPointer,
         label: payload.label,
     });
+};
+
+const handleToggleTranslateFieldSelection = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+    selected: boolean;
+}) => {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
+        return;
+    }
+
+    setTranslationPointerSelection(fieldPointer, payload.selected);
+};
+
+const isTranslateFieldSelected = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+}): boolean => {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
+        return false;
+    }
+
+    return isTranslationPointerSelected(fieldPointer);
 };
 
 const handleTranslateSection = (payload: {
@@ -1106,6 +1200,25 @@ const handleTranslateSection = (payload: {
         scopeMode: "section",
         scopePointer: sectionPointer,
         label: payload.label,
+    });
+};
+
+const handleTranslateSeoField = (field: "title" | "description") => {
+    if (field === "title") {
+        pageConfig.seoTitle = seoDraft.seoTitle;
+        emit("translate-scope", {
+            scopeMode: "field",
+            scopePointer: SEO_TITLE_POINTER,
+            label: "SEO title",
+        });
+        return;
+    }
+
+    pageConfig.seoDescription = seoDraft.seoDescription;
+    emit("translate-scope", {
+        scopeMode: "field",
+        scopePointer: SEO_DESCRIPTION_POINTER,
+        label: "SEO description",
     });
 };
 
@@ -1384,7 +1497,31 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
                 <label class="builder-config__full">
-                    <span>SEO title</span>
+                    <span class="builder-config__label-row">
+                        <span>SEO title</span>
+                        <span class="builder-config__translate-actions">
+                            <input
+                                type="checkbox"
+                                class="builder-config__translate-checkbox"
+                                :checked="isTranslationPointerSelected(SEO_TITLE_POINTER)"
+                                aria-label="Select SEO title for batch translation"
+                                @change="
+                                    (event: Event) =>
+                                        setTranslationPointerSelection(
+                                            SEO_TITLE_POINTER,
+                                            (event.target as HTMLInputElement).checked,
+                                        )
+                                "
+                            />
+                            <button
+                                type="button"
+                                class="builder-config__translate-btn"
+                                @click="handleTranslateSeoField('title')"
+                            >
+                                Translate
+                            </button>
+                        </span>
+                    </span>
                     <input
                         v-model="seoDraft.seoTitle"
                         type="text"
@@ -1392,7 +1529,35 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
                 <label class="builder-config__textarea builder-config__full">
-                    <span>SEO description</span>
+                    <span class="builder-config__label-row">
+                        <span>SEO description</span>
+                        <span class="builder-config__translate-actions">
+                            <input
+                                type="checkbox"
+                                class="builder-config__translate-checkbox"
+                                :checked="
+                                    isTranslationPointerSelected(
+                                        SEO_DESCRIPTION_POINTER,
+                                    )
+                                "
+                                aria-label="Select SEO description for batch translation"
+                                @change="
+                                    (event: Event) =>
+                                        setTranslationPointerSelection(
+                                            SEO_DESCRIPTION_POINTER,
+                                            (event.target as HTMLInputElement).checked,
+                                        )
+                                "
+                            />
+                            <button
+                                type="button"
+                                class="builder-config__translate-btn"
+                                @click="handleTranslateSeoField('description')"
+                            >
+                                Translate
+                            </button>
+                        </span>
+                    </span>
                     <textarea
                         v-model="seoDraft.seoDescription"
                         rows="2"
@@ -1508,6 +1673,10 @@ const handleSaveDebugClick = () => {
                     :on-focus-node="handleNodeFocus"
                     :on-translate-field="handleTranslateField"
                     :on-translate-section="handleTranslateSection"
+                    :on-toggle-translate-field-selection="
+                        handleToggleTranslateFieldSelection
+                    "
+                    :is-translate-field-selected="isTranslateFieldSelected"
                     :section-name="getLocalSectionName(node.uid)"
                     :on-save-section-name="saveLocalSectionName"
                 />
@@ -1749,6 +1918,13 @@ const handleSaveDebugClick = () => {
     gap: 4px;
 }
 
+.builder-config__label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
 .builder-config input,
 .builder-config textarea {
     padding: 8px;
@@ -1759,6 +1935,36 @@ const handleSaveDebugClick = () => {
 
 .builder-config__full {
   grid-column: 1 / -1;
+}
+
+.builder-config__translate-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #334155;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.builder-config__translate-btn:hover {
+    background: #f8fafc;
+}
+
+.builder-config__translate-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.builder-config__translate-checkbox {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #2563eb;
+    cursor: pointer;
 }
 
 .builder-config__textarea textarea {

@@ -26,6 +26,7 @@ import {
   runLocaleTranslation,
   type TranslationOverwriteMode,
   type TranslationScopeMode,
+  type TranslationTextEntry,
   type TranslationTokenUsage,
 } from '../../../utils/llm-translations-run'
 import { getLlmTranslationsRuntimeConfig } from '../../../utils/llm-translations-config'
@@ -82,6 +83,37 @@ const normalizeScopeMode = (value: unknown): TranslationScopeMode => {
   return 'page'
 }
 
+const normalizeSelectedScopePointers = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.startsWith('/')),
+    ),
+  ).sort()
+}
+
+const filterEntriesBySelectedPointers = (
+  entries: TranslationTextEntry[],
+  selectedPointers: string[],
+): TranslationTextEntry[] => {
+  if (!selectedPointers.length) {
+    return entries
+  }
+
+  return entries.filter((entry) =>
+    selectedPointers.some((selectedPointer) =>
+      entry.pointer === selectedPointer ||
+      entry.pointer.startsWith(`${selectedPointer}/`),
+    ),
+  )
+}
+
 const withResolvedFixedBodyPaths = (
   document: MinimalContentDocument,
   fixedBodyPaths: string[],
@@ -97,6 +129,146 @@ const withResolvedFixedBodyPaths = (
   next.meta = nextMeta
 
   return next
+}
+
+export const SEO_TITLE_POINTER = '/__seo/title'
+export const SEO_DESCRIPTION_POINTER = '/__seo/description'
+
+const isSeoPointer = (pointer: string): boolean =>
+  pointer === SEO_TITLE_POINTER || pointer === SEO_DESCRIPTION_POINTER
+
+export const collectPageSeoEntries = (
+  document: MinimalContentDocument,
+  scopeMode: TranslationScopeMode,
+  scopePointer: string | null,
+): TranslationTextEntry[] => {
+  const includeAllSeoFields = scopeMode === 'page'
+  const includeSeoTitle =
+    includeAllSeoFields || (scopeMode === 'field' && scopePointer === SEO_TITLE_POINTER)
+  const includeSeoDescription =
+    includeAllSeoFields ||
+    (scopeMode === 'field' && scopePointer === SEO_DESCRIPTION_POINTER)
+
+  if (!includeSeoTitle && !includeSeoDescription) {
+    return []
+  }
+
+  const entries: TranslationTextEntry[] = []
+  const title = document.seo?.title
+  const description = document.seo?.description
+
+  if (includeSeoTitle && typeof title === 'string' && title.trim().length > 0) {
+    entries.push({
+      pointer: SEO_TITLE_POINTER,
+      text: title,
+    })
+  }
+
+  if (
+    includeSeoDescription &&
+    typeof description === 'string' &&
+    description.trim().length > 0
+  ) {
+    entries.push({
+      pointer: SEO_DESCRIPTION_POINTER,
+      text: description,
+    })
+  }
+
+  return entries
+}
+
+export const readTranslationTargetText = (
+  document: MinimalContentDocument,
+  pointer: string,
+): string => {
+  if (pointer === SEO_TITLE_POINTER) {
+    return typeof document.seo?.title === 'string' ? document.seo.title : ''
+  }
+  if (pointer === SEO_DESCRIPTION_POINTER) {
+    return typeof document.seo?.description === 'string'
+      ? document.seo.description
+      : ''
+  }
+  return readPointerTextValue(document.body.value, pointer)
+}
+
+export const splitTranslationsByPointer = (
+  translationsByPointer: Record<string, string>,
+): {
+  bodyTranslations: Record<string, string>
+  seoTranslations: Record<string, string>
+} => {
+  const bodyTranslations: Record<string, string> = {}
+  const seoTranslations: Record<string, string> = {}
+
+  for (const [pointer, value] of Object.entries(translationsByPointer)) {
+    if (isSeoPointer(pointer)) {
+      seoTranslations[pointer] = value
+      continue
+    }
+    bodyTranslations[pointer] = value
+  }
+
+  return {
+    bodyTranslations,
+    seoTranslations,
+  }
+}
+
+export const applyTranslationsToSeo = (
+  document: MinimalContentDocument,
+  translationsByPointer: Record<string, string>,
+  overwriteMode: TranslationOverwriteMode,
+): {
+  appliedCount: number
+  skippedCount: number
+} => {
+  let appliedCount = 0
+  let skippedCount = 0
+
+  for (const [pointer, translatedValue] of Object.entries(translationsByPointer)) {
+    let currentValue: unknown
+    let applyValue: ((value: string) => void) | null = null
+
+    if (pointer === SEO_TITLE_POINTER) {
+      currentValue = document.seo?.title
+      applyValue = (value: string) => {
+        if (!isPlainObject(document.seo)) {
+          document.seo = { title: value, description: '', image: null }
+          return
+        }
+        document.seo.title = value
+      }
+    } else if (pointer === SEO_DESCRIPTION_POINTER) {
+      currentValue = document.seo?.description
+      applyValue = (value: string) => {
+        if (!isPlainObject(document.seo)) {
+          document.seo = { title: '', description: value, image: null }
+          return
+        }
+        document.seo.description = value
+      }
+    }
+
+    if (!applyValue) {
+      skippedCount += 1
+      continue
+    }
+
+    if (overwriteMode === 'missing' && !isLocalizedValueMissing(currentValue)) {
+      skippedCount += 1
+      continue
+    }
+
+    applyValue(translatedValue)
+    appliedCount += 1
+  }
+
+  return {
+    appliedCount,
+    skippedCount,
+  }
 }
 
 const ensureMinimalDocument = (value: unknown): MinimalContentDocument => {
@@ -227,6 +399,7 @@ export default defineEventHandler(async (event) => {
     scopeMode?: unknown
     scopePointer?: unknown
     overwriteMode?: unknown
+    selectedScopePointers?: unknown
     sourceDocument?: unknown
   }>(event)
 
@@ -291,17 +464,26 @@ export default defineEventHandler(async (event) => {
     masterMeta.fixedBodyPaths,
   )
 
-  const sourceEntries = collectTranslatableTextEntries(
+  const sourceBodyEntries = collectTranslatableTextEntries(
     sourceDocument.body.value,
     fixedBodyPaths,
     scopeMode,
     scopePointer,
   )
+  const sourceEntries = [
+    ...sourceBodyEntries,
+    ...collectPageSeoEntries(sourceDocument, scopeMode, scopePointer),
+  ]
+  const selectedScopePointers = normalizeSelectedScopePointers(body.selectedScopePointers)
+  const filteredSourceEntries = filterEntriesBySelectedPointers(
+    sourceEntries,
+    selectedScopePointers,
+  )
   const sourceTextByPointer = Object.fromEntries(
-    sourceEntries.map((entry) => [entry.pointer, entry.text]),
+    filteredSourceEntries.map((entry) => [entry.pointer, entry.text]),
   )
 
-  if (!sourceEntries.length) {
+  if (!filteredSourceEntries.length) {
     return {
       success: true,
       sourceLocale,
@@ -311,7 +493,9 @@ export default defineEventHandler(async (event) => {
       overwriteMode,
       report: {
         totalSourceEntries: 0,
-        keyPoints: ['No localizable source text entries found for the selected scope.'],
+        keyPoints: selectedScopePointers.length
+          ? ['No localizable source text entries found for the selected checked fields.']
+          : ['No localizable source text entries found for the selected scope.'],
         localeResults: [],
         completedAt: new Date().toISOString(),
       },
@@ -339,12 +523,9 @@ export default defineEventHandler(async (event) => {
             return cloned
           })()
 
-      const eligibleEntries = sourceEntries
+      const eligibleEntries = filteredSourceEntries
         .map((entry) => {
-          const normalizedTargetText = readPointerTextValue(
-            baseMinimal.body.value,
-            entry.pointer,
-          )
+          const normalizedTargetText = readTranslationTargetText(baseMinimal, entry.pointer)
 
           return {
             ...entry,
@@ -366,27 +547,35 @@ export default defineEventHandler(async (event) => {
           scopeMode,
           scopePointer,
           overwriteMode,
-          sourceEntryCount: sourceEntries.length,
+          sourceEntryCount: filteredSourceEntries.length,
           eligibleEntryCount: eligibleEntries.length,
         },
       })
 
-      const applied = applyTranslationsToBody(
+      const split = splitTranslationsByPointer(translationResult.translationsByPointer)
+      const bodyApplied = applyTranslationsToBody(
         baseMinimal.body.value,
-        translationResult.translationsByPointer,
+        split.bodyTranslations,
         overwriteMode,
         {
           sourceBodyValue: sourceDocument.body.value,
         },
       )
-      baseMinimal.body.value = Array.isArray(applied.nextBodyValue)
-        ? applied.nextBodyValue
+      baseMinimal.body.value = Array.isArray(bodyApplied.nextBodyValue)
+        ? bodyApplied.nextBodyValue
         : baseMinimal.body.value
+      const seoApplied = applyTranslationsToSeo(
+        baseMinimal,
+        split.seoTranslations,
+        overwriteMode,
+      )
       baseMinimal.path = buildLocalizedPath(basePath, targetLocale, i18nConfig)
 
-      translationResult.appliedCount = applied.appliedCount
+      translationResult.appliedCount = bodyApplied.appliedCount + seoApplied.appliedCount
       translationResult.skippedCount =
-        applied.skippedCount + (sourceEntries.length - eligibleEntries.length)
+        bodyApplied.skippedCount +
+        seoApplied.skippedCount +
+        (filteredSourceEntries.length - eligibleEntries.length)
       stagedDocumentsByLocale[targetLocale] = withResolvedFixedBodyPaths(
         baseMinimal,
         fixedBodyPaths,
@@ -431,7 +620,7 @@ export default defineEventHandler(async (event) => {
     scopePointer,
     overwriteMode,
     report: {
-      totalSourceEntries: sourceEntries.length,
+      totalSourceEntries: filteredSourceEntries.length,
       keyPoints,
       localeResults,
       completedAt: new Date().toISOString(),

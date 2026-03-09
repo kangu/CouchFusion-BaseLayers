@@ -187,6 +187,7 @@ const isSelectingPage = ref(false);
 const selectionError = ref<string | null>(null);
 const hasBootstrappedSelection = ref(false);
 const builderSearchQuery = ref("");
+const selectedTranslationPointers = ref<string[]>([]);
 
 const builderRef = ref<BuilderWorkbenchInstance | null>(null);
 const isSavePending = ref(false);
@@ -903,6 +904,7 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
     }
 
     if (normalizedPath !== selectedPath.value) {
+        selectedTranslationPointers.value = [];
         stagedDocumentsByLocale.value = {};
         resetTranslationPersistenceState();
         translationScopeLabel.value = null;
@@ -1428,6 +1430,7 @@ type TranslateScopePayload = {
     scopeMode: LlmTranslationScopeMode;
     scopePointer: string | null;
     label?: string;
+    selectedScopePointers?: string[];
 };
 
 const setTranslationNotice = (
@@ -1438,6 +1441,25 @@ const setTranslationNotice = (
     if (type === "error") {
         console.warn("[content][llm-translations]", message);
     }
+};
+
+const normalizeSelectedTranslationPointers = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(
+        new Set(
+            value
+                .filter((entry): entry is string => typeof entry === "string")
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.startsWith("/")),
+        ),
+    ).sort();
+};
+
+const handleSelectedTranslationPointersUpdate = (value: unknown): void => {
+    selectedTranslationPointers.value = normalizeSelectedTranslationPointers(value);
 };
 
 const cloneMinimalForDebug = (
@@ -1568,6 +1590,8 @@ function isTranslationDraftEditable(locale: string): boolean {
 }
 
 const INTEGER_POINTER_SEGMENT = /^(?:0|[1-9]\d*)$/;
+const SEO_TITLE_POINTER = "/__seo/title";
+const SEO_DESCRIPTION_POINTER = "/__seo/description";
 
 function decodePointerSegment(segment: string): string {
     return segment.replace(/~1/g, "/").replace(/~0/g, "~");
@@ -1764,18 +1788,56 @@ function setBodyPointerStringValue(
     return writePointerValue(bodyValue, segments, value);
 }
 
+function setDocumentPointerStringValue(
+    document: MinimalContentDocument,
+    pointer: string,
+    value: string,
+): boolean {
+    if (pointer === SEO_TITLE_POINTER) {
+        if (!document.seo || typeof document.seo !== "object") {
+            document.seo = {
+                title: value,
+                description: "",
+                image: null,
+            };
+            return true;
+        }
+        document.seo.title = value;
+        return true;
+    }
+
+    if (pointer === SEO_DESCRIPTION_POINTER) {
+        if (!document.seo || typeof document.seo !== "object") {
+            document.seo = {
+                title: "",
+                description: value,
+                image: null,
+            };
+            return true;
+        }
+        document.seo.description = value;
+        return true;
+    }
+
+    if (!document.body || !Array.isArray(document.body.value)) {
+        return false;
+    }
+
+    return setBodyPointerStringValue(document.body.value, pointer, value);
+}
+
 function applyTranslationDraftToStagedDocument(
     locale: string,
     pointer: string,
     value: string,
 ): boolean {
     const staged = stagedDocumentsByLocale.value[locale];
-    if (!staged?.body || !Array.isArray(staged.body.value)) {
+    if (!staged) {
         return false;
     }
 
     const nextStaged = clonePlain(staged);
-    const applied = setBodyPointerStringValue(nextStaged.body.value, pointer, value);
+    const applied = setDocumentPointerStringValue(nextStaged, pointer, value);
     if (!applied) {
         return false;
     }
@@ -1792,14 +1854,14 @@ function applyTranslationDraftToStagedDocument(
 
 function applyAllDraftsToStagedDocument(locale: string): MinimalContentDocument | null {
     const staged = stagedDocumentsByLocale.value[locale];
-    if (!staged?.body || !Array.isArray(staged.body.value)) {
+    if (!staged) {
         return null;
     }
 
     const localeDrafts = translationDraftValuesByLocale.value[locale] ?? {};
     const nextStaged = clonePlain(staged);
     for (const [pointer, value] of Object.entries(localeDrafts)) {
-        setBodyPointerStringValue(nextStaged.body.value, pointer, value);
+        setDocumentPointerStringValue(nextStaged, pointer, value);
     }
 
     stagedDocumentsByLocale.value = {
@@ -2022,6 +2084,7 @@ const runScopedTranslation = async (
         scopeMode: payload.scopeMode,
         scopePointer: payload.scopePointer,
         overwriteMode: translationOverwriteMode.value,
+        selectedScopePointers: payload.selectedScopePointers,
     });
 
     const appliedLocales = applyStagedTranslations(result.stagedDocumentsByLocale);
@@ -2262,10 +2325,18 @@ const handleTranslateScope = async (
 };
 
 const handleTranslatePage = async (): Promise<void> => {
+    const selectedPointers = normalizeSelectedTranslationPointers(
+        selectedTranslationPointers.value,
+    );
     await handleTranslateScope({
         scopeMode: "page",
         scopePointer: null,
-        label: "Page",
+        label: selectedPointers.length
+            ? `Selected fields (${selectedPointers.length})`
+            : "Page",
+        selectedScopePointers: selectedPointers.length
+            ? selectedPointers
+            : undefined,
     });
 };
 
@@ -2463,6 +2534,7 @@ async function handleDeletePage(): Promise<void> {
         if (remaining.length) {
             await openPageForEditing(remaining[0].path, true);
         } else {
+            selectedTranslationPointers.value = [];
             selectedPath.value = null;
             hasLoadedInitialDocument.value = false;
             updateUnsavedState(false);
@@ -2852,11 +2924,17 @@ defineExpose({
                                 :hide-preview="hidePreview"
                                 :key="selectedDocument.id"
                                 :search-query="builderSearchQuery"
+                                :selected-translation-pointers="
+                                    selectedTranslationPointers
+                                "
                                 @document-change="handleDocumentChange"
                                 @document-preview-change="
                                     handleDocumentPreviewChange
                                 "
                                 @translate-scope="handleTranslateScope"
+                                @update:selected-translation-pointers="
+                                    handleSelectedTranslationPointersUpdate
+                                "
                                 @node-focus="handleNodeFocus"
                                 @update:search-query="
                                     (value) => (builderSearchQuery = value)

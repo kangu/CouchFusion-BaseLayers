@@ -19,6 +19,7 @@ export interface LlmTranslationRunRequest {
   scopeMode: LlmTranslationScopeMode
   scopePointer?: string | null
   overwriteMode: LlmTranslationOverwriteMode
+  selectedScopePointers?: string[]
 }
 
 export interface LlmTranslationLocaleReportEntry {

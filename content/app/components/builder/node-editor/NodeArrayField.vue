@@ -77,6 +77,8 @@
             :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
             :format-json-value="formatJsonValue"
             :on-translate-field="onTranslateField"
+            :on-toggle-translate-selection="onToggleTranslateSelection"
+            :is-translate-selected="isTranslateSelected"
         />
     </div>
 </template>
@@ -164,6 +166,12 @@ const props = defineProps<{
         propPath: Array<string | number>;
         label?: string;
     }) => void;
+    onToggleTranslateSelection?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
 const itemEntries = computed(() => {

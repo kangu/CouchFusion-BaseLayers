@@ -41,20 +41,25 @@
                         "
                         @scroll="syncHighlightScroll"
                     />
-                    <button
+                    <NodeTranslateInline
                         v-if="canTranslateField(prop)"
-                        type="button"
-                        class="node-panel__translate-inline"
-                        @click="
+                        :selected="isTranslationSelected([prop.key])"
+                        @toggle="
+                            (selected) =>
+                                toggleTranslationSelection(
+                                    [prop.key],
+                                    prop.label,
+                                    selected,
+                                )
+                        "
+                        @translate="
                             () =>
                                 requestTranslateField(
                                     [prop.key],
                                     prop.label,
                                 )
                         "
-                    >
-                        Translate
-                    </button>
+                    />
                 </div>
             </template>
             <template v-else-if="prop.type === 'boolean'">
@@ -192,6 +197,8 @@
                     :json-rows="6"
                     :json-highlight-type="prop.type"
                     :on-translate-field="onTranslateField"
+                    :on-toggle-translate-selection="onToggleTranslateSelection"
+                    :is-translate-selected="isTranslateSelected"
                 />
             </template>
             <template v-else-if="prop.type === 'jsonarray' || prop.type === 'stringarray'">
@@ -251,6 +258,8 @@
                     :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                     :format-json-value="formatJsonValue"
                     :on-translate-field="onTranslateField"
+                    :on-toggle-translate-selection="onToggleTranslateSelection"
+                    :is-translate-selected="isTranslateSelected"
                 />
             </template>
             <template v-else-if="prop.ui?.component">
@@ -288,20 +297,25 @@
                             }
                         "
                     />
-                    <button
+                    <NodeTranslateInline
                         v-if="canTranslateField(prop)"
-                        type="button"
-                        class="node-panel__translate-inline"
-                        @click="
+                        :selected="isTranslationSelected([prop.key])"
+                        @toggle="
+                            (selected) =>
+                                toggleTranslationSelection(
+                                    [prop.key],
+                                    prop.label,
+                                    selected,
+                                )
+                        "
+                        @translate="
                             () =>
                                 requestTranslateField(
                                     [prop.key],
                                     prop.label,
                                 )
                         "
-                    >
-                        Translate
-                    </button>
+                    />
                 </div>
             </template>
             <template v-else>
@@ -331,20 +345,25 @@
                                 )
                         "
                     />
-                    <button
+                    <NodeTranslateInline
                         v-if="canTranslateField(prop)"
-                        type="button"
-                        class="node-panel__translate-inline"
-                        @click="
+                        :selected="isTranslationSelected([prop.key])"
+                        @toggle="
+                            (selected) =>
+                                toggleTranslationSelection(
+                                    [prop.key],
+                                    prop.label,
+                                    selected,
+                                )
+                        "
+                        @translate="
                             () =>
                                 requestTranslateField(
                                     [prop.key],
                                     prop.label,
                                 )
                         "
-                    >
-                        Translate
-                    </button>
+                    />
                 </div>
             </template>
         </NodeField>
@@ -393,6 +412,7 @@ import NodeObjectField from "./NodeObjectField.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeTextField from "./NodeTextField.vue";
 import NodeTextareaField from "./NodeTextareaField.vue";
+import NodeTranslateInline from "./NodeTranslateInline.vue";
 
 type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;
@@ -480,6 +500,12 @@ const props = defineProps<{
         propPath: Array<string | number>;
         label?: string;
     }) => void;
+    onToggleTranslateSelection?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
 const fieldWrapperTag = (schema: ComponentPropSchema) =>
@@ -543,6 +569,25 @@ const requestTranslateField = (
     props.onTranslateField?.({
         propPath,
         label,
+    });
+};
+
+const isTranslationSelected = (propPath: Array<string | number>): boolean =>
+    props.isTranslateSelected?.(propPath) ?? false;
+
+const toggleTranslationSelection = (
+    propPath: Array<string | number>,
+    label: string | undefined,
+    selected: boolean,
+) => {
+    if (!propPath.length) {
+        return;
+    }
+
+    props.onToggleTranslateSelection?.({
+        propPath,
+        label,
+        selected,
     });
 };
 </script>

@@ -134,20 +134,25 @@
                                     @scroll="syncHighlightScroll"
                                 />
                             </div>
-                            <button
+                            <NodeTranslateInline
                                 v-if="canTranslateField(field)"
-                                type="button"
-                                class="node-panel__translate-inline"
-                                @click="
+                                :selected="isTranslationSelected([...pathPrefix, field.key])"
+                                @toggle="
+                                    (selected) =>
+                                        toggleTranslationSelection(
+                                            [...pathPrefix, field.key],
+                                            field.label,
+                                            selected,
+                                        )
+                                "
+                                @translate="
                                     () =>
                                         requestTranslateField(
                                             [...pathPrefix, field.key],
                                             field.label,
                                         )
                                 "
-                            >
-                                Translate
-                            </button>
+                            />
                         </div>
                     </template>
                     <template v-else-if="field.type === 'boolean'">
@@ -481,11 +486,26 @@
                                                 "
                                             />
                                         </div>
-                                        <button
+                                        <NodeTranslateInline
                                             v-if="canTranslateField(field)"
-                                            type="button"
-                                            class="node-panel__translate-inline"
-                                            @click="
+                                            :selected="isTranslationSelected([
+                                                ...pathPrefix,
+                                                field.key,
+                                                nestedEntry.index,
+                                            ])"
+                                            @toggle="
+                                                (selected) =>
+                                                    toggleTranslationSelection(
+                                                        [
+                                                            ...pathPrefix,
+                                                            field.key,
+                                                            nestedEntry.index,
+                                                        ],
+                                                        field.label,
+                                                        selected,
+                                                    )
+                                            "
+                                            @translate="
                                                 () =>
                                                     requestTranslateField(
                                                         [
@@ -496,9 +516,7 @@
                                                         field.label,
                                                     )
                                             "
-                                        >
-                                            Translate
-                                        </button>
+                                        />
                                     </div>
                                 </label>
                                 <div
@@ -580,20 +598,25 @@
                                         )
                                 "
                             />
-                            <button
+                            <NodeTranslateInline
                                 v-if="canTranslateField(field)"
-                                type="button"
-                                class="node-panel__translate-inline"
-                                @click="
+                                :selected="isTranslationSelected([...pathPrefix, field.key])"
+                                @toggle="
+                                    (selected) =>
+                                        toggleTranslationSelection(
+                                            [...pathPrefix, field.key],
+                                            field.label,
+                                            selected,
+                                        )
+                                "
+                                @translate="
                                     () =>
                                         requestTranslateField(
                                             [...pathPrefix, field.key],
                                             field.label,
                                         )
                                 "
-                            >
-                                Translate
-                            </button>
+                            />
                         </div>
                     </template>
                     <template v-else-if="field.type === 'jsonarray'">
@@ -796,11 +819,28 @@
                                                         "
                                                     />
                                                 </div>
-                                                <button
+                                                <NodeTranslateInline
                                                     v-if="canTranslateField(nestedField)"
-                                                    type="button"
-                                                    class="node-panel__translate-inline"
-                                                    @click="
+                                                    :selected="isTranslationSelected([
+                                                        ...pathPrefix,
+                                                        field.key,
+                                                        nestedIndex,
+                                                        nestedField.key,
+                                                    ])"
+                                                    @toggle="
+                                                        (selected) =>
+                                                            toggleTranslationSelection(
+                                                                [
+                                                                    ...pathPrefix,
+                                                                    field.key,
+                                                                    nestedIndex,
+                                                                    nestedField.key,
+                                                                ],
+                                                                nestedField.label,
+                                                                selected,
+                                                            )
+                                                    "
+                                                    @translate="
                                                         () =>
                                                             requestTranslateField(
                                                                 [
@@ -812,9 +852,7 @@
                                                                 nestedField.label,
                                                             )
                                                     "
-                                                >
-                                                    Translate
-                                                </button>
+                                                />
                                             </div>
                                         </template>
                                         <template
@@ -1036,11 +1074,28 @@
                                                             )
                                                     "
                                                 />
-                                                <button
+                                                <NodeTranslateInline
                                                     v-if="canTranslateField(nestedField)"
-                                                    type="button"
-                                                    class="node-panel__translate-inline"
-                                                    @click="
+                                                    :selected="isTranslationSelected([
+                                                        ...pathPrefix,
+                                                        field.key,
+                                                        nestedIndex,
+                                                        nestedField.key,
+                                                    ])"
+                                                    @toggle="
+                                                        (selected) =>
+                                                            toggleTranslationSelection(
+                                                                [
+                                                                    ...pathPrefix,
+                                                                    field.key,
+                                                                    nestedIndex,
+                                                                    nestedField.key,
+                                                                ],
+                                                                nestedField.label,
+                                                                selected,
+                                                            )
+                                                    "
+                                                    @translate="
                                                         () =>
                                                             requestTranslateField(
                                                                 [
@@ -1052,9 +1107,7 @@
                                                                 nestedField.label,
                                                             )
                                                     "
-                                                >
-                                                    Translate
-                                                </button>
+                                                />
                                             </div>
                                         </template>
                                         <template
@@ -1339,11 +1392,30 @@
                                                                     "
                                                                 />
                                                             </div>
-                                                            <button
+                                                            <NodeTranslateInline
                                                                 v-if="canTranslateField(nestedField)"
-                                                                type="button"
-                                                                class="node-panel__translate-inline"
-                                                                @click="
+                                                                :selected="isTranslationSelected([
+                                                                    ...pathPrefix,
+                                                                    field.key,
+                                                                    nestedIndex,
+                                                                    nestedField.key,
+                                                                    nestedEntry.index,
+                                                                ])"
+                                                                @toggle="
+                                                                    (selected) =>
+                                                                        toggleTranslationSelection(
+                                                                            [
+                                                                                ...pathPrefix,
+                                                                                field.key,
+                                                                                nestedIndex,
+                                                                                nestedField.key,
+                                                                                nestedEntry.index,
+                                                                            ],
+                                                                            nestedField.label,
+                                                                            selected,
+                                                                        )
+                                                                "
+                                                                @translate="
                                                                     () =>
                                                                         requestTranslateField(
                                                                             [
@@ -1356,9 +1428,7 @@
                                                                             nestedField.label,
                                                                         )
                                                                 "
-                                                            >
-                                                                Translate
-                                                            </button>
+                                                            />
                                                         </div>
                                                     </label>
                                                     <div
@@ -1462,6 +1532,8 @@
                                                 :json-rows="4"
                                                 json-highlight-type="json"
                                                 :on-translate-field="onTranslateField"
+                                                :on-toggle-translate-selection="onToggleTranslateSelection"
+                                                :is-translate-selected="isTranslateSelected"
                                             />
                                         </template>
                                         <template v-else>
@@ -1539,11 +1611,28 @@
                                                         "
                                                     />
                                                 </div>
-                                                <button
+                                                <NodeTranslateInline
                                                     v-if="canTranslateField(nestedField)"
-                                                    type="button"
-                                                    class="node-panel__translate-inline"
-                                                    @click="
+                                                    :selected="isTranslationSelected([
+                                                        ...pathPrefix,
+                                                        field.key,
+                                                        nestedIndex,
+                                                        nestedField.key,
+                                                    ])"
+                                                    @toggle="
+                                                        (selected) =>
+                                                            toggleTranslationSelection(
+                                                                [
+                                                                    ...pathPrefix,
+                                                                    field.key,
+                                                                    nestedIndex,
+                                                                    nestedField.key,
+                                                                ],
+                                                                nestedField.label,
+                                                                selected,
+                                                            )
+                                                    "
+                                                    @translate="
                                                         () =>
                                                             requestTranslateField(
                                                                 [
@@ -1555,9 +1644,7 @@
                                                                 nestedField.label,
                                                             )
                                                     "
-                                                >
-                                                    Translate
-                                                </button>
+                                                />
                                             </div>
                                         </template>
                                     </label>
@@ -1642,6 +1729,8 @@
                             :json-rows="4"
                             json-highlight-type="json"
                             :on-translate-field="onTranslateField"
+                            :on-toggle-translate-selection="onToggleTranslateSelection"
+                            :is-translate-selected="isTranslateSelected"
                         />
                     </template>
                     <template v-else>
@@ -1707,20 +1796,25 @@
                                     "
                                 />
                             </div>
-                            <button
+                            <NodeTranslateInline
                                 v-if="canTranslateField(field)"
-                                type="button"
-                                class="node-panel__translate-inline"
-                                @click="
+                                :selected="isTranslationSelected([...pathPrefix, field.key])"
+                                @toggle="
+                                    (selected) =>
+                                        toggleTranslationSelection(
+                                            [...pathPrefix, field.key],
+                                            field.label,
+                                            selected,
+                                        )
+                                "
+                                @translate="
                                     () =>
                                         requestTranslateField(
                                             [...pathPrefix, field.key],
                                             field.label,
                                         )
                                 "
-                            >
-                                Translate
-                            </button>
+                            />
                         </div>
                     </template>
                 </label>
@@ -1907,20 +2001,25 @@
                             "
                         />
                     </div>
-                    <button
+                    <NodeTranslateInline
                         v-if="canTranslateField(prop)"
-                        type="button"
-                        class="node-panel__translate-inline"
-                        @click="
+                        :selected="isTranslationSelected([...pathPrefix])"
+                        @toggle="
+                            (selected) =>
+                                toggleTranslationSelection(
+                                    [...pathPrefix],
+                                    prop.label,
+                                    selected,
+                                )
+                        "
+                        @translate="
                             () =>
                                 requestTranslateField(
                                     [...pathPrefix],
                                     prop.label,
                                 )
                         "
-                    >
-                        Translate
-                    </button>
+                    />
                 </div>
             </label>
             <div class="node-panel__array-actions">
@@ -1959,6 +2058,7 @@ import { computed } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeObjectField from "./NodeObjectField.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
+import NodeTranslateInline from "./NodeTranslateInline.vue";
 
 type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;
@@ -2027,6 +2127,12 @@ const props = defineProps<{
         propPath: Array<string | number>;
         label?: string;
     }) => void;
+    onToggleTranslateSelection?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
 const arrayItemEntry = computed(() => props.entry);
@@ -2140,6 +2246,25 @@ const requestTranslateField = (
     props.onTranslateField?.({
         propPath,
         label,
+    });
+};
+
+const isTranslationSelected = (propPath: Array<string | number>): boolean =>
+    props.isTranslateSelected?.(propPath) ?? false;
+
+const toggleTranslationSelection = (
+    propPath: Array<string | number>,
+    label: string | undefined,
+    selected: boolean,
+) => {
+    if (!propPath.length) {
+        return;
+    }
+
+    props.onToggleTranslateSelection?.({
+        propPath,
+        label,
+        selected,
     });
 };
 

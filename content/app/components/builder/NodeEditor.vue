@@ -221,6 +221,8 @@
                 :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                 :format-json-value="formatJsonValue"
                 :on-translate-field="triggerTranslateField"
+                :on-toggle-translate-selection="triggerToggleTranslateFieldSelection"
+                :is-translate-selected="isTranslateFieldSelected"
             />
 
             <!-- New props are not enabled for the moment, keep it here for possible future use -->
@@ -271,6 +273,12 @@
                         :on-toggle-expanded="onToggleExpanded"
                         :on-translate-field="onTranslateField"
                         :on-translate-section="onTranslateSection"
+                        :on-toggle-translate-field-selection="
+                            onToggleTranslateFieldSelection
+                        "
+                        :is-translate-field-selected="
+                            isTranslateFieldSelected
+                        "
                     />
                 </template>
             </NodeChildrenPanel>
@@ -437,6 +445,16 @@ const props = defineProps<{
         propPath: Array<string | number>;
         label?: string;
     }) => void;
+    onToggleTranslateFieldSelection?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateFieldSelected?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+    }) => boolean;
     onTranslateSection?: (payload: {
         uid: string;
         label?: string;
@@ -597,6 +615,31 @@ const triggerTranslateField = (payload: {
         label: payload.label,
     });
 };
+
+const triggerToggleTranslateFieldSelection = (payload: {
+    propPath: Array<string | number>;
+    label?: string;
+    selected: boolean;
+}) => {
+    if (!props.onToggleTranslateFieldSelection) {
+        return;
+    }
+
+    props.onToggleTranslateFieldSelection({
+        uid: props.node.uid,
+        propPath: payload.propPath,
+        label: payload.label,
+        selected: payload.selected,
+    });
+};
+
+const isTranslateFieldSelected = (
+    propPath: Array<string | number>,
+): boolean =>
+    props.isTranslateFieldSelected?.({
+        uid: props.node.uid,
+        propPath,
+    }) ?? false;
 
 const isSectionNameEditable = computed(
     () =>
@@ -2751,6 +2794,20 @@ const applyTextValue = () => {
         color 120ms ease,
         border-color 120ms ease,
         box-shadow 120ms ease;
+}
+
+.node-panel :deep(.node-panel__translate-inline-wrap) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.node-panel :deep(.node-panel__translate-select) {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #2563eb;
+    cursor: pointer;
 }
 
 .node-panel :deep(.node-panel__translate-inline:hover),
