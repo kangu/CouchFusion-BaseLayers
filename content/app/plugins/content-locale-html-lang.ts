@@ -20,10 +20,14 @@ export default defineNuxtPlugin(() => {
   const activeLocale = computed(
     () => resolveContentLocalePath(route.path, contentI18nConfig).locale,
   );
+  const activeDirection = computed(() =>
+    activeLocale.value.toLowerCase() === "ar-ae" ? "rtl" : "ltr",
+  );
 
   useHead(() => ({
     htmlAttrs: {
       lang: activeLocale.value,
+      dir: activeDirection.value,
     },
   }));
 });

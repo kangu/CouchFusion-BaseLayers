@@ -1,3 +1,4 @@
+import flagAe from '../assets/flags/ae.svg?raw'
 import flagBg from '../assets/flags/bg.svg?raw'
 import flagCs from '../assets/flags/cs.svg?raw'
 import flagDa from '../assets/flags/da.svg?raw'
@@ -54,6 +55,10 @@ const LOCALE_META_BY_CODE: Record<string, LocaleMeta> = {
   ko: {
     label: '한국어',
     flagSvg: flagKo,
+  },
+  'ar-ae': {
+    label: 'العربية (AE)',
+    flagSvg: flagAe,
   },
   pt: {
     label: 'Portugues',
