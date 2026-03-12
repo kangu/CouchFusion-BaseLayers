@@ -4,6 +4,7 @@
             <button
                 type="button"
                 class="image-field__preview"
+                data-image-field-open-library="true"
                 :disabled="pending"
                 @click="openLibrary('imagekit')"
             >

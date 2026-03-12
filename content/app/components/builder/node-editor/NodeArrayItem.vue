@@ -50,6 +50,9 @@
                         arrayItemEntry.value,
                     )"
                     :key="field.key"
+                    :data-content-prop-path="
+                        toPropPathAttr([...pathPrefix, field.key])
+                    "
                     :class="[
                         'node-panel__field',
                         'node-panel__field--nested',
@@ -269,6 +272,9 @@
                                     arrayItemEntry.index,
                                     field.key,
                                 )
+                            "
+                            :data-content-array-path="
+                                toPropPathAttr([...pathPrefix, field.key])
                             "
                         >
                             <div
@@ -628,6 +634,9 @@
                                     arrayItemEntry.index,
                                     field.key,
                                 )
+                            "
+                            :data-content-array-path="
+                                toPropPathAttr([...pathPrefix, field.key])
                             "
                         >
                             <div
@@ -1125,6 +1134,14 @@
                                                         `${field.key}-${nestedField.key}`,
                                                         nestedIndex,
                                                     )
+                                                "
+                                                :data-content-array-path="
+                                                    toPropPathAttr([
+                                                        ...pathPrefix,
+                                                        field.key,
+                                                        nestedIndex,
+                                                        nestedField.key,
+                                                    ])
                                                 "
                                             >
                                                 <div
@@ -1893,6 +1910,7 @@
             v-show="!collapsedArrays[prop.key]"
         >
             <label
+                :data-content-prop-path="toPropPathAttr(pathPrefix)"
                 :class="[
                     'node-panel__field',
                     {
@@ -2137,6 +2155,8 @@ const props = defineProps<{
 
 const arrayItemEntry = computed(() => props.entry);
 const stringEntry = computed(() => props.entry);
+const toPropPathAttr = (segments: Array<string | number>) =>
+    segments.map((segment) => String(segment)).join(".");
 
 const imageKitTransformFieldKey = (key: string) => `${key}ImagekitTransforms`;
 

@@ -1,5 +1,11 @@
 <template>
-    <div class="node-panel__array" :data-collapsed="collapsedArrays[prop.key]">
+    <div
+        class="node-panel__array"
+        :data-collapsed="collapsedArrays[prop.key]"
+        :data-content-prop-path="prop.key"
+        :data-content-array-path="toPropPathAttr(pathPrefix)"
+        :data-prop-key="prop.key"
+    >
         <div class="node-panel__array-header">
             <button
                 type="button"
@@ -183,4 +189,7 @@ const itemEntries = computed(() => {
     }
     return [] as FilterEntry[];
 });
+
+const toPropPathAttr = (segments: Array<string | number>) =>
+    segments.map((segment) => String(segment)).join(".");
 </script>

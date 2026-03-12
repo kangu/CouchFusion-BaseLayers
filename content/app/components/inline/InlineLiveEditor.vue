@@ -6,6 +6,7 @@ import {
     onBeforeUnmount,
     onMounted,
     ref,
+    type ComponentPublicInstance,
     watch,
 } from "vue";
 import { normalizePagePath } from "#content/utils/page";
@@ -16,6 +17,27 @@ import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
 type ContentAdminWorkbenchProps = InstanceType<
     typeof ContentAdminWorkbenchComponent
 >["$props"];
+type ContentAdminWorkbenchExpose = {
+    focusPropFromPreview?: (payload: {
+        uid: string;
+        path: string;
+        propPath: string;
+        sectionId?: string;
+    }) => void;
+};
+type WorkbenchComponentInstance = ComponentPublicInstance<
+    ContentAdminWorkbenchExpose
+> & {
+    $?: {
+        exposed?: ContentAdminWorkbenchExpose;
+    };
+};
+type InlinePreviewPropClickPayload = {
+    uid: string;
+    path: string;
+    propPath: string;
+    sectionId?: string;
+};
 
 const props = defineProps<{
     previewBaseUrl?: string | null;
@@ -32,6 +54,8 @@ const runtimeConfig = useRuntimeConfig();
 const route = useRoute();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+const workbenchRef =
+    ref<ComponentPublicInstance<ContentAdminWorkbenchExpose> | null>(null);
 const isIframeReady = ref(false);
 const isPreviewClientReady = ref(false);
 const latestDocument = ref<MinimalContentDocument | null>(null);
@@ -536,7 +560,66 @@ const handleIframeLoad = () => {
     pendingLiveUpdate.value = true;
 };
 
-const handlePreviewReadyMessage = (event: MessageEvent) => {
+const isInlinePreviewPropClickMessage = (
+    value: unknown,
+): value is { type: "content_inline_prop_click"; payload: InlinePreviewPropClickPayload } => {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const candidate = value as Record<string, unknown>;
+    if (candidate.type !== "content_inline_prop_click") {
+        return false;
+    }
+    const payload = candidate.payload;
+    if (!payload || typeof payload !== "object") {
+        return false;
+    }
+    const sectionId = (payload as Record<string, unknown>).sectionId;
+    if (
+        sectionId !== undefined &&
+        sectionId !== null &&
+        typeof sectionId !== "string"
+    ) {
+        return false;
+    }
+    return (
+        typeof (payload as Record<string, unknown>).uid === "string" &&
+        typeof (payload as Record<string, unknown>).path === "string" &&
+        typeof (payload as Record<string, unknown>).propPath === "string"
+    );
+};
+
+const handlePreviewPropClick = (payload: InlinePreviewPropClickPayload) => {
+    const normalizedPath = normalizePagePath(payload.path || activePath.value || "/");
+    if (activePath.value !== normalizedPath) {
+        activePath.value = normalizedPath;
+    }
+
+    sendFocusMessage(payload.uid, normalizedPath, "lock");
+    const workbench = workbenchRef.value as WorkbenchComponentInstance | null;
+    const directMethod = workbench?.focusPropFromPreview;
+    if (typeof directMethod === "function") {
+        directMethod({
+            uid: payload.uid,
+            path: normalizedPath,
+            propPath: payload.propPath,
+            sectionId: payload.sectionId,
+        });
+        return;
+    }
+
+    const exposedMethod = workbench?.$?.exposed?.focusPropFromPreview;
+    if (typeof exposedMethod === "function") {
+        exposedMethod({
+            uid: payload.uid,
+            path: normalizedPath,
+            propPath: payload.propPath,
+            sectionId: payload.sectionId,
+        });
+    }
+};
+
+const handlePreviewMessage = (event: MessageEvent) => {
     const iframeWindow = iframeRef.value?.contentWindow;
     if (!iframeWindow || event.source !== iframeWindow) {
         return;
@@ -552,15 +635,18 @@ const handlePreviewReadyMessage = (event: MessageEvent) => {
         return;
     }
 
-    if ((data as { type?: string }).type !== "content_inline_preview_ready") {
+    if ((data as { type?: string }).type === "content_inline_preview_ready") {
+        isPreviewClientReady.value = true;
+        pendingLiveUpdate.value = true;
+        nextTick(() => {
+            flushPendingPreviewMessages();
+        });
         return;
     }
 
-    isPreviewClientReady.value = true;
-    pendingLiveUpdate.value = true;
-    nextTick(() => {
-        flushPendingPreviewMessages();
-    });
+    if (isInlinePreviewPropClickMessage(data)) {
+        handlePreviewPropClick(data.payload);
+    }
 };
 
 const handlePreviewMotionChange = (payload: {
@@ -667,7 +753,7 @@ watch(
 );
 
 onMounted(() => {
-    window.addEventListener("message", handlePreviewReadyMessage);
+    window.addEventListener("message", handlePreviewMessage);
 
     if (typeof window !== "undefined") {
         const stored = loadStoredSidebarWidth();
@@ -691,7 +777,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     applyBeforeUnload(false);
     stopDividerDrag();
-    window.removeEventListener("message", handlePreviewReadyMessage);
+    window.removeEventListener("message", handlePreviewMessage);
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", applySidebarConstraints);
     }
@@ -735,6 +821,7 @@ onBeforeRouteLeave(() => {
     >
         <section class="inline-live-editor__sidebar">
             <ContentAdminWorkbench
+                ref="workbenchRef"
                 :key="workbenchInstanceKey"
                 class="inline-live-editor__workbench"
                 v-bind="workbenchProps"

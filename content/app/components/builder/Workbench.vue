@@ -192,6 +192,7 @@ const emit = defineEmits<{
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
+const runtimeConfig = useRuntimeConfig();
 const componentOptions = computed(() => registry.list);
 const componentDefinitionLookup = computed(() =>
     buildComponentDefinitionLookup(registry.list),
@@ -218,6 +219,33 @@ const getSectionNamesById = (): Record<string, string> => {
             ([key, value]) => typeof key === "string" && typeof value === "string",
         ),
     );
+};
+
+const isAssistiveSectionSnapToggleEnabled = computed(() => {
+    return (
+        runtimeConfig.public?.content?.builder?.assistiveSectionSnapToggle ===
+        true
+    );
+});
+
+const getAssistiveSectionSnap = (): boolean => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    return typeof builder.assistiveSectionSnap === "boolean"
+        ? builder.assistiveSectionSnap
+        : true;
+};
+
+const setAssistiveSectionSnap = (nextValue: boolean) => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    pageConfig.meta = {
+        ...meta,
+        builder: {
+            ...builder,
+            assistiveSectionSnap: nextValue,
+        },
+    };
 };
 
 const setSectionNamesById = (nextNamesById: Record<string, string>) => {
@@ -329,6 +357,7 @@ const seoDraft = reactive({
     seoTitle: pageConfig.seoTitle,
     seoDescription: pageConfig.seoDescription,
     seoImage: pageConfig.seoImage,
+    assistiveSectionSnap: getAssistiveSectionSnap(),
 });
 const isSeoCardExpanded = ref(false);
 
@@ -338,6 +367,7 @@ const syncSeoDraftFromPageConfig = () => {
     seoDraft.seoTitle = pageConfig.seoTitle;
     seoDraft.seoDescription = pageConfig.seoDescription;
     seoDraft.seoImage = pageConfig.seoImage;
+    seoDraft.assistiveSectionSnap = getAssistiveSectionSnap();
 };
 
 const hasSeoDraftChanges = computed(
@@ -346,7 +376,9 @@ const hasSeoDraftChanges = computed(
         seoDraft.title !== pageConfig.title ||
         seoDraft.seoTitle !== pageConfig.seoTitle ||
         seoDraft.seoDescription !== pageConfig.seoDescription ||
-        seoDraft.seoImage !== pageConfig.seoImage,
+        seoDraft.seoImage !== pageConfig.seoImage ||
+        (isAssistiveSectionSnapToggleEnabled.value &&
+            seoDraft.assistiveSectionSnap !== getAssistiveSectionSnap()),
 );
 
 const openSeoCardEditor = () => {
@@ -360,6 +392,9 @@ const applySeoDraft = () => {
     pageConfig.seoTitle = seoDraft.seoTitle;
     pageConfig.seoDescription = seoDraft.seoDescription;
     pageConfig.seoImage = seoDraft.seoImage;
+    if (isAssistiveSectionSnapToggleEnabled.value) {
+        setAssistiveSectionSnap(seoDraft.assistiveSectionSnap);
+    }
     isSeoCardExpanded.value = false;
 };
 
@@ -378,6 +413,13 @@ const previewSpacingClass = computed(
 const expandedRootNodes = reactive<Record<string, boolean>>({});
 
 const fallbackSearchQuery = ref("");
+const propFocusRequestToken = ref(0);
+const nodePropFocusRequest = ref<{
+    uidPath: string[];
+    targetUid: string;
+    propPath: Array<string | number>;
+    token: number;
+} | null>(null);
 const searchQuery = computed<string>({
     get: () => props.searchQuery ?? fallbackSearchQuery.value,
     set: (value) => {
@@ -1107,6 +1149,99 @@ const findBuilderNodePathByUid = (
     return null;
 };
 
+const resolveUidPathByBuilderPath = (builderPath: number[]): string[] => {
+    const uidPath: string[] = [];
+    let currentNodes: BuilderNodeChild[] = builderTree.value;
+
+    for (const index of builderPath) {
+        const node = currentNodes[index];
+        if (!node) {
+            break;
+        }
+        uidPath.push(node.uid);
+        if (node.type !== "component") {
+            break;
+        }
+        currentNodes = node.children;
+    }
+
+    return uidPath;
+};
+
+const parseDottedPropPath = (value: string): Array<string | number> =>
+    value
+        .split(".")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .map((segment) =>
+            /^-?\d+$/.test(segment) ? Number.parseInt(segment, 10) : segment,
+        );
+
+const focusNodeProp = (payload: {
+    uid: string;
+    propPath: string;
+    sectionId?: string;
+}) => {
+    if (!payload || typeof payload.uid !== "string") {
+        return;
+    }
+
+    const propPath = parseDottedPropPath(payload.propPath);
+    if (!propPath.length) {
+        return;
+    }
+
+    let targetUid = payload.uid;
+    let builderPath = findBuilderNodePathByUid(builderTree.value, targetUid);
+
+    const sectionId =
+        typeof payload.sectionId === "string" ? payload.sectionId.trim() : "";
+    if (sectionId) {
+        const sectionRootNode = builderTree.value.find(
+            (node) => getRootSectionId(node) === sectionId,
+        );
+
+        if (sectionRootNode) {
+            const sectionPath = findBuilderNodePathByUid(
+                builderTree.value,
+                sectionRootNode.uid,
+            );
+
+            if (
+                sectionPath &&
+                sectionPath.length &&
+                (!builderPath || builderPath[0] !== sectionPath[0])
+            ) {
+                builderPath = sectionPath;
+                targetUid = sectionRootNode.uid;
+            }
+        }
+    }
+
+    if (!builderPath || !builderPath.length) {
+        return;
+    }
+
+    const uidPath = resolveUidPathByBuilderPath(builderPath);
+    if (!uidPath.length) {
+        return;
+    }
+
+    // Ensure node remains visible while applying prop focus.
+    searchQuery.value = "";
+    const rootUid = uidPath[0];
+    expandedRootNodes[rootUid] = true;
+
+    propFocusRequestToken.value += 1;
+    nodePropFocusRequest.value = {
+        uidPath,
+        targetUid,
+        propPath,
+        token: propFocusRequestToken.value,
+    };
+    handleNodeFocus({ uid: targetUid, mode: "lock" });
+};
+
 const toBodyNodePointerSegments = (
     builderPath: number[],
 ): Array<string | number> => {
@@ -1379,6 +1514,7 @@ const loadDocument = (doc: MinimalContentDocument | null) => {
 defineExpose({
     getSerializedDocument,
     loadDocument,
+    focusNodeProp,
 });
 
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -1577,6 +1713,16 @@ const handleSaveDebugClick = () => {
                         "
                     />
                 </div>
+                <label
+                    v-if="isAssistiveSectionSnapToggleEnabled"
+                    class="builder-config__checkbox builder-config__full"
+                >
+                    <input
+                        v-model="seoDraft.assistiveSectionSnap"
+                        type="checkbox"
+                    />
+                    <span>Assistive section snap on homepage (desktop only)</span>
+                </label>
                 <div class="builder-config__actions">
                     <button
                         type="button"
@@ -1662,6 +1808,7 @@ const handleSaveDebugClick = () => {
                     :node="node"
                     :registry="registry"
                     :component-options="componentOptions"
+                    :focus-request="nodePropFocusRequest"
                     :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
                     :on-update-text="updateTextNode"

@@ -180,6 +180,11 @@ const hasActiveLocaleStagedDocument = computed(
 type BuilderWorkbenchInstance = ComponentPublicInstance<{
     getSerializedDocument: () => MinimalContentDocument;
     loadDocument: (doc: MinimalContentDocument | null) => void;
+    focusNodeProp: (payload: {
+        uid: string;
+        propPath: string;
+        sectionId?: string;
+    }) => void;
 }>;
 
 const filterTerm = ref("");
@@ -2608,9 +2613,36 @@ function closeCreateModal(): void {
     isCreateModalOpen.value = false;
 }
 
+const focusPropFromPreview = (payload: {
+    uid: string;
+    path: string;
+    propPath: string;
+    sectionId?: string;
+}) => {
+    if (
+        !payload ||
+        typeof payload.uid !== "string" ||
+        typeof payload.path !== "string"
+    ) {
+        return;
+    }
+
+    const builder = builderRef.value;
+    if (!builder || typeof builder.focusNodeProp !== "function") {
+        return;
+    }
+
+    builder.focusNodeProp({
+        uid: payload.uid,
+        propPath: payload.propPath,
+        sectionId: payload.sectionId,
+    });
+};
+
 defineExpose({
     openCreateModal: showCreatePageModal,
     refreshIndex: () => contentStore.fetchIndex(true),
+    focusPropFromPreview,
 });
 </script>
 

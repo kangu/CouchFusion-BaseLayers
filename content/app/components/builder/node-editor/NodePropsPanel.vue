@@ -3,6 +3,7 @@
         <NodeField
             v-for="prop in visibleProps"
             :key="prop.key"
+            :data-content-prop-path="prop.key"
             :tag="fieldWrapperTag(prop)"
             :role="fieldWrapperRole(prop)"
             :listeners="fieldWrapperListeners(prop)"
@@ -374,6 +375,7 @@
             v-for="entry in filteredExtraPropEntries"
             :key="entry.key"
             :label="entry.key"
+            :data-content-prop-path="entry.key"
         >
             <NodeTextField
                 v-model="extraPropsDraft[entry.key]"

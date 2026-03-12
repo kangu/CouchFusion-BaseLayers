@@ -73,7 +73,7 @@ const LOCALE_META_BY_CODE: Record<string, LocaleMeta> = {
     flagSvg: flagZh,
   },
   ro: {
-    label: 'Romana',
+    label: 'Română',
     flagSvg: flagRo,
   },
   hu: {

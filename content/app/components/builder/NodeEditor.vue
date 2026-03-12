@@ -1,6 +1,8 @@
 <template>
     <div
+        ref="panelRef"
         class="node-panel"
+        :data-builder-node-uid="node.uid"
         :style="{ marginLeft: depth * 16 + 'px' }"
         @focusin="notifyFocus"
         @click="notifyFocus"
@@ -262,6 +264,7 @@
                         :node="child"
                         :registry="registry"
                         :component-options="componentOptions"
+                        :focus-request="focusRequest"
                         :search-query="normalizedSearchQuery"
                         :depth="depth + 1"
                         :on-update-prop="onUpdateProp"
@@ -461,9 +464,16 @@ const props = defineProps<{
     }) => void;
     sectionName?: string;
     onSaveSectionName?: (uid: string, value: string) => void;
+    focusRequest?: {
+        uidPath: string[];
+        targetUid: string;
+        propPath: Array<string | number>;
+        token: number;
+    } | null;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
+const panelRef = ref<HTMLElement | null>(null);
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(props.searchQuery),
 );
@@ -586,6 +596,143 @@ const requestRemoveNode = (uid: string) => {
 
 const triggerFocus = () => {
     notifyFocus("flash");
+};
+
+const toPropPathAttr = (segments: Array<string | number>): string =>
+    segments.map((segment) => String(segment)).join(".");
+
+const isDisabledElement = (element: Element): boolean => {
+    if (element instanceof HTMLButtonElement) {
+        return element.disabled;
+    }
+    if (element instanceof HTMLInputElement) {
+        return element.disabled;
+    }
+    if (element instanceof HTMLTextAreaElement) {
+        return element.disabled;
+    }
+    return element.getAttribute("aria-disabled") === "true";
+};
+
+const toPathDepth = (path: string): number =>
+    path
+        .split(".")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0).length;
+
+const isPathPrefix = (targetPath: string, candidatePath: string): boolean =>
+    targetPath === candidatePath || targetPath.startsWith(`${candidatePath}.`);
+
+const expandCollapsedArrayPaths = async (
+    panel: HTMLElement,
+    propPath: Array<string | number>,
+) => {
+    const targetPath = toPropPathAttr(propPath);
+
+    const candidates = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-content-array-path]"),
+    )
+        .map((element) => ({
+            element,
+            path: element.getAttribute("data-content-array-path")?.trim() ?? "",
+        }))
+        .filter(({ path }) => path.length > 0 && isPathPrefix(targetPath, path))
+        .sort((left, right) => toPathDepth(left.path) - toPathDepth(right.path));
+
+    for (const candidate of candidates) {
+        if (candidate.element.getAttribute("data-collapsed") !== "true") {
+            continue;
+        }
+
+        const toggle = candidate.element.querySelector<HTMLElement>(
+            ".node-panel__array-toggle",
+        );
+        if (!toggle || isDisabledElement(toggle)) {
+            continue;
+        }
+
+        toggle.click();
+        await nextTick();
+    }
+};
+
+const focusPropInput = async (request: {
+    uidPath: string[];
+    targetUid: string;
+    propPath: Array<string | number>;
+}) => {
+    if (!request.uidPath.includes(props.node.uid)) {
+        return;
+    }
+
+    if (props.node.type === "component") {
+        if (collapsedNodes[props.node.uid] ?? true) {
+            collapsedNodes[props.node.uid] = false;
+            props.onToggleExpanded?.(props.node.uid, true);
+        }
+
+        if (props.node.uid === request.targetUid) {
+            const firstPathToken = request.propPath[0];
+            if (
+                typeof firstPathToken === "string" &&
+                firstPathToken in collapsedArrays
+            ) {
+                collapsedArrays[firstPathToken] = false;
+            }
+        }
+    }
+
+    if (props.node.uid !== request.targetUid) {
+        return;
+    }
+
+    await nextTick();
+    await nextTick();
+
+    const panel = panelRef.value;
+    if (!panel) {
+        return;
+    }
+
+    await expandCollapsedArrayPaths(panel, request.propPath);
+    await nextTick();
+
+    const field = panel.querySelector<HTMLElement>(
+        `[data-content-prop-path="${toPropPathAttr(request.propPath)}"]`,
+    );
+    if (!field) {
+        return;
+    }
+
+    field.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+    });
+
+    const imagePickerTrigger = field.querySelector<HTMLElement>(
+        "[data-image-field-open-library]",
+    );
+    if (imagePickerTrigger && !isDisabledElement(imagePickerTrigger)) {
+        imagePickerTrigger.click();
+        return;
+    }
+
+    const focusTarget = field.querySelector<HTMLElement>(
+        'textarea, input:not([type="checkbox"]):not([type="hidden"]), [contenteditable="true"], .ProseMirror',
+    );
+
+    if (!focusTarget) {
+        return;
+    }
+
+    focusTarget.focus({ preventScroll: true });
+    if (
+        focusTarget instanceof HTMLInputElement ||
+        focusTarget instanceof HTMLTextAreaElement
+    ) {
+        focusTarget.select();
+    }
 };
 
 const triggerTranslateSection = () => {
@@ -711,6 +858,17 @@ watch(
         sectionNameDraft.value = value ?? "";
     },
     { immediate: true },
+);
+
+watch(
+    () => props.focusRequest?.token,
+    () => {
+        const request = props.focusRequest;
+        if (!request || !request.uidPath.includes(props.node.uid)) {
+            return;
+        }
+        void focusPropInput(request);
+    },
 );
 
 const propDraft = reactive<Record<string, any>>({});
@@ -3180,7 +3338,7 @@ const applyTextValue = () => {
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 12px;
-    background: #f9fafb;
+    background: rgba(202, 202, 202, 0.66);
     display: flex;
     flex-direction: column;
     gap: 8px;

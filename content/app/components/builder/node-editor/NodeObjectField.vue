@@ -7,6 +7,9 @@
             <label
                 v-for="field in visibleFields"
                 :key="fieldKey(field)"
+                :data-content-prop-path="
+                    toPropPathAttr([...pathPrefix, field.key])
+                "
                 :class="[
                     'node-panel__field',
                     'node-panel__field--nested',
@@ -214,6 +217,9 @@
                     <div
                         class="node-panel__array node-panel__array--nested"
                         :data-collapsed="collapsedArrays[field.key]"
+                        :data-content-array-path="
+                            toPropPathAttr([...pathPrefix, field.key])
+                        "
                     >
                         <div
                             class="node-panel__array-header node-panel__array-header--nested"
@@ -262,6 +268,14 @@
                                         arrayItem,
                                     )"
                                     :key="`${field.key}-${arrayField.key}-${index}`"
+                                    :data-content-prop-path="
+                                        toPropPathAttr([
+                                            ...pathPrefix,
+                                            field.key,
+                                            index,
+                                            arrayField.key,
+                                        ])
+                                    "
                                     :class="[
                                         'node-panel__field',
                                         'node-panel__field--nested',
@@ -885,6 +899,8 @@ const withSearchContext = (context: Record<string, any>) => ({
     ...context,
     searchQuery: props.searchQuery ?? "",
 });
+const toPropPathAttr = (segments: Array<string | number>) =>
+    segments.map((segment) => String(segment)).join(".");
 
 const visibleFields = computed(() =>
     props.filterVisibleFields(props.schema.fields, objectValue.value),
