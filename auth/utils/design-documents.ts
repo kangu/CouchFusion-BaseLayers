@@ -22,6 +22,45 @@ export const authDesignDocument: CouchDBDesignDocument = {
         }
       }`,
     },
+    by_nostr_npub: {
+      map: `function(doc) {
+        if (
+          doc &&
+          doc.type === 'user' &&
+          doc.nostr &&
+          typeof doc.nostr.npub === 'string' &&
+          doc.nostr.npub
+        ) {
+          emit(doc.nostr.npub, null);
+        }
+      }`,
+    },
+    watchers_by_conference: {
+      map: `function(doc) {
+        if (
+          !doc ||
+          doc.type !== 'user' ||
+          !doc.nostr ||
+          typeof doc.nostr.npub !== 'string' ||
+          !doc.nostr.npub ||
+          !doc.conference_prefs ||
+          !Array.isArray(doc.conference_prefs.watched)
+        ) {
+          return;
+        }
+
+        for (var index = 0; index < doc.conference_prefs.watched.length; index += 1) {
+          var conferenceId = doc.conference_prefs.watched[index];
+          if (typeof conferenceId === 'string' && conferenceId) {
+            emit(conferenceId, {
+              user_id: doc._id,
+              username: doc.name,
+              npub: doc.nostr.npub
+            });
+          }
+        }
+      }`,
+    },
     referrals: {
       map: `function(doc) {
         if (doc.type === 'user' && typeof doc.referred_by === 'string' && doc.referred_by) {

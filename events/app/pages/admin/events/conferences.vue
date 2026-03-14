@@ -68,7 +68,20 @@ interface ImportPreviewPayload {
 interface ConferencePatchResponse {
   success: boolean;
   id: string;
-  rev: string;
+  rev?: string;
+  notificationPreview?: {
+    requested: boolean;
+    eligible: number;
+    watcherNpubs: string[];
+    message: string;
+    changeLines: string[];
+  } | null;
+  notifiedWatchers?: {
+    requested: boolean;
+    eligible: number;
+    sent: number;
+    failed: number;
+  } | null;
   conference: ConferenceItem;
 }
 
@@ -125,6 +138,12 @@ const editingConferenceId = ref<string | null>(null);
 const editorPending = ref(false);
 const editorError = ref<string | null>(null);
 const editorSuccess = ref<string | null>(null);
+const notificationPreviewOpen = ref(false);
+const notificationPreviewPending = ref(false);
+const notificationPreviewMessage = ref("");
+const notificationPreviewEligible = ref(0);
+const notificationPreviewWatchers = ref<string[]>([]);
+const notificationPreviewPayload = ref<Record<string, unknown> | null>(null);
 const sortState = reactive<{
   key: ConferencesSortKey;
   direction: ConferencesSortDirection;
@@ -169,6 +188,8 @@ const editorForm = reactive({
   sourceImportedAt: "",
   createdAt: "",
   updatedAt: "",
+  notifyWatchers: false,
+  notifyMessage: "",
 });
 const createForm = reactive({
   name: "",
@@ -806,35 +827,42 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.sourceImportedAt = conference.source?.importedAt || "";
   editorForm.createdAt = conference.createdAt || "";
   editorForm.updatedAt = conference.updatedAt || "";
+  editorForm.notifyWatchers = false;
+  editorForm.notifyMessage = "";
   editorError.value = null;
   editorSuccess.value = null;
   editorOpen.value = true;
 };
 
 const closeEditor = () => {
-  if (editorPending.value) return;
+  if (editorPending.value || notificationPreviewPending.value) return;
   editorOpen.value = false;
   editingConferenceId.value = null;
   editorError.value = null;
   editorSuccess.value = null;
+  notificationPreviewOpen.value = false;
+  notificationPreviewPayload.value = null;
+  notificationPreviewMessage.value = "";
+  notificationPreviewEligible.value = 0;
+  notificationPreviewWatchers.value = [];
 };
 
-const saveEditor = async () => {
+const buildEditorPatchPayload = (): Record<string, unknown> | null => {
   if (!editingConferenceId.value) {
     editorError.value = "No conference selected for editing.";
-    return;
+    return null;
   }
 
   const normalizedName = editorForm.name.trim();
   if (!normalizedName.length) {
     editorError.value = "Conference name is required.";
-    return;
+    return null;
   }
 
   const normalizedSlug = editorForm.slug.trim() || toSlug(normalizedName);
   if (!normalizedSlug.length) {
     editorError.value = "Slug is required.";
-    return;
+    return null;
   }
 
   const parsedYear = editorForm.year.trim()
@@ -842,7 +870,7 @@ const saveEditor = async () => {
     : null;
   if (editorForm.year.trim() && !Number.isFinite(parsedYear)) {
     editorError.value = "Year must be a valid integer.";
-    return;
+    return null;
   }
 
   const parsedTicketsSold = editorForm.ticketsSold.trim()
@@ -850,7 +878,7 @@ const saveEditor = async () => {
     : null;
   if (editorForm.ticketsSold.trim() && !Number.isFinite(parsedTicketsSold)) {
     editorError.value = "Tickets sold must be a valid integer.";
-    return;
+    return null;
   }
 
   const parsedSourceRowNumber = Number.parseInt(
@@ -859,6 +887,58 @@ const saveEditor = async () => {
   );
   if (!Number.isFinite(parsedSourceRowNumber) || parsedSourceRowNumber <= 0) {
     editorError.value = "Source row number must be a positive integer.";
+    return null;
+  }
+
+  return {
+    name: normalizedName,
+    slug: normalizedSlug,
+    year: parsedYear,
+    status: editorForm.status,
+    bitvocationParticipation: editorForm.bitvocationParticipation,
+    websiteUrl: toNullableText(editorForm.websiteUrl),
+    xAccountUrl: toNullableText(editorForm.xAccountUrl),
+    location: toNullableText(editorForm.location),
+    city: toNullableText(editorForm.city),
+    monthLabel: toNullableText(editorForm.monthLabel),
+    startDateLabel: toNullableText(editorForm.startDateLabel),
+    startDateIso: toNullableText(editorForm.startDateIso),
+    dateRangeLabel: toNullableText(editorForm.dateRangeLabel),
+    country: toNullableText(editorForm.country),
+    continent: toNullableText(editorForm.continent),
+    discountCode: toNullableText(editorForm.discountCode),
+    discountLabel: toNullableText(editorForm.discountLabel),
+    commissionLabel: toNullableText(editorForm.commissionLabel),
+    ticketsSold: parsedTicketsSold,
+    commissionEarnedLabel: toNullableText(editorForm.commissionEarnedLabel),
+    commissionReceived:
+      editorForm.commissionReceived === "unknown"
+        ? null
+        : editorForm.commissionReceived === "yes",
+    contactName: toNullableText(editorForm.contactName),
+    contactChannel: toNullableText(editorForm.contactChannel),
+    ownerTodo: toNullableText(editorForm.ownerTodo),
+    notes: toNullableText(editorForm.notes),
+    confirmedDates: editorForm.confirmedDates,
+    hasAirtable: editorForm.hasAirtable,
+    isPublished: editorForm.isPublished,
+    source: {
+      format: editorForm.sourceFormat || "csv-semicolon",
+      rowNumber: parsedSourceRowNumber,
+      importedAt: editorForm.sourceImportedAt.trim() || new Date().toISOString(),
+    },
+    createdAt: editorForm.createdAt.trim() || undefined,
+    updatedAt: editorForm.updatedAt.trim() || new Date().toISOString(),
+    notifyWatchers: editorForm.notifyWatchers,
+    notifyMessage: toNullableText(editorForm.notifyMessage),
+  };
+};
+
+const persistEditorChanges = async (
+  payload: Record<string, unknown>,
+): Promise<void> => {
+  if (!editingConferenceId.value) {
+    editorError.value = "No conference selected for editing.";
     return;
   }
 
@@ -871,59 +951,105 @@ const saveEditor = async () => {
       `/api/events/conferences/${encodeURIComponent(editingConferenceId.value)}`,
       {
         method: "PATCH",
-        body: {
-          name: normalizedName,
-          slug: normalizedSlug,
-          year: parsedYear,
-          status: editorForm.status,
-          bitvocationParticipation: editorForm.bitvocationParticipation,
-          websiteUrl: toNullableText(editorForm.websiteUrl),
-          xAccountUrl: toNullableText(editorForm.xAccountUrl),
-          location: toNullableText(editorForm.location),
-          city: toNullableText(editorForm.city),
-          monthLabel: toNullableText(editorForm.monthLabel),
-          startDateLabel: toNullableText(editorForm.startDateLabel),
-          startDateIso: toNullableText(editorForm.startDateIso),
-          dateRangeLabel: toNullableText(editorForm.dateRangeLabel),
-          country: toNullableText(editorForm.country),
-          continent: toNullableText(editorForm.continent),
-          discountCode: toNullableText(editorForm.discountCode),
-          discountLabel: toNullableText(editorForm.discountLabel),
-          commissionLabel: toNullableText(editorForm.commissionLabel),
-          ticketsSold: parsedTicketsSold,
-          commissionEarnedLabel: toNullableText(editorForm.commissionEarnedLabel),
-          commissionReceived:
-            editorForm.commissionReceived === "unknown"
-              ? null
-              : editorForm.commissionReceived === "yes",
-          contactName: toNullableText(editorForm.contactName),
-          contactChannel: toNullableText(editorForm.contactChannel),
-          ownerTodo: toNullableText(editorForm.ownerTodo),
-          notes: toNullableText(editorForm.notes),
-          confirmedDates: editorForm.confirmedDates,
-          hasAirtable: editorForm.hasAirtable,
-          isPublished: editorForm.isPublished,
-          source: {
-            format: editorForm.sourceFormat || "csv-semicolon",
-            rowNumber: parsedSourceRowNumber,
-            importedAt:
-              editorForm.sourceImportedAt.trim() || new Date().toISOString(),
-          },
-          createdAt: editorForm.createdAt.trim() || undefined,
-          updatedAt: editorForm.updatedAt.trim() || new Date().toISOString(),
-        },
+        body: payload,
       },
     );
 
-    editorForm.documentRev = response.rev;
+    editorForm.documentRev = response.rev || editorForm.documentRev;
     editorForm.updatedAt = response.conference.updatedAt;
-    editorSuccess.value = "Conference updated.";
+    if (response.notifiedWatchers?.requested) {
+      editorSuccess.value = `Conference updated. Nostr watchers notified: ${response.notifiedWatchers.sent}/${response.notifiedWatchers.eligible}.`;
+    } else {
+      editorSuccess.value = "Conference updated.";
+    }
+    editorForm.notifyWatchers = false;
+    editorForm.notifyMessage = "";
+    notificationPreviewOpen.value = false;
+    notificationPreviewPayload.value = null;
     await refreshConferences();
   } catch (error: any) {
     editorError.value = error?.data?.statusMessage || "Update failed.";
   } finally {
     editorPending.value = false;
   }
+};
+
+const closeNotificationPreview = () => {
+  if (notificationPreviewPending.value || editorPending.value) {
+    return;
+  }
+
+  notificationPreviewOpen.value = false;
+  notificationPreviewPayload.value = null;
+  notificationPreviewMessage.value = "";
+  notificationPreviewEligible.value = 0;
+  notificationPreviewWatchers.value = [];
+};
+
+const requestNotificationPreview = async (
+  payload: Record<string, unknown>,
+): Promise<void> => {
+  if (!editingConferenceId.value) {
+    editorError.value = "No conference selected for editing.";
+    return;
+  }
+
+  notificationPreviewPending.value = true;
+  editorError.value = null;
+
+  try {
+    const response = await $fetch<ConferencePatchResponse>(
+      `/api/events/conferences/${encodeURIComponent(editingConferenceId.value)}`,
+      {
+        method: "PATCH",
+        body: {
+          ...payload,
+          previewNotificationOnly: true,
+          notifyWatchers: true,
+        },
+      },
+    );
+
+    const preview = response.notificationPreview;
+    if (!preview) {
+      throw new Error("Preview payload missing from server response.");
+    }
+
+    notificationPreviewPayload.value = payload;
+    notificationPreviewMessage.value = preview.message;
+    notificationPreviewEligible.value = preview.eligible;
+    notificationPreviewWatchers.value = preview.watcherNpubs;
+    notificationPreviewOpen.value = true;
+  } catch (error: any) {
+    editorError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to prepare Nostr notification preview.";
+  } finally {
+    notificationPreviewPending.value = false;
+  }
+};
+
+const confirmNotificationAndSave = async () => {
+  const payload = notificationPreviewPayload.value;
+  if (!payload) {
+    editorError.value = "Notification preview payload is missing.";
+    return;
+  }
+
+  await persistEditorChanges(payload);
+};
+
+const saveEditor = async () => {
+  const payload = buildEditorPatchPayload();
+  if (!payload) return;
+
+  if (editorForm.notifyWatchers) {
+    await requestNotificationPreview(payload);
+    return;
+  }
+
+  await persistEditorChanges(payload);
 };
 </script>
 
@@ -1981,6 +2107,29 @@ const saveEditor = async () => {
               </div>
             </section>
 
+            <section class="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                Notification
+              </h3>
+              <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  v-model="editorForm.notifyWatchers"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                >
+                Send Nostr update to watchers before save
+              </label>
+              <div class="space-y-1">
+                <label class="block text-sm font-medium text-slate-800">Admin note (optional)</label>
+                <textarea
+                  v-model="editorForm.notifyMessage"
+                  class="block h-20 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                  :disabled="!editorForm.notifyWatchers"
+                  placeholder="Optional context to include in the Nostr DM."
+                ></textarea>
+              </div>
+            </section>
+
             <p v-if="editorError" class="text-sm text-red-600">{{ editorError }}</p>
             <p v-if="editorSuccess" class="text-sm text-emerald-700">{{ editorSuccess }}</p>
           </div>
@@ -1989,7 +2138,7 @@ const saveEditor = async () => {
             <button
               type="button"
               class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              :disabled="editorPending"
+              :disabled="editorPending || notificationPreviewPending"
               @click="closeEditor"
             >
               Close
@@ -1997,13 +2146,80 @@ const saveEditor = async () => {
             <button
               type="button"
               class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500"
-              :disabled="editorPending"
+              :disabled="editorPending || notificationPreviewPending"
               @click="saveEditor"
             >
-              {{ editorPending ? "Saving..." : "Save Changes" }}
+              {{
+                editorPending
+                  ? "Saving..."
+                  : notificationPreviewPending
+                    ? "Preparing Preview..."
+                    : "Save Changes"
+              }}
             </button>
           </div>
         </aside>
+
+        <div
+          v-if="notificationPreviewOpen"
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4"
+          @click.stop="closeNotificationPreview"
+        >
+          <div
+            class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            @click.stop
+          >
+            <div class="border-b border-slate-200 px-5 py-4">
+              <h3 class="text-lg font-semibold text-slate-900">Confirm Nostr Notification</h3>
+              <p class="mt-1 text-sm text-slate-600">
+                This is the exact message that will be sent.
+                Eligible watchers: {{ notificationPreviewEligible }}
+              </p>
+            </div>
+
+            <div class="flex-1 space-y-3 overflow-y-auto p-5">
+              <p
+                v-if="!notificationPreviewEligible"
+                class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                No eligible watchers are currently subscribed for this conference.
+              </p>
+
+              <div
+                v-else
+                class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+              >
+                <p class="font-semibold text-slate-700">Watchers</p>
+                <p class="mt-1 break-all">
+                  {{ notificationPreviewWatchers.join(", ") }}
+                </p>
+              </div>
+
+              <div class="rounded-md border border-slate-300 bg-slate-950 p-4 text-xs text-slate-100">
+                <pre class="whitespace-pre-wrap break-words font-mono">{{ notificationPreviewMessage }}</pre>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                :disabled="editorPending"
+                @click="closeNotificationPreview"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500"
+                :disabled="editorPending"
+                @click="confirmNotificationAndSave"
+              >
+                {{ editorPending ? "Sending..." : "Confirm & Save" }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </Teleport>
   </div>

@@ -3,6 +3,10 @@ import { getDocument, putDocument } from "#database/utils/couchdb";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import type { ConferenceDocument } from "../../../utils/conference-csv";
 import { assertEventsAdminSession } from "../../../utils/assert-events-admin-session";
+import {
+  notifyConferenceWatchersViaNostr,
+  previewConferenceWatchersNostrMessage,
+} from "../../../utils/nostr-notifications";
 
 type Participation = "yes" | "no" | "unknown";
 
@@ -38,6 +42,9 @@ interface ConferencePatchPayload {
   source?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
+  notifyWatchers?: unknown;
+  notifyMessage?: unknown;
+  previewNotificationOnly?: unknown;
 }
 
 const asNullableText = (
@@ -284,6 +291,31 @@ const asOptionalSource = (
   };
 };
 
+const asOptionalNotifyMessage = (value: unknown): string | undefined => {
+  if (typeof value === "undefined" || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "notifyMessage must be a string",
+    });
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.length) return undefined;
+
+  if (trimmed.length > 5000) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "notifyMessage exceeds maximum length",
+    });
+  }
+
+  return trimmed;
+};
+
 export default defineEventHandler(async (event) => {
   await assertEventsAdminSession(event);
   const conferenceId = getRouterParam(event, "id", { decode: true });
@@ -341,6 +373,12 @@ export default defineEventHandler(async (event) => {
   const source = asOptionalSource(payload.source);
   const createdAt = asOptionalIsoTimestamp(payload.createdAt, "createdAt");
   const updatedAt = asOptionalIsoTimestamp(payload.updatedAt, "updatedAt");
+  const notifyWatchers = asOptionalBoolean(payload.notifyWatchers, "notifyWatchers");
+  const notifyMessage = asOptionalNotifyMessage(payload.notifyMessage);
+  const previewNotificationOnly = asOptionalBoolean(
+    payload.previewNotificationOnly,
+    "previewNotificationOnly",
+  );
 
   const databaseName = await ensureEventsDatabase();
   const existingConference = await getDocument<ConferenceDocument>(
@@ -425,12 +463,62 @@ export default defineEventHandler(async (event) => {
     updatedAt: typeof updatedAt !== "undefined" ? updatedAt : new Date().toISOString(),
   };
 
+  if (previewNotificationOnly === true) {
+    if (notifyWatchers !== true) {
+      throw createError({
+        statusCode: 400,
+        statusMessage:
+          "notifyWatchers must be true when previewNotificationOnly is enabled",
+      });
+    }
+
+    const notificationPreview = await previewConferenceWatchersNostrMessage(
+      existingConference,
+      nextConference,
+      { customMessage: notifyMessage },
+    );
+
+    return {
+      success: true,
+      id: existingConference._id,
+      rev: existingConference._rev,
+      conference: nextConference,
+      notificationPreview,
+    };
+  }
+
+  let notifyResult:
+    | {
+        requested: boolean;
+        eligible: number;
+        sent: number;
+        failed: number;
+        failures: Array<{ npub: string; reason: string }>;
+      }
+    | null = null;
+
+  if (notifyWatchers === true) {
+    notifyResult = await notifyConferenceWatchersViaNostr(
+      existingConference,
+      nextConference,
+      { customMessage: notifyMessage },
+    );
+
+    if (notifyResult.failed > 0) {
+      throw createError({
+        statusCode: 502,
+        statusMessage: `Failed to notify ${notifyResult.failed} watcher(s). Save aborted before persistence.`,
+      });
+    }
+  }
+
   const result = await putDocument(databaseName, nextConference);
 
   return {
     success: true,
     id: result.id,
     rev: result.rev,
+    notifiedWatchers: notifyResult,
     conference: {
       ...nextConference,
       _rev: result.rev,
