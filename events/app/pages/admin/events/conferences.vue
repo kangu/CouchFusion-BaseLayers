@@ -85,6 +85,29 @@ interface ConferencePatchResponse {
   conference: ConferenceItem;
 }
 
+interface FeaturedConferenceSummary {
+  _id: string;
+  name: string;
+  startDateIso: string | null;
+  location: string | null;
+  country: string | null;
+  isPublished: boolean;
+}
+
+interface FeaturedConferenceEntry {
+  conferenceId: string;
+  enabled: boolean;
+  imageUrl: string | null;
+  imageFileId: string | null;
+  imageAlt: string | null;
+}
+
+interface FeaturedConferencesPayload {
+  rev: string | null;
+  featured: FeaturedConferenceEntry[];
+  conferences: FeaturedConferenceSummary[];
+}
+
 type ConferencesSortDirection = "asc" | "desc";
 type ConferencesSortKey =
   | "name"
@@ -153,6 +176,14 @@ const sortState = reactive<{
   key: "startDateIso",
   direction: "asc",
 });
+const featuredSearch = ref("");
+const featuredDraft = ref<FeaturedConferenceEntry[]>([]);
+const featuredDocumentRev = ref<string | null>(null);
+const featuredSavePending = ref(false);
+const featuredSaveError = ref<string | null>(null);
+const featuredSaveSuccess = ref<string | null>(null);
+const featuredUploadPendingIds = ref<string[]>([]);
+const featuredDraggedConferenceId = ref<string | null>(null);
 const editorForm = reactive({
   documentId: "",
   documentRev: "",
@@ -264,6 +295,28 @@ const {
   },
 );
 
+const {
+  data: featuredData,
+  pending: featuredPending,
+  error: featuredError,
+  refresh: refreshFeatured,
+} = await useAsyncData<FeaturedConferencesPayload>(
+  "events-featured-conferences",
+  () => {
+    return $fetch("/api/events/conferences/featured", {
+      headers: requestHeaders,
+      credentials: "include",
+    });
+  },
+  {
+    default: () => ({
+      rev: null,
+      featured: [],
+      conferences: [],
+    }),
+  },
+);
+
 const conferences = computed(() => conferencesData.value?.conferences ?? []);
 const sortedConferences = computed(() => {
   const items = [...conferences.value];
@@ -367,6 +420,50 @@ const yearOptions = computed(() => conferencesData.value?.yearOptions ?? []);
 const continentOptions = computed(
   () => conferencesData.value?.continentOptions ?? [],
 );
+const featuredCatalog = computed(() => featuredData.value?.conferences ?? []);
+const featuredCatalogById = computed(() => {
+  const map = new Map<string, FeaturedConferenceSummary>();
+  for (const conference of featuredCatalog.value) {
+    map.set(conference._id, conference);
+  }
+  return map;
+});
+const featuredDraftIds = computed(
+  () => new Set(featuredDraft.value.map((entry) => entry.conferenceId)),
+);
+const featuredCards = computed(() =>
+  featuredDraft.value.map((entry) => ({
+    entry,
+    conference:
+      featuredCatalogById.value.get(entry.conferenceId) ?? {
+        _id: entry.conferenceId,
+        name: `Unknown conference (${entry.conferenceId})`,
+        startDateIso: null,
+        location: null,
+        country: null,
+        isPublished: false,
+      },
+  })),
+);
+const featuredAvailableConferences = computed(() => {
+  const search = featuredSearch.value.trim().toLowerCase();
+
+  return featuredCatalog.value.filter((conference) => {
+    if (featuredDraftIds.value.has(conference._id)) {
+      return false;
+    }
+
+    if (!search.length) {
+      return true;
+    }
+
+    const haystack = [conference.name, conference.location, conference.country]
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .join(" ");
+
+    return haystack.includes(search);
+  });
+});
 
 const confirmedCount = computed(
   () => conferences.value.filter((conference) => conference.confirmedDates).length,
@@ -406,6 +503,30 @@ const editableStatusOptions = [
 // == lifecycle ==
 
 // == watchers ==
+watch(
+  featuredData,
+  (payload) => {
+    featuredDraft.value = (payload?.featured ?? []).map((entry) => ({
+      conferenceId: String(entry.conferenceId ?? "").trim(),
+      enabled: entry.enabled !== false,
+      imageUrl:
+        typeof entry.imageUrl === "string" && entry.imageUrl.trim().length
+          ? entry.imageUrl.trim()
+          : null,
+      imageFileId:
+        typeof entry.imageFileId === "string" && entry.imageFileId.trim().length
+          ? entry.imageFileId.trim()
+          : null,
+      imageAlt:
+        typeof entry.imageAlt === "string" && entry.imageAlt.trim().length
+          ? entry.imageAlt.trim()
+          : null,
+    }));
+    featuredDocumentRev.value = payload?.rev ?? null;
+  },
+  { immediate: true },
+);
+
 watch(
   () => csvInput.value,
   () => {
@@ -562,6 +683,192 @@ const toggleSort = (key: ConferencesSortKey) => {
 const sortIndicator = (key: ConferencesSortKey): string => {
   if (sortState.key !== key) return "";
   return sortState.direction === "asc" ? "↑" : "↓";
+};
+
+const isFeaturedUploadPending = (conferenceId: string): boolean =>
+  featuredUploadPendingIds.value.includes(conferenceId);
+
+const addConferenceToFeatured = (conferenceId: string) => {
+  const normalizedConferenceId = conferenceId.trim();
+  if (!normalizedConferenceId.length) return;
+
+  if (featuredDraftIds.value.has(normalizedConferenceId)) {
+    return;
+  }
+
+  featuredDraft.value = [
+    ...featuredDraft.value,
+    {
+      conferenceId: normalizedConferenceId,
+      enabled: true,
+      imageUrl: null,
+      imageFileId: null,
+      imageAlt: null,
+    },
+  ];
+  featuredSaveSuccess.value = null;
+};
+
+const removeConferenceFromFeatured = (conferenceId: string) => {
+  featuredDraft.value = featuredDraft.value.filter(
+    (entry) => entry.conferenceId !== conferenceId,
+  );
+  featuredSaveSuccess.value = null;
+};
+
+const toggleFeaturedEnabled = (conferenceId: string) => {
+  featuredDraft.value = featuredDraft.value.map((entry) =>
+    entry.conferenceId === conferenceId
+      ? { ...entry, enabled: !entry.enabled }
+      : entry,
+  );
+  featuredSaveSuccess.value = null;
+};
+
+const onFeaturedDragStart = (conferenceId: string) => {
+  featuredDraggedConferenceId.value = conferenceId;
+};
+
+const onFeaturedDrop = (targetConferenceId: string) => {
+  const draggedConferenceId = featuredDraggedConferenceId.value;
+  featuredDraggedConferenceId.value = null;
+
+  if (!draggedConferenceId || draggedConferenceId === targetConferenceId) {
+    return;
+  }
+
+  const currentEntries = [...featuredDraft.value];
+  const fromIndex = currentEntries.findIndex(
+    (entry) => entry.conferenceId === draggedConferenceId,
+  );
+  const toIndex = currentEntries.findIndex(
+    (entry) => entry.conferenceId === targetConferenceId,
+  );
+
+  if (fromIndex < 0 || toIndex < 0) {
+    return;
+  }
+
+  const [moved] = currentEntries.splice(fromIndex, 1);
+  currentEntries.splice(toIndex, 0, moved);
+  featuredDraft.value = currentEntries;
+  featuredSaveSuccess.value = null;
+};
+
+const onFeaturedImageSelected = async (
+  conferenceId: string,
+  event: Event,
+) => {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  featuredUploadPendingIds.value = [
+    ...featuredUploadPendingIds.value,
+    conferenceId,
+  ];
+  featuredSaveError.value = null;
+  featuredSaveSuccess.value = null;
+
+  try {
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("folder", "events/featured-conferences");
+    formData.append("fileName", `${conferenceId}-${Date.now()}`);
+
+    const response = await $fetch<{
+      success: boolean;
+      data?: {
+        fileId: string;
+        url: string;
+      };
+      error?: string;
+    }>("/api/imagekit/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || "Image upload failed");
+    }
+
+    featuredDraft.value = featuredDraft.value.map((entry) =>
+      entry.conferenceId === conferenceId
+        ? {
+            ...entry,
+            imageUrl: response.data?.url ?? null,
+            imageFileId: response.data?.fileId ?? null,
+          }
+        : entry,
+    );
+  } catch (error: any) {
+    featuredSaveError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to upload featured image.";
+  } finally {
+    featuredUploadPendingIds.value = featuredUploadPendingIds.value.filter(
+      (id) => id !== conferenceId,
+    );
+
+    if (input) {
+      input.value = "";
+    }
+  }
+};
+
+const clearFeaturedImage = (conferenceId: string) => {
+  featuredDraft.value = featuredDraft.value.map((entry) =>
+    entry.conferenceId === conferenceId
+      ? {
+          ...entry,
+          imageUrl: null,
+          imageFileId: null,
+        }
+      : entry,
+  );
+  featuredSaveSuccess.value = null;
+};
+
+const saveFeaturedConferences = async () => {
+  if (featuredSavePending.value) {
+    return;
+  }
+
+  featuredSavePending.value = true;
+  featuredSaveError.value = null;
+  featuredSaveSuccess.value = null;
+
+  try {
+    const response = await $fetch<{
+      success: boolean;
+      rev?: string;
+    }>("/api/events/conferences/featured", {
+      method: "PATCH",
+      body: {
+        featured: featuredDraft.value,
+        rev: featuredDocumentRev.value,
+      },
+      credentials: "include",
+    });
+
+    if (!response.success) {
+      throw new Error("Failed to save featured conferences.");
+    }
+
+    featuredDocumentRev.value = response.rev ?? featuredDocumentRev.value;
+    featuredSaveSuccess.value = "Featured conferences updated.";
+    await refreshFeatured();
+  } catch (error: any) {
+    featuredSaveError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to save featured conferences.";
+  } finally {
+    featuredSavePending.value = false;
+  }
 };
 
 const openCsvDialog = () => {
@@ -1177,6 +1484,178 @@ const saveEditor = async () => {
             <p class="text-xs uppercase tracking-wide text-orange-200">Draft</p>
             <p class="mt-2 text-2xl font-semibold">{{ draftCount }}</p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Featured Conferences</h2>
+          <p class="text-sm text-slate-600">
+            Build the featured conferences list, reorder cards, and upload custom logos.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="featuredSavePending || featuredPending"
+          @click="saveFeaturedConferences"
+        >
+          {{ featuredSavePending ? "Saving..." : "Save Featured List" }}
+        </button>
+      </div>
+
+      <p v-if="featuredError" class="text-sm text-red-600">
+        Failed to load featured conferences.
+      </p>
+      <p v-if="featuredSaveError" class="text-sm text-red-600">
+        {{ featuredSaveError }}
+      </p>
+      <p v-if="featuredSaveSuccess" class="text-sm text-emerald-700">
+        {{ featuredSaveSuccess }}
+      </p>
+
+      <div class="grid gap-4 lg:grid-cols-[minmax(18rem,1fr)_minmax(0,2fr)]">
+        <div class="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Add conference to featured
+          </label>
+          <input
+            v-model="featuredSearch"
+            type="search"
+            class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+            placeholder="Search conference name, location, country..."
+          >
+
+          <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
+            <p
+              v-if="featuredPending"
+              class="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
+            >
+              Loading conferences...
+            </p>
+            <p
+              v-else-if="!featuredAvailableConferences.length"
+              class="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
+            >
+              No conferences available for adding.
+            </p>
+            <button
+              v-for="conference in featuredAvailableConferences"
+              :key="`featured-candidate-${conference._id}`"
+              type="button"
+              class="flex w-full items-start justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-left hover:border-orange-300 hover:bg-orange-50/40"
+              @click="addConferenceToFeatured(conference._id)"
+            >
+              <div>
+                <p class="text-sm font-medium text-slate-900">{{ conference.name }}</p>
+                <p class="text-xs text-slate-500">
+                  {{ conference.location || conference.country || "Location TBD" }}
+                </p>
+              </div>
+              <span class="text-xs font-semibold text-orange-700">Add</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <p
+            v-if="!featuredCards.length"
+            class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600"
+          >
+            No featured conferences yet. Add conferences from the list to start curating.
+          </p>
+
+          <article
+            v-for="card in featuredCards"
+            :key="`featured-card-${card.entry.conferenceId}`"
+            class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            draggable="true"
+            @dragstart="onFeaturedDragStart(card.entry.conferenceId)"
+            @dragover.prevent
+            @drop="onFeaturedDrop(card.entry.conferenceId)"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-slate-900">
+                  {{ card.conference.name }}
+                </p>
+                <p class="mt-1 text-xs text-slate-500">
+                  {{ formatDate(card.conference.startDateIso) }}
+                </p>
+                <p class="text-xs text-slate-500">
+                  {{ card.conference.location || card.conference.country || "Location TBD" }}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                    :checked="card.entry.enabled"
+                    @change="toggleFeaturedEnabled(card.entry.conferenceId)"
+                  >
+                  Enabled
+                </label>
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  @click="removeConferenceFromFeatured(card.entry.conferenceId)"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-3 grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]">
+              <div class="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                <img
+                  v-if="card.entry.imageUrl"
+                  :src="card.entry.imageUrl"
+                  :alt="card.entry.imageAlt || `${card.conference.name} featured image`"
+                  class="h-28 w-full object-cover"
+                >
+                <div
+                  v-else
+                  class="flex h-28 items-center justify-center px-2 text-center text-xs text-slate-500"
+                >
+                  No image uploaded
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label
+                    :for="`featured-image-${card.entry.conferenceId}`"
+                    class="inline-flex cursor-pointer items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {{ isFeaturedUploadPending(card.entry.conferenceId) ? "Uploading..." : "Upload logo/image" }}
+                  </label>
+                  <input
+                    :id="`featured-image-${card.entry.conferenceId}`"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    :disabled="isFeaturedUploadPending(card.entry.conferenceId)"
+                    @change="onFeaturedImageSelected(card.entry.conferenceId, $event)"
+                  >
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="!card.entry.imageUrl"
+                    @click="clearFeaturedImage(card.entry.conferenceId)"
+                  >
+                    Clear image
+                  </button>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                  Drag cards to change featured order.
+                </p>
+              </div>
+            </div>
+          </article>
         </div>
       </div>
     </section>

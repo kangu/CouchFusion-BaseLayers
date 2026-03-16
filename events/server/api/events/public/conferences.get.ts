@@ -2,6 +2,7 @@ import { defineEventHandler, getQuery } from "h3";
 import { getAllDocs } from "#database/utils/couchdb";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import type { ConferenceDocument } from "../../../utils/conference-csv";
+import { getFeaturedConferencesDocument } from "../../../utils/featured-conferences";
 
 interface PublicConference extends ConferenceDocument {
   isOnline: boolean;
@@ -9,6 +10,7 @@ interface PublicConference extends ConferenceDocument {
 
 interface PublicConferenceListResponse {
   conferences: PublicConference[];
+  featured: PublicFeaturedConference[];
   meta: {
     total: number;
     onlineCount: number;
@@ -17,6 +19,23 @@ interface PublicConferenceListResponse {
     continentOptions: string[];
     countryOptions: string[];
   };
+}
+
+interface PublicFeaturedConference {
+  conferenceId: string;
+  name: string;
+  startDateIso: string | null;
+  dateRangeLabel: string | null;
+  location: string | null;
+  city: string | null;
+  country: string | null;
+  continent: string | null;
+  websiteUrl: string | null;
+  xAccountUrl: string | null;
+  isOnline: boolean;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  imageFileId: string | null;
 }
 
 const normalize = (value: unknown): string => String(value ?? "").trim().toLowerCase();
@@ -98,8 +117,12 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
   const modeFilter = normalize(query.mode);
   const yearFilter = parseYearFilter(query.year);
 
-  const allDocuments = await getAllDocs(databaseName, { include_docs: true });
-  const publishedConferences = (allDocuments?.rows ?? [])
+  const [allDocuments, featuredDocument] = await Promise.all([
+    getAllDocs(databaseName, { include_docs: true }),
+    getFeaturedConferencesDocument(databaseName),
+  ]);
+
+  const allPublishedConferences = (allDocuments?.rows ?? [])
     .map((row) => row.doc as ConferenceDocument | undefined)
     .filter(
       (doc): doc is ConferenceDocument =>
@@ -108,7 +131,9 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
     .map((conference) => ({
       ...conference,
       isOnline: isOnlineConference(conference),
-    }))
+    }));
+
+  const basePublishedConferences = allPublishedConferences
     .filter((conference) => {
       const monthKey = monthKeyFromStartDate(conference.startDateIso);
       if (!monthKey) {
@@ -116,7 +141,44 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
       }
 
       return monthKey >= minimumMonthKey;
+    });
+
+  const conferenceById = new Map<string, PublicConference>();
+  for (const conference of allPublishedConferences) {
+    conferenceById.set(conference._id, conference);
+  }
+
+  const featured = (featuredDocument?.entries ?? [])
+    .filter((entry) => entry.enabled)
+    .map((entry) => {
+      const conference = conferenceById.get(entry.conferenceId);
+      if (!conference) {
+        return null;
+      }
+
+      return {
+        conferenceId: conference._id,
+        name: conference.name,
+        startDateIso: conference.startDateIso ?? null,
+        dateRangeLabel: conference.dateRangeLabel ?? null,
+        location: conference.location ?? null,
+        city: conference.city ?? null,
+        country: conference.country ?? null,
+        continent: conference.continent ?? null,
+        websiteUrl: conference.websiteUrl ?? null,
+        xAccountUrl: conference.xAccountUrl ?? null,
+        isOnline: conference.isOnline,
+        imageUrl: entry.imageUrl ?? null,
+        imageAlt: entry.imageAlt ?? null,
+        imageFileId: entry.imageFileId ?? null,
+      } as PublicFeaturedConference;
     })
+    .filter(
+      (entry): entry is PublicFeaturedConference =>
+        Boolean(entry && entry.conferenceId),
+    );
+
+  const publishedConferences = basePublishedConferences
     .filter((conference) => {
       if (!searchFilter) return true;
       const haystack = [
@@ -155,6 +217,7 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
 
   return {
     conferences,
+    featured,
     meta: {
       total: conferences.length,
       onlineCount: conferences.filter((conference) => conference.isOnline).length,
