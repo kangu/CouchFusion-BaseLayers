@@ -44,7 +44,7 @@ const buildStatusCounts = (
 };
 
 export default defineEventHandler(async (event): Promise<ConferenceListResponse> => {
-  await assertEventsAdminSession(event);
+  await assertEventsAdminSession(event, ["admin", "curator"]);
   const databaseName = await ensureEventsDatabase();
   const query = getQuery(event);
 

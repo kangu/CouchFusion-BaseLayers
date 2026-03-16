@@ -97,8 +97,10 @@ type ConferencesSortKey =
   | "confirmedDates";
 
 definePageMeta({
-  // middleware: ["admin-auth"],
-});
+  layout: 'members',
+  middleware: ['role-auth'],
+  authAllowedRoles: ['admin', 'curator']
+})
 
 useHead({
   title: "Conference Management",
@@ -1153,7 +1155,7 @@ const saveEditor = async () => {
           class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500"
           @click="openCreateDialog"
         >
-          Add Manual Conference
+          Add Conference
         </button>
       </div>
       <p v-if="createSuccess" class="text-sm text-emerald-700">{{ createSuccess }}</p>
@@ -1363,7 +1365,7 @@ const saveEditor = async () => {
         >
           <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <div>
-              <h2 class="text-lg font-semibold text-slate-900">Add Manual Conference</h2>
+              <h2 class="text-lg font-semibold text-slate-900">Add Conference</h2>
               <p class="text-sm text-slate-600">
                 Create a conference document directly in the events database.
               </p>

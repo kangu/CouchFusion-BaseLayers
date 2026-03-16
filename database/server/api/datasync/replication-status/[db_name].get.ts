@@ -6,8 +6,13 @@ interface ReplicationStatusResponse {
   info?: string;
 }
 
-const buildReplicatorId = (dbName: string): string => {
-  return `datasync-${dbName}`;
+type ReplicationDirection = "down" | "up";
+
+const buildReplicatorId = (
+  dbName: string,
+  direction: ReplicationDirection,
+): string => {
+  return `datasync-${direction}-${dbName}`;
 };
 
 export default defineEventHandler(async (event) => {
@@ -21,6 +26,8 @@ export default defineEventHandler(async (event) => {
   const localAdminAuth = process.env.COUCHDB_ADMIN_AUTH;
 
   const dbName = getRouterParam(event, "db_name");
+  const query = getQuery(event);
+  const direction: ReplicationDirection = query.direction === "up" ? "up" : "down";
   if (!dbName) {
     throw createError({ statusCode: 400, statusMessage: "Database name missing." });
   }
@@ -33,7 +40,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const authHeader = `Basic ${localAdminAuth}`;
-  const replicatorId = buildReplicatorId(dbName);
+  const replicatorId = buildReplicatorId(dbName, direction);
 
   const replicatorResponse = await fetch(
     `${localCouchUrl}/_replicator/${encodeURIComponent(replicatorId)}`,
@@ -46,6 +53,7 @@ export default defineEventHandler(async (event) => {
 
   if (replicatorResponse.status === 404) {
     return {
+      direction,
       state: "not_found",
       error: null,
       warning: null,
@@ -96,6 +104,7 @@ export default defineEventHandler(async (event) => {
     : null;
 
   return {
+    direction,
     state: replicatorDoc._replication_state || "unknown",
     error,
     warning,

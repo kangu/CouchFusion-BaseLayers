@@ -20,6 +20,39 @@ interface PublicConferenceListResponse {
 }
 
 const normalize = (value: unknown): string => String(value ?? "").trim().toLowerCase();
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const currentUtcMonthKey = (): string => {
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+const monthKeyFromStartDate = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const dateOnlyMatch = DATE_ONLY_PATTERN.exec(trimmed);
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[1]}-${dateOnlyMatch[2]}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const year = String(parsed.getUTCFullYear());
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
 
 const parseYearFilter = (value: unknown): number | null => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -57,6 +90,7 @@ const sortByStartDate = (conferences: PublicConference[]): PublicConference[] =>
 export default defineEventHandler(async (event): Promise<PublicConferenceListResponse> => {
   const databaseName = await ensureEventsDatabase();
   const query = getQuery(event);
+  const minimumMonthKey = currentUtcMonthKey();
 
   const searchFilter = normalize(query.search);
   const continentFilter = normalize(query.continent);
@@ -75,6 +109,14 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
       ...conference,
       isOnline: isOnlineConference(conference),
     }))
+    .filter((conference) => {
+      const monthKey = monthKeyFromStartDate(conference.startDateIso);
+      if (!monthKey) {
+        return false;
+      }
+
+      return monthKey >= minimumMonthKey;
+    })
     .filter((conference) => {
       if (!searchFilter) return true;
       const haystack = [

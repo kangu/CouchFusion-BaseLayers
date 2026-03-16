@@ -3,6 +3,8 @@ import { useLocalStorage } from "@vueuse/core";
 
 interface RemoteDbsResponse {
     databases: string[];
+    remoteDatabases?: string[];
+    localDatabases?: string[];
 }
 
 interface RemoteDbInfoResponse {
@@ -29,6 +31,7 @@ interface DbInfoState {
 }
 
 interface ReplicationStatus {
+    direction?: "down" | "up";
     state?: string;
     error?: string | null;
     warning?: string | null;
@@ -38,6 +41,8 @@ interface ReplicationStatus {
         total_changes?: number;
     } | null;
 }
+
+type ReplicationDirection = "down" | "up";
 
 type CompareStatus =
     | "local-only"
@@ -81,6 +86,8 @@ const password = useLocalStorage("database-datasync-password", "");
 
 // == local data ==
 const databases = ref<string[]>([]);
+const remoteDatabases = ref<string[]>([]);
+const localDatabases = ref<string[]>([]);
 const errorMessage = ref<string | null>(null);
 const isLoading = ref(false);
 const lastFetchedAt = ref<string | null>(null);
@@ -252,14 +259,29 @@ const fetchDbInfo = async (dbName: string): Promise<DbInfoState> => {
     }
 };
 
-const fetchReplicationStatus = async (dbName: string) => {
+const buildReplicationKey = (
+    dbName: string,
+    direction: ReplicationDirection,
+): string => `${dbName}:${direction}`;
+
+const fetchReplicationStatus = async (
+    dbName: string,
+    direction: ReplicationDirection,
+) => {
+    const key = buildReplicationKey(dbName, direction);
+
     try {
         const status = await $fetch<ReplicationStatus>(
             `/api/datasync/replication-status/${encodeURIComponent(dbName)}`,
+            {
+                query: {
+                    direction,
+                },
+            },
         );
-        replicationStatusMap.value[dbName] = status;
+        replicationStatusMap.value[key] = status;
         if (status?.state === "completed") {
-            stopReplicationPolling(dbName);
+            stopReplicationPolling(dbName, direction);
             await refreshDbInfoForDb(dbName);
         }
     } catch (error) {
@@ -267,29 +289,38 @@ const fetchReplicationStatus = async (dbName: string) => {
             error instanceof Error
                 ? error.message
                 : "Failed to load replication status.";
-        replicationStatusMap.value[dbName] = {
+        replicationStatusMap.value[key] = {
+            direction,
             state: "error",
             error: message,
         };
     }
 };
 
-const startReplicationPolling = (dbName: string) => {
-    if (replicationPollers.value[dbName]) {
+const startReplicationPolling = (
+    dbName: string,
+    direction: ReplicationDirection,
+) => {
+    const key = buildReplicationKey(dbName, direction);
+    if (replicationPollers.value[key]) {
         return;
     }
 
-    fetchReplicationStatus(dbName);
-    replicationPollers.value[dbName] = setInterval(() => {
-        fetchReplicationStatus(dbName);
+    fetchReplicationStatus(dbName, direction);
+    replicationPollers.value[key] = setInterval(() => {
+        fetchReplicationStatus(dbName, direction);
     }, 4000);
 };
 
-const stopReplicationPolling = (dbName: string) => {
-    const poller = replicationPollers.value[dbName];
+const stopReplicationPolling = (
+    dbName: string,
+    direction: ReplicationDirection,
+) => {
+    const key = buildReplicationKey(dbName, direction);
+    const poller = replicationPollers.value[key];
     if (poller) {
         clearInterval(poller);
-        delete replicationPollers.value[dbName];
+        delete replicationPollers.value[key];
     }
 };
 
@@ -318,7 +349,13 @@ const isReplicationActive = (status?: ReplicationStatus | null): boolean => {
 };
 
 const getDocsCellStatusClass = (dbName: string): string => {
-    if (isReplicationActive(replicationStatusMap.value[dbName])) {
+    const downKey = buildReplicationKey(dbName, "down");
+    const upKey = buildReplicationKey(dbName, "up");
+
+    if (
+        isReplicationActive(replicationStatusMap.value[downKey]) ||
+        isReplicationActive(replicationStatusMap.value[upKey])
+    ) {
         return "bg-amber-50/40";
     }
 
@@ -351,13 +388,44 @@ const getDocsCellStatusClass = (dbName: string): string => {
     return "";
 };
 
-const triggerReplication = async (dbName: string) => {
-    if (!isReady.value || replicationLoadingMap.value[dbName]) {
+const canReplicateDown = (dbName: string): boolean => {
+    const dbState = dbInfoMap.value[dbName];
+    if (!dbState || dbState.error || dbState.isLoading || !dbState.info) {
+        return false;
+    }
+
+    return Boolean(dbState.info.remote);
+};
+
+const canReplicateUp = (dbName: string): boolean => {
+    const dbState = dbInfoMap.value[dbName];
+    if (!dbState || dbState.error || dbState.isLoading || !dbState.info) {
+        return false;
+    }
+
+    return Boolean(dbState.info.local);
+};
+
+const triggerReplication = async (
+    dbName: string,
+    direction: ReplicationDirection,
+) => {
+    const key = buildReplicationKey(dbName, direction);
+    if (!isReady.value || replicationLoadingMap.value[key]) {
         return;
     }
 
-    replicationLoadingMap.value[dbName] = true;
-    replicationStatusMap.value[dbName] = {
+    if (direction === "down" && !canReplicateDown(dbName)) {
+        return;
+    }
+
+    if (direction === "up" && !canReplicateUp(dbName)) {
+        return;
+    }
+
+    replicationLoadingMap.value[key] = true;
+    replicationStatusMap.value[key] = {
+        direction,
         state: "starting",
     };
 
@@ -369,25 +437,33 @@ const triggerReplication = async (dbName: string) => {
                 username: username.value,
                 password: password.value,
                 dbName,
+                direction,
             },
         });
 
-        startReplicationPolling(dbName);
+        startReplicationPolling(dbName, direction);
     } catch (error) {
         const message =
             error instanceof Error
                 ? error.message
                 : "Failed to start replication.";
-        replicationStatusMap.value[dbName] = {
+        replicationStatusMap.value[key] = {
+            direction,
             state: "error",
             error: message,
         };
     } finally {
-        replicationLoadingMap.value[dbName] = false;
+        replicationLoadingMap.value[key] = false;
     }
 };
 
-const getReplicationProgressLabel = (status?: ReplicationStatus | null) => {
+const getReplicationProgressLabel = (
+    dbName: string,
+    direction: ReplicationDirection,
+) => {
+    const key = buildReplicationKey(dbName, direction);
+    const status = replicationStatusMap.value[key];
+
     if (!status) {
         return "Idle";
     }
@@ -542,6 +618,8 @@ const syncDocument = async (
 const fetchDatabases = async () => {
     errorMessage.value = null;
     databases.value = [];
+    remoteDatabases.value = [];
+    localDatabases.value = [];
     lastFetchedAt.value = null;
     dbInfoMap.value = {};
 
@@ -580,6 +658,12 @@ const fetchDatabases = async () => {
         }
 
         databases.value = response.databases;
+        remoteDatabases.value = Array.isArray(response.remoteDatabases)
+            ? response.remoteDatabases
+            : [];
+        localDatabases.value = Array.isArray(response.localDatabases)
+            ? response.localDatabases
+            : [];
         lastFetchedAt.value = new Date().toISOString();
         resetDbInfoState(response.databases);
         isDetailsLoading.value = true;
@@ -742,10 +826,14 @@ const handleEdit = () => {
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">
-                        Remote databases
+                        Managed databases
                     </h2>
                     <p class="text-xs text-gray-500">
                         {{ databases.length }} databases loaded
+                        <span>
+                            · remote {{ remoteDatabases.length }} · local
+                            {{ localDatabases.length }}
+                        </span>
                         <span v-if="lastFetchedAt">
                             · last fetched
                             {{ new Date(lastFetchedAt).toLocaleString() }}
@@ -790,7 +878,7 @@ const handleEdit = () => {
                         <tr v-if="!sortedDatabases.length">
                             <td
                                 class="px-4 py-4 text-sm text-gray-500"
-                                colspan="5"
+                                colspan="4"
                             >
                                 No databases loaded yet.
                             </td>
@@ -798,7 +886,7 @@ const handleEdit = () => {
                         <tr v-else-if="isDetailsLoading">
                             <td
                                 class="px-4 py-4 text-sm text-gray-500"
-                                colspan="5"
+                                colspan="4"
                             >
                                 Loading database details…
                             </td>
@@ -896,15 +984,53 @@ const handleEdit = () => {
                                             type="button"
                                             class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                                             :disabled="
-                                                replicationLoadingMap[db]
+                                                replicationLoadingMap[
+                                                    buildReplicationKey(
+                                                        db,
+                                                        'down',
+                                                    )
+                                                ] || !canReplicateDown(db)
                                             "
-                                            @click="triggerReplication(db)"
+                                            @click="triggerReplication(db, 'down')"
                                         >
                                             <span
-                                                v-if="replicationLoadingMap[db]"
+                                                v-if="
+                                                    replicationLoadingMap[
+                                                        buildReplicationKey(
+                                                            db,
+                                                            'down',
+                                                        )
+                                                    ]
+                                                "
                                                 >Starting…</span
                                             >
                                             <span v-else>Replicate Down</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                            :disabled="
+                                                replicationLoadingMap[
+                                                    buildReplicationKey(
+                                                        db,
+                                                        'up',
+                                                    )
+                                                ] || !canReplicateUp(db)
+                                            "
+                                            @click="triggerReplication(db, 'up')"
+                                        >
+                                            <span
+                                                v-if="
+                                                    replicationLoadingMap[
+                                                        buildReplicationKey(
+                                                            db,
+                                                            'up',
+                                                        )
+                                                    ]
+                                                "
+                                                >Starting…</span
+                                            >
+                                            <span v-else>Replicate Up</span>
                                         </button>
                                         <button
                                             type="button"
@@ -916,36 +1042,146 @@ const handleEdit = () => {
                                         </button>
                                     </div>
                                     <div class="text-xs text-gray-500">
+                                        Down:
                                         {{
                                             getReplicationProgressLabel(
-                                                replicationStatusMap[db],
+                                                db,
+                                                "down",
+                                            )
+                                        }}
+                                        · Up:
+                                        {{
+                                            getReplicationProgressLabel(
+                                                db,
+                                                "up",
                                             )
                                         }}
                                     </div>
                                     <div
                                         v-show="
                                             isReplicationActive(
-                                                replicationStatusMap[db],
+                                                replicationStatusMap[
+                                                    buildReplicationKey(
+                                                        db,
+                                                        'down',
+                                                    )
+                                                ],
                                             )
                                         "
                                         class="text-[11px] text-orange-500"
                                     >
-                                        Replication in progress…
-                                    </div>
-                                    <div
-                                        v-show="replicationStatusMap[db]?.error"
-                                        class="text-xs text-red-500"
-                                    >
-                                        {{ replicationStatusMap[db]?.error }}
+                                        Replication down in progress…
                                     </div>
                                     <div
                                         v-show="
-                                            !replicationStatusMap[db]?.error &&
-                                            replicationStatusMap[db]?.warning
+                                            isReplicationActive(
+                                                replicationStatusMap[
+                                                    buildReplicationKey(
+                                                        db,
+                                                        'up',
+                                                    )
+                                                ],
+                                            )
+                                        "
+                                        class="text-[11px] text-orange-500"
+                                    >
+                                        Replication up in progress…
+                                    </div>
+                                    <div
+                                        v-show="
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'down',
+                                                )
+                                            ]?.error
+                                        "
+                                        class="text-xs text-red-500"
+                                    >
+                                        Down:
+                                        {{
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    "down",
+                                                )
+                                            ]?.error
+                                        }}
+                                    </div>
+                                    <div
+                                        v-show="
+                                            !replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'down',
+                                                )
+                                            ]?.error &&
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'down',
+                                                )
+                                            ]?.warning
                                         "
                                         class="text-xs text-orange-500"
                                     >
-                                        {{ replicationStatusMap[db]?.warning }}
+                                        Down:
+                                        {{
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    "down",
+                                                )
+                                            ]?.warning
+                                        }}
+                                    </div>
+                                    <div
+                                        v-show="
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'up',
+                                                )
+                                            ]?.error
+                                        "
+                                        class="text-xs text-red-500"
+                                    >
+                                        Up:
+                                        {{
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    "up",
+                                                )
+                                            ]?.error
+                                        }}
+                                    </div>
+                                    <div
+                                        v-show="
+                                            !replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'up',
+                                                )
+                                            ]?.error &&
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    'up',
+                                                )
+                                            ]?.warning
+                                        "
+                                        class="text-xs text-orange-500"
+                                    >
+                                        Up:
+                                        {{
+                                            replicationStatusMap[
+                                                buildReplicationKey(
+                                                    db,
+                                                    "up",
+                                                )
+                                            ]?.warning
+                                        }}
                                     </div>
                                 </div>
                             </td>

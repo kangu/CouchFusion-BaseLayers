@@ -5,7 +5,10 @@ interface ReplicatePayload {
   username: string;
   password: string;
   dbName: string;
+  direction?: "down" | "up";
 }
+
+type ReplicationDirection = "down" | "up";
 
 const normalizeHost = (value: string): string => {
   const trimmed = value.trim();
@@ -24,8 +27,11 @@ const normalizeHost = (value: string): string => {
   return `https://${trimmed}`.replace(/\/+$/, "");
 };
 
-const buildReplicatorId = (dbName: string): string => {
-  return `datasync-${dbName}`;
+const buildReplicatorId = (
+  dbName: string,
+  direction: ReplicationDirection,
+): string => {
+  return `datasync-${direction}-${dbName}`;
 };
 
 export default defineEventHandler(async (event) => {
@@ -48,6 +54,7 @@ export default defineEventHandler(async (event) => {
   const username = typeof body.username === "string" ? body.username : "";
   const password = typeof body.password === "string" ? body.password : "";
   const dbName = typeof body.dbName === "string" ? body.dbName : "";
+  const direction: ReplicationDirection = body.direction === "up" ? "up" : "down";
 
   const normalizedHost = normalizeHost(host);
 
@@ -79,26 +86,47 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const remoteSource = `${normalizedHost}/${encodeURIComponent(dbName)}`;
-  const localTarget = `${localCouchUrl}/${encodeURIComponent(dbName)}`;
-  const replicatorId = buildReplicatorId(dbName);
+  const remoteDbUrl = `${normalizedHost}/${encodeURIComponent(dbName)}`;
+  const localDbUrl = `${localCouchUrl}/${encodeURIComponent(dbName)}`;
+  const remoteAuthHeader = `Basic ${Buffer.from(
+    `${username}:${password}`,
+  ).toString("base64")}`;
+  const localAuthHeader = `Basic ${localAdminAuth}`;
+  const replicatorId = buildReplicatorId(dbName, direction);
+
+  const source =
+    direction === "up"
+      ? {
+          url: localDbUrl,
+          headers: {
+            Authorization: localAuthHeader,
+          },
+        }
+      : {
+          url: remoteDbUrl,
+          headers: {
+            Authorization: remoteAuthHeader,
+          },
+        };
+  const target =
+    direction === "up"
+      ? {
+          url: remoteDbUrl,
+          headers: {
+            Authorization: remoteAuthHeader,
+          },
+        }
+      : {
+          url: localDbUrl,
+          headers: {
+            Authorization: localAuthHeader,
+          },
+        };
 
   const replicatorDoc = {
     _id: replicatorId,
-    source: {
-      url: remoteSource,
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString(
-          "base64",
-        )}`,
-      },
-    },
-    target: {
-      url: localTarget,
-      headers: {
-        Authorization: `Basic ${localAdminAuth}`,
-      },
-    },
+    source,
+    target,
     create_target: true,
   };
 

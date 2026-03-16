@@ -14,13 +14,13 @@ export default defineNuxtConfig({
         {
           id: "events",
           title: "Events",
-          requiresRoles: ["admin"],
+          requiresRoles: ["admin", "curator"],
           items: [
             {
               label: "Conferences",
               route: "/admin/events/conferences",
               icon: "mdi:calendar-star",
-              requiresRoles: ["admin"],
+              requiresRoles: ["admin", "curator"],
             },
           ],
         },
@@ -31,13 +31,13 @@ export default defineNuxtConfig({
         {
           id: "events",
           title: "Events",
-          requiresRoles: ["admin"],
+          requiresRoles: ["admin", "curator"],
           items: [
             {
               label: "Conferences",
               route: "/admin/events/conferences",
               icon: "mdi:calendar-star",
-              requiresRoles: ["admin"],
+              requiresRoles: ["admin", "curator"],
             },
           ],
         },

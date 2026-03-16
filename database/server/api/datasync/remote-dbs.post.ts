@@ -23,10 +23,24 @@ const normalizeHost = (value: string): string => {
   return `https://${trimmed}`.replace(/\/+$/, "");
 };
 
+const matchesManagedDbName = (name: string, dbLoginPrefix: string): boolean => {
+  if (name === "_users") {
+    return true;
+  }
+
+  // Use an extra "-" to account for staging names and avoid prefix collisions.
+  return dbLoginPrefix ? name.startsWith(`${dbLoginPrefix}-`) : false;
+};
+
 export default defineEventHandler(async (event) => {
   await assertAdminSession(event);
 
   const runtimeConfig = useRuntimeConfig();
+  const localCouchUrl =
+    typeof runtimeConfig.couchUrl === "string"
+      ? runtimeConfig.couchUrl.replace(/\/+$/, "")
+      : "";
+  const localAdminAuth = process.env.COUCHDB_ADMIN_AUTH;
   const dbLoginPrefix =
     typeof runtimeConfig.dbLoginPrefix === "string"
       ? runtimeConfig.dbLoginPrefix
@@ -65,39 +79,63 @@ export default defineEventHandler(async (event) => {
     "base64",
   )}`;
 
-  const response = await fetch(`${normalizedHost}/_all_dbs`, {
+  const remoteResponse = await fetch(`${normalizedHost}/_all_dbs`, {
     headers: {
       Authorization: authHeader,
     },
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
+  if (!remoteResponse.ok) {
+    const detail = await remoteResponse.text();
     throw createError({
-      statusCode: response.status,
+      statusCode: remoteResponse.status,
       statusMessage: detail || "Remote CouchDB request failed.",
     });
   }
 
-  const payload = await response.json();
-
-  if (!Array.isArray(payload)) {
+  if (!localCouchUrl || !localAdminAuth) {
     throw createError({
-      statusCode: 502,
-      statusMessage: "Unexpected response from remote CouchDB host.",
+      statusCode: 500,
+      statusMessage: "Local CouchDB configuration missing.",
     });
   }
 
-  const filtered = payload.filter((name: string) => {
-    if (name === "_users") {
-      return true;
-    }
-
-    // use an extra "-" to account for any staging names colliding
-    return dbLoginPrefix ? name.startsWith(dbLoginPrefix + "-") : false;
+  const localResponse = await fetch(`${localCouchUrl}/_all_dbs`, {
+    headers: {
+      Authorization: `Basic ${localAdminAuth}`,
+    },
   });
 
+  if (!localResponse.ok) {
+    const detail = await localResponse.text();
+    throw createError({
+      statusCode: localResponse.status,
+      statusMessage: detail || "Local CouchDB request failed.",
+    });
+  }
+
+  const remotePayload = await remoteResponse.json();
+  const localPayload = await localResponse.json();
+
+  if (!Array.isArray(remotePayload) || !Array.isArray(localPayload)) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: "Unexpected response from CouchDB host.",
+    });
+  }
+
+  const remoteDatabases = remotePayload.filter((name: string) =>
+    matchesManagedDbName(name, dbLoginPrefix)
+  );
+  const localDatabases = localPayload.filter((name: string) =>
+    matchesManagedDbName(name, dbLoginPrefix)
+  );
+  const databases = Array.from(new Set([...remoteDatabases, ...localDatabases]))
+    .sort((a, b) => a.localeCompare(b));
+
   return {
-    databases: filtered,
+    databases,
+    remoteDatabases,
+    localDatabases,
   };
 });
