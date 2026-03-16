@@ -178,6 +178,7 @@ const sortState = reactive<{
 });
 const featuredSearch = ref("");
 const featuredDraft = ref<FeaturedConferenceEntry[]>([]);
+const featuredSectionExpanded = ref(false);
 const featuredDocumentRev = ref<string | null>(null);
 const featuredSavePending = ref(false);
 const featuredSaveError = ref<string | null>(null);
@@ -1489,34 +1490,48 @@ const saveEditor = async () => {
     </section>
 
     <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+      <button
+        type="button"
+        class="flex w-full flex-wrap items-center justify-between gap-3 text-left"
+        @click="featuredSectionExpanded = !featuredSectionExpanded"
+      >
         <div>
           <h2 class="text-lg font-semibold text-slate-900">Featured Conferences</h2>
           <p class="text-sm text-slate-600">
-            Build the featured conferences list, reorder cards, and upload custom logos.
+            {{ featuredDraft.length }} configured
           </p>
         </div>
-        <button
-          type="button"
-          class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="featuredSavePending || featuredPending"
-          @click="saveFeaturedConferences"
-        >
-          {{ featuredSavePending ? "Saving..." : "Save Featured List" }}
-        </button>
-      </div>
+        <span class="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
+          {{ featuredSectionExpanded ? "Collapse" : "Expand" }}
+        </span>
+      </button>
 
-      <p v-if="featuredError" class="text-sm text-red-600">
-        Failed to load featured conferences.
-      </p>
-      <p v-if="featuredSaveError" class="text-sm text-red-600">
-        {{ featuredSaveError }}
-      </p>
-      <p v-if="featuredSaveSuccess" class="text-sm text-emerald-700">
-        {{ featuredSaveSuccess }}
-      </p>
+      <div v-if="featuredSectionExpanded" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm text-slate-600">
+            Build the featured conferences list, reorder cards, and upload custom logos.
+          </p>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-transparent bg-orange-custom px-4 py-2 text-sm font-medium text-white hover:bg-orange-custom-hover focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="featuredSavePending || featuredPending"
+            @click="saveFeaturedConferences"
+          >
+            {{ featuredSavePending ? "Saving..." : "Save Featured List" }}
+          </button>
+        </div>
 
-      <div class="grid gap-4 lg:grid-cols-[minmax(18rem,1fr)_minmax(0,2fr)]">
+        <p v-if="featuredError" class="text-sm text-red-600">
+          Failed to load featured conferences.
+        </p>
+        <p v-if="featuredSaveError" class="text-sm text-red-600">
+          {{ featuredSaveError }}
+        </p>
+        <p v-if="featuredSaveSuccess" class="text-sm text-emerald-700">
+          {{ featuredSaveSuccess }}
+        </p>
+
+        <div class="grid gap-4 lg:grid-cols-[minmax(18rem,1fr)_minmax(0,2fr)]">
         <div class="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Add conference to featured
@@ -1657,6 +1672,7 @@ const saveEditor = async () => {
             </div>
           </article>
         </div>
+      </div>
       </div>
     </section>
 
