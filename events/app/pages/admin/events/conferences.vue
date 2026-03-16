@@ -425,6 +425,12 @@ const statusTone = (status: string) => {
   return "bg-slate-100 text-slate-700 border-slate-300";
 };
 
+const hasConferenceDiscount = (conference: ConferenceItem): boolean => {
+  const code = String(conference.discountCode ?? "").trim();
+  const label = String(conference.discountLabel ?? "").trim();
+  return code.length > 0 || label.length > 0;
+};
+
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const formatDate = (value: string | null) => {
@@ -453,6 +459,82 @@ const formatDate = (value: string | null) => {
     month: "short",
     day: "numeric",
   }).format(date);
+};
+
+const monthPillPalette = [
+  "border-emerald-200 bg-emerald-50 text-emerald-800",
+  "border-blue-200 bg-blue-50 text-blue-800",
+  "border-amber-200 bg-amber-50 text-amber-800",
+  "border-rose-200 bg-rose-50 text-rose-800",
+  "border-violet-200 bg-violet-50 text-violet-800",
+  "border-cyan-200 bg-cyan-50 text-cyan-800",
+  "border-lime-200 bg-lime-50 text-lime-800",
+  "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
+];
+
+const conferenceMonthKey = (conference: ConferenceItem): string | null => {
+  if (!conference.startDateIso) {
+    return null;
+  }
+
+  const dateOnlyMatch = DATE_ONLY_PATTERN.exec(conference.startDateIso);
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[1]}-${dateOnlyMatch[2]}`;
+  }
+
+  const parsed = new Date(conference.startDateIso);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const year = String(parsed.getUTCFullYear());
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+const conferenceMonthLabel = (conference: ConferenceItem): string => {
+  if (!conference.startDateIso) {
+    return "TBA";
+  }
+
+  const dateOnlyMatch = DATE_ONLY_PATTERN.exec(conference.startDateIso);
+  if (dateOnlyMatch) {
+    const year = Number.parseInt(dateOnlyMatch[1], 10);
+    const month = Number.parseInt(dateOnlyMatch[2], 10);
+    const day = Number.parseInt(dateOnlyMatch[3], 10);
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+
+    return new Intl.DateTimeFormat("en", {
+      year: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(utcDate);
+  }
+
+  const parsed = new Date(conference.startDateIso);
+  if (Number.isNaN(parsed.getTime())) {
+    return "TBA";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(parsed);
+};
+
+const conferenceMonthPillClass = (conference: ConferenceItem): string => {
+  const key = conferenceMonthKey(conference);
+  if (!key) {
+    return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) % monthPillPalette.length;
+  }
+
+  return monthPillPalette[hash];
 };
 
 const toSlug = (value: string): string =>
@@ -1213,6 +1295,9 @@ const saveEditor = async () => {
                   </button>
                 </th>
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Discount Code
+                </th>
+                <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                   <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('status')">
                     Status <span class="text-slate-400">{{ sortIndicator("status") }}</span>
                   </button>
@@ -1235,15 +1320,24 @@ const saveEditor = async () => {
                 v-for="conference in sortedConferences"
                 :key="conference._id"
                 class="hover:bg-slate-50/70"
+                :class="hasConferenceDiscount(conference) ? 'bg-orange-50/70' : ''"
               >
                 <td class="px-3 py-2.5">
                   <p class="font-medium text-slate-900">{{ conference.name }}</p>
 <!--                  <p class="text-xs text-slate-500">{{ conference.slug }}</p>-->
                 </td>
-                <td class="px-3 py-2.5 text-slate-700">{{ formatDate(conference.startDateIso) }}</td>
-                <td class="px-3 py-2.5 text-slate-700">{{ conference.year ?? "—" }}</td>
+                <td class="px-3 py-2.5 text-slate-700 text-nowrap">{{ formatDate(conference.startDateIso) }}</td>
+                <td class="px-3 py-2.5 text-slate-700">
+                  <span
+                    class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-nowrap"
+                    :class="conferenceMonthPillClass(conference)"
+                  >
+                    {{ conferenceMonthLabel(conference) }}
+                  </span>
+                </td>
                 <td class="px-3 py-2.5 text-slate-700">{{ conference.location || "Location TBD" }}</td>
                 <td class="px-3 py-2.5 text-slate-700">{{ conference.country || "—" }}</td>
+                <td class="px-3 py-2.5 text-slate-700">{{ conference.discountCode || "—" }}</td>
                 <td class="px-3 py-2.5">
                   <span
                     class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium text-nowrap"
