@@ -36,11 +36,17 @@ export default defineEventHandler(async (event) => {
         job.clientId,
       );
 
+      const phoneContact = client?.contacts?.find(
+        (c) => c.channel === "sms" && c.active,
+      );
+
       return {
         ...job,
         clientName: client?.name ?? null,
         contractExpirationDate: client?.contractExpirationDate ?? null,
         clientCheckupIntervalMonths: client?.contractCheckupIntervalMonths ?? null,
+        clientServiceAddress: client?.serviceAddress ?? null,
+        clientPhone: phoneContact?.value ?? null,
       };
     }),
   );

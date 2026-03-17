@@ -25,13 +25,35 @@ export default defineEventHandler(async (event) => {
     }
 
     const config = useRuntimeConfig()
+    const dbLoginPrefix = config.dbLoginPrefix || ""
 
-    const result = await authenticate(body.username, body.password)
+    // Try with prefix first, then without prefix
+    const username = body.username.trim()
+    const fullUsername = `${dbLoginPrefix}${username}`
+    
+    let result = await authenticate(fullUsername, body.password).catch(() => null)
+    
+    if (!result?.ok && username.startsWith(dbLoginPrefix) && username !== fullUsername) {
+        // If prefixed version failed and original username already has prefix,
+        // try the original without additional prefix
+        result = await authenticate(username, body.password).catch(() => null)
+    }
+    
+    if (!result?.ok) {
+        // Try original username without prefix
+        result = await authenticate(username, body.password).catch(() => null)
+    }
+
+    if (!result?.ok) {
+        throw createError({
+            statusCode: 401,
+            statusMessage: 'Invalid username or password',
+        })
+    }
+
     if (result.setCookie) {
-        // console.log('Setting cookie')
         setHeader(event, 'Set-Cookie', result.setCookie)
     }
-    // console.log('Result auth', result)
 
     return {success: result.ok}
 })

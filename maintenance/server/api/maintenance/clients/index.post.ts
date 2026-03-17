@@ -20,6 +20,7 @@ interface ClientCreatePayload {
   billingAddress?: unknown;
   primaryContactName?: unknown;
   primaryContactTitle?: unknown;
+  counterId?: unknown;
   notes?: unknown;
   contacts?: unknown;
   contractStartDate?: unknown;
@@ -62,6 +63,7 @@ export default defineEventHandler(async (event) => {
     billingAddress: parseAddress(payload.billingAddress, "billingAddress"),
     primaryContactName: asOptionalText(payload.primaryContactName, 180, "primaryContactName"),
     primaryContactTitle: asOptionalText(payload.primaryContactTitle, 180, "primaryContactTitle"),
+    counterId: asOptionalText(payload.counterId, 50, "counterId"),
     notes: asOptionalText(payload.notes, 5000, "notes"),
     contacts: parseClientContacts(payload.contacts),
     ...contractFields,

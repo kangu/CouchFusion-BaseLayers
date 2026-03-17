@@ -25,6 +25,7 @@ interface ClientPatchPayload {
   billingAddress?: unknown;
   primaryContactName?: unknown;
   primaryContactTitle?: unknown;
+  counterId?: unknown;
   notes?: unknown;
   contacts?: unknown;
   contractStartDate?: unknown;
@@ -105,6 +106,10 @@ export default defineEventHandler(async (event) => {
       typeof payload.primaryContactTitle === "undefined"
         ? existingClient.primaryContactTitle
         : asOptionalText(payload.primaryContactTitle, 180, "primaryContactTitle"),
+    counterId:
+      typeof payload.counterId === "undefined"
+        ? existingClient.counterId
+        : asOptionalText(payload.counterId, 50, "counterId"),
     notes:
       typeof payload.notes === "undefined"
         ? existingClient.notes

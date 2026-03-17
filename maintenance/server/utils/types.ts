@@ -42,6 +42,7 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   billingAddress: MaintenanceAddress | null;
   primaryContactName: string | null;
   primaryContactTitle: string | null;
+  counterId: string | null;
   notes: string | null;
   contacts: MaintenanceContactMethod[];
   contractStartDate: string | null;

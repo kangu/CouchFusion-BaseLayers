@@ -7,6 +7,13 @@ interface MaintenanceJob {
   clientCheckupIntervalMonths: number | null;
   scheduledFor: string;
   status: "pending" | "done" | "rejected";
+  assignedTo: string | null;
+  clientServiceAddress: {
+    line1: string;
+    city?: string | null;
+    country?: string | null;
+  } | null;
+  clientPhone: string | null;
 }
 type JobListFilter = "pending" | "archived";
 
@@ -29,8 +36,35 @@ const doneJobId = ref<string | null>(null);
 const doneNextExpirationDate = ref("");
 const rejectConfirmOpen = ref(false);
 const rejectJobId = ref<string | null>(null);
+const rescheduleConfirmOpen = ref(false);
+const rescheduleJobId = ref<string | null>(null);
+const rescheduleNewDateTime = ref("");
 const listFilter = ref<JobListFilter>("pending");
 const searchQuery = ref("");
+const assigningJobId = ref<string | null>(null);
+
+interface AuthUser {
+  name: string;
+  roles: string[];
+}
+
+const {
+  data: usersData,
+} = await useAsyncData(
+  "maintenance-employees",
+  () =>
+    $fetch<{ users: AuthUser[] }>("/api/users", {
+      headers: requestHeaders,
+      credentials: "include",
+    }).catch(() => ({ users: [] })),
+  {
+    default: () => ({ users: [] }),
+  },
+);
+
+const employees = computed(() =>
+  (usersData.value?.users ?? []).filter((u) => u.roles.includes("employee")),
+);
 
 const selectedStatusQuery = computed(() =>
   listFilter.value === "pending" ? "pending" : "done,rejected",
@@ -75,6 +109,13 @@ watch(listFilter, async () => {
   await refreshJobs();
 });
 
+const getGoogleMapsUrl = (address: { line1?: string | null; city?: string | null; country?: string | null } | null) => {
+  if (!address?.line1) return null;
+  const parts = [address.line1, address.city, address.country].filter(Boolean);
+  const query = encodeURIComponent(parts.join(", "));
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+};
+
 const addMonthsToTodayIso = (months: number): string => {
   const now = new Date();
   const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -108,6 +149,90 @@ const openRejectConfirmation = (jobId: string) => {
 const closeRejectConfirmation = () => {
   rejectConfirmOpen.value = false;
   rejectJobId.value = null;
+};
+
+const openRescheduleConfirmation = (job: MaintenanceJob) => {
+  rescheduleJobId.value = job._id;
+  rescheduleNewDateTime.value = job.scheduledFor.slice(0, 16) || "";
+  rescheduleConfirmOpen.value = true;
+};
+
+const closeRescheduleConfirmation = () => {
+  rescheduleConfirmOpen.value = false;
+  rescheduleJobId.value = null;
+  rescheduleNewDateTime.value = "";
+};
+
+const assignEmployee = async (jobId: string, employeeName: string | null) => {
+  if (actionPendingId.value) {
+    return;
+  }
+
+  actionPendingId.value = jobId;
+  actionError.value = null;
+  actionSuccess.value = null;
+
+  try {
+    await $fetch(
+      `/api/maintenance/jobs/${encodeURIComponent(jobId)}/assign`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        body: {
+          assignedTo: employeeName,
+        },
+      },
+    );
+
+    actionSuccess.value = employeeName
+      ? `Job assigned to ${employeeName}.`
+      : "Job unassigned.";
+    assigningJobId.value = null;
+    await refreshJobs();
+  } catch (error: any) {
+    actionError.value =
+      error?.data?.statusMessage || error?.message || "Failed to assign employee.";
+  } finally {
+    actionPendingId.value = null;
+  }
+};
+
+const confirmReschedule = async () => {
+  if (!rescheduleJobId.value || !rescheduleNewDateTime.value) {
+    actionError.value = "New date and time are required.";
+    return;
+  }
+
+  if (actionPendingId.value) {
+    return;
+  }
+
+  actionPendingId.value = rescheduleJobId.value;
+  actionError.value = null;
+  actionSuccess.value = null;
+
+  try {
+    const scheduledFor = new Date(rescheduleNewDateTime.value).toISOString();
+    await $fetch(
+      `/api/maintenance/jobs/${encodeURIComponent(rescheduleJobId.value)}/reschedule`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        body: {
+          scheduledFor,
+        },
+      },
+    );
+
+    actionSuccess.value = `Job rescheduled to ${rescheduleNewDateTime.value}.`;
+    closeRescheduleConfirmation();
+    await refreshJobs();
+  } catch (error: any) {
+    actionError.value =
+      error?.data?.statusMessage || error?.message || "Failed to reschedule job.";
+  } finally {
+    actionPendingId.value = null;
+  }
 };
 
 const setJobStatus = async (
@@ -271,8 +396,9 @@ const confirmReject = async () => {
           <thead class="bg-slate-50 text-left text-slate-600">
             <tr>
               <th class="px-3 py-2 font-medium">Client</th>
+              <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Scheduled</th>
-              <th class="px-3 py-2 font-medium">Contract expires</th>
+              <th class="px-3 py-2 font-medium">Assigned</th>
               <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
@@ -282,9 +408,59 @@ const confirmReject = async () => {
               v-for="job in filteredJobs"
               :key="job._id"
             >
-              <td class="px-3 py-2 text-slate-900">{{ job.clientName || job.clientId }}</td>
+              <td class="px-3 py-2 text-slate-900">
+                <div>{{ job.clientName || job.clientId }}</div>
+                <div
+                  v-if="job.clientPhone"
+                  class="text-xs text-slate-500"
+                >
+                  📞 {{ job.clientPhone }}
+                </div>
+              </td>
+              <td class="px-3 py-2">
+                <a
+                  v-if="getGoogleMapsUrl(job.clientServiceAddress)"
+                  :href="getGoogleMapsUrl(job.clientServiceAddress)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-blue-600 hover:underline"
+                >
+                  {{ job.clientServiceAddress?.line1 || "-" }}
+                </a>
+                <span v-else>{{ job.clientServiceAddress?.line1 || "-" }}</span>
+                <div
+                  v-if="job.clientServiceAddress?.city || job.clientServiceAddress?.country"
+                  class="text-xs text-slate-500"
+                >
+                  {{ [job.clientServiceAddress?.city, job.clientServiceAddress?.country].filter(Boolean).join(", ") }}
+                </div>
+              </td>
               <td class="px-3 py-2 text-slate-700">{{ job.scheduledFor }}</td>
-              <td class="px-3 py-2 text-slate-700">{{ job.contractExpirationDate || "-" }}</td>
+              <td class="px-3 py-2">
+                <select
+                  v-if="isPendingFilter"
+                  :value="job.assignedTo || ''"
+                  class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-orange-500 focus:outline-none"
+                  :disabled="Boolean(actionPendingId && assigningJobId === job._id)"
+                  @click="assigningJobId = job._id"
+                  @change="assignEmployee(job._id, ($event.target as HTMLSelectElement).value || null)"
+                >
+                  <option value="">
+                    Unassigned
+                  </option>
+                  <option
+                    v-for="emp in employees"
+                    :key="emp.name"
+                    :value="emp.name"
+                  >
+                    {{ emp.name }}
+                  </option>
+                </select>
+                <span
+                  v-else
+                  class="text-sm text-slate-700"
+                >{{ job.assignedTo || "-" }}</span>
+              </td>
               <td class="px-3 py-2 text-slate-700">{{ job.status }}</td>
               <td class="px-3 py-2">
                 <div
@@ -306,6 +482,14 @@ const confirmReject = async () => {
                     @click="openRejectConfirmation(job._id)"
                   >
                     {{ actionPendingId === job._id ? "Saving..." : "Reject" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="Boolean(actionPendingId)"
+                    @click="openRescheduleConfirmation(job)"
+                  >
+                    Reschedule
                   </button>
                 </div>
                 <span
@@ -393,6 +577,55 @@ const confirmReject = async () => {
             @click="confirmReject"
           >
             {{ actionPendingId === rejectJobId ? "Saving..." : "Confirm Reject" }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
+      v-if="rescheduleConfirmOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
+      @click.self="closeRescheduleConfirmation"
+    >
+      <section class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-slate-900">
+          Reschedule Job
+        </h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Enter the new date and time for this job:
+        </p>
+
+        <div class="mt-4">
+          <input
+            v-model="rescheduleNewDateTime"
+            type="datetime-local"
+            class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          >
+        </div>
+
+        <div
+          v-if="actionError"
+          class="mt-2 text-sm text-rose-600"
+        >
+          {{ actionError }}
+        </div>
+
+        <div class="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            :disabled="Boolean(actionPendingId)"
+            @click="closeRescheduleConfirmation"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="Boolean(actionPendingId)"
+            @click="confirmReschedule"
+          >
+            {{ actionPendingId === rescheduleJobId ? "Saving..." : "Confirm Reschedule" }}
           </button>
         </div>
       </section>

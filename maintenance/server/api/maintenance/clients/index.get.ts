@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
       const haystack = [
         client.name,
         client.primaryContactName,
+        client.counterId,
         client.serviceAddress?.line1,
         client.serviceAddress?.city,
         client.serviceAddress?.country,
