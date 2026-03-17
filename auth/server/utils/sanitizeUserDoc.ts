@@ -26,8 +26,6 @@ export interface SanitizedUserDoc {
  * These contain sensitive authentication data
  */
 const SENSITIVE_FIELDS = [
-    '_id',
-    '_rev',
     'password',
     'derived_key',
     'password_scheme',
@@ -51,6 +49,9 @@ export function sanitizeUserDoc(doc: any): SanitizedUserDoc | null {
         return null
     }
 
+    const originalId = doc._id
+    const originalRev = doc._rev
+
     // Create a copy and remove sensitive fields
     const sanitized = {...doc}
 
@@ -66,8 +67,8 @@ export function sanitizeUserDoc(doc: any): SanitizedUserDoc | null {
 
     // Ensure basic structure
     const result: SanitizedUserDoc = {
-        _id: sanitized._id,
-        _rev: sanitized._rev,
+        _id: originalId,
+        _rev: originalRev,
         name: sanitized.name,
         roles: sanitized.roles,
         ...sanitized

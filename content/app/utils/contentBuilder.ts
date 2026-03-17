@@ -286,6 +286,9 @@ interface SerializeOptions {
   builderUidAttr?: string;
 }
 
+const BUILDER_SECTION_ID_PROP = '__builderSectionId'
+const BUILDER_SECTION_ATTR = 'data-section-id'
+
 const defaultSerializeOptions: Required<SerializeOptions> = {
   annotateBuilderUids: false,
   builderUidAttr: 'data-builder-uid'
@@ -319,6 +322,10 @@ export const serializeNode = (
 
   if (resolvedOptions.annotateBuilderUids && node.uid) {
     props[resolvedOptions.builderUidAttr] = node.uid
+    const sectionId = node.props?.[BUILDER_SECTION_ID_PROP]
+    if (typeof sectionId === 'string' && sectionId.trim()) {
+      props[BUILDER_SECTION_ATTR] = sectionId.trim()
+    }
   }
 
   const children = serializeChildrenWithOptions(node.children, resolvedOptions)

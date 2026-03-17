@@ -17,7 +17,6 @@ export interface CouchUser {
 export async function validateCouchSession(cookieHeader?: string): Promise<CouchUser | null> {
     if (!cookieHeader) return null
 
-    console.log('Token', cookieHeader)
     const token = cookieHeader
     if (!token) return null
 

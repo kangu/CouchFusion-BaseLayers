@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, createError } from "h3";
-import { getDocument } from "#database/utils/couchdb";
+import { getDocument, putDocument } from "#database/utils/couchdb";
 
 // Helper function so not to import anything external
 function isValidEmail(email) {
@@ -83,10 +83,7 @@ export default defineEventHandler(async (event) => {
     doc.affiliate_friend_code = validatedAffiliateCode;
   }
   // persist token document to couchdb
-  const resp = await $fetch(`http://localhost:5984/${DB}`, {
-    method: "POST",
-    body: JSON.stringify(doc),
-  });
+  const resp = await putDocument(DB, doc);
   // console.log("Saved token document", resp);
 
   // send out the corresponding email

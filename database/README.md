@@ -30,6 +30,13 @@ This layer provides a centralized, reusable CouchDB client with comprehensive fu
   - `initializeDatabase()` - Initialize with design docs
   - `createOrUpdateDesignDocument()` - Manage design docs
 
+### CouchDB `_config` Env Reader (`utils/couch-config.ts`)
+
+- `readCouchConfigValue(section, key)` - Read a flat `_config` value (for example `cf_env_radustanciu/UMAMI_WEBSITE_ID`)
+- `readCouchConfigValues(section, keys)` - Read multiple keys from the same section
+- `buildCouchEnvSection(slug)` - Build `cf_env_[slug]` section names
+- `normalizeCouchEnvSlug(slug)` - Normalize app slugs to section-safe values
+
 ## Usage
 
 ### In Layers

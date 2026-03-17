@@ -1,57 +1,36 @@
 import { defineEventHandler, readBody, createError } from 'h3'
-import { getDocument, putDocument } from '#database/utils/couchdb'
-import { getContentDatabaseName } from '../../utils/database'
 import { requireAdminSession } from '../../utils/auth'
-import { sanitiseIncomingDocument, contentIdFromPath } from '../../utils/content-documents'
-import { savePageHistory } from '../../utils/page-history'
-import { normalizePagePath } from '#content/utils/page'
+import { saveLocalizedPageDocument } from '../../utils/content-pages-save'
 
 export default defineEventHandler(async (event) => {
     await requireAdminSession(event)
 
     try {
-        const body = await readBody<{ document: any }>(event)
+        const body = await readBody<{ document: any; locale?: string }>(event)
 
         if (!body || typeof body.document !== 'object' || body.document === null) {
             throw createError({
                 statusCode: 400,
-                statusMessage: 'Invalid payload: document is required'
+                statusMessage: 'Invalid payload: document is required',
             })
         }
 
-        const provisional = sanitiseIncomingDocument(body.document, { isCreate: true })
-        const normalizedPath = normalizePagePath(provisional.path)
-        const documentId = provisional._id ?? contentIdFromPath(normalizedPath)
-        const databaseName = getContentDatabaseName()
-
-        const existingDocument = await getDocument<Record<string, any>>(databaseName, documentId)
-
-        if (!existingDocument) {
-            throw createError({
-                statusCode: 404,
-                statusMessage: 'Page not found'
-            })
-        }
-
-        const updatedDocument = sanitiseIncomingDocument(body.document, {
-            isCreate: false,
-            existing: existingDocument
-        })
-
-        updatedDocument._rev = existingDocument._rev
-
-        const response = await putDocument(databaseName, updatedDocument)
-        if (response.rev) {
-            updatedDocument._rev = response.rev
-        }
-
-        await savePageHistory(updatedDocument)
+        const result = await saveLocalizedPageDocument(body, { isCreate: false })
 
         return {
             success: true,
-            id: response.id,
-            rev: response.rev,
-            page: updatedDocument
+            id: result.page._id,
+            rev: result.page._rev,
+            page: {
+                ...result.page,
+                localization: {
+                    locale: result.locale,
+                    defaultLocale: result.defaultLocale,
+                    updatedAtByLocale: result.updatedAtByLocale,
+                    hasLocaleDocument: result.hasLocaleDocument,
+                    missingLocalizedCount: result.missingLocalizedCount,
+                },
+            },
         }
     } catch (error: any) {
         if (error?.statusCode) {
@@ -62,7 +41,7 @@ export default defineEventHandler(async (event) => {
 
         throw createError({
             statusCode: 500,
-            statusMessage: 'Failed to update page'
+            statusMessage: 'Failed to update page',
         })
     }
 })

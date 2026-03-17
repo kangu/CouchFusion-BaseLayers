@@ -39,6 +39,16 @@ interface BuilderFocusMessage {
 }
 
 /**
+ * Payload emitted from inline preview when a prop-annotated element is clicked.
+ */
+interface InlinePropClickPayload {
+  path: string
+  uid: string
+  propPath: string
+  sectionId?: string
+}
+
+/**
  * Narrow unknown postMessage data to a valid live-update message.
  */
 const isLiveUpdateMessage = (value: unknown): value is LiveUpdateMessage => {
@@ -117,6 +127,113 @@ const notifyInlinePreviewReady = () => {
   } catch {
     // noop
   }
+}
+
+/**
+ * Emits clicked prop marker metadata to the parent inline editor.
+ */
+const notifyInlinePropClick = (payload: InlinePropClickPayload) => {
+  if (typeof window === 'undefined' || !isInlinePreview()) {
+    return
+  }
+
+  try {
+    window.parent?.postMessage(
+      {
+        type: 'content_inline_prop_click',
+        payload
+      },
+      '*'
+    )
+  } catch {
+    // noop
+  }
+}
+
+const toMarkerElement = (value: Element | null): HTMLElement | null => {
+  if (!(value instanceof HTMLElement)) {
+    return null
+  }
+  return value.matches('[data-prop-id]')
+    ? value
+    : value.closest<HTMLElement>('[data-prop-id]')
+}
+
+const selectPreferredMarker = (
+  directMarker: HTMLElement | null,
+  fallbackMarkers: HTMLElement[]
+): HTMLElement | null => {
+  if (!directMarker) {
+    return fallbackMarkers[0] ?? null
+  }
+
+  // If clicking an <img> that sits inside another prop marker (e.g. <picture>),
+  // prefer the ancestor marker so image clicks map to image props instead of alt text.
+  if (directMarker.tagName === 'IMG') {
+    const ancestorMarker = directMarker.parentElement?.closest<HTMLElement>('[data-prop-id]')
+    if (ancestorMarker && ancestorMarker !== directMarker) {
+      return ancestorMarker
+    }
+  }
+
+  return directMarker
+}
+
+const FOLLOW_GESTURE_WINDOW_MS = 420
+const FOLLOW_GESTURE_MAX_DISTANCE_PX = 12
+
+type PendingFollowGesture = {
+  id: string
+  timestamp: number
+  clientX: number
+  clientY: number
+}
+
+let pendingFollowGesture: PendingFollowGesture | null = null
+
+const shouldAllowNaturalFollow = (event: MouseEvent, target: Element): boolean => {
+  const followTarget = target.closest<HTMLElement>('[data-prop-follow-link-id]')
+  if (!followTarget) {
+    pendingFollowGesture = null
+    return false
+  }
+
+  // Preserve native browser semantics for opening in a new tab/window.
+  if (event.metaKey || event.ctrlKey) {
+    pendingFollowGesture = null
+    return true
+  }
+
+  const followId = followTarget.getAttribute('data-prop-follow-link-id')?.trim()
+  if (!followId) {
+    pendingFollowGesture = null
+    return false
+  }
+
+  const now = Date.now()
+  const previous = pendingFollowGesture
+  pendingFollowGesture = {
+    id: followId,
+    timestamp: now,
+    clientX: event.clientX,
+    clientY: event.clientY
+  }
+
+  if (!previous || previous.id !== followId) {
+    return false
+  }
+
+  const elapsed = now - previous.timestamp
+  const movedX = Math.abs(event.clientX - previous.clientX)
+  const movedY = Math.abs(event.clientY - previous.clientY)
+  const maxMoved = Math.max(movedX, movedY)
+
+  if (elapsed > FOLLOW_GESTURE_WINDOW_MS || maxMoved > FOLLOW_GESTURE_MAX_DISTANCE_PX) {
+    return false
+  }
+
+  pendingFollowGesture = null
+  return true
 }
 
 let highlightOverlay: HTMLDivElement | null = null
@@ -402,12 +519,74 @@ export const useContentLiveUpdates = (): void => {
 
   }
 
+  const handleInlinePreviewClick = (event: MouseEvent) => {
+    if (!isInlinePreview()) {
+      return
+    }
+
+    const target = event.target
+    if (!(target instanceof Element)) {
+      return
+    }
+
+    if (shouldAllowNaturalFollow(event, target)) {
+      return
+    }
+
+    const directMarker = target.closest<HTMLElement>('[data-prop-id]')
+    const markersFromPoint: HTMLElement[] =
+      typeof document.elementsFromPoint === 'function'
+        ? Array.from(document.elementsFromPoint(event.clientX, event.clientY)).reduce<HTMLElement[]>(
+            (acc, element) => {
+              const marker = toMarkerElement(element)
+              if (marker && !acc.includes(marker)) {
+                acc.push(marker)
+              }
+              return acc
+            },
+            []
+          )
+        : []
+
+    const marker = selectPreferredMarker(directMarker, markersFromPoint)
+    if (!marker) {
+      return
+    }
+
+    const rawPropPath = marker.getAttribute('data-prop-id')?.trim()
+    if (!rawPropPath) {
+      return
+    }
+
+    const owner = marker.closest<HTMLElement>('[data-builder-uid]')
+    const uid = owner?.getAttribute('data-builder-uid')?.trim()
+    if (!uid) {
+      return
+    }
+    const sectionOwner = marker.closest<HTMLElement>('[data-section-id]')
+    const sectionId = sectionOwner?.getAttribute('data-section-id')?.trim() || undefined
+
+    if (event.cancelable) {
+      event.preventDefault()
+    }
+    event.stopPropagation()
+
+    notifyInlinePropClick({
+      path: normalizePagePath(window.location.pathname || '/'),
+      uid,
+      propPath: rawPropPath,
+      sectionId
+    })
+  }
+
   onMounted(() => {
     window.addEventListener('message', handleMessage)
+    document.addEventListener('click', handleInlinePreviewClick, true)
     notifyInlinePreviewReady()
   })
 
   onBeforeUnmount(() => {
     window.removeEventListener('message', handleMessage)
+    document.removeEventListener('click', handleInlinePreviewClick, true)
   })
 }

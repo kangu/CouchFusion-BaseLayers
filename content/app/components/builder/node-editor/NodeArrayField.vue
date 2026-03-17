@@ -1,5 +1,11 @@
 <template>
-    <div class="node-panel__array" :data-collapsed="collapsedArrays[prop.key]">
+    <div
+        class="node-panel__array"
+        :data-collapsed="collapsedArrays[prop.key]"
+        :data-content-prop-path="prop.key"
+        :data-content-array-path="toPropPathAttr(pathPrefix)"
+        :data-prop-key="prop.key"
+    >
         <div class="node-panel__array-header">
             <button
                 type="button"
@@ -27,6 +33,7 @@
             :key="`${prop.key}-${entry.index}`"
             :prop="prop"
             :entry="entry"
+            :path-prefix="[...pathPrefix, entry.index]"
             :prop-draft="propDraft"
             :collapsed-arrays="collapsedArrays"
             :drag-over-array-item="dragOverArrayItem"
@@ -75,6 +82,9 @@
             :update-nested-array-item-field="updateNestedArrayItemField"
             :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
             :format-json-value="formatJsonValue"
+            :on-translate-field="onTranslateField"
+            :on-toggle-translate-selection="onToggleTranslateSelection"
+            :is-translate-selected="isTranslateSelected"
         />
     </div>
 </template>
@@ -98,6 +108,7 @@ type FilterVisibleFields = <
 
 const props = defineProps<{
     prop: ComponentPropSchema;
+    pathPrefix: Array<string | number>;
     propDraft: Record<string, any>;
     collapsedArrays: Record<string, boolean>;
     dragOverArrayItem: DragOverArrayItem;
@@ -157,6 +168,16 @@ const props = defineProps<{
     updateNestedArrayItemField: AnyHandler;
     updateCustomNestedArrayItemField: AnyHandler;
     formatJsonValue: (value: unknown) => string;
+    onTranslateField?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+    }) => void;
+    onToggleTranslateSelection?: (payload: {
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
 const itemEntries = computed(() => {
@@ -168,4 +189,7 @@ const itemEntries = computed(() => {
     }
     return [] as FilterEntry[];
 });
+
+const toPropPathAttr = (segments: Array<string | number>) =>
+    segments.map((segment) => String(segment)).join(".");
 </script>

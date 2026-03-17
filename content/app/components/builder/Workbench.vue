@@ -28,6 +28,11 @@ import {
     type SpacingPresetId,
 } from "../../utils/contentBuilder";
 import type { ComponentPropSchema } from "~/types/builder";
+import { CONTENT_META_I18N_KEY } from "#content/utils/i18n";
+import {
+    buildComponentDefinitionLookup,
+    collectFixedBodyPaths,
+} from "#content/utils/i18n-body";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -168,16 +173,30 @@ const props = defineProps<{
     initialDocument?: MinimalContentDocument | null;
     hidePreview?: boolean;
     searchQuery?: string;
+    selectedTranslationPointers?: string[];
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
+    (
+        e: "translate-scope",
+        payload: {
+            scopeMode: "page" | "section" | "field";
+            scopePointer: string | null;
+            label?: string;
+        },
+    ): void;
     (e: "update:searchQuery", value: string): void;
+    (e: "update:selectedTranslationPointers", value: string[]): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
+const runtimeConfig = useRuntimeConfig();
 const componentOptions = computed(() => registry.list);
+const componentDefinitionLookup = computed(() =>
+    buildComponentDefinitionLookup(registry.list),
+);
 
 const builderTree = ref<BuilderTree>([]);
 const pageConfig = reactive<PageConfigInput>({
@@ -200,6 +219,33 @@ const getSectionNamesById = (): Record<string, string> => {
             ([key, value]) => typeof key === "string" && typeof value === "string",
         ),
     );
+};
+
+const isAssistiveSectionSnapToggleEnabled = computed(() => {
+    return (
+        runtimeConfig.public?.content?.builder?.assistiveSectionSnapToggle ===
+        true
+    );
+});
+
+const getAssistiveSectionSnap = (): boolean => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    return typeof builder.assistiveSectionSnap === "boolean"
+        ? builder.assistiveSectionSnap
+        : true;
+};
+
+const setAssistiveSectionSnap = (nextValue: boolean) => {
+    const meta = toPlainRecord(pageConfig.meta);
+    const builder = toPlainRecord(meta.builder);
+    pageConfig.meta = {
+        ...meta,
+        builder: {
+            ...builder,
+            assistiveSectionSnap: nextValue,
+        },
+    };
 };
 
 const setSectionNamesById = (nextNamesById: Record<string, string>) => {
@@ -253,12 +299,65 @@ const syncRootSectionNamesMetadata = () => {
     }
     setSectionNamesById(next);
 };
+
+const normalizeSelectedTranslationPointers = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(
+        new Set(
+            value
+                .filter((entry): entry is string => typeof entry === "string")
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.startsWith("/")),
+        ),
+    ).sort();
+};
+
+const selectedTranslationPointers = computed(() =>
+    normalizeSelectedTranslationPointers(props.selectedTranslationPointers),
+);
+
+const selectedTranslationPointerSet = computed(
+    () => new Set(selectedTranslationPointers.value),
+);
+
+const emitSelectedTranslationPointers = (nextPointers: string[]) => {
+    emit(
+        "update:selectedTranslationPointers",
+        normalizeSelectedTranslationPointers(nextPointers),
+    );
+};
+
+const setTranslationPointerSelection = (
+    pointer: string,
+    selected: boolean,
+) => {
+    if (typeof pointer !== "string" || !pointer.startsWith("/")) {
+        return;
+    }
+
+    const next = new Set(selectedTranslationPointers.value);
+    if (selected) {
+        next.add(pointer);
+    } else {
+        next.delete(pointer);
+    }
+
+    emitSelectedTranslationPointers(Array.from(next));
+};
+
+const isTranslationPointerSelected = (pointer: string): boolean =>
+    selectedTranslationPointerSet.value.has(pointer);
+
 const seoDraft = reactive({
     path: pageConfig.path,
     title: pageConfig.title,
     seoTitle: pageConfig.seoTitle,
     seoDescription: pageConfig.seoDescription,
     seoImage: pageConfig.seoImage,
+    assistiveSectionSnap: getAssistiveSectionSnap(),
 });
 const isSeoCardExpanded = ref(false);
 
@@ -268,6 +367,7 @@ const syncSeoDraftFromPageConfig = () => {
     seoDraft.seoTitle = pageConfig.seoTitle;
     seoDraft.seoDescription = pageConfig.seoDescription;
     seoDraft.seoImage = pageConfig.seoImage;
+    seoDraft.assistiveSectionSnap = getAssistiveSectionSnap();
 };
 
 const hasSeoDraftChanges = computed(
@@ -276,7 +376,9 @@ const hasSeoDraftChanges = computed(
         seoDraft.title !== pageConfig.title ||
         seoDraft.seoTitle !== pageConfig.seoTitle ||
         seoDraft.seoDescription !== pageConfig.seoDescription ||
-        seoDraft.seoImage !== pageConfig.seoImage,
+        seoDraft.seoImage !== pageConfig.seoImage ||
+        (isAssistiveSectionSnapToggleEnabled.value &&
+            seoDraft.assistiveSectionSnap !== getAssistiveSectionSnap()),
 );
 
 const openSeoCardEditor = () => {
@@ -290,6 +392,9 @@ const applySeoDraft = () => {
     pageConfig.seoTitle = seoDraft.seoTitle;
     pageConfig.seoDescription = seoDraft.seoDescription;
     pageConfig.seoImage = seoDraft.seoImage;
+    if (isAssistiveSectionSnapToggleEnabled.value) {
+        setAssistiveSectionSnap(seoDraft.assistiveSectionSnap);
+    }
     isSeoCardExpanded.value = false;
 };
 
@@ -308,6 +413,13 @@ const previewSpacingClass = computed(
 const expandedRootNodes = reactive<Record<string, boolean>>({});
 
 const fallbackSearchQuery = ref("");
+const propFocusRequestToken = ref(0);
+const nodePropFocusRequest = ref<{
+    uidPath: string[];
+    targetUid: string;
+    propPath: Array<string | number>;
+    token: number;
+} | null>(null);
 const searchQuery = computed<string>({
     get: () => props.searchQuery ?? fallbackSearchQuery.value,
     set: (value) => {
@@ -1007,27 +1119,303 @@ const handleNodeFocus = (payload: {
     });
 };
 
+const escapePointerToken = (token: string | number): string =>
+    String(token).replace(/~/g, "~0").replace(/\//g, "~1");
+
+const toJsonPointer = (segments: Array<string | number>): string =>
+    `/${segments.map((segment) => escapePointerToken(segment)).join("/")}`;
+
+const findBuilderNodePathByUid = (
+    nodes: BuilderNodeChild[],
+    uid: string,
+    currentPath: number[] = [],
+): number[] | null => {
+    for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        const nextPath = [...currentPath, index];
+
+        if (node.uid === uid) {
+            return nextPath;
+        }
+
+        if (node.type === "component") {
+            const nested = findBuilderNodePathByUid(node.children, uid, nextPath);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+
+    return null;
+};
+
+const resolveUidPathByBuilderPath = (builderPath: number[]): string[] => {
+    const uidPath: string[] = [];
+    let currentNodes: BuilderNodeChild[] = builderTree.value;
+
+    for (const index of builderPath) {
+        const node = currentNodes[index];
+        if (!node) {
+            break;
+        }
+        uidPath.push(node.uid);
+        if (node.type !== "component") {
+            break;
+        }
+        currentNodes = node.children;
+    }
+
+    return uidPath;
+};
+
+const parseDottedPropPath = (value: string): Array<string | number> =>
+    value
+        .split(".")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .map((segment) =>
+            /^-?\d+$/.test(segment) ? Number.parseInt(segment, 10) : segment,
+        );
+
+const focusNodeProp = (payload: {
+    uid: string;
+    propPath: string;
+    sectionId?: string;
+}) => {
+    if (!payload || typeof payload.uid !== "string") {
+        return;
+    }
+
+    const propPath = parseDottedPropPath(payload.propPath);
+    if (!propPath.length) {
+        return;
+    }
+
+    let targetUid = payload.uid;
+    let builderPath = findBuilderNodePathByUid(builderTree.value, targetUid);
+
+    const sectionId =
+        typeof payload.sectionId === "string" ? payload.sectionId.trim() : "";
+    if (sectionId) {
+        const sectionRootNode = builderTree.value.find(
+            (node) => getRootSectionId(node) === sectionId,
+        );
+
+        if (sectionRootNode) {
+            const sectionPath = findBuilderNodePathByUid(
+                builderTree.value,
+                sectionRootNode.uid,
+            );
+
+            if (
+                sectionPath &&
+                sectionPath.length &&
+                (!builderPath || builderPath[0] !== sectionPath[0])
+            ) {
+                builderPath = sectionPath;
+                targetUid = sectionRootNode.uid;
+            }
+        }
+    }
+
+    if (!builderPath || !builderPath.length) {
+        return;
+    }
+
+    const uidPath = resolveUidPathByBuilderPath(builderPath);
+    if (!uidPath.length) {
+        return;
+    }
+
+    // Ensure node remains visible while applying prop focus.
+    searchQuery.value = "";
+    const rootUid = uidPath[0];
+    expandedRootNodes[rootUid] = true;
+
+    propFocusRequestToken.value += 1;
+    nodePropFocusRequest.value = {
+        uidPath,
+        targetUid,
+        propPath,
+        token: propFocusRequestToken.value,
+    };
+    handleNodeFocus({ uid: targetUid, mode: "lock" });
+};
+
+const toBodyNodePointerSegments = (
+    builderPath: number[],
+): Array<string | number> => {
+    if (!builderPath.length) {
+        return [];
+    }
+
+    const [rootIndex, ...childIndices] = builderPath;
+    const bodySegments: Array<string | number> = [rootIndex];
+    childIndices.forEach((index) => {
+        bodySegments.push(index + 2);
+    });
+    return bodySegments;
+};
+
+const SEO_TITLE_POINTER = "/__seo/title";
+const SEO_DESCRIPTION_POINTER = "/__seo/description";
+
+const resolveFieldPointer = (
+    payload: {
+        uid: string;
+        propPath: Array<string | number>;
+    },
+): string | null => {
+    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
+    if (!builderPath || !payload.propPath.length) {
+        return null;
+    }
+
+    const nodePointer = toBodyNodePointerSegments(builderPath);
+    return toJsonPointer([
+        ...nodePointer,
+        1,
+        ...payload.propPath,
+    ]);
+};
+
+const handleTranslateField = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+    label?: string;
+}) => {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
+        return;
+    }
+
+    emit("translate-scope", {
+        scopeMode: "field",
+        scopePointer: fieldPointer,
+        label: payload.label,
+    });
+};
+
+const handleToggleTranslateFieldSelection = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+    selected: boolean;
+}) => {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
+        return;
+    }
+
+    setTranslationPointerSelection(fieldPointer, payload.selected);
+};
+
+const isTranslateFieldSelected = (payload: {
+    uid: string;
+    propPath: Array<string | number>;
+}): boolean => {
+    const fieldPointer = resolveFieldPointer(payload);
+    if (!fieldPointer) {
+        return false;
+    }
+
+    return isTranslationPointerSelected(fieldPointer);
+};
+
+const handleTranslateSection = (payload: {
+    uid: string;
+    label?: string;
+}) => {
+    const builderPath = findBuilderNodePathByUid(builderTree.value, payload.uid);
+    if (!builderPath) {
+        return;
+    }
+
+    const sectionPointer = toJsonPointer(toBodyNodePointerSegments(builderPath));
+    emit("translate-scope", {
+        scopeMode: "section",
+        scopePointer: sectionPointer,
+        label: payload.label,
+    });
+};
+
+const handleTranslateSeoField = (field: "title" | "description") => {
+    if (field === "title") {
+        pageConfig.seoTitle = seoDraft.seoTitle;
+        emit("translate-scope", {
+            scopeMode: "field",
+            scopePointer: SEO_TITLE_POINTER,
+            label: "SEO title",
+        });
+        return;
+    }
+
+    pageConfig.seoDescription = seoDraft.seoDescription;
+    emit("translate-scope", {
+        scopeMode: "field",
+        scopePointer: SEO_DESCRIPTION_POINTER,
+        label: "SEO description",
+    });
+};
+
 const serializedDocument = computed(() =>
-    createDocumentFromTree(
-        builderTree.value,
-        {
-            ...pageConfig,
-            meta: pageConfig.meta ?? {},
-        },
-        { spacing: layout.spacing },
-    ),
+    (() => {
+        const document = createDocumentFromTree(
+            builderTree.value,
+            {
+                ...pageConfig,
+                meta: pageConfig.meta ?? {},
+            },
+            { spacing: layout.spacing },
+        );
+
+        const fixedBodyPaths = collectFixedBodyPaths(
+            document.body?.value ?? [],
+            componentDefinitionLookup.value,
+        );
+        const meta = toPlainRecord(document.meta);
+        const i18nMeta = toPlainRecord(meta[CONTENT_META_I18N_KEY]);
+
+        document.meta = {
+            ...meta,
+            [CONTENT_META_I18N_KEY]: {
+                ...i18nMeta,
+                fixedBodyPaths,
+            },
+        };
+
+        return document;
+    })(),
 );
 
 const previewDocument = computed(() =>
-    createDocumentFromTree(
-        builderTree.value,
-        {
-            ...pageConfig,
-            meta: pageConfig.meta ?? {},
-        },
-        { spacing: layout.spacing },
-        { annotateBuilderUids: true },
-    ),
+    (() => {
+        const document = createDocumentFromTree(
+            builderTree.value,
+            {
+                ...pageConfig,
+                meta: pageConfig.meta ?? {},
+            },
+            { spacing: layout.spacing },
+            { annotateBuilderUids: true },
+        );
+
+        const fixedBodyPaths = collectFixedBodyPaths(
+            document.body?.value ?? [],
+            componentDefinitionLookup.value,
+        );
+        const meta = toPlainRecord(document.meta);
+        const i18nMeta = toPlainRecord(meta[CONTENT_META_I18N_KEY]);
+
+        document.meta = {
+            ...meta,
+            [CONTENT_META_I18N_KEY]: {
+                ...i18nMeta,
+                fixedBodyPaths,
+            },
+        };
+
+        return document;
+    })(),
 );
 
 let documentEmitTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1126,6 +1514,7 @@ const loadDocument = (doc: MinimalContentDocument | null) => {
 defineExpose({
     getSerializedDocument,
     loadDocument,
+    focusNodeProp,
 });
 
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -1244,7 +1633,31 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
                 <label class="builder-config__full">
-                    <span>SEO title</span>
+                    <span class="builder-config__label-row">
+                        <span>SEO title</span>
+                        <span class="builder-config__translate-actions">
+                            <input
+                                type="checkbox"
+                                class="builder-config__translate-checkbox"
+                                :checked="isTranslationPointerSelected(SEO_TITLE_POINTER)"
+                                aria-label="Select SEO title for batch translation"
+                                @change="
+                                    (event: Event) =>
+                                        setTranslationPointerSelection(
+                                            SEO_TITLE_POINTER,
+                                            (event.target as HTMLInputElement).checked,
+                                        )
+                                "
+                            />
+                            <button
+                                type="button"
+                                class="builder-config__translate-btn"
+                                @click="handleTranslateSeoField('title')"
+                            >
+                                Translate
+                            </button>
+                        </span>
+                    </span>
                     <input
                         v-model="seoDraft.seoTitle"
                         type="text"
@@ -1252,7 +1665,35 @@ const handleSaveDebugClick = () => {
                     />
                 </label>
                 <label class="builder-config__textarea builder-config__full">
-                    <span>SEO description</span>
+                    <span class="builder-config__label-row">
+                        <span>SEO description</span>
+                        <span class="builder-config__translate-actions">
+                            <input
+                                type="checkbox"
+                                class="builder-config__translate-checkbox"
+                                :checked="
+                                    isTranslationPointerSelected(
+                                        SEO_DESCRIPTION_POINTER,
+                                    )
+                                "
+                                aria-label="Select SEO description for batch translation"
+                                @change="
+                                    (event: Event) =>
+                                        setTranslationPointerSelection(
+                                            SEO_DESCRIPTION_POINTER,
+                                            (event.target as HTMLInputElement).checked,
+                                        )
+                                "
+                            />
+                            <button
+                                type="button"
+                                class="builder-config__translate-btn"
+                                @click="handleTranslateSeoField('description')"
+                            >
+                                Translate
+                            </button>
+                        </span>
+                    </span>
                     <textarea
                         v-model="seoDraft.seoDescription"
                         rows="2"
@@ -1272,6 +1713,16 @@ const handleSaveDebugClick = () => {
                         "
                     />
                 </div>
+                <label
+                    v-if="isAssistiveSectionSnapToggleEnabled"
+                    class="builder-config__checkbox builder-config__full"
+                >
+                    <input
+                        v-model="seoDraft.assistiveSectionSnap"
+                        type="checkbox"
+                    />
+                    <span>Assistive section snap on homepage (desktop only)</span>
+                </label>
                 <div class="builder-config__actions">
                     <button
                         type="button"
@@ -1357,6 +1808,7 @@ const handleSaveDebugClick = () => {
                     :node="node"
                     :registry="registry"
                     :component-options="componentOptions"
+                    :focus-request="nodePropFocusRequest"
                     :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
                     :on-update-text="updateTextNode"
@@ -1366,14 +1818,20 @@ const handleSaveDebugClick = () => {
                     :on-clone="cloneNode"
                     :on-toggle-expanded="handleRootExpansion"
                     :on-focus-node="handleNodeFocus"
+                    :on-translate-field="handleTranslateField"
+                    :on-translate-section="handleTranslateSection"
+                    :on-toggle-translate-field-selection="
+                        handleToggleTranslateFieldSelection
+                    "
+                    :is-translate-field-selected="isTranslateFieldSelected"
                     :section-name="getLocalSectionName(node.uid)"
                     :on-save-section-name="saveLocalSectionName"
                 />
                 <button
                     type="button"
                     class="builder-root-item__insert"
-                    aria-label="Add section after this section"
-                    title="Add section after this section"
+                    aria-label="Insert new section here"
+                    title="Insert new section here"
                     @click="openRootPicker(getRootInsertIndexAfter(node.uid))"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
@@ -1607,6 +2065,13 @@ const handleSaveDebugClick = () => {
     gap: 4px;
 }
 
+.builder-config__label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
 .builder-config input,
 .builder-config textarea {
     padding: 8px;
@@ -1617,6 +2082,36 @@ const handleSaveDebugClick = () => {
 
 .builder-config__full {
   grid-column: 1 / -1;
+}
+
+.builder-config__translate-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #334155;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.builder-config__translate-btn:hover {
+    background: #f8fafc;
+}
+
+.builder-config__translate-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.builder-config__translate-checkbox {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #2563eb;
+    cursor: pointer;
 }
 
 .builder-config__textarea textarea {

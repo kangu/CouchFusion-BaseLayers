@@ -1,25 +1,74 @@
 <template>
     <div class="image-field">
-        <div class="image-field__preview" v-if="previewUrl">
-            <img :src="previewUrl" alt="" loading="lazy" />
+        <div class="image-field__preview-shell">
+            <button
+                type="button"
+                class="image-field__preview"
+                data-image-field-open-library="true"
+                :disabled="pending"
+                @click="openLibrary('imagekit')"
+            >
+                <picture
+                    v-if="shouldUsePicturePreview"
+                    class="image-field__preview-picture"
+                >
+                    <source
+                        v-for="source in responsivePicturePreviewSources"
+                        :key="`${source.media}-${source.transforms}`"
+                        :media="source.media"
+                        :srcset="source.srcset"
+                        :type="source.type"
+                    />
+                    <img :src="previewUrl" alt="" loading="lazy" />
+                </picture>
+                <img v-else-if="previewUrl" :src="previewUrl" alt="" loading="lazy" />
+                <div v-else class="image-field__placeholder">
+                    <strong>No image selected</strong>
+                    <span>Click to browse</span>
+                </div>
+            </button>
+            <button
+                v-if="previewUrl && isImageKitPreviewSource"
+                type="button"
+                class="image-field__preview-tools"
+                :aria-expanded="isImageKitPanelOpen ? 'true' : 'false'"
+                aria-label="Toggle ImageKit adjustments"
+                :disabled="pending"
+                @click="isImageKitPanelOpen = !isImageKitPanelOpen"
+            >
+                <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                >
+                    <path
+                        d="M14.59 4.59 13.17 6l1.83 1.83 1.41-1.41a2 2 0 1 0-2.82-2.83ZM11.76 7.41 5 14.17V17h2.83l6.76-6.76-2.83-2.83Z"
+                        fill="currentColor"
+                    />
+                    <path
+                        d="M4 20h16v2H4z"
+                        fill="currentColor"
+                    />
+                </svg>
+            </button>
+            <button
+                v-if="previewUrl"
+                type="button"
+                class="image-field__preview-clear"
+                aria-label="Clear image"
+                :disabled="pending"
+                @click="clearImage"
+            >
+                ✕
+            </button>
         </div>
 
         <div
-            v-if="previewUrl && isImageKitPreviewSource"
+            v-if="previewUrl && isImageKitPreviewSource && isImageKitPanelOpen"
             class="image-field__imagekit-panel"
         >
             <div class="image-field__imagekit-header">
-                <button
-                    type="button"
-                    class="image-field__imagekit-toggle"
-                    :aria-expanded="isImageKitPanelOpen ? 'true' : 'false'"
-                    @click="isImageKitPanelOpen = !isImageKitPanelOpen"
-                >
-                    <strong>ImageKit Adjustments</strong>
-                    <span>{{
-                        isImageKitPanelOpen ? "Hide controls" : "Show controls"
-                    }}</span>
-                </button>
+                <strong>ImageKit Adjustments</strong>
                 <button
                     type="button"
                     class="image-field__button image-field__button--ghost"
@@ -141,33 +190,6 @@
                 @change="commitValue"
                 @blur="commitValue"
             />
-            <div class="image-field__actions">
-                <button
-                    type="button"
-                    class="image-field__button"
-                    @click="openLibrary('imagekit')"
-                    :disabled="pending"
-                >
-                    Browse
-                </button>
-                <button
-                    v-if="previewUrl"
-                    type="button"
-                    class="image-field__button image-field__button--danger"
-                    @click="clearImage"
-                    :disabled="pending"
-                >
-                    Clear
-                </button>
-<!--                <button-->
-<!--                    type="button"-->
-<!--                    class="image-field__button"-->
-<!--                    @click="openLibrary('local')"-->
-<!--                    :disabled="pending"-->
-<!--                >-->
-<!--                    Browse Local-->
-<!--                </button>-->
-            </div>
         </div>
 
         <input
@@ -420,6 +442,16 @@ interface LibraryItem {
     raw?: ImageKitFile | ImageKitUploadResult;
 }
 
+interface ResponsivePictureSourceConfig {
+    media: string;
+    transforms: string;
+    type?: string;
+}
+
+interface ResponsivePicturePreviewSource extends ResponsivePictureSourceConfig {
+    srcset: string;
+}
+
 const props = defineProps<Props>();
 const emit = defineEmits<{
     (event: "update:modelValue", value: string | undefined): void;
@@ -498,6 +530,49 @@ const isLocalLibrary = computed(() => libraryMode.value === "local");
 const libraryTitle = computed(() =>
     isLocalLibrary.value ? "Select Local Image" : "Select Image",
 );
+const responsivePictureSourceConfig = computed<ResponsivePictureSourceConfig[]>(
+    () => {
+        const uiDefinition =
+            props.propDefinition?.ui && typeof props.propDefinition.ui === "object"
+                ? (props.propDefinition.ui as Record<string, unknown>)
+                : undefined;
+        if (!uiDefinition || uiDefinition.usePicturePreview !== true) {
+            return [];
+        }
+
+        const pictureSources = uiDefinition.pictureSources;
+        if (!Array.isArray(pictureSources)) {
+            return [];
+        }
+
+        const normalized = pictureSources
+            .map((entry) => {
+                if (!entry || typeof entry !== "object") {
+                    return null;
+                }
+
+                const record = entry as Record<string, unknown>;
+                const media =
+                    typeof record.media === "string" ? record.media.trim() : "";
+                const transforms =
+                    typeof record.transforms === "string"
+                        ? normalizeTransformInput(record.transforms) || ""
+                        : "";
+                const type = typeof record.type === "string" ? record.type.trim() : "";
+                if (!media || !transforms) {
+                    return null;
+                }
+                return {
+                    media,
+                    transforms,
+                    type: type || undefined,
+                };
+            })
+            .filter((entry): entry is ResponsivePictureSourceConfig => Boolean(entry));
+
+        return normalized;
+    },
+);
 
 const toPositiveNumber = (value: string) => {
     const parsed = Number.parseInt(value, 10);
@@ -575,6 +650,32 @@ const isImageKitPreviewSource = computed(() => {
 });
 
 const previewUrl = computed(() => buildPreviewUrl(localValue.value));
+const responsivePicturePreviewSources = computed<ResponsivePicturePreviewSource[]>(
+    () => {
+        if (!isImageKitPreviewSource.value || !localValue.value) {
+            return [];
+        }
+        return responsivePictureSourceConfig.value
+            .map((source) => {
+                const srcset = buildPreviewUrl(localValue.value, source.transforms);
+                if (!srcset) {
+                    return null;
+                }
+                return {
+                    ...source,
+                    srcset,
+                };
+            })
+            .filter(
+                (entry): entry is ResponsivePicturePreviewSource => Boolean(entry),
+            );
+    },
+);
+const shouldUsePicturePreview = computed(
+    () =>
+        Boolean(previewUrl.value) &&
+        responsivePicturePreviewSources.value.length > 0,
+);
 const displayedCountLabel = computed(() => {
     if (!libraryTotal.value) {
         return "";
@@ -706,7 +807,10 @@ watch(
     { immediate: true },
 );
 
-function buildPreviewUrl(filePath?: string) {
+function buildPreviewUrl(
+    filePath?: string,
+    baseTransforms: string = "w-1000,f-auto",
+) {
     if (!filePath) {
         return "";
     }
@@ -725,9 +829,11 @@ function buildPreviewUrl(filePath?: string) {
     );
     const previewTransforms =
         mergeImageKitTransformations(
-            "w-1000,f-auto",
+            baseTransforms,
             imageKitTransformString.value,
-        ) || "w-1000,f-auto";
+        ) ||
+        normalizeTransformInput(baseTransforms) ||
+        "w-1000,f-auto";
     return withImageKitTransformations(resolved, {
         transformations: previewTransforms,
         endpoint: urlEndpoint.value || undefined,
@@ -1108,9 +1214,21 @@ watch(isLibraryOpen, async (isOpen) => {
 
 .image-field__preview {
     position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 10.5rem;
     border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: 0.75rem;
     overflow: hidden;
+    max-width: 16rem;
+    padding: 0;
+    cursor: pointer;
+    background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.85));
+}
+
+.image-field__preview-shell {
+    position: relative;
     max-width: 16rem;
 }
 
@@ -1120,9 +1238,80 @@ watch(isLibraryOpen, async (isOpen) => {
     height: auto;
 }
 
+.image-field__preview-picture {
+    display: block;
+    width: 100%;
+}
+
+.image-field__placeholder {
+    display: grid;
+    gap: 0.2rem;
+    text-align: center;
+    color: #334155;
+    padding: 1rem;
+}
+
+.image-field__placeholder strong {
+    font-size: 0.9rem;
+}
+
+.image-field__placeholder span {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.image-field__preview-tools,
+.image-field__preview-clear {
+    position: absolute;
+    z-index: 2;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: opacity 0.18s ease;
+}
+
+.image-field__preview-tools {
+    left: 0.45rem;
+    bottom: 0.45rem;
+    width: 1.95rem;
+    height: 1.95rem;
+}
+
+.image-field__preview-tools svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.image-field__preview-clear {
+    top: 0.45rem;
+    right: 0.45rem;
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.95rem;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.image-field__preview-shell:hover .image-field__preview-clear,
+.image-field__preview-shell:focus-within .image-field__preview-clear {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.image-field__preview:disabled,
+.image-field__preview-tools:disabled,
+.image-field__preview-clear:disabled {
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
 .image-field__controls {
-    display: flex;
-    gap: 0.5rem;
+    display: block;
 }
 
 .image-field__imagekit-panel {
@@ -1139,23 +1328,6 @@ watch(isLibraryOpen, async (isOpen) => {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-}
-
-.image-field__imagekit-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    border: 0;
-    background: transparent;
-    color: #0f172a;
-    cursor: pointer;
-    padding: 0;
-}
-
-.image-field__imagekit-toggle span {
-    color: #64748b;
-    font-size: 0.75rem;
-    font-weight: 500;
 }
 
 .image-field__imagekit-grid {
@@ -1205,12 +1377,6 @@ watch(isLibraryOpen, async (isOpen) => {
     border-radius: 0.5rem;
     border: 1px solid rgba(148, 163, 184, 0.5);
     font-family: inherit;
-}
-
-.image-field__actions {
-    display: flex;
-    flex-wrap: no-wrap;
-    gap: 0.5rem;
 }
 
 .image-field__button {

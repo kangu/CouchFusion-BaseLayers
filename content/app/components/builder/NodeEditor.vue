@@ -1,6 +1,8 @@
 <template>
     <div
+        ref="panelRef"
         class="node-panel"
+        :data-builder-node-uid="node.uid"
         :style="{ marginLeft: depth * 16 + 'px' }"
         @focusin="notifyFocus"
         @click="notifyFocus"
@@ -92,6 +94,25 @@
                             <path
                                 fill="currentColor"
                                 d="M12 2a1 1 0 0 1 1 1v2.05A7.002 7.002 0 0 1 18.95 11H21a1 1 0 1 1 0 2h-2.05A7.002 7.002 0 0 1 13 18.95V21a1 1 0 1 1-2 0v-2.05A7.002 7.002 0 0 1 5.05 13H3a1 1 0 1 1 0-2h2.05A7.002 7.002 0 0 1 11 5.05V3a1 1 0 0 1 1-1Zm0 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
+                            />
+                        </svg>
+                    </button>
+                    <button
+                        v-if="isSectionNameEditable && onTranslateSection"
+                        class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--translate"
+                        type="button"
+                        @click="triggerTranslateSection"
+                        aria-label="Translate section"
+                        title="Translate section"
+                    >
+                        <svg
+                            class="node-panel__toggle-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 3a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-1.1a10.2 10.2 0 0 1-1.7 4.1c.9.8 1.9 1.4 2.9 1.8a1 1 0 1 1-.7 1.9c-1.2-.5-2.4-1.2-3.5-2.2c-1.1 1-2.3 1.7-3.5 2.2a1 1 0 1 1-.7-1.9c1.1-.4 2-1 2.9-1.8A10.2 10.2 0 0 1 9.1 7H8a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1Zm-1 4a8.2 8.2 0 0 0 1 2.6A8.2 8.2 0 0 0 13 7h-2Zm6 10.6l.7 1.9a1 1 0 1 1-1.9.7l-.6-1.7h-4.4l-.6 1.7a1 1 0 0 1-1.9-.7l2.9-7.8a1 1 0 0 1 1.9 0l1.8 4.9ZM14.5 16l-1.5-4.1L11.5 16h3Z"
                             />
                         </svg>
                     </button>
@@ -201,6 +222,9 @@
                 :update-nested-array-item-field="updateNestedArrayItemField"
                 :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                 :format-json-value="formatJsonValue"
+                :on-translate-field="triggerTranslateField"
+                :on-toggle-translate-selection="triggerToggleTranslateFieldSelection"
+                :is-translate-selected="isTranslateFieldSelected"
             />
 
             <!-- New props are not enabled for the moment, keep it here for possible future use -->
@@ -240,6 +264,7 @@
                         :node="child"
                         :registry="registry"
                         :component-options="componentOptions"
+                        :focus-request="focusRequest"
                         :search-query="normalizedSearchQuery"
                         :depth="depth + 1"
                         :on-update-prop="onUpdateProp"
@@ -249,6 +274,14 @@
                         :on-remove="onRemove"
                         :on-clone="onClone"
                         :on-toggle-expanded="onToggleExpanded"
+                        :on-translate-field="onTranslateField"
+                        :on-translate-section="onTranslateSection"
+                        :on-toggle-translate-field-selection="
+                            onToggleTranslateFieldSelection
+                        "
+                        :is-translate-field-selected="
+                            isTranslateFieldSelected
+                        "
                     />
                 </template>
             </NodeChildrenPanel>
@@ -410,11 +443,37 @@ const props = defineProps<{
         uid: string;
         mode: "flash" | "lock" | "clear";
     }) => void;
+    onTranslateField?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+        label?: string;
+    }) => void;
+    onToggleTranslateFieldSelection?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+        label?: string;
+        selected: boolean;
+    }) => void;
+    isTranslateFieldSelected?: (payload: {
+        uid: string;
+        propPath: Array<string | number>;
+    }) => boolean;
+    onTranslateSection?: (payload: {
+        uid: string;
+        label?: string;
+    }) => void;
     sectionName?: string;
     onSaveSectionName?: (uid: string, value: string) => void;
+    focusRequest?: {
+        uidPath: string[];
+        targetUid: string;
+        propPath: Array<string | number>;
+        token: number;
+    } | null;
 }>();
 
 const depth = computed(() => props.depth ?? 0);
+const panelRef = ref<HTMLElement | null>(null);
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(props.searchQuery),
 );
@@ -539,6 +598,196 @@ const triggerFocus = () => {
     notifyFocus("flash");
 };
 
+const toPropPathAttr = (segments: Array<string | number>): string =>
+    segments.map((segment) => String(segment)).join(".");
+
+const isDisabledElement = (element: Element): boolean => {
+    if (element instanceof HTMLButtonElement) {
+        return element.disabled;
+    }
+    if (element instanceof HTMLInputElement) {
+        return element.disabled;
+    }
+    if (element instanceof HTMLTextAreaElement) {
+        return element.disabled;
+    }
+    return element.getAttribute("aria-disabled") === "true";
+};
+
+const toPathDepth = (path: string): number =>
+    path
+        .split(".")
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0).length;
+
+const isPathPrefix = (targetPath: string, candidatePath: string): boolean =>
+    targetPath === candidatePath || targetPath.startsWith(`${candidatePath}.`);
+
+const expandCollapsedArrayPaths = async (
+    panel: HTMLElement,
+    propPath: Array<string | number>,
+) => {
+    const targetPath = toPropPathAttr(propPath);
+
+    const candidates = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-content-array-path]"),
+    )
+        .map((element) => ({
+            element,
+            path: element.getAttribute("data-content-array-path")?.trim() ?? "",
+        }))
+        .filter(({ path }) => path.length > 0 && isPathPrefix(targetPath, path))
+        .sort((left, right) => toPathDepth(left.path) - toPathDepth(right.path));
+
+    for (const candidate of candidates) {
+        if (candidate.element.getAttribute("data-collapsed") !== "true") {
+            continue;
+        }
+
+        const toggle = candidate.element.querySelector<HTMLElement>(
+            ".node-panel__array-toggle",
+        );
+        if (!toggle || isDisabledElement(toggle)) {
+            continue;
+        }
+
+        toggle.click();
+        await nextTick();
+    }
+};
+
+const focusPropInput = async (request: {
+    uidPath: string[];
+    targetUid: string;
+    propPath: Array<string | number>;
+}) => {
+    if (!request.uidPath.includes(props.node.uid)) {
+        return;
+    }
+
+    if (props.node.type === "component") {
+        if (collapsedNodes[props.node.uid] ?? true) {
+            collapsedNodes[props.node.uid] = false;
+            props.onToggleExpanded?.(props.node.uid, true);
+        }
+
+        if (props.node.uid === request.targetUid) {
+            const firstPathToken = request.propPath[0];
+            if (
+                typeof firstPathToken === "string" &&
+                firstPathToken in collapsedArrays
+            ) {
+                collapsedArrays[firstPathToken] = false;
+            }
+        }
+    }
+
+    if (props.node.uid !== request.targetUid) {
+        return;
+    }
+
+    await nextTick();
+    await nextTick();
+
+    const panel = panelRef.value;
+    if (!panel) {
+        return;
+    }
+
+    await expandCollapsedArrayPaths(panel, request.propPath);
+    await nextTick();
+
+    const field = panel.querySelector<HTMLElement>(
+        `[data-content-prop-path="${toPropPathAttr(request.propPath)}"]`,
+    );
+    if (!field) {
+        return;
+    }
+
+    field.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+    });
+
+    const imagePickerTrigger = field.querySelector<HTMLElement>(
+        "[data-image-field-open-library]",
+    );
+    if (imagePickerTrigger && !isDisabledElement(imagePickerTrigger)) {
+        imagePickerTrigger.click();
+        return;
+    }
+
+    const focusTarget = field.querySelector<HTMLElement>(
+        'textarea, input:not([type="checkbox"]):not([type="hidden"]), [contenteditable="true"], .ProseMirror',
+    );
+
+    if (!focusTarget) {
+        return;
+    }
+
+    focusTarget.focus({ preventScroll: true });
+    if (
+        focusTarget instanceof HTMLInputElement ||
+        focusTarget instanceof HTMLTextAreaElement
+    ) {
+        focusTarget.select();
+    }
+};
+
+const triggerTranslateSection = () => {
+    if (!props.onTranslateSection || props.node.type !== "component") {
+        return;
+    }
+
+    props.onTranslateSection({
+        uid: props.node.uid,
+        label:
+            sectionNameDisplay.value ||
+            (props.node.type === "component" ? props.node.component : "Section"),
+    });
+};
+
+const triggerTranslateField = (payload: {
+    propPath: Array<string | number>;
+    label?: string;
+}) => {
+    if (!props.onTranslateField) {
+        return;
+    }
+
+    props.onTranslateField({
+        uid: props.node.uid,
+        propPath: payload.propPath,
+        label: payload.label,
+    });
+};
+
+const triggerToggleTranslateFieldSelection = (payload: {
+    propPath: Array<string | number>;
+    label?: string;
+    selected: boolean;
+}) => {
+    if (!props.onToggleTranslateFieldSelection) {
+        return;
+    }
+
+    props.onToggleTranslateFieldSelection({
+        uid: props.node.uid,
+        propPath: payload.propPath,
+        label: payload.label,
+        selected: payload.selected,
+    });
+};
+
+const isTranslateFieldSelected = (
+    propPath: Array<string | number>,
+): boolean =>
+    props.isTranslateFieldSelected?.({
+        uid: props.node.uid,
+        propPath,
+    }) ?? false;
+
 const isSectionNameEditable = computed(
     () =>
         props.node.type === "component" &&
@@ -609,6 +858,17 @@ watch(
         sectionNameDraft.value = value ?? "";
     },
     { immediate: true },
+);
+
+watch(
+    () => props.focusRequest?.token,
+    () => {
+        const request = props.focusRequest;
+        if (!request || !request.uidPath.includes(props.node.uid)) {
+            return;
+        }
+        void focusPropInput(request);
+    },
 );
 
 const propDraft = reactive<Record<string, any>>({});
@@ -872,18 +1132,61 @@ const filteredExtraPropEntries = computed(() => {
 const getPropSchema = (key: string) =>
     componentDef.value?.props?.find((prop) => prop.key === key);
 
+const toCloneablePlainValue = (
+    value: unknown,
+    seen = new WeakMap<object, unknown>(),
+): unknown => {
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    if (typeof value !== "object") {
+        return value;
+    }
+
+    const raw = toRaw(value as object);
+    if (seen.has(raw)) {
+        return seen.get(raw);
+    }
+
+    if (Array.isArray(raw)) {
+        const next: unknown[] = [];
+        seen.set(raw, next);
+        raw.forEach((entry) => {
+            next.push(toCloneablePlainValue(entry, seen));
+        });
+        return next;
+    }
+
+    if (raw instanceof Date) {
+        return new Date(raw.getTime());
+    }
+
+    const next: Record<string, unknown> = {};
+    seen.set(raw, next);
+    Object.entries(raw as Record<string, unknown>).forEach(([key, entry]) => {
+        next[key] = toCloneablePlainValue(entry, seen);
+    });
+    return next;
+};
+
 const cloneValue = <T,>(value: T): T => {
-    const raw =
-        value && typeof value === "object" ? (toRaw(value) as T) : value;
+    const raw = toCloneablePlainValue(value) as T;
 
     if (typeof structuredClone === "function") {
         try {
             return structuredClone(raw);
         } catch (error) {
-            console.warn(
-                "structuredClone failed, falling back to JSON clone:",
-                error,
-            );
+            const isDataCloneError =
+                typeof DOMException !== "undefined" &&
+                error instanceof DOMException &&
+                error.name === "DataCloneError";
+            if (!isDataCloneError) {
+                console.warn(
+                    "structuredClone failed, falling back to JSON clone:",
+                    error,
+                );
+            }
         }
     }
 
@@ -2613,10 +2916,78 @@ const applyTextValue = () => {
     gap: 4px;
 }
 
+.node-panel :deep(.node-panel__field-inline-control) {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.node-panel :deep(.node-panel__field-inline-control > .node-panel__input-wrap) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.node-panel :deep(.node-panel__field-inline-control > input),
+.node-panel :deep(.node-panel__field-inline-control > textarea),
+.node-panel :deep(.node-panel__field-inline-control > select),
+.node-panel :deep(.node-panel__field-inline-control > [class*="content-"]) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.node-panel :deep(.node-panel__translate-inline) {
+    align-self: stretch;
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 120ms ease,
+        color 120ms ease,
+        border-color 120ms ease,
+        box-shadow 120ms ease;
+}
+
+.node-panel :deep(.node-panel__translate-inline-wrap) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.node-panel :deep(.node-panel__translate-select) {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #2563eb;
+    cursor: pointer;
+}
+
+.node-panel :deep(.node-panel__translate-inline:hover),
+.node-panel :deep(.node-panel__translate-inline:focus-visible) {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #1d4ed8;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
+}
+
 .node-panel :deep(.node-panel__field--match) {
     outline: 2px solid rgba(250, 204, 21, 0.45);
     outline-offset: 2px;
     border-radius: 6px;
+}
+
+.node-panel :deep(.node-panel__field--localized) {
+    border-radius: 6px;
+    box-shadow:
+        0 0 0 1px rgba(59, 130, 246, 0.45),
+        0 0 12px rgba(56, 189, 248, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .node-panel :deep(.node-panel__field.is-row) {
@@ -2967,7 +3338,7 @@ const applyTextValue = () => {
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 12px;
-    background: #f9fafb;
+    background: rgba(202, 202, 202, 0.66);
     display: flex;
     flex-direction: column;
     gap: 8px;

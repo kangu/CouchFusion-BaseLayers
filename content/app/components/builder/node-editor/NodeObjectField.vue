@@ -7,6 +7,9 @@
             <label
                 v-for="field in visibleFields"
                 :key="fieldKey(field)"
+                :data-content-prop-path="
+                    toPropPathAttr([...pathPrefix, field.key])
+                "
                 :class="[
                     'node-panel__field',
                     'node-panel__field--nested',
@@ -15,49 +18,73 @@
                             field,
                             objectValue?.[field.key],
                         ),
+                        'node-panel__field--localized': Boolean(
+                            field.localized,
+                        ),
                     },
                 ]"
             >
                 <span>{{ field.label }}</span>
                 <template v-if="field.type === 'textarea'">
-                    <div class="node-panel__input-wrap">
-                        <div
-                            v-if="
-                                shouldHighlightText(
-                                    objectValue?.[field.key],
-                                    field.type,
-                                )
-                            "
-                            class="node-panel__input-highlight node-panel__input-highlight--multiline"
-                            v-html="getHighlightMarkup(objectValue?.[field.key])"
-                            aria-hidden="true"
-                        />
-                        <textarea
-                            v-model="objectValue[field.key]"
-                            rows="3"
-                            @input="
-                                () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
-                                        { debounce: true },
+                    <div class="node-panel__field-inline-control">
+                        <div class="node-panel__input-wrap">
+                            <div
+                                v-if="
+                                    shouldHighlightText(
+                                        objectValue?.[field.key],
+                                        field.type,
+                                    )
+                                "
+                                class="node-panel__input-highlight node-panel__input-highlight--multiline"
+                                v-html="getHighlightMarkup(objectValue?.[field.key])"
+                                aria-hidden="true"
+                            />
+                            <textarea
+                                v-model="objectValue[field.key]"
+                                rows="3"
+                                @input="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                            { debounce: true },
+                                        )
+                                "
+                                @change="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                        )
+                                "
+                                @blur="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                        )
+                                "
+                                @scroll="syncHighlightScroll"
+                            />
+                        </div>
+                        <NodeTranslateInline
+                            v-if="canTranslateField(field)"
+                            :selected="isTranslationSelected([...pathPrefix, field.key])"
+                            @toggle="
+                                (selected) =>
+                                    toggleTranslationSelection(
+                                        [...pathPrefix, field.key],
+                                        field.label,
+                                        selected,
                                     )
                             "
-                            @change="
+                            @translate="
                                 () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
+                                    requestTranslateField(
+                                        [...pathPrefix, field.key],
+                                        field.label,
                                     )
                             "
-                            @blur="
-                                () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
-                                    )
-                            "
-                            @scroll="syncHighlightScroll"
                         />
                     </div>
                 </template>
@@ -136,39 +163,63 @@
                     />
                 </template>
                 <template v-else-if="field.ui?.component">
-                    <component
-                        :is="field.ui.component"
-                        :model-value="objectValue[field.key]"
-                        :transform-value="
-                            isImageFieldSchema(field)
-                                ? getImageKitTransformValue(
-                                      objectValue,
-                                      field.key,
-                                  )
-                                : undefined
-                        "
-                        :prop-definition="field"
-                        :field-context="withSearchContext(fieldContext(field))"
-                        @update:modelValue="
-                            (value: unknown) =>
-                                applyFieldChange(field, value, {
-                                    debounce: true,
-                                })
-                        "
-                        @update:transformValue="
-                            (value: unknown) =>
-                                applyFieldChange(
-                                    imageKitTextCompanionField(field),
-                                    normalizeImageKitTransformValue(value),
-                                    { debounce: true },
-                                )
-                        "
-                    />
+                    <div class="node-panel__field-inline-control">
+                        <component
+                            :is="field.ui.component"
+                            :model-value="objectValue[field.key]"
+                            :transform-value="
+                                isImageFieldSchema(field)
+                                    ? getImageKitTransformValue(
+                                          objectValue,
+                                          field.key,
+                                      )
+                                    : undefined
+                            "
+                            :prop-definition="field"
+                            :field-context="withSearchContext(fieldContext(field))"
+                            @update:modelValue="
+                                (value: unknown) =>
+                                    applyFieldChange(field, value, {
+                                        debounce: true,
+                                    })
+                            "
+                            @update:transformValue="
+                                (value: unknown) =>
+                                    applyFieldChange(
+                                        imageKitTextCompanionField(field),
+                                        normalizeImageKitTransformValue(value),
+                                        { debounce: true },
+                                    )
+                            "
+                        />
+                        <NodeTranslateInline
+                            v-if="canTranslateField(field)"
+                            :selected="isTranslationSelected([...pathPrefix, field.key])"
+                            @toggle="
+                                (selected) =>
+                                    toggleTranslationSelection(
+                                        [...pathPrefix, field.key],
+                                        field.label,
+                                        selected,
+                                    )
+                            "
+                            @translate="
+                                () =>
+                                    requestTranslateField(
+                                        [...pathPrefix, field.key],
+                                        field.label,
+                                    )
+                            "
+                        />
+                    </div>
                 </template>
                 <template v-else-if="field.type === 'jsonarray'">
                     <div
                         class="node-panel__array node-panel__array--nested"
                         :data-collapsed="collapsedArrays[field.key]"
+                        :data-content-array-path="
+                            toPropPathAttr([...pathPrefix, field.key])
+                        "
                     >
                         <div
                             class="node-panel__array-header node-panel__array-header--nested"
@@ -217,6 +268,14 @@
                                         arrayItem,
                                     )"
                                     :key="`${field.key}-${arrayField.key}-${index}`"
+                                    :data-content-prop-path="
+                                        toPropPathAttr([
+                                            ...pathPrefix,
+                                            field.key,
+                                            index,
+                                            arrayField.key,
+                                        ])
+                                    "
                                     :class="[
                                         'node-panel__field',
                                         'node-panel__field--nested',
@@ -228,6 +287,10 @@
                                                         arrayField.key
                                                     ],
                                                 ),
+                                            'node-panel__field--localized':
+                                                Boolean(
+                                                    arrayField.localized,
+                                                ),
                                         },
                                     ]"
                                 >
@@ -237,72 +300,108 @@
                                             arrayField.type === 'textarea'
                                         "
                                     >
-                                        <div
-                                            class="node-panel__input-wrap"
-                                        >
+                                        <div class="node-panel__field-inline-control">
                                             <div
-                                                v-if="
-                                                    shouldHighlightText(
-                                                        arrayItem?.[
+                                                class="node-panel__input-wrap"
+                                            >
+                                                <div
+                                                    v-if="
+                                                        shouldHighlightText(
+                                                            arrayItem?.[
+                                                                arrayField.key
+                                                            ],
+                                                            arrayField.type,
+                                                        )
+                                                    "
+                                                    class="node-panel__input-highlight node-panel__input-highlight--multiline"
+                                                    v-html="
+                                                        getHighlightMarkup(
+                                                            arrayItem?.[
+                                                                arrayField.key
+                                                            ],
+                                                        )
+                                                    "
+                                                    aria-hidden="true"
+                                                />
+                                                <textarea
+                                                    v-model="
+                                                        arrayItem[
                                                             arrayField.key
-                                                        ],
-                                                        arrayField.type,
-                                                    )
-                                                "
-                                                class="node-panel__input-highlight node-panel__input-highlight--multiline"
-                                                v-html="
-                                                    getHighlightMarkup(
-                                                        arrayItem?.[
-                                                            arrayField.key
-                                                        ],
-                                                    )
-                                                "
-                                                aria-hidden="true"
-                                            />
-                                            <textarea
-                                                v-model="
-                                                    arrayItem[
-                                                        arrayField.key
-                                                    ]
-                                                "
-                                                rows="3"
-                                                @input="
-                                                    () =>
-                                                        updateArrayField(
-                                                            field,
-                                                            index,
-                                                            arrayField,
-                                                            arrayItem[
-                                                                arrayField.key
+                                                        ]
+                                                    "
+                                                    rows="3"
+                                                    @input="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                                {
+                                                                    debounce: true,
+                                                                },
+                                                            )
+                                                    "
+                                                    @change="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                            )
+                                                    "
+                                                    @blur="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                            )
+                                                    "
+                                                    @scroll="syncHighlightScroll"
+                                                />
+                                            </div>
+                                            <NodeTranslateInline
+                                                v-if="canTranslateField(arrayField)"
+                                                :selected="isTranslationSelected([
+                                                    ...pathPrefix,
+                                                    field.key,
+                                                    index,
+                                                    arrayField.key,
+                                                ])"
+                                                @toggle="
+                                                    (selected) =>
+                                                        toggleTranslationSelection(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
                                                             ],
-                                                            {
-                                                                debounce: true,
-                                                            },
+                                                            arrayField.label,
+                                                            selected,
                                                         )
                                                 "
-                                                @change="
+                                                @translate="
                                                     () =>
-                                                        updateArrayField(
-                                                            field,
-                                                            index,
-                                                            arrayField,
-                                                            arrayItem[
-                                                                arrayField.key
+                                                        requestTranslateField(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
                                                             ],
+                                                            arrayField.label,
                                                         )
                                                 "
-                                                @blur="
-                                                    () =>
-                                                        updateArrayField(
-                                                            field,
-                                                            index,
-                                                            arrayField,
-                                                            arrayItem[
-                                                                arrayField.key
-                                                            ],
-                                                        )
-                                                "
-                                                @scroll="syncHighlightScroll"
                                             />
                                         </div>
                                     </template>
@@ -429,113 +528,185 @@
                                     <template
                                         v-else-if="arrayField.ui?.component"
                                     >
-                                        <component
-                                            :is="arrayField.ui.component"
-                                            :model-value="
-                                                arrayItem[arrayField.key]
-                                            "
-                                            :transform-value="
-                                                isImageFieldSchema(arrayField)
-                                                    ? getImageKitTransformValue(
-                                                          arrayItem,
-                                                          arrayField.key,
-                                                      )
-                                                    : undefined
-                                            "
-                                            :prop-definition="arrayField"
-                                            :field-context="
-                                                withSearchContext(
-                                                    fieldContext(arrayField),
-                                                )
-                                            "
-                                            @update:modelValue="
-                                                (value: unknown) =>
-                                                    updateArrayField(
-                                                        field,
-                                                        index,
-                                                        arrayField,
-                                                        value,
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                            @update:transformValue="
-                                                (value: unknown) =>
-                                                    updateArrayField(
-                                                        field,
-                                                        index,
-                                                        imageKitTextCompanionField(
-                                                            arrayField,
-                                                        ),
-                                                        normalizeImageKitTransformValue(
-                                                            value,
-                                                        ),
-                                                        { debounce: true },
-                                                    )
-                                            "
-                                        />
-                                    </template>
-                                    <template v-else>
-                                        <div
-                                            class="node-panel__input-wrap"
-                                        >
-                                            <div
-                                                v-if="
-                                                    shouldHighlightText(
-                                                        arrayItem?.[
-                                                            arrayField.key
-                                                        ],
-                                                        arrayField.type,
-                                                    )
-                                                "
-                                                class="node-panel__input-highlight node-panel__input-highlight--single"
-                                                v-html="
-                                                    getHighlightMarkup(
-                                                        arrayItem?.[
-                                                            arrayField.key
-                                                        ],
-                                                    )
-                                                "
-                                                aria-hidden="true"
-                                            />
-                                            <input
-                                                v-model="
+                                        <div class="node-panel__field-inline-control">
+                                            <component
+                                                :is="arrayField.ui.component"
+                                                :model-value="
                                                     arrayItem[arrayField.key]
                                                 "
-                                                type="text"
-                                                @input="
-                                                    () =>
+                                                :transform-value="
+                                                    isImageFieldSchema(arrayField)
+                                                        ? getImageKitTransformValue(
+                                                              arrayItem,
+                                                              arrayField.key,
+                                                          )
+                                                        : undefined
+                                                "
+                                                :prop-definition="arrayField"
+                                                :field-context="
+                                                    withSearchContext(
+                                                        fieldContext(arrayField),
+                                                    )
+                                                "
+                                                @update:modelValue="
+                                                    (value: unknown) =>
                                                         updateArrayField(
                                                             field,
                                                             index,
                                                             arrayField,
-                                                            arrayItem[
-                                                                arrayField.key
-                                                            ],
-                                                            {
-                                                                debounce: true,
-                                                            },
+                                                            value,
+                                                            { debounce: true },
                                                         )
                                                 "
-                                                @change="
-                                                    () =>
+                                                @update:transformValue="
+                                                    (value: unknown) =>
                                                         updateArrayField(
                                                             field,
                                                             index,
-                                                            arrayField,
-                                                            arrayItem[
+                                                            imageKitTextCompanionField(
+                                                                arrayField,
+                                                            ),
+                                                            normalizeImageKitTransformValue(
+                                                                value,
+                                                            ),
+                                                            { debounce: true },
+                                                        )
+                                                "
+                                            />
+                                            <NodeTranslateInline
+                                                v-if="canTranslateField(arrayField)"
+                                                :selected="isTranslationSelected([
+                                                    ...pathPrefix,
+                                                    field.key,
+                                                    index,
+                                                    arrayField.key,
+                                                ])"
+                                                @toggle="
+                                                    (selected) =>
+                                                        toggleTranslationSelection(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
+                                                            ],
+                                                            arrayField.label,
+                                                            selected,
+                                                        )
+                                                "
+                                                @translate="
+                                                    () =>
+                                                        requestTranslateField(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
+                                                            ],
+                                                            arrayField.label,
+                                                        )
+                                                "
+                                            />
+                                        </div>
+                                    </template>
+                                    <template v-else>
+                                        <div class="node-panel__field-inline-control">
+                                            <div
+                                                class="node-panel__input-wrap"
+                                            >
+                                                <div
+                                                    v-if="
+                                                        shouldHighlightText(
+                                                            arrayItem?.[
+                                                                arrayField.key
+                                                            ],
+                                                            arrayField.type,
+                                                        )
+                                                    "
+                                                    class="node-panel__input-highlight node-panel__input-highlight--single"
+                                                    v-html="
+                                                        getHighlightMarkup(
+                                                            arrayItem?.[
                                                                 arrayField.key
                                                             ],
                                                         )
-                                                "
-                                                @blur="
-                                                    () =>
-                                                        updateArrayField(
-                                                            field,
-                                                            index,
-                                                            arrayField,
-                                                            arrayItem[
-                                                                arrayField.key
+                                                    "
+                                                    aria-hidden="true"
+                                                />
+                                                <input
+                                                    v-model="
+                                                        arrayItem[arrayField.key]
+                                                    "
+                                                    type="text"
+                                                    @input="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                                {
+                                                                    debounce: true,
+                                                                },
+                                                            )
+                                                    "
+                                                    @change="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                            )
+                                                    "
+                                                    @blur="
+                                                        () =>
+                                                            updateArrayField(
+                                                                field,
+                                                                index,
+                                                                arrayField,
+                                                                arrayItem[
+                                                                    arrayField.key
+                                                                ],
+                                                            )
+                                                    "
+                                                />
+                                            </div>
+                                            <NodeTranslateInline
+                                                v-if="canTranslateField(arrayField)"
+                                                :selected="isTranslationSelected([
+                                                    ...pathPrefix,
+                                                    field.key,
+                                                    index,
+                                                    arrayField.key,
+                                                ])"
+                                                @toggle="
+                                                    (selected) =>
+                                                        toggleTranslationSelection(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
                                                             ],
+                                                            arrayField.label,
+                                                            selected,
+                                                        )
+                                                "
+                                                @translate="
+                                                    () =>
+                                                        requestTranslateField(
+                                                            [
+                                                                ...pathPrefix,
+                                                                field.key,
+                                                                index,
+                                                                arrayField.key,
+                                                            ],
+                                                            arrayField.label,
                                                         )
                                                 "
                                             />
@@ -560,41 +731,62 @@
                     </div>
                 </template>
                 <template v-else>
-                    <div class="node-panel__input-wrap">
-                        <div
-                            v-if="
-                                shouldHighlightText(
-                                    objectValue?.[field.key],
-                                    field.type,
-                                )
-                            "
-                            class="node-panel__input-highlight node-panel__input-highlight--single"
-                            v-html="getHighlightMarkup(objectValue?.[field.key])"
-                            aria-hidden="true"
-                        />
-                        <input
-                            v-model="objectValue[field.key]"
-                            type="text"
-                            @input="
-                                () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
-                                        { debounce: true },
+                    <div class="node-panel__field-inline-control">
+                        <div class="node-panel__input-wrap">
+                            <div
+                                v-if="
+                                    shouldHighlightText(
+                                        objectValue?.[field.key],
+                                        field.type,
+                                    )
+                                "
+                                class="node-panel__input-highlight node-panel__input-highlight--single"
+                                v-html="getHighlightMarkup(objectValue?.[field.key])"
+                                aria-hidden="true"
+                            />
+                            <input
+                                v-model="objectValue[field.key]"
+                                type="text"
+                                @input="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                            { debounce: true },
+                                        )
+                                "
+                                @change="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                        )
+                                "
+                                @blur="
+                                    () =>
+                                        applyFieldChange(
+                                            field,
+                                            objectValue[field.key],
+                                        )
+                                "
+                            />
+                        </div>
+                        <NodeTranslateInline
+                            v-if="canTranslateField(field)"
+                            :selected="isTranslationSelected([...pathPrefix, field.key])"
+                            @toggle="
+                                (selected) =>
+                                    toggleTranslationSelection(
+                                        [...pathPrefix, field.key],
+                                        field.label,
+                                        selected,
                                     )
                             "
-                            @change="
+                            @translate="
                                 () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
-                                    )
-                            "
-                            @blur="
-                                () =>
-                                    applyFieldChange(
-                                        field,
-                                        objectValue[field.key],
+                                    requestTranslateField(
+                                        [...pathPrefix, field.key],
+                                        field.label,
                                     )
                             "
                         />
@@ -631,6 +823,7 @@
 import { computed, ref } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
+import NodeTranslateInline from "./NodeTranslateInline.vue";
 
 type FieldContext = (field: ComponentArrayItemField) => Record<string, any>;
 
@@ -661,6 +854,7 @@ const props = withDefaults(
         value: Record<string, any> | undefined;
         fieldErrors?: Record<string, string | null>;
         isNested?: boolean;
+        pathPrefix?: Array<string | number>;
         fieldKey?: FieldKeyHandler;
         fieldContext?: FieldContext;
         searchQuery?: string;
@@ -678,10 +872,21 @@ const props = withDefaults(
         jsonValue: string;
         jsonRows?: number;
         jsonHighlightType?: string;
+        onTranslateField?: (payload: {
+            propPath: Array<string | number>;
+            label?: string;
+        }) => void;
+        onToggleTranslateSelection?: (payload: {
+            propPath: Array<string | number>;
+            label?: string;
+            selected: boolean;
+        }) => void;
+        isTranslateSelected?: (propPath: Array<string | number>) => boolean;
     }>(),
     {
         fieldErrors: undefined,
         isNested: false,
+        pathPrefix: () => [],
         fieldKey: (field: ComponentArrayItemField) => field.key,
         fieldContext: () => ({}),
         jsonRows: 4,
@@ -694,6 +899,8 @@ const withSearchContext = (context: Record<string, any>) => ({
     ...context,
     searchQuery: props.searchQuery ?? "",
 });
+const toPropPathAttr = (segments: Array<string | number>) =>
+    segments.map((segment) => String(segment)).join(".");
 
 const visibleFields = computed(() =>
     props.filterVisibleFields(props.schema.fields, objectValue.value),
@@ -812,5 +1019,56 @@ const getImageKitTransformValue = (
 ) => {
     const source = value?.[imageKitTransformFieldKey(fieldKey)];
     return typeof source === "string" ? source : "";
+};
+
+const canTranslateField = (
+    schema: ComponentPropSchema | ComponentArrayItemField,
+): boolean => {
+    if (!schema.localized || !schema.key) {
+        return false;
+    }
+
+    if (
+        schema.type === "text" ||
+        schema.type === "textarea" ||
+        schema.type === "stringarray"
+    ) {
+        return true;
+    }
+
+    return schema.ui?.component === "ContentRichTextField";
+};
+
+const requestTranslateField = (
+    propPath: Array<string | number>,
+    label?: string,
+) => {
+    if (!propPath.length) {
+        return;
+    }
+
+    props.onTranslateField?.({
+        propPath,
+        label,
+    });
+};
+
+const isTranslationSelected = (propPath: Array<string | number>): boolean =>
+    props.isTranslateSelected?.(propPath) ?? false;
+
+const toggleTranslationSelection = (
+    propPath: Array<string | number>,
+    label: string | undefined,
+    selected: boolean,
+) => {
+    if (!propPath.length) {
+        return;
+    }
+
+    props.onToggleTranslateSelection?.({
+        propPath,
+        label,
+        selected,
+    });
 };
 </script>

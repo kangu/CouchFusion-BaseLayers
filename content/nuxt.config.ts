@@ -24,6 +24,9 @@ export default defineNuxtConfig({
 
   plugins: [
     fileURLToPath(
+      new URL("./app/plugins/content-locale-html-lang", import.meta.url),
+    ),
+    fileURLToPath(
       new URL(
         "./app/plugins/register-project-content-components",
         import.meta.url,
@@ -45,8 +48,19 @@ export default defineNuxtConfig({
         maxCommands: 0,
       },
     },
+    content: {
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en"] as string[],
+      },
+    },
     public: {
-      content: {},
+      content: {
+        i18n: {
+          defaultLocale: "en",
+          locales: ["en"] as string[],
+        },
+      },
       featureCodexSessions: true,
     },
   },

@@ -27,6 +27,15 @@ export interface ContentPageDocument {
     [key: string]: any
 }
 
+export interface ContentPageLocalizationSummary {
+    locale: string
+    defaultLocale: string
+    masterId: string
+    hasLocaleDocument: boolean
+    missingLocalizedCount: number
+    updatedAtByLocale: Record<string, string>
+}
+
 export interface ContentPageSummary {
     id: string
     path: string
@@ -37,11 +46,13 @@ export interface ContentPageSummary {
     meta: Record<string, any>
     updatedAt: string | null
     document: ContentPageDocument | null
+    localization?: ContentPageLocalizationSummary | null
 }
 
 export interface ContentPageHistoryEntry {
     id: string
     path: string
+    locale?: string | null
     title: string | null
     timestamp: string
     document: ContentPageDocument

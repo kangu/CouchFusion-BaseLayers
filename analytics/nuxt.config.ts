@@ -20,6 +20,7 @@ export default defineNuxtConfig({
     analytics: {
       umami: {
         proxyHost: "https://cloud.umami.is",
+        couchEnvSlug: "",
       },
     },
     content: {
@@ -30,6 +31,7 @@ export default defineNuxtConfig({
         endpoint: "/api/stats",
         umami: {
           websiteId: "",
+          couchEnvSlug: "",
           hostUrl: "/",
           scriptPath: "/script.js",
           dataDomains: "",

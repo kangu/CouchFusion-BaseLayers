@@ -40,6 +40,25 @@ export default defineNuxtConfig({
     couchdbCookieSecret:
       process.env.NUXT_COUCHDB_COOKIE_SECRET ||
       process.env.COUCHDB_COOKIE_SECRET,
+    nostrConfigSlug:
+      process.env.NUXT_NOSTR_CONFIG_SLUG || process.env.NOSTR_CONFIG_SLUG || "",
+    nostrConfigSection:
+      process.env.NUXT_NOSTR_CONFIG_SECTION ||
+      process.env.NOSTR_CONFIG_SECTION ||
+      "",
+    nostrSenderNsec:
+      process.env.NUXT_NOSTR_SENDER_NSEC || process.env.NOSTR_SENDER_NSEC || "",
+    nostrRelayList:
+      process.env.NUXT_NOSTR_RELAY_LIST || process.env.NOSTR_RELAY_LIST || "",
+    nostrDmMode:
+      process.env.NUXT_NOSTR_DM_MODE || process.env.NOSTR_DM_MODE || "nip17",
+    nostrChallengeTtlSeconds:
+      Number.parseInt(
+        process.env.NUXT_NOSTR_CHALLENGE_TTL_SECONDS ||
+          process.env.NOSTR_CHALLENGE_TTL_SECONDS ||
+          "300",
+        10,
+      ) || 300,
     public: {
       authLoginPath: "/login",
     },

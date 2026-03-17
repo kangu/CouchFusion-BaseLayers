@@ -11,6 +11,7 @@ const resolveLayerPath = (relativePath: string) =>
   resolve(dirname, relativePath);
 const contentRoot = resolveLayerPath("content");
 const databaseRoot = resolveLayerPath("database");
+const testStubsRoot = resolveLayerPath("_tests/stubs");
 
 const loadedEnv = loadEnv(process.env.NODE_ENV ?? "test", dirname, "");
 for (const [key, value] of Object.entries(loadedEnv)) {
@@ -28,6 +29,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: /^#imports$/, replacement: `${testStubsRoot}/imports.ts` },
       { find: /^#content\/?$/, replacement: contentRoot },
       { find: /^#content\/(.*)$/, replacement: `${contentRoot}/$1` },
       { find: /^#database\/?$/, replacement: databaseRoot },

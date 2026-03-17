@@ -14,7 +14,7 @@ import {
 } from "h3";
 import { useRuntimeConfig, useAppConfig } from "#imports";
 import { getView } from "#database/utils/couchdb";
-import { getContentDatabaseName } from "../utils/database";
+import { getContentDatabaseName } from "#content/server/utils/database";
 import { normalizePagePath } from "#content/utils/page";
 import {
   resolveIgnoredPrefixes,
