@@ -4,7 +4,6 @@ import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../utils/maintenance-db";
 import type {
   MaintenanceClientDocument,
-  MaintenanceContractDocument,
   MaintenanceJobDocument,
 } from "../../../utils/types";
 
@@ -36,15 +35,11 @@ export default defineEventHandler(async (event) => {
         databaseName,
         job.clientId,
       );
-      const contract = await getDocument<MaintenanceContractDocument>(
-        databaseName,
-        job.contractId,
-      );
 
       return {
         ...job,
         clientName: client?.name ?? null,
-        contractExpirationDate: contract?.expirationDate ?? null,
+        contractExpirationDate: client?.contractExpirationDate ?? null,
       };
     }),
   );

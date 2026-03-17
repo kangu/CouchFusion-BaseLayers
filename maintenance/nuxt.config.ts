@@ -25,12 +25,6 @@ export default defineNuxtConfig({
               requiresRoles: ["admin"],
             },
             {
-              label: "Contracts",
-              route: "/admin/maintenance/contracts",
-              icon: "mdi:file-document-outline",
-              requiresRoles: ["admin"],
-            },
-            {
               label: "Notifications",
               route: "/admin/maintenance/notifications",
               icon: "mdi:bell-outline",
@@ -57,12 +51,6 @@ export default defineNuxtConfig({
               label: "Clients",
               route: "/admin/maintenance/clients",
               icon: "mdi:office-building-outline",
-              requiresRoles: ["admin"],
-            },
-            {
-              label: "Contracts",
-              route: "/admin/maintenance/contracts",
-              icon: "mdi:file-document-outline",
               requiresRoles: ["admin"],
             },
             {

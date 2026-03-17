@@ -65,7 +65,7 @@ const runExpiryCron = async (dryRun: boolean) => {
   try {
     const response = await $fetch<{
       summary: {
-        contractsMatched: number;
+        clientsMatched: number;
         notificationsSent: number;
         notificationsFailed: number;
         notificationsSkipped: number;

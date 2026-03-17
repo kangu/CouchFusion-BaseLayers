@@ -44,18 +44,10 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   primaryContactTitle: string | null;
   notes: string | null;
   contacts: MaintenanceContactMethod[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MaintenanceContractDocument extends CouchDBDocument {
-  type: "maintenance_contract";
-  clientId: string;
-  startDate: string;
-  expirationDate: string;
-  checkupIntervalMonths: number | null;
-  status: MaintenanceContractStatus;
-  notes: string | null;
+  contractStartDate: string | null;
+  contractExpirationDate: string | null;
+  contractCheckupIntervalMonths: number | null;
+  contractStatus: MaintenanceContractStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,7 +55,6 @@ export interface MaintenanceContractDocument extends CouchDBDocument {
 export interface MaintenanceJobDocument extends CouchDBDocument {
   type: "maintenance_job";
   clientId: string;
-  contractId: string;
   scheduledFor: string;
   status: MaintenanceJobStatus;
   assignedTo: string | null;
@@ -88,7 +79,7 @@ export interface MaintenanceNotificationDocument extends CouchDBDocument {
   errorMessage: string | null;
   payload: {
     clientName: string;
-    contractId: string;
+    clientId: string;
     expirationDate: string;
   };
   sentAt: string | null;
@@ -98,7 +89,7 @@ export interface MaintenanceNotificationDocument extends CouchDBDocument {
 
 export interface MaintenanceAuditDocument extends CouchDBDocument {
   type: "maintenance_audit";
-  entityType: "client" | "contract" | "job" | "notification";
+  entityType: "client" | "job" | "notification";
   entityId: string;
   action: string;
   actor: string;

@@ -2,7 +2,6 @@
 interface MaintenanceJob {
   _id: string;
   clientId: string;
-  contractId: string;
   clientName: string | null;
   contractExpirationDate: string | null;
   scheduledFor: string;

@@ -12,21 +12,11 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
         });
       }`,
     },
-    contracts_by_expiration_date: {
+    clients_by_contract_expiration_date: {
       map: `function (doc) {
-        if (doc.type !== 'maintenance_contract' || !doc.expirationDate) return;
-        emit([doc.expirationDate, doc._id], {
-          clientId: doc.clientId || null,
-          status: doc.status || 'active'
-        });
-      }`,
-    },
-    contracts_by_client: {
-      map: `function (doc) {
-        if (doc.type !== 'maintenance_contract' || !doc.clientId) return;
-        emit([doc.clientId, doc.startDate || '', doc._id], {
-          status: doc.status || 'active',
-          expirationDate: doc.expirationDate || null
+        if (doc.type !== 'maintenance_client' || !doc.contractExpirationDate) return;
+        emit([doc.contractExpirationDate, doc._id], {
+          status: doc.contractStatus || 'active'
         });
       }`,
     },
@@ -34,8 +24,7 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
       map: `function (doc) {
         if (doc.type !== 'maintenance_job' || !doc.status) return;
         emit([doc.status, doc.scheduledFor || '', doc._id], {
-          clientId: doc.clientId || null,
-          contractId: doc.contractId || null
+          clientId: doc.clientId || null
         });
       }`,
     },

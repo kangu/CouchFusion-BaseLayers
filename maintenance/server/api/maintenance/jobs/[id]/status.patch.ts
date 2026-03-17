@@ -11,7 +11,7 @@ import { asJobStatusTransitionTarget, asOptionalText } from "../../../../utils/p
 import { assertMaintenanceRole } from "../../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../../utils/maintenance-db";
 import type {
-  MaintenanceContractDocument,
+  MaintenanceClientDocument,
   MaintenanceJobDocument,
 } from "../../../../utils/types";
 import { writeMaintenanceAuditEntry } from "../../../../utils/audit";
@@ -90,22 +90,21 @@ export default defineEventHandler(async (event) => {
   let followUpJob: MaintenanceJobDocument | null = null;
 
   if (targetStatus === "done") {
-    const contract = await getDocument<MaintenanceContractDocument>(
+    const client = await getDocument<MaintenanceClientDocument>(
       databaseName,
-      updatedJob.contractId,
+      updatedJob.clientId,
     );
 
     const envConfig = await readMaintenanceEnvConfig();
     const monthsInterval =
-      contract?.checkupIntervalMonths && contract.checkupIntervalMonths > 0
-        ? contract.checkupIntervalMonths
+      client?.contractCheckupIntervalMonths && client.contractCheckupIntervalMonths > 0
+        ? client.contractCheckupIntervalMonths
         : envConfig.defaultCheckupMonths;
 
     followUpJob = {
       _id: `maintenance_job:${crypto.randomUUID()}`,
       type: "maintenance_job",
       clientId: updatedJob.clientId,
-      contractId: updatedJob.contractId,
       scheduledFor: addMonthsToIsoDate(completionDate, monthsInterval),
       status: "pending",
       assignedTo: null,

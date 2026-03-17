@@ -12,6 +12,10 @@ interface MaintenanceClient {
   _id: string;
   name: string;
   status: "active" | "inactive";
+  contractStartDate: string | null;
+  contractExpirationDate: string | null;
+  contractCheckupIntervalMonths: number | null;
+  contractStatus: "active" | "expiring_soon" | "expired" | "renewed";
   primaryContactName: string | null;
   serviceAddress: {
     line1: string;
@@ -54,6 +58,10 @@ const form = reactive({
   country: "",
   contactEmail: "",
   contactSms: "",
+  contractStartDate: "",
+  contractExpirationDate: "",
+  contractCheckupIntervalMonths: "6",
+  contractStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
 });
 
 const {
@@ -86,6 +94,10 @@ const resetForm = () => {
   form.country = "";
   form.contactEmail = "";
   form.contactSms = "";
+  form.contractStartDate = "";
+  form.contractExpirationDate = "";
+  form.contractCheckupIntervalMonths = "6";
+  form.contractStatus = "active";
   editingClientId.value = null;
   preservedContacts.value = [];
   customerEmailContactId.value = null;
@@ -137,6 +149,10 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.country = client.serviceAddress?.country ?? "";
   form.contactEmail = emailContact?.value ?? "";
   form.contactSms = smsContact?.value ?? "";
+  form.contractStartDate = client.contractStartDate ?? "";
+  form.contractExpirationDate = client.contractExpirationDate ?? "";
+  form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 6);
+  form.contractStatus = client.contractStatus ?? "active";
 
   isDialogOpen.value = true;
 };
@@ -188,6 +204,19 @@ const saveClient = async () => {
     return;
   }
 
+  if ((form.contractStartDate && !form.contractExpirationDate) || (!form.contractStartDate && form.contractExpirationDate)) {
+    formError.value = "Contract start and expiration dates must be provided together.";
+    return;
+  }
+
+  if (form.contractStartDate) {
+    const interval = Number.parseInt(form.contractCheckupIntervalMonths, 10);
+    if (!Number.isInteger(interval) || interval <= 0) {
+      formError.value = "Checkup interval must be a positive integer.";
+      return;
+    }
+  }
+
   const contacts = buildContactsPayload();
   if (!contacts.length) {
     formError.value = "At least one contact method is required.";
@@ -208,6 +237,12 @@ const saveClient = async () => {
         country: form.country || null,
       },
       contacts,
+      contractStartDate: form.contractStartDate || null,
+      contractExpirationDate: form.contractExpirationDate || null,
+      contractCheckupIntervalMonths: form.contractStartDate
+        ? Number.parseInt(form.contractCheckupIntervalMonths, 10)
+        : null,
+      contractStatus: form.contractStatus,
     };
 
     if (dialogMode.value === "create") {
@@ -249,7 +284,7 @@ const saveClient = async () => {
         <div>
           <h1 class="text-2xl font-semibold text-slate-900">Clients</h1>
           <p class="mt-2 text-sm text-slate-600">
-            Manage customer records and contact methods used for maintenance notifications.
+            Manage customer records, contact methods and contract lifecycle in one place.
           </p>
         </div>
 
@@ -314,6 +349,8 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Primary contact</th>
               <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Contacts</th>
+              <th class="px-3 py-2 font-medium">Contract expires</th>
+              <th class="px-3 py-2 font-medium">Contract status</th>
               <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
@@ -337,6 +374,12 @@ const saveClient = async () => {
                 >
                   {{ contact.channel }}: {{ contact.value }}
                 </span>
+              </td>
+              <td class="px-3 py-2 text-slate-700">
+                {{ client.contractExpirationDate || "-" }}
+              </td>
+              <td class="px-3 py-2 text-slate-700">
+                {{ client.contractStatus }}
               </td>
               <td class="px-3 py-2">
                 <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
@@ -442,6 +485,48 @@ const saveClient = async () => {
               placeholder="+40712345678"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Contract start date</span>
+            <input
+              v-model="form.contractStartDate"
+              type="date"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Contract expiration date</span>
+            <input
+              v-model="form.contractExpirationDate"
+              type="date"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Checkup interval (months)</span>
+            <input
+              v-model="form.contractCheckupIntervalMonths"
+              type="number"
+              min="1"
+              max="24"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Contract status</span>
+            <select
+              v-model="form.contractStatus"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+              <option value="active">active</option>
+              <option value="expiring_soon">expiring_soon</option>
+              <option value="expired">expired</option>
+              <option value="renewed">renewed</option>
+            </select>
           </label>
         </div>
 

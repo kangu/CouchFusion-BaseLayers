@@ -5,6 +5,7 @@ import type {
   MaintenanceContractStatus,
   MaintenanceJobStatus,
 } from "./types";
+import { ensureIsoDateOnly } from "./dates";
 
 export const asOptionalText = (
   value: unknown,
@@ -132,5 +133,53 @@ export const parseAddress = (
     state: asOptionalText(payload.state, 120, `${fieldLabel}.state`),
     postalCode: asOptionalText(payload.postalCode, 60, `${fieldLabel}.postalCode`),
     country: asOptionalText(payload.country, 120, `${fieldLabel}.country`),
+  };
+};
+
+interface ParseClientContractFieldsInput {
+  startDate?: unknown;
+  expirationDate?: unknown;
+  checkupIntervalMonths?: unknown;
+  status?: unknown;
+}
+
+export const parseClientContractFields = (
+  input: ParseClientContractFieldsInput,
+): {
+  contractStartDate: string | null;
+  contractExpirationDate: string | null;
+  contractCheckupIntervalMonths: number | null;
+  contractStatus: MaintenanceContractStatus;
+} => {
+  const hasStartDate = typeof input.startDate !== "undefined" && input.startDate !== null && input.startDate !== "";
+  const hasExpirationDate =
+    typeof input.expirationDate !== "undefined" &&
+    input.expirationDate !== null &&
+    input.expirationDate !== "";
+
+  if (hasStartDate !== hasExpirationDate) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "contractStartDate and contractExpirationDate must be provided together",
+    });
+  }
+
+  if (!hasStartDate) {
+    return {
+      contractStartDate: null,
+      contractExpirationDate: null,
+      contractCheckupIntervalMonths: null,
+      contractStatus: asContractStatus(input.status),
+    };
+  }
+
+  return {
+    contractStartDate: ensureIsoDateOnly(input.startDate, "contractStartDate"),
+    contractExpirationDate: ensureIsoDateOnly(input.expirationDate, "contractExpirationDate"),
+    contractCheckupIntervalMonths: asOptionalPositiveInteger(
+      input.checkupIntervalMonths,
+      "contractCheckupIntervalMonths",
+    ),
+    contractStatus: asContractStatus(input.status),
   };
 };

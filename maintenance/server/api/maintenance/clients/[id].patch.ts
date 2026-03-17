@@ -10,6 +10,7 @@ import {
   asClientStatus,
   asOptionalText,
   asRequiredText,
+  parseClientContractFields,
   parseAddress,
 } from "../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
@@ -26,6 +27,10 @@ interface ClientPatchPayload {
   primaryContactTitle?: unknown;
   notes?: unknown;
   contacts?: unknown;
+  contractStartDate?: unknown;
+  contractExpirationDate?: unknown;
+  contractCheckupIntervalMonths?: unknown;
+  contractStatus?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -58,6 +63,25 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Client not found",
     });
   }
+
+  const contractFields = parseClientContractFields({
+    startDate:
+      typeof payload.contractStartDate === "undefined"
+        ? existingClient.contractStartDate
+        : payload.contractStartDate,
+    expirationDate:
+      typeof payload.contractExpirationDate === "undefined"
+        ? existingClient.contractExpirationDate
+        : payload.contractExpirationDate,
+    checkupIntervalMonths:
+      typeof payload.contractCheckupIntervalMonths === "undefined"
+        ? existingClient.contractCheckupIntervalMonths
+        : payload.contractCheckupIntervalMonths,
+    status:
+      typeof payload.contractStatus === "undefined"
+        ? existingClient.contractStatus
+        : payload.contractStatus,
+  });
 
   const nextClient: MaintenanceClientDocument = {
     ...existingClient,
@@ -94,6 +118,7 @@ export default defineEventHandler(async (event) => {
       typeof payload.contacts === "undefined"
         ? existingClient.contacts
         : parseClientContacts(payload.contacts),
+    ...contractFields,
     updatedAt: new Date().toISOString(),
   };
 
@@ -112,6 +137,7 @@ export default defineEventHandler(async (event) => {
     nextState: {
       status: nextClient.status,
       name: nextClient.name,
+      contractExpirationDate: nextClient.contractExpirationDate,
     },
   });
 

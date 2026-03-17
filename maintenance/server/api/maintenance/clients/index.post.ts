@@ -1,10 +1,16 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { putDocument } from "#database/utils/couchdb";
 import { parseClientContacts } from "../../../utils/contacts";
-import { parseAddress, asClientStatus, asOptionalText, asRequiredText } from "../../../utils/parsers";
+import {
+  parseAddress,
+  asClientStatus,
+  asOptionalText,
+  asRequiredText,
+  parseClientContractFields,
+} from "../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../utils/maintenance-db";
-import type { MaintenanceClientDocument } from "../../../utils/types";
+import type { MaintenanceClientDocument, MaintenanceJobDocument } from "../../../utils/types";
 import { writeMaintenanceAuditEntry } from "../../../utils/audit";
 
 interface ClientCreatePayload {
@@ -16,6 +22,10 @@ interface ClientCreatePayload {
   primaryContactTitle?: unknown;
   notes?: unknown;
   contacts?: unknown;
+  contractStartDate?: unknown;
+  contractExpirationDate?: unknown;
+  contractCheckupIntervalMonths?: unknown;
+  contractStatus?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -38,6 +48,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const now = new Date().toISOString();
+  const contractFields = parseClientContractFields({
+    startDate: payload.contractStartDate,
+    expirationDate: payload.contractExpirationDate,
+    checkupIntervalMonths: payload.contractCheckupIntervalMonths,
+    status: payload.contractStatus,
+  });
+
   const client: MaintenanceClientDocument = {
     _id: `maintenance_client:${crypto.randomUUID()}`,
     type: "maintenance_client",
@@ -49,12 +66,32 @@ export default defineEventHandler(async (event) => {
     primaryContactTitle: asOptionalText(payload.primaryContactTitle, 180, "primaryContactTitle"),
     notes: asOptionalText(payload.notes, 5000, "notes"),
     contacts: parseClientContacts(payload.contacts),
+    ...contractFields,
     createdAt: now,
     updatedAt: now,
   };
 
   const databaseName = await ensureMaintenanceDatabase();
   const result = await putDocument(databaseName, client);
+  let firstJob: MaintenanceJobDocument | null = null;
+
+  if (client.contractStartDate) {
+    firstJob = {
+      _id: `maintenance_job:${crypto.randomUUID()}`,
+      type: "maintenance_job",
+      clientId: client._id,
+      scheduledFor: client.contractStartDate,
+      status: "pending",
+      assignedTo: null,
+      completionNotes: null,
+      rejectionReason: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await putDocument(databaseName, firstJob);
+  }
 
   await writeMaintenanceAuditEntry({
     databaseName,
@@ -66,6 +103,7 @@ export default defineEventHandler(async (event) => {
     nextState: {
       name: client.name,
       status: client.status,
+      contractExpirationDate: client.contractExpirationDate,
     },
   });
 
@@ -77,5 +115,6 @@ export default defineEventHandler(async (event) => {
       ...client,
       _rev: result.rev,
     },
+    firstJob,
   };
 });

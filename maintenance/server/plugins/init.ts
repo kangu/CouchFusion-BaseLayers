@@ -1,9 +1,132 @@
-import { validateCouchDBEnvironment } from "#database/utils/couchdb";
+import {
+  bulkDocs,
+  getAllDocs,
+  getDocument,
+  putDocument,
+  validateCouchDBEnvironment,
+} from "#database/utils/couchdb";
 import { readMaintenanceEnvConfig } from "../utils/config";
 import { runContractExpiryCheck } from "../utils/cron";
 import { ensureMaintenanceDatabase } from "../utils/maintenance-db";
+import type { MaintenanceClientDocument, MaintenanceJobDocument } from "../utils/types";
 
 let schedulerStarted = false;
+const CONTRACT_MIGRATION_MARKER_ID = "maintenance_meta:contract-model-migration-v1";
+
+interface LegacyContractDocument {
+  _id: string;
+  _rev?: string;
+  type: "maintenance_contract";
+  clientId: string;
+  startDate: string;
+  expirationDate: string;
+  checkupIntervalMonths: number | null;
+  status: "active" | "expiring_soon" | "expired" | "renewed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+const getLegacyContracts = async (databaseName: string): Promise<LegacyContractDocument[]> => {
+  const response = await getAllDocs(databaseName, {
+    include_docs: true,
+    startkey: "maintenance_contract:",
+    endkey: "maintenance_contract:\ufff0",
+  });
+
+  return (response?.rows ?? [])
+    .map((row) => row.doc as LegacyContractDocument | undefined)
+    .filter(
+      (doc): doc is LegacyContractDocument =>
+        Boolean(doc && doc.type === "maintenance_contract" && doc.clientId),
+    );
+};
+
+const getJobsToMigrate = async (databaseName: string): Promise<MaintenanceJobDocument[]> => {
+  const response = await getAllDocs(databaseName, {
+    include_docs: true,
+    startkey: "maintenance_job:",
+    endkey: "maintenance_job:\ufff0",
+  });
+
+  return (response?.rows ?? [])
+    .map((row) => row.doc as MaintenanceJobDocument | undefined)
+    .filter((doc): doc is MaintenanceJobDocument => Boolean(doc && doc.type === "maintenance_job"))
+    .filter((doc) => Object.prototype.hasOwnProperty.call(doc as Record<string, unknown>, "contractId"));
+};
+
+const migrateContractsToClients = async (databaseName: string): Promise<void> => {
+  const marker = await getDocument(databaseName, CONTRACT_MIGRATION_MARKER_ID);
+  if (marker) {
+    return;
+  }
+
+  const contracts = await getLegacyContracts(databaseName);
+  const contractsByClient = new Map<string, LegacyContractDocument>();
+
+  for (const contract of contracts) {
+    const existing = contractsByClient.get(contract.clientId);
+    if (!existing) {
+      contractsByClient.set(contract.clientId, contract);
+      continue;
+    }
+
+    const existingDate = existing.updatedAt || existing.createdAt || "";
+    const contractDate = contract.updatedAt || contract.createdAt || "";
+    if (contractDate > existingDate) {
+      contractsByClient.set(contract.clientId, contract);
+    }
+  }
+
+  const clientUpdates: MaintenanceClientDocument[] = [];
+  for (const [clientId, contract] of contractsByClient.entries()) {
+    const client = await getDocument<MaintenanceClientDocument>(databaseName, clientId);
+    if (!client || client.type !== "maintenance_client") {
+      continue;
+    }
+
+    const nextClient: MaintenanceClientDocument = {
+      ...client,
+      contractStartDate: contract.startDate ?? null,
+      contractExpirationDate: contract.expirationDate ?? null,
+      contractCheckupIntervalMonths: contract.checkupIntervalMonths ?? null,
+      contractStatus: contract.status ?? "active",
+      updatedAt: new Date().toISOString(),
+    };
+
+    clientUpdates.push(nextClient);
+  }
+
+  const jobUpdates = (await getJobsToMigrate(databaseName)).map((job) => {
+    const { contractId: _legacyContractId, ...rest } = job as MaintenanceJobDocument & {
+      contractId?: string;
+    };
+    return {
+      ...rest,
+      updatedAt: new Date().toISOString(),
+    } as MaintenanceJobDocument;
+  });
+
+  if (clientUpdates.length > 0) {
+    await bulkDocs(databaseName, clientUpdates);
+  }
+
+  if (jobUpdates.length > 0) {
+    await bulkDocs(databaseName, jobUpdates);
+  }
+
+  await putDocument(databaseName, {
+    _id: CONTRACT_MIGRATION_MARKER_ID,
+    type: "maintenance_meta",
+    completedAt: new Date().toISOString(),
+    migratedClients: clientUpdates.length,
+    migratedJobs: jobUpdates.length,
+  });
+
+  console.info("[maintenance] contract model migration completed", {
+    migratedClients: clientUpdates.length,
+    migratedJobs: jobUpdates.length,
+  });
+};
 
 const startInProcessCronScheduler = async (): Promise<void> => {
   if (schedulerStarted) {
@@ -48,7 +171,8 @@ const initializeMaintenanceLayer = async (): Promise<void> => {
 
   try {
     validateCouchDBEnvironment();
-    await ensureMaintenanceDatabase();
+    const databaseName = await ensureMaintenanceDatabase();
+    await migrateContractsToClients(databaseName);
     await startInProcessCronScheduler();
     console.info("[maintenance] initialization completed");
   } catch (error) {

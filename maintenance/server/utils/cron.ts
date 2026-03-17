@@ -1,4 +1,4 @@
-import { getDocument, getView, putDocument } from "#database/utils/couchdb";
+import { getView, putDocument } from "#database/utils/couchdb";
 import { buildNotificationRecipients } from "./contacts";
 import { addDaysUtc, toIsoDateOnly } from "./dates";
 import { readMaintenanceEnvConfig } from "./config";
@@ -9,7 +9,6 @@ import {
 } from "./notification-adapters";
 import type {
   MaintenanceClientDocument,
-  MaintenanceContractDocument,
   MaintenanceNotificationDocument,
 } from "./types";
 import { writeMaintenanceAuditEntry } from "./audit";
@@ -22,7 +21,7 @@ interface RunContractExpiryCheckInput {
 export interface RunContractExpiryCheckSummary {
   runAt: string;
   targetDate: string;
-  contractsMatched: number;
+  clientsMatched: number;
   notificationsSent: number;
   notificationsFailed: number;
   notificationsSkipped: number;
@@ -72,10 +71,10 @@ export const runContractExpiryCheck = async (
   const targetDate = toIsoDateOnly(addDaysUtc(now, config.reminderDaysBeforeExpiry));
   const databaseName = await ensureMaintenanceDatabase();
 
-  const contractView = await getView(
+  const clientView = await getView(
     databaseName,
     "maintenance",
-    "contracts_by_expiration_date",
+    "clients_by_contract_expiration_date",
     {
       startkey: [targetDate],
       endkey: [targetDate, {}],
@@ -84,44 +83,35 @@ export const runContractExpiryCheck = async (
     },
   );
 
-  const contracts = (contractView?.rows ?? [])
-    .map((row) => row.doc as MaintenanceContractDocument | undefined)
+  const clients = (clientView?.rows ?? [])
+    .map((row) => row.doc as MaintenanceClientDocument | undefined)
     .filter(
-      (doc): doc is MaintenanceContractDocument =>
-        Boolean(doc && doc.type === "maintenance_contract" && doc.clientId),
+      (doc): doc is MaintenanceClientDocument =>
+        Boolean(doc && doc.type === "maintenance_client" && doc.contractExpirationDate),
     )
-    .filter((contract) => contract.status !== "expired");
+    .filter((client) => client.contractStatus !== "expired");
 
   let notificationsSent = 0;
   let notificationsFailed = 0;
   let notificationsSkipped = 0;
   let notificationsDryRunQueued = 0;
 
-  for (const contract of contracts) {
-    const client = await getDocument<MaintenanceClientDocument>(
-      databaseName,
-      contract.clientId,
-    );
-    if (!client || client.type !== "maintenance_client") {
-      notificationsSkipped += 1;
-      continue;
-    }
-
-    if (!input.dryRun && contract.status === "active") {
-      const updatedContract: MaintenanceContractDocument = {
-        ...contract,
-        status: "expiring_soon",
+  for (const client of clients) {
+    if (!input.dryRun && client.contractStatus === "active") {
+      const updatedClient: MaintenanceClientDocument = {
+        ...client,
+        contractStatus: "expiring_soon",
         updatedAt: nowIso,
       };
-      await putDocument(databaseName, updatedContract);
+      await putDocument(databaseName, updatedClient);
       await writeMaintenanceAuditEntry({
         databaseName,
-        entityType: "contract",
-        entityId: contract._id,
+        entityType: "client",
+        entityId: client._id,
         action: "cron_mark_expiring_soon",
         actor: input.actor,
-        previousState: { status: contract.status },
-        nextState: { status: updatedContract.status },
+        previousState: { contractStatus: client.contractStatus },
+        nextState: { contractStatus: updatedClient.contractStatus },
       });
     }
 
@@ -161,7 +151,7 @@ export const runContractExpiryCheck = async (
       const idempotencyKey = [
         "contract_expiry",
         targetDate,
-        contract._id,
+        client._id,
         destination.channel,
         destination.recipient,
       ].join(":");
@@ -181,7 +171,7 @@ export const runContractExpiryCheck = async (
         _id: notificationDocId,
         type: "maintenance_notification",
         category: "contract_expiry",
-        relatedId: contract._id,
+        relatedId: client._id,
         channel: destination.channel,
         recipient: destination.recipient,
         recipientRole: destination.recipientRole,
@@ -192,15 +182,18 @@ export const runContractExpiryCheck = async (
         errorMessage: null,
         payload: {
           clientName: client.name,
-          contractId: contract._id,
-          expirationDate: contract.expirationDate,
+          clientId: client._id,
+          expirationDate: client.contractExpirationDate as string,
         },
         sentAt: null,
         createdAt: nowIso,
         updatedAt: nowIso,
       };
 
-      const reminderText = buildContractReminderText(client.name, contract.expirationDate);
+      const reminderText = buildContractReminderText(
+        client.name,
+        client.contractExpirationDate as string,
+      );
       const sendResult =
         destination.channel === "email"
           ? await sendEmailNotification({
@@ -236,7 +229,7 @@ export const runContractExpiryCheck = async (
   return {
     runAt: nowIso,
     targetDate,
-    contractsMatched: contracts.length,
+    clientsMatched: clients.length,
     notificationsSent,
     notificationsFailed,
     notificationsSkipped,
