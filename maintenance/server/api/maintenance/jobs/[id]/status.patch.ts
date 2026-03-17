@@ -5,8 +5,7 @@ import {
   readBody,
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
-import { readMaintenanceEnvConfig } from "../../../../utils/config";
-import { addMonthsToIsoDate, toIsoDateOnly } from "../../../../utils/dates";
+import { ensureIsoDateOnly } from "../../../../utils/dates";
 import { asJobStatusTransitionTarget, asOptionalText } from "../../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../../utils/maintenance-db";
@@ -20,6 +19,7 @@ interface JobStatusPayload {
   status?: unknown;
   rejectionReason?: unknown;
   completionNotes?: unknown;
+  nextExpirationDate?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -58,7 +58,6 @@ export default defineEventHandler(async (event) => {
 
   const targetStatus = asJobStatusTransitionTarget(payload.status);
   const now = new Date().toISOString();
-  const completionDate = toIsoDateOnly(new Date(now));
   const updatedJob: MaintenanceJobDocument = {
     ...job,
     status: targetStatus,
@@ -90,49 +89,41 @@ export default defineEventHandler(async (event) => {
   let followUpJob: MaintenanceJobDocument | null = null;
 
   if (targetStatus === "done") {
+    const nextExpirationDate = ensureIsoDateOnly(
+      payload.nextExpirationDate,
+      "nextExpirationDate",
+    );
+
     const client = await getDocument<MaintenanceClientDocument>(
       databaseName,
       updatedJob.clientId,
     );
 
-    const envConfig = await readMaintenanceEnvConfig();
-    const monthsInterval =
-      client?.contractCheckupIntervalMonths && client.contractCheckupIntervalMonths > 0
-        ? client.contractCheckupIntervalMonths
-        : envConfig.defaultCheckupMonths;
+    if (client && client.type === "maintenance_client") {
+      const nextClient: MaintenanceClientDocument = {
+        ...client,
+        contractExpirationDate: nextExpirationDate,
+        status: client.status === "discontinued" ? "discontinued" : "active",
+        updatedAt: now,
+      };
+      await putDocument(databaseName, nextClient);
 
-    followUpJob = {
-      _id: `maintenance_job:${crypto.randomUUID()}`,
-      type: "maintenance_job",
-      clientId: updatedJob.clientId,
-      scheduledFor: addMonthsToIsoDate(completionDate, monthsInterval),
-      status: "pending",
-      assignedTo: null,
-      completionNotes: null,
-      rejectionReason: null,
-      completedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const followUpResult = await putDocument(databaseName, followUpJob);
-    followUpJob = {
-      ...followUpJob,
-      _rev: followUpResult.rev,
-    };
-
-    await writeMaintenanceAuditEntry({
-      databaseName,
-      entityType: "job",
-      entityId: followUpJob._id,
-      action: "job_auto_schedule_from_done",
-      actor: actor.username,
-      previousState: null,
-      nextState: {
-        status: followUpJob.status,
-        scheduledFor: followUpJob.scheduledFor,
-      },
-    });
+      await writeMaintenanceAuditEntry({
+        databaseName,
+        entityType: "client",
+        entityId: client._id,
+        action: "job_done_set_next_expiration",
+        actor: actor.username,
+        previousState: {
+          status: client.status,
+          contractExpirationDate: client.contractExpirationDate,
+        },
+        nextState: {
+          status: nextClient.status,
+          contractExpirationDate: nextClient.contractExpirationDate,
+        },
+      });
+    }
   }
 
   return {

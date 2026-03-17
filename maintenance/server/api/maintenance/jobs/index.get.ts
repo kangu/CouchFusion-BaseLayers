@@ -40,6 +40,7 @@ export default defineEventHandler(async (event) => {
         ...job,
         clientName: client?.name ?? null,
         contractExpirationDate: client?.contractExpirationDate ?? null,
+        clientCheckupIntervalMonths: client?.contractCheckupIntervalMonths ?? null,
       };
     }),
   );

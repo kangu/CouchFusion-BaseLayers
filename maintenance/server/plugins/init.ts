@@ -218,6 +218,7 @@ const startInProcessCronScheduler = async (): Promise<void> => {
 
       await runContractExpiryCheck({
         actor: "system:in-process-cron",
+        includePastExpired: false,
       });
 
       lastRunDate = runDate;

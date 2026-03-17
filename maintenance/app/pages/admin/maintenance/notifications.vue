@@ -27,6 +27,8 @@ const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefine
 const runPending = ref(false);
 const runMessage = ref<string | null>(null);
 const runError = ref<string | null>(null);
+const pastExpiryConfirmOpen = ref(false);
+const pendingRunDryMode = ref(false);
 
 const {
   data: notificationsData,
@@ -53,7 +55,7 @@ const {
 
 const notifications = computed(() => notificationsData.value?.notifications ?? []);
 
-const runExpiryCron = async (dryRun: boolean) => {
+const runExpiryCron = async (dryRun: boolean, pastExpiredAction?: "include" | "skip") => {
   if (runPending.value) {
     return;
   }
@@ -70,19 +72,35 @@ const runExpiryCron = async (dryRun: boolean) => {
         notificationsFailed: number;
         notificationsSkipped: number;
         notificationsDryRunQueued: number;
+        jobsCreated: number;
+        jobsDryRunQueued: number;
+        jobsSkippedExistingPending: number;
+        pastExpiredClientsFound: number;
+        requiresPastExpiredDecision: boolean;
       };
     }>("/api/maintenance/cron/expiry-check", {
       method: "POST",
       credentials: "include",
       body: {
         dryRun,
+        ...(pastExpiredAction ? { pastExpiredAction } : {}),
       },
     });
 
     const summary = response.summary;
+    if (summary.requiresPastExpiredDecision) {
+      pendingRunDryMode.value = dryRun;
+      pastExpiryConfirmOpen.value = true;
+      runMessage.value =
+        `Found ${summary.pastExpiredClientsFound} client(s) with past expiration date. ` +
+        "Choose whether to include them.";
+      return;
+    }
+
     runMessage.value = dryRun
-      ? `Dry run complete. Would queue ${summary.notificationsDryRunQueued} notifications.`
-      : `Cron complete. Sent ${summary.notificationsSent}, failed ${summary.notificationsFailed}, skipped ${summary.notificationsSkipped}.`;
+      ? `Dry run complete. Jobs to create: ${summary.jobsDryRunQueued}, notifications to queue: ${summary.notificationsDryRunQueued}.`
+      : `Cron complete. Jobs created ${summary.jobsCreated} (skipped existing pending: ${summary.jobsSkippedExistingPending}). ` +
+        `Notifications sent ${summary.notificationsSent}, failed ${summary.notificationsFailed}, skipped ${summary.notificationsSkipped}.`;
     await refreshNotifications();
   } catch (error: any) {
     runError.value =
@@ -90,6 +108,18 @@ const runExpiryCron = async (dryRun: boolean) => {
   } finally {
     runPending.value = false;
   }
+};
+
+const closePastExpiryConfirm = () => {
+  if (runPending.value) {
+    return;
+  }
+  pastExpiryConfirmOpen.value = false;
+};
+
+const confirmPastExpiryAction = async (action: "include" | "skip") => {
+  pastExpiryConfirmOpen.value = false;
+  await runExpiryCron(pendingRunDryMode.value, action);
 };
 </script>
 
@@ -133,6 +163,40 @@ const runExpiryCron = async (dryRun: boolean) => {
         {{ runError }}
       </p>
     </section>
+
+    <div
+      v-if="pastExpiryConfirmOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
+      @click.self="closePastExpiryConfirm"
+    >
+      <section class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <h3 class="text-lg font-semibold text-slate-900">
+          Past Expiration Dates Found
+        </h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Some clients have expiration dates in the past. Include them for job creation now?
+        </p>
+
+        <div class="mt-5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            :disabled="runPending"
+            @click="confirmPastExpiryAction('skip')"
+          >
+            Skip Past Expired
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="runPending"
+            @click="confirmPastExpiryAction('include')"
+          >
+            Include Past Expired
+          </button>
+        </div>
+      </section>
+    </div>
 
     <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div class="flex items-center justify-between gap-4">
