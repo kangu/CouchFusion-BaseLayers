@@ -14,9 +14,8 @@ interface MaintenanceNotification {
 
 definePageMeta({
   layout: "admin-workspace",
-  // Temporary debug: disable auth guard to inspect page styling unauthenticated.
-  // middleware: ["role-auth"],
-  // authAllowedRoles: ["admin"],
+  middleware: ["auth", "role-auth"],
+  authAllowedRoles: ["admin"],
 });
 
 useHead({

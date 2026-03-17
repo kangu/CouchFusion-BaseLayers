@@ -12,9 +12,8 @@ type JobListFilter = "pending" | "archived";
 
 definePageMeta({
   layout: "admin-workspace",
-  // Temporary debug: disable auth guard to inspect page styling unauthenticated.
-  // middleware: ["role-auth"],
-  // authAllowedRoles: ["admin", "employee"],
+  middleware: ["auth", "role-auth"],
+  authAllowedRoles: ["admin", "employee"],
 });
 
 useHead({

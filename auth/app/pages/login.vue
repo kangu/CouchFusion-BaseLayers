@@ -10,6 +10,13 @@ const authStore = useAuthStore();
 const { isAuthenticated, loading } = storeToRefs(authStore);
 const router = useRouter();
 
+const getRedirectTarget = () => {
+  const redirectTo = useCookie("redirectTo");
+  const target = redirectTo.value || "/builder";
+  redirectTo.value = null;
+  return target;
+};
+
 const form = reactive({
     username: "",
     password: "",
@@ -23,7 +30,7 @@ watch(
     isAuthenticated,
     async (loggedIn) => {
         if (loggedIn) {
-            await router.push("/builder");
+            await router.push(getRedirectTarget());
         }
     },
     { immediate: true },
@@ -68,7 +75,7 @@ const handleSubmit = async () => {
 
         await authStore.fetchUser();
         successMessage.value = "Login successful. Redirecting…";
-        await router.push("/builder");
+        await router.push(getRedirectTarget());
     } catch (error: any) {
         console.error("Login failed:", error);
         errorMessage.value =

@@ -22,6 +22,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const hasRole = authStore.user && allowedRoles.some((role) => roles.includes(role))
 
   if (!hasRole) {
-    throw createError({ statusCode: 404, statusMessage: 'Page not found' })
+    throw createError({ statusCode: 403, statusMessage: 'Access denied' })
   }
 })
