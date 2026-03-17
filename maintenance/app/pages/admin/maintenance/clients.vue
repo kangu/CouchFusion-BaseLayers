@@ -11,11 +11,10 @@ interface MaintenanceContact {
 interface MaintenanceClient {
   _id: string;
   name: string;
-  status: "active" | "inactive";
+  status: "active" | "expiring_soon" | "expired" | "renewed" | "discontinued";
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
-  contractStatus: "active" | "expiring_soon" | "expired" | "renewed";
   primaryContactName: string | null;
   serviceAddress: {
     line1: string;
@@ -61,7 +60,7 @@ const form = reactive({
   contractStartDate: "",
   contractExpirationDate: "",
   contractCheckupIntervalMonths: "6",
-  contractStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
+  status: "active" as "active" | "expiring_soon" | "expired" | "renewed" | "discontinued",
 });
 
 const {
@@ -97,7 +96,7 @@ const resetForm = () => {
   form.contractStartDate = "";
   form.contractExpirationDate = "";
   form.contractCheckupIntervalMonths = "6";
-  form.contractStatus = "active";
+  form.status = "active";
   editingClientId.value = null;
   preservedContacts.value = [];
   customerEmailContactId.value = null;
@@ -152,7 +151,7 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.contractStartDate = client.contractStartDate ?? "";
   form.contractExpirationDate = client.contractExpirationDate ?? "";
   form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 6);
-  form.contractStatus = client.contractStatus ?? "active";
+  form.status = client.status ?? "active";
 
   isDialogOpen.value = true;
 };
@@ -242,7 +241,7 @@ const saveClient = async () => {
       contractCheckupIntervalMonths: form.contractStartDate
         ? Number.parseInt(form.contractCheckupIntervalMonths, 10)
         : null,
-      contractStatus: form.contractStatus,
+      status: form.status,
     };
 
     if (dialogMode.value === "create") {
@@ -350,7 +349,6 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Contacts</th>
               <th class="px-3 py-2 font-medium">Contract expires</th>
-              <th class="px-3 py-2 font-medium">Contract status</th>
               <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
@@ -370,16 +368,13 @@ const saveClient = async () => {
                 <span
                   v-for="contact in client.contacts"
                   :key="contact.id"
-                  class="mr-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs"
+                  class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs"
                 >
                   {{ contact.channel }}: {{ contact.value }}
                 </span>
               </td>
               <td class="px-3 py-2 text-slate-700">
                 {{ client.contractExpirationDate || "-" }}
-              </td>
-              <td class="px-3 py-2 text-slate-700">
-                {{ client.contractStatus }}
               </td>
               <td class="px-3 py-2">
                 <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
@@ -517,15 +512,16 @@ const saveClient = async () => {
           </label>
 
           <label class="space-y-1 text-sm text-slate-700">
-            <span>Contract status</span>
+            <span>Status</span>
             <select
-              v-model="form.contractStatus"
+              v-model="form.status"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
               <option value="active">active</option>
               <option value="expiring_soon">expiring_soon</option>
               <option value="expired">expired</option>
               <option value="renewed">renewed</option>
+              <option value="discontinued">discontinued</option>
             </select>
           </label>
         </div>

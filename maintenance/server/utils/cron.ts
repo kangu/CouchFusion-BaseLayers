@@ -89,7 +89,7 @@ export const runContractExpiryCheck = async (
       (doc): doc is MaintenanceClientDocument =>
         Boolean(doc && doc.type === "maintenance_client" && doc.contractExpirationDate),
     )
-    .filter((client) => client.contractStatus !== "expired");
+    .filter((client) => client.status !== "expired" && client.status !== "discontinued");
 
   let notificationsSent = 0;
   let notificationsFailed = 0;
@@ -97,10 +97,10 @@ export const runContractExpiryCheck = async (
   let notificationsDryRunQueued = 0;
 
   for (const client of clients) {
-    if (!input.dryRun && client.contractStatus === "active") {
+    if (!input.dryRun && client.status === "active") {
       const updatedClient: MaintenanceClientDocument = {
         ...client,
-        contractStatus: "expiring_soon",
+        status: "expiring_soon",
         updatedAt: nowIso,
       };
       await putDocument(databaseName, updatedClient);
@@ -110,8 +110,8 @@ export const runContractExpiryCheck = async (
         entityId: client._id,
         action: "cron_mark_expiring_soon",
         actor: input.actor,
-        previousState: { contractStatus: client.contractStatus },
-        nextState: { contractStatus: updatedClient.contractStatus },
+        previousState: { status: client.status },
+        nextState: { status: updatedClient.status },
       });
     }
 

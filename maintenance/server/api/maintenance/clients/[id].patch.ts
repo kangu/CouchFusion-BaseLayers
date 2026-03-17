@@ -30,7 +30,6 @@ interface ClientPatchPayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
-  contractStatus?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -77,10 +76,6 @@ export default defineEventHandler(async (event) => {
       typeof payload.contractCheckupIntervalMonths === "undefined"
         ? existingClient.contractCheckupIntervalMonths
         : payload.contractCheckupIntervalMonths,
-    status:
-      typeof payload.contractStatus === "undefined"
-        ? existingClient.contractStatus
-        : payload.contractStatus,
   });
 
   const nextClient: MaintenanceClientDocument = {

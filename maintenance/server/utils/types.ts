@@ -7,12 +7,12 @@ export type MaintenanceContactPurpose =
   | "billing"
   | "technical";
 
-export type MaintenanceClientStatus = "active" | "inactive";
-export type MaintenanceContractStatus =
+export type MaintenanceClientStatus =
   | "active"
   | "expiring_soon"
   | "expired"
-  | "renewed";
+  | "renewed"
+  | "discontinued";
 export type MaintenanceJobStatus = "pending" | "done" | "rejected";
 export type MaintenanceNotificationStatus = "queued" | "sent" | "failed";
 
@@ -47,7 +47,6 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
-  contractStatus: MaintenanceContractStatus;
   createdAt: string;
   updatedAt: string;
 }

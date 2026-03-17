@@ -12,6 +12,7 @@ import type { MaintenanceClientDocument, MaintenanceJobDocument } from "../utils
 
 let schedulerStarted = false;
 const CONTRACT_MIGRATION_MARKER_ID = "maintenance_meta:contract-model-migration-v1";
+const STATUS_CONSOLIDATION_MARKER_ID = "maintenance_meta:client-status-consolidation-v1";
 
 interface LegacyContractDocument {
   _id: string;
@@ -54,6 +55,18 @@ const getJobsToMigrate = async (databaseName: string): Promise<MaintenanceJobDoc
     .filter((doc) => Object.prototype.hasOwnProperty.call(doc as Record<string, unknown>, "contractId"));
 };
 
+const getClientsForMigration = async (databaseName: string): Promise<MaintenanceClientDocument[]> => {
+  const response = await getAllDocs(databaseName, {
+    include_docs: true,
+    startkey: "maintenance_client:",
+    endkey: "maintenance_client:\ufff0",
+  });
+
+  return (response?.rows ?? [])
+    .map((row) => row.doc as MaintenanceClientDocument | undefined)
+    .filter((doc): doc is MaintenanceClientDocument => Boolean(doc && doc.type === "maintenance_client"));
+};
+
 const migrateContractsToClients = async (databaseName: string): Promise<void> => {
   const marker = await getDocument(databaseName, CONTRACT_MIGRATION_MARKER_ID);
   if (marker) {
@@ -89,7 +102,7 @@ const migrateContractsToClients = async (databaseName: string): Promise<void> =>
       contractStartDate: contract.startDate ?? null,
       contractExpirationDate: contract.expirationDate ?? null,
       contractCheckupIntervalMonths: contract.checkupIntervalMonths ?? null,
-      contractStatus: contract.status ?? "active",
+      status: contract.status ?? "active",
       updatedAt: new Date().toISOString(),
     };
 
@@ -125,6 +138,56 @@ const migrateContractsToClients = async (databaseName: string): Promise<void> =>
   console.info("[maintenance] contract model migration completed", {
     migratedClients: clientUpdates.length,
     migratedJobs: jobUpdates.length,
+  });
+};
+
+const consolidateClientStatusModel = async (databaseName: string): Promise<void> => {
+  const marker = await getDocument(databaseName, STATUS_CONSOLIDATION_MARKER_ID);
+  if (marker) {
+    return;
+  }
+
+  const clients = await getClientsForMigration(databaseName);
+  const updates: MaintenanceClientDocument[] = [];
+
+  for (const client of clients) {
+    const candidateContractStatus = (client as Record<string, unknown>).contractStatus;
+    const rawStatus = String((client as Record<string, unknown>).status ?? "active");
+    const nextStatus =
+      typeof candidateContractStatus === "string"
+        ? candidateContractStatus
+        : rawStatus === "inactive"
+          ? "discontinued"
+          : rawStatus;
+
+    const { contractStatus: _legacyContractStatus, ...withoutLegacyContractStatus } = client as MaintenanceClientDocument & {
+      contractStatus?: unknown;
+    };
+
+    if (nextStatus === rawStatus && typeof candidateContractStatus === "undefined") {
+      continue;
+    }
+
+    updates.push({
+      ...withoutLegacyContractStatus,
+      status: nextStatus as MaintenanceClientDocument["status"],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  if (updates.length > 0) {
+    await bulkDocs(databaseName, updates);
+  }
+
+  await putDocument(databaseName, {
+    _id: STATUS_CONSOLIDATION_MARKER_ID,
+    type: "maintenance_meta",
+    completedAt: new Date().toISOString(),
+    migratedClients: updates.length,
+  });
+
+  console.info("[maintenance] client status consolidation completed", {
+    migratedClients: updates.length,
   });
 };
 
@@ -173,6 +236,7 @@ const initializeMaintenanceLayer = async (): Promise<void> => {
     validateCouchDBEnvironment();
     const databaseName = await ensureMaintenanceDatabase();
     await migrateContractsToClients(databaseName);
+    await consolidateClientStatusModel(databaseName);
     await startInProcessCronScheduler();
     console.info("[maintenance] initialization completed");
   } catch (error) {

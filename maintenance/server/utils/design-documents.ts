@@ -16,7 +16,7 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
       map: `function (doc) {
         if (doc.type !== 'maintenance_client' || !doc.contractExpirationDate) return;
         emit([doc.contractExpirationDate, doc._id], {
-          status: doc.contractStatus || 'active'
+          status: doc.status || 'active'
         });
       }`,
     },

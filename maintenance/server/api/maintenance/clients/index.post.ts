@@ -25,7 +25,6 @@ interface ClientCreatePayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
-  contractStatus?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -52,7 +51,6 @@ export default defineEventHandler(async (event) => {
     startDate: payload.contractStartDate,
     expirationDate: payload.contractExpirationDate,
     checkupIntervalMonths: payload.contractCheckupIntervalMonths,
-    status: payload.contractStatus,
   });
 
   const client: MaintenanceClientDocument = {

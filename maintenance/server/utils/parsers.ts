@@ -2,7 +2,6 @@ import { createError } from "h3";
 import type {
   MaintenanceAddress,
   MaintenanceClientStatus,
-  MaintenanceContractStatus,
   MaintenanceJobStatus,
 } from "./types";
 import { ensureIsoDateOnly } from "./dates";
@@ -78,22 +77,18 @@ export const asOptionalPositiveInteger = (
 
 export const asClientStatus = (value: unknown): MaintenanceClientStatus => {
   const normalized = String(value ?? "active").trim().toLowerCase();
-  return normalized === "inactive" ? "inactive" : "active";
-};
-
-export const asContractStatus = (value: unknown): MaintenanceContractStatus => {
-  const normalized = String(value ?? "active").trim().toLowerCase();
   if (
     normalized === "active" ||
     normalized === "expiring_soon" ||
     normalized === "expired" ||
-    normalized === "renewed"
+    normalized === "renewed" ||
+    normalized === "discontinued"
   ) {
     return normalized;
   }
   throw createError({
     statusCode: 400,
-    statusMessage: "Invalid contract status",
+    statusMessage: "Invalid client status",
   });
 };
 
@@ -140,7 +135,6 @@ interface ParseClientContractFieldsInput {
   startDate?: unknown;
   expirationDate?: unknown;
   checkupIntervalMonths?: unknown;
-  status?: unknown;
 }
 
 export const parseClientContractFields = (
@@ -149,7 +143,6 @@ export const parseClientContractFields = (
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
-  contractStatus: MaintenanceContractStatus;
 } => {
   const hasStartDate = typeof input.startDate !== "undefined" && input.startDate !== null && input.startDate !== "";
   const hasExpirationDate =
@@ -169,7 +162,6 @@ export const parseClientContractFields = (
       contractStartDate: null,
       contractExpirationDate: null,
       contractCheckupIntervalMonths: null,
-      contractStatus: asContractStatus(input.status),
     };
   }
 
@@ -180,6 +172,5 @@ export const parseClientContractFields = (
       input.checkupIntervalMonths,
       "contractCheckupIntervalMonths",
     ),
-    contractStatus: asContractStatus(input.status),
   };
 };
