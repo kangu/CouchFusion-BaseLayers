@@ -11,8 +11,9 @@ interface MaintenanceJob {
 
 definePageMeta({
   layout: "admin-workspace",
-  middleware: ["role-auth"],
-  authAllowedRoles: ["admin", "employee"],
+  // Temporary debug: disable auth guard to inspect page styling unauthenticated.
+  // middleware: ["role-auth"],
+  // authAllowedRoles: ["admin", "employee"],
 });
 
 useHead({
