@@ -45,9 +45,14 @@ const actionSuccess = ref<string | null>(null);
 const isDialogOpen = ref(false);
 const dialogMode = ref<ClientDialogMode>("create");
 const editingClientId = ref<string | null>(null);
-const preservedContacts = ref<MaintenanceContact[]>([]);
-const customerEmailContactId = ref<string | null>(null);
-const customerSmsContactId = ref<string | null>(null);
+const editableContacts = ref<MaintenanceContact[]>([]);
+
+const contactPurposeOptions: MaintenanceContact["purpose"][] = [
+  "customer",
+  "company",
+  "billing",
+  "technical",
+];
 
 const form = reactive({
   name: "",
@@ -55,8 +60,6 @@ const form = reactive({
   addressLine1: "",
   city: "",
   country: "",
-  contactEmail: "",
-  contactSms: "",
   contractStartDate: "",
   contractExpirationDate: "",
   contractCheckupIntervalMonths: "6",
@@ -91,16 +94,21 @@ const resetForm = () => {
   form.addressLine1 = "";
   form.city = "";
   form.country = "";
-  form.contactEmail = "";
-  form.contactSms = "";
   form.contractStartDate = "";
   form.contractExpirationDate = "";
   form.contractCheckupIntervalMonths = "6";
   form.status = "active";
   editingClientId.value = null;
-  preservedContacts.value = [];
-  customerEmailContactId.value = null;
-  customerSmsContactId.value = null;
+  editableContacts.value = [
+    {
+      id: crypto.randomUUID(),
+      channel: "email",
+      value: "",
+      purpose: "customer",
+      active: true,
+      label: null,
+    },
+  ];
 };
 
 const openCreateDialog = () => {
@@ -110,35 +118,9 @@ const openCreateDialog = () => {
   isDialogOpen.value = true;
 };
 
-const getCustomerContact = (
-  contacts: MaintenanceContact[],
-  channel: "email" | "sms",
-): MaintenanceContact | null => {
-  const byChannel = contacts.filter(
-    (contact) => contact.channel === channel && contact.purpose === "customer",
-  );
-  const preferred = byChannel.find((contact) => contact.active !== false);
-  return preferred ?? byChannel[0] ?? null;
-};
-
 const openEditDialog = (client: MaintenanceClient) => {
   dialogMode.value = "edit";
   formError.value = null;
-
-  const emailContact = getCustomerContact(client.contacts ?? [], "email");
-  const smsContact = getCustomerContact(client.contacts ?? [], "sms");
-
-  const managedCustomerIds = new Set<string>(
-    [emailContact?.id, smsContact?.id].filter(Boolean) as string[],
-  );
-
-  // Keep contacts that are not managed by this simplified modal so they are not lost on patch.
-  preservedContacts.value = (client.contacts ?? []).filter(
-    (contact) => !managedCustomerIds.has(contact.id),
-  );
-
-  customerEmailContactId.value = emailContact?.id ?? null;
-  customerSmsContactId.value = smsContact?.id ?? null;
 
   editingClientId.value = client._id;
   form.name = client.name ?? "";
@@ -146,12 +128,30 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.addressLine1 = client.serviceAddress?.line1 ?? "";
   form.city = client.serviceAddress?.city ?? "";
   form.country = client.serviceAddress?.country ?? "";
-  form.contactEmail = emailContact?.value ?? "";
-  form.contactSms = smsContact?.value ?? "";
   form.contractStartDate = client.contractStartDate ?? "";
   form.contractExpirationDate = client.contractExpirationDate ?? "";
   form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 6);
   form.status = client.status ?? "active";
+  editableContacts.value = (client.contacts ?? []).map((contact) => ({
+    id: contact.id || crypto.randomUUID(),
+    channel: contact.channel,
+    value: contact.value,
+    purpose: contact.purpose,
+    active: true,
+    label: contact.label ?? null,
+  })).filter((contact) => contact.value.trim().length > 0);
+  if (!editableContacts.value.length) {
+    editableContacts.value = [
+      {
+        id: crypto.randomUUID(),
+        channel: "email",
+        value: "",
+        purpose: "customer",
+        active: true,
+        label: null,
+      },
+    ];
+  }
 
   isDialogOpen.value = true;
 };
@@ -165,36 +165,29 @@ const closeDialog = () => {
 };
 
 const buildContactsPayload = (): Array<Record<string, unknown>> => {
-  const contacts: Array<Record<string, unknown>> = preservedContacts.value.map((contact) => ({
+  return editableContacts.value.map((contact) => ({
     id: contact.id,
     channel: contact.channel,
     value: contact.value,
     purpose: contact.purpose,
-    active: contact.active,
+    active: true,
     label: contact.label ?? null,
   }));
+};
 
-  if (form.contactEmail.trim()) {
-    contacts.push({
-      ...(customerEmailContactId.value ? { id: customerEmailContactId.value } : {}),
-      channel: "email",
-      value: form.contactEmail,
-      purpose: "customer",
-      active: true,
-    });
-  }
+const addContactMethod = () => {
+  editableContacts.value.push({
+    id: crypto.randomUUID(),
+    channel: "email",
+    value: "",
+    purpose: "customer",
+    active: true,
+    label: null,
+  });
+};
 
-  if (form.contactSms.trim()) {
-    contacts.push({
-      ...(customerSmsContactId.value ? { id: customerSmsContactId.value } : {}),
-      channel: "sms",
-      value: form.contactSms,
-      purpose: "customer",
-      active: true,
-    });
-  }
-
-  return contacts;
+const removeContactMethod = (id: string) => {
+  editableContacts.value = editableContacts.value.filter((contact) => contact.id !== id);
 };
 
 const saveClient = async () => {
@@ -217,7 +210,7 @@ const saveClient = async () => {
   }
 
   const contacts = buildContactsPayload();
-  if (!contacts.length) {
+  if (!contacts.length || !contacts.some((contact) => String(contact.value ?? "").trim().length > 0)) {
     formError.value = "At least one contact method is required.";
     return;
   }
@@ -365,13 +358,15 @@ const saveClient = async () => {
                 <span v-if="client.serviceAddress.city">, {{ client.serviceAddress.city }}</span>
               </td>
               <td class="px-3 py-2 text-slate-700">
-                <span
-                  v-for="contact in client.contacts"
-                  :key="contact.id"
-                  class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs"
-                >
-                  {{ contact.channel }}: {{ contact.value }}
-                </span>
+                <div class="flex flex-col items-start gap-1">
+                  <span
+                    v-for="contact in client.contacts"
+                    :key="contact.id"
+                    class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs"
+                  >
+                    {{ contact.channel }}: {{ contact.value }}
+                  </span>
+                </div>
               </td>
               <td class="px-3 py-2 text-slate-700">
                 {{ client.contractExpirationDate || "-" }}
@@ -463,24 +458,72 @@ const saveClient = async () => {
             >
           </label>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Customer email</span>
-            <input
-              v-model="form.contactEmail"
-              type="email"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+          <div class="space-y-3 text-sm text-slate-700 md:col-span-2">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-medium">Contact methods</span>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                @click="addContactMethod"
+              >
+                Add method
+              </button>
+            </div>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Customer SMS (E.164)</span>
-            <input
-              v-model="form.contactSms"
-              type="text"
-              placeholder="+40712345678"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            <div
+              v-for="contact in editableContacts"
+              :key="contact.id"
+              class="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 md:grid-cols-12"
             >
-          </label>
+              <label class="space-y-1 md:col-span-2">
+                <span>Channel</span>
+                <select
+                  v-model="contact.channel"
+                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                >
+                  <option value="email">email</option>
+                  <option value="sms">sms</option>
+                </select>
+              </label>
+
+              <label class="space-y-1 md:col-span-3">
+                <span>Purpose</span>
+                <select
+                  v-model="contact.purpose"
+                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                >
+                  <option
+                    v-for="purpose in contactPurposeOptions"
+                    :key="purpose"
+                    :value="purpose"
+                  >
+                    {{ purpose }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="space-y-1 md:col-span-5">
+                <span>Value</span>
+                <input
+                  v-model="contact.value"
+                  :type="contact.channel === 'email' ? 'email' : 'text'"
+                  :placeholder="contact.channel === 'sms' ? '+40712345678' : 'name@example.com'"
+                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+
+              <div class="flex items-end justify-end gap-2 md:col-span-2">
+                <button
+                  type="button"
+                  class="rounded-md border border-rose-300 px-2 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
+                  :disabled="editableContacts.length === 1"
+                  @click="removeContactMethod(contact.id)"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
 
           <label class="space-y-1 text-sm text-slate-700">
             <span>Contract start date</span>
