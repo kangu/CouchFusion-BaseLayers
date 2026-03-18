@@ -1,10 +1,43 @@
 import { fileURLToPath } from "node:url";
 
 export default defineNuxtConfig({
-  // This layer provides shared database utilities and CouchDB functionality
-  // Available to all layers and apps that extend this layer
-
   alias: {
-    email: fileURLToPath(new URL(".", import.meta.url)),
+    "#email": fileURLToPath(new URL(".", import.meta.url)),
+  },
+  appConfig: {
+    adminWorkspace: {
+      sections: [
+        {
+          id: "email",
+          title: "Email",
+          requiresRoles: ["admin"],
+          items: [
+            {
+              label: "Templates",
+              route: "/admin/email-templates",
+              icon: "mdi:email-edit-outline",
+              requiresRoles: ["admin"],
+            },
+          ],
+        },
+      ],
+    },
+    uiNavigation: {
+      sections: [
+        {
+          id: "email",
+          title: "Email",
+          requiresRoles: ["admin"],
+          items: [
+            {
+              label: "Templates",
+              route: "/admin/email-templates",
+              icon: "mdi:email-edit-outline",
+              requiresRoles: ["admin"],
+            },
+          ],
+        },
+      ],
+    },
   },
 });
