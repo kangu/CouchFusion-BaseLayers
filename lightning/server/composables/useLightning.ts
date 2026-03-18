@@ -5,7 +5,7 @@ import { getDocument } from '#database/utils/couchdb'
 export interface PaymentOptions {
   description?: string
   metadata?: Record<string, any>
-  provider?: 'strike' | 'boltz'
+  provider?: 'strike' | 'alby'
 }
 
 export interface PaymentInfo {
@@ -15,8 +15,6 @@ export interface PaymentInfo {
   currency: string
   status: 'pending' | 'paid' | 'expired' | 'cancelled'
   expiresAt?: Date
-  liquidAddress?: string
-  swapId?: string
 }
 
 export interface PaymentError {

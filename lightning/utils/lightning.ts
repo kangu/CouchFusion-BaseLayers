@@ -6,7 +6,7 @@ export interface CreateInvoiceOptions {
   currency?: string
   description?: string
   metadata?: Record<string, any>
-  provider?: 'strike' | 'boltz' | 'alby'
+  provider?: 'strike' | 'alby'
 }
 
 export async function createLightningInvoice(
@@ -28,7 +28,7 @@ export async function createLightningInvoice(
 export async function checkLightningInvoiceStatus(
   config: LightningConfig,
   invoiceId: string,
-  provider?: 'strike' | 'boltz'
+  provider?: 'strike' | 'alby'
 ): Promise<InvoiceResponse> {
   const lightningService = createLightningService(config)
   return await lightningService.getInvoiceStatus(invoiceId, provider)

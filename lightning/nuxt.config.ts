@@ -61,17 +61,11 @@ The Lightning layer requires 'lightning' configuration in your app's runtimeConf
 Add this to your nuxt.config.ts:
 runtimeConfig: {
   lightning: {
-    defaultProvider: 'strike', // or 'boltz'
-providers: {
-  strike: {
-    apiKey: process.env.NUXT_STRIKE_API_KEY,
-    webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
-  },
-  // or
-  boltz: {
-        apiUrl: 'https://api.boltz.exchange/',
-        network: 'mainnet',
-        liquidAddress: 'your-liquid-address'
+    defaultProvider: 'strike',
+    providers: {
+      strike: {
+        apiKey: process.env.NUXT_STRIKE_API_KEY,
+        webhookSecret: process.env.STRIKE_WEBHOOK_SECRET
       }
     }
   }
@@ -86,14 +80,14 @@ providers: {
 🚨 Lightning Layer Configuration Error:
 'defaultProvider' must be specified in lightning configuration.
 
-Valid options: 'strike' or 'boltz'
+Valid options: 'strike' or 'alby'
                 `.trim())
             }
 
-            if (!['strike', 'boltz'].includes(lightningConfig.defaultProvider)) {
+            if (!['strike', 'alby'].includes(lightningConfig.defaultProvider)) {
                 throw new Error(`
 🚨 Lightning Layer Configuration Error:
-'defaultProvider' must be either 'strike' or 'boltz'.
+'defaultProvider' must be either 'strike' or 'alby'.
 
 Current value: ${lightningConfig.defaultProvider}
                 `.trim())
@@ -137,33 +131,6 @@ providers: {
 Strike provider requires 'webhookSecret' for webhook validation.
 
 Set STRIKE_WEBHOOK_SECRET environment variable.
-                    `.trim())
-                }
-            }
-
-            // Validate Boltz provider configuration
-            if (lightningConfig.providers.boltz) {
-                const boltzConfig = lightningConfig.providers.boltz
-                if (!boltzConfig.liquidAddress) {
-                    throw new Error(`
-🚨 Lightning Layer Configuration Error:
-Boltz provider requires 'liquidAddress' for receiving Liquid Bitcoin.
-
-Configure your Liquid address:
-providers: {
-  boltz: {
-    liquidAddress: 'your-liquid-address',
-    network: 'mainnet'
-  }
-}
-                    `.trim())
-                }
-                if (!boltzConfig.network || !['mainnet', 'testnet'].includes(boltzConfig.network)) {
-                    throw new Error(`
-🚨 Lightning Layer Configuration Error:
-Boltz provider requires 'network' to be either 'mainnet' or 'testnet'.
-
-Current value: ${boltzConfig.network}
                     `.trim())
                 }
             }

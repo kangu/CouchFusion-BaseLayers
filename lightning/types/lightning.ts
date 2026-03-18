@@ -13,16 +13,6 @@ export interface InvoiceResponse {
   currency: string
   status: 'pending' | 'paid' | 'expired' | 'cancelled'
   expiresAt?: Date
-  liquidAddress?: string // For Boltz swaps
-  swapId?: string // For Boltz swaps
-  // Boltz reverse swap data required for spending
-  preimage?: string
-  preimageHash?: string
-  claimPublicKey?: string
-  claimPrivateKey?: string
-  blindingKey?: string
-  lockupAddress?: string
-  onchainAmount?: number
   // Quote data (Strike provider)
   quoteId?: string
   rate?: number
@@ -57,17 +47,6 @@ export interface StrikeConfig {
   baseUrl?: string
 }
 
-export interface BoltzConfig {
-  apiUrl: string
-  network: 'mainnet' | 'testnet'
-  liquidAddress: string
-  refundAddress?: string
-  claimPublicKey?: string
-  refundPublicKey?: string
-  pairHash?: string
-  referralCode?: string
-}
-
 export interface AlbyConfig {
   apiUrl?: string
   accessToken: string // PAT
@@ -77,10 +56,9 @@ export interface AlbyConfig {
 }
 
 export interface LightningConfig {
-  defaultProvider: 'strike' | 'boltz' | 'alby'
+  defaultProvider: 'strike' | 'alby'
   providers: {
     strike?: StrikeConfig
-    boltz?: BoltzConfig
     alby?: AlbyConfig
   }
 }

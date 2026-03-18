@@ -114,18 +114,6 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
     },
 
     /**
-     * Query Boltz swaps by swap ID
-     * Key: swapId, Value: full document
-     */
-    by_swap_id: {
-      map: `function(doc) {
-        if (doc.swapId && doc.provider === 'boltz' && doc.type === 'lightning_invoice') {
-          emit(doc.swapId, doc);
-        }
-      }`
-    },
-
-    /**
      * Statistics view - count orders by status
      * Key: status, Value: 1 (for counting with reduce)
      */
