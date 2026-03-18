@@ -6,6 +6,16 @@ definePageMeta({
   middleware: ['admin-auth']
 })
 
+// Load MJML compiler only on this page
+useHead({
+  script: [
+    {
+      src: 'https://unpkg.com/mjml-browser@4.18.0/lib/index.js',
+      defer: false,
+    },
+  ],
+})
+
 const route = useRoute()
 const router = useRouter()
 const { success: showSuccess, error: showError } = useEmailToast()
