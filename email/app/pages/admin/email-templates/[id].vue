@@ -140,6 +140,7 @@ const editableMjmlTextEntries = ref<EditableMjmlTextEntry[]>([])
 const transformedMjmlBase = ref('')
 const hasAppliedFirstDetectedTransformation = ref(false)
 const detectTextsError = ref<string | null>(null)
+let renderDetectedInputsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const canSave = computed(() => hasUnsavedChanges.value && !isTemplateLoading.value && !isSaving.value)
 
@@ -518,6 +519,11 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (renderDetectedInputsDebounceTimer) {
+    clearTimeout(renderDetectedInputsDebounceTimer)
+    renderDetectedInputsDebounceTimer = null
+  }
+
   if (!process.client) {
     return
   }
@@ -742,6 +748,17 @@ const renderMjmlFromDetectedInputs = () => {
 
   editorState.mjml = renderMjmlFromEntries(transformedMjmlBase.value, editableMjmlTextEntries.value)
 }
+
+const scheduleRenderMjmlFromDetectedInputs = () => {
+  if (renderDetectedInputsDebounceTimer) {
+    clearTimeout(renderDetectedInputsDebounceTimer)
+  }
+
+  renderDetectedInputsDebounceTimer = setTimeout(() => {
+    renderDetectedInputsDebounceTimer = null
+    renderMjmlFromDetectedInputs()
+  }, 250)
+}
 </script>
 
 <template>
@@ -933,7 +950,7 @@ const renderMjmlFromDetectedInputs = () => {
                   type="text"
                   class="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   :placeholder="entry.originalText"
-                  @input="renderMjmlFromDetectedInputs"
+                  @input="scheduleRenderMjmlFromDetectedInputs"
                 />
                 <div v-if="entry.hrefPlaceholder" class="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-2">
                   <p class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
@@ -947,7 +964,7 @@ const renderMjmlFromDetectedInputs = () => {
                     type="text"
                     class="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     :placeholder="entry.hrefOriginal || ''"
-                    @input="renderMjmlFromDetectedInputs"
+                    @input="scheduleRenderMjmlFromDetectedInputs"
                   />
                 </div>
               </div>
