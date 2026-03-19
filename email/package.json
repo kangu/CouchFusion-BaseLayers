@@ -8,8 +8,8 @@
   },
   "peerDependencies": {
     "nuxt": "^4.0.0",
-    "vue-codemirror": "^6.0.0",
-    "@codemirror/lang-xml": "^6.0.0",
+    "codejar": "^4.2.0",
+    "prismjs": "^1.29.0",
     "mjml-browser": "^4.0.0"
   }
 }

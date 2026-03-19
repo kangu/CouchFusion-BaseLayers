@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 
 definePageMeta({
   middleware: ['admin-auth']
@@ -152,8 +152,7 @@ watch(
 const compileError = ref<string | null>(null)
 const isCompiling = ref(false)
 const mjmlCompiler = shallowRef<null | ((source: string) => { html?: string; errors?: Array<{ message?: string }> })>(null)
-const codeMirrorExtensions = ref<any[]>([])
-const CodeMirror = defineAsyncComponent(() => import('vue-codemirror').then(module => module.Codemirror))
+const isMjmlEditorExpanded = ref(false)
 
 const compileMjml = async (source: string) => {
   if (!mjmlCompiler.value) {
@@ -224,12 +223,6 @@ onMounted(async () => {
     compileError.value = error?.message || 'Failed to load MJML compiler.'
   }
 
-  try {
-    const { xml } = await import('@codemirror/lang-xml')
-    codeMirrorExtensions.value = [xml()]
-  } catch (error) {
-    console.warn('Failed to load CodeMirror XML extensions', error)
-  }
 })
 
 // Compile MJML whenever it changes (but only if compiler is ready)
@@ -329,6 +322,10 @@ const discardChanges = () => {
 const goBack = () => {
   router.push('/admin/email-templates')
 }
+
+const toggleMjmlEditor = () => {
+  isMjmlEditorExpanded.value = !isMjmlEditorExpanded.value
+}
 </script>
 
 <template>
@@ -406,18 +403,26 @@ const goBack = () => {
               />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700">MJML</label>
-              <ClientOnly>
+              <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700">MJML</label>
+                <button
+                  type="button"
+                  class="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                  @click="toggleMjmlEditor"
+                >
+                  {{ isMjmlEditorExpanded ? 'Hide MJML Editor' : 'Show MJML Editor' }}
+                </button>
+              </div>
+              <ClientOnly v-if="isMjmlEditorExpanded">
                 <Suspense>
                   <template #default>
-                    <div class="mt-1 overflow-auto rounded-md border border-gray-300 shadow-sm" style="max-height: 600px;">
-                      <CodeMirror
+                    <div
+                      class="email-template-mjml-editor mt-1 overflow-hidden rounded-md border border-gray-300 shadow-sm"
+                      style="height: min(60vh, 600px); min-height: 320px;"
+                    >
+                      <AdminPrismCodeJar
                         v-model="editorState.mjml"
-                        :extensions="codeMirrorExtensions"
-                        :tab-size="2"
-                        :basic="true"
                         class="text-sm"
-                        style="min-height: 320px;"
                       />
                     </div>
                   </template>
@@ -432,14 +437,8 @@ const goBack = () => {
                 </Suspense>
               </ClientOnly>
               <p class="mt-1 text-xs text-gray-500">
-                {{ isCompiling ? 'Compiling MJML…' : compileError ? 'MJML has compile issues; preview may be outdated.' : 'MJML will recompile automatically.' }}
+                {{ isCompiling ? 'Compiling MJML…' : 'MJML will recompile automatically.' }}
               </p>
-              <div
-                v-if="compileError"
-                class="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"
-              >
-                {{ compileError }}
-              </div>
             </div>
           </div>
         </div>
@@ -544,5 +543,18 @@ const goBack = () => {
 <style scoped>
 :global(body[data-email-template-page='true'] main.flex-1) {
   overflow: visible;
+}
+
+.email-template-mjml-editor {
+  position: relative;
+}
+
+.email-template-mjml-editor :deep(.prism-codejar) {
+  height: 100%;
+}
+
+.email-template-mjml-editor :deep(.prism-codejar__editor),
+.email-template-mjml-editor :deep(.prism-codejar__fallback) {
+  overflow: auto;
 }
 </style>
