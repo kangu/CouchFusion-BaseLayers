@@ -4,6 +4,9 @@ export default defineNuxtConfig({
   alias: {
     "#email": fileURLToPath(new URL(".", import.meta.url)),
   },
+  modules: [
+    fileURLToPath(new URL("./utils/register-layout", import.meta.url)),
+  ],
   appConfig: {
     adminWorkspace: {
       sections: [

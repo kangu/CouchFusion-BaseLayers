@@ -2,7 +2,6 @@
 import { computed, defineAsyncComponent, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 
 definePageMeta({
-  layout: 'admin-workspace',
   middleware: ['admin-auth']
 })
 

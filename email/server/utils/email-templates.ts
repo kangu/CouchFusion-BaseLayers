@@ -6,7 +6,11 @@ export const EMAIL_DATABASE_NAME = 'email-sender'
  * Get the email template prefix for the current app based on dbLoginPrefix
  */
 export const getEmailTemplatePrefix = (dbLoginPrefix: string): string => {
-  return `template_${dbLoginPrefix}_`
+  const normalizedPrefix = typeof dbLoginPrefix === 'string'
+    ? dbLoginPrefix.replace(/-$/, '')
+    : ''
+
+  return `template_${normalizedPrefix}_`
 }
 
 /**

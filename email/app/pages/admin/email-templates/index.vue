@@ -2,7 +2,6 @@
 import { computed, reactive, ref } from 'vue'
 
 definePageMeta({
-  layout: 'admin-workspace',
   middleware: ['admin-auth']
 })
 
