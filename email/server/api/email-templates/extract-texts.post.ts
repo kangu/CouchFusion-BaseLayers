@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
   return {
     success: true,
     texts: result.texts,
-    transformedMjml: result.transformedMjml
+    transformedMjml: result.transformedMjml,
+    hrefLinks: result.hrefLinks
   }
 })

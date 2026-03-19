@@ -48,6 +48,14 @@ export const extractTemplatePlaceholders = (...sources: Array<string | undefined
 export interface MjmlTextExtractionResult {
   texts: string[]
   transformedMjml: string
+  hrefLinks: MjmlHrefLink[]
+}
+
+export interface MjmlHrefLink {
+  textPlaceholder: string
+  hrefPlaceholder: string
+  href: string
+  tagName: string
 }
 
 interface TextRange {
@@ -143,7 +151,8 @@ export const extractEditableMjmlTexts = (mjml: string): MjmlTextExtractionResult
   if (typeof mjml !== 'string' || !mjml.length) {
     return {
       texts: [],
-      transformedMjml: typeof mjml === 'string' ? mjml : ''
+      transformedMjml: typeof mjml === 'string' ? mjml : '',
+      hrefLinks: []
     }
   }
 
@@ -151,7 +160,7 @@ export const extractEditableMjmlTexts = (mjml: string): MjmlTextExtractionResult
   const slugCounters = new Map<string, number>()
   const mjStyleRanges = collectMjStyleRanges(mjml)
 
-  const transformedMjml = mjml.replace(/>([^<]+)</g, (_fullMatch, rawNodeText: string, offset: number) => {
+  const transformedTextMjml = mjml.replace(/>([^<]+)</g, (_fullMatch, rawNodeText: string, offset: number) => {
     if (isInsideRanges(offset, mjStyleRanges)) {
       return `>${rawNodeText}<`
     }
@@ -178,8 +187,40 @@ export const extractEditableMjmlTexts = (mjml: string): MjmlTextExtractionResult
     return `>${transformedNodeText}<`
   })
 
+  const hrefLinks: MjmlHrefLink[] = []
+  const hrefPlaceholderCounters = new Map<string, number>()
+
+  const transformedMjml = transformedTextMjml.replace(
+    /<([a-z0-9-]+)\b([^>]*)\bhref=(["'])(.*?)\3([^>]*)>([\s\S]*?)<\/\1>/gi,
+    (fullMatch, tagName: string, beforeHref: string, quote: string, hrefValue: string, afterHref: string, innerContent: string) => {
+      if (!hrefValue || hrefValue.includes('{{')) {
+        return fullMatch
+      }
+
+      const placeholderMatch = /\[([a-z0-9-]+)\]/i.exec(innerContent)
+      const textPlaceholder = placeholderMatch?.[1]?.trim()
+      if (!textPlaceholder) {
+        return fullMatch
+      }
+
+      const hrefBaseSlug = `${textPlaceholder}-href`
+      const hrefPlaceholder = buildUniqueSlug(hrefBaseSlug, hrefPlaceholderCounters)
+
+      hrefLinks.push({
+        textPlaceholder,
+        hrefPlaceholder,
+        href: hrefValue,
+        tagName: tagName.toLowerCase()
+      })
+
+      const replacedHref = `[${hrefPlaceholder}]`
+      return `<${tagName}${beforeHref}href=${quote}${replacedHref}${quote}${afterHref}>${innerContent}</${tagName}>`
+    }
+  )
+
   return {
     texts: extractedTexts,
-    transformedMjml
+    transformedMjml,
+    hrefLinks
   }
 }

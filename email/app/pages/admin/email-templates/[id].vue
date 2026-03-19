@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 
 definePageMeta({
   middleware: ['admin-auth']
@@ -38,12 +38,22 @@ interface ExtractTextsResponse {
   success: boolean
   texts: string[]
   transformedMjml: string
+  hrefLinks?: Array<{
+    textPlaceholder: string
+    hrefPlaceholder: string
+    href: string
+    tagName: string
+  }>
 }
 
 interface EditableMjmlTextEntry {
   placeholder: string
   originalText: string
   value: string
+  hrefPlaceholder: string | null
+  hrefOriginal: string | null
+  hrefValue: string
+  hrefTag: string | null
   priorityTag: 'mj-title' | 'mj-preview' | null
   isPriority: boolean
 }
@@ -160,7 +170,7 @@ const attachPriorityMetadata = (entries: EditableMjmlTextEntry[], baseMjml: stri
     return {
       ...entry,
       priorityTag,
-      isPriority: priorityTag !== null
+      isPriority: priorityTag !== null || Boolean(entry.hrefPlaceholder)
     }
   })
 }
@@ -185,6 +195,18 @@ function sanitizeEditableMjmlEntries (value: unknown): EditableMjmlTextEntry[] {
     const entryValue = typeof (candidate as any).value === 'string'
       ? (candidate as any).value
       : originalText
+    const hrefPlaceholder = typeof (candidate as any).hrefPlaceholder === 'string'
+      ? (candidate as any).hrefPlaceholder.trim() || null
+      : null
+    const hrefOriginal = typeof (candidate as any).hrefOriginal === 'string'
+      ? (candidate as any).hrefOriginal
+      : null
+    const hrefValue = typeof (candidate as any).hrefValue === 'string'
+      ? (candidate as any).hrefValue
+      : (hrefOriginal ?? '')
+    const hrefTag = typeof (candidate as any).hrefTag === 'string'
+      ? (candidate as any).hrefTag
+      : null
 
     if (!placeholder) {
       continue
@@ -194,6 +216,10 @@ function sanitizeEditableMjmlEntries (value: unknown): EditableMjmlTextEntry[] {
       placeholder,
       originalText,
       value: entryValue,
+      hrefPlaceholder,
+      hrefOriginal,
+      hrefValue,
+      hrefTag,
       priorityTag: null,
       isPriority: false
     })
@@ -211,6 +237,11 @@ function renderMjmlFromEntries (baseMjml: string, entries: EditableMjmlTextEntry
   for (const entry of entries) {
     const token = `[${entry.placeholder}]`
     nextMjml = nextMjml.split(token).join(entry.value)
+
+    if (entry.hrefPlaceholder) {
+      const hrefToken = `[${entry.hrefPlaceholder}]`
+      nextMjml = nextMjml.split(hrefToken).join(entry.hrefValue || '')
+    }
   }
 
   return nextMjml
@@ -265,6 +296,147 @@ const compileError = ref<string | null>(null)
 const isCompiling = ref(false)
 const mjmlCompiler = shallowRef<null | ((source: string) => { html?: string; errors?: Array<{ message?: string }> })>(null)
 const isMjmlEditorExpanded = ref(false)
+const previewIframeRef = ref<HTMLIFrameElement | null>(null)
+const previewSectionRef = ref<HTMLElement | null>(null)
+const previewCardRef = ref<HTMLElement | null>(null)
+const isPreviewFixed = ref(false)
+const previewFixedStyle = ref<Record<string, string>>({})
+const previewPlaceholderHeight = ref(0)
+let previewFixTriggerY = 0
+const pendingPreviewScrollRestore = ref<{ x: number; y: number } | null>(null)
+
+const capturePreviewScrollPosition = () => {
+  if (!process.client) {
+    return
+  }
+
+  const previewWindow = previewIframeRef.value?.contentWindow
+  if (!previewWindow) {
+    return
+  }
+
+  pendingPreviewScrollRestore.value = {
+    x: previewWindow.scrollX || 0,
+    y: previewWindow.scrollY || 0
+  }
+}
+
+const restorePreviewScrollPosition = () => {
+  if (!process.client || !pendingPreviewScrollRestore.value) {
+    return
+  }
+
+  const target = pendingPreviewScrollRestore.value
+  const previewWindow = previewIframeRef.value?.contentWindow
+  if (!previewWindow) {
+    return
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      previewWindow.scrollTo(target.x, target.y)
+      pendingPreviewScrollRestore.value = null
+    })
+  })
+}
+
+const onPreviewIframeLoad = () => {
+  restorePreviewScrollPosition()
+}
+
+const resetPreviewFixedState = () => {
+  isPreviewFixed.value = false
+  previewFixedStyle.value = {}
+  previewPlaceholderHeight.value = 0
+}
+
+const updatePreviewTrigger = () => {
+  if (!process.client) {
+    return
+  }
+
+  const card = previewCardRef.value
+  if (!card) {
+    return
+  }
+
+  if (isPreviewFixed.value) {
+    return
+  }
+
+  const rect = card.getBoundingClientRect()
+  previewFixTriggerY = rect.top + window.scrollY - 10
+}
+
+const applyPreviewFixedStyle = () => {
+  if (!process.client) {
+    return
+  }
+
+  const section = previewSectionRef.value
+  const card = previewCardRef.value
+  if (!section || !card) {
+    return
+  }
+
+  const sectionRect = section.getBoundingClientRect()
+  previewPlaceholderHeight.value = card.getBoundingClientRect().height
+  previewFixedStyle.value = {
+    top: '10px',
+    left: `${sectionRect.left}px`,
+    width: `${sectionRect.width}px`
+  }
+}
+
+const syncPreviewFixedState = () => {
+  if (!process.client) {
+    return
+  }
+
+  const isDesktop = window.matchMedia('(min-width: 1024px)').matches
+  if (!isDesktop) {
+    resetPreviewFixedState()
+    return
+  }
+
+  if (!previewCardRef.value) {
+    return
+  }
+
+  const shouldFix = window.scrollY >= previewFixTriggerY
+
+  if (shouldFix) {
+    if (!isPreviewFixed.value) {
+      applyPreviewFixedStyle()
+    } else {
+      applyPreviewFixedStyle()
+    }
+    isPreviewFixed.value = true
+    return
+  }
+
+  if (isPreviewFixed.value) {
+    resetPreviewFixedState()
+    nextTick(() => {
+      updatePreviewTrigger()
+    })
+  }
+}
+
+const onWindowScrollForPreview = () => {
+  syncPreviewFixedState()
+}
+
+const onWindowResizeForPreview = () => {
+  if (!process.client) {
+    return
+  }
+  resetPreviewFixedState()
+  nextTick(() => {
+    updatePreviewTrigger()
+    syncPreviewFixedState()
+  })
+}
 
 const compileMjml = async (source: string) => {
   if (!mjmlCompiler.value) {
@@ -288,6 +460,7 @@ const compileMjml = async (source: string) => {
     }
 
     if (typeof result?.html === 'string') {
+      capturePreviewScrollPosition()
       editorState.html = result.html
     }
   } catch (error: any) {
@@ -335,6 +508,21 @@ onMounted(async () => {
     compileError.value = error?.message || 'Failed to load MJML compiler.'
   }
 
+  nextTick(() => {
+    updatePreviewTrigger()
+    syncPreviewFixedState()
+  })
+
+  window.addEventListener('scroll', onWindowScrollForPreview, { passive: true })
+  window.addEventListener('resize', onWindowResizeForPreview, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  if (!process.client) {
+    return
+  }
+  window.removeEventListener('scroll', onWindowScrollForPreview)
+  window.removeEventListener('resize', onWindowResizeForPreview)
 })
 
 // Compile MJML whenever it changes (but only if compiler is ready)
@@ -419,9 +607,19 @@ const detectTextsFromMjml = async () => {
 
     const extractedTexts = Array.isArray(response?.texts) ? response.texts : []
     const transformedMjml = typeof response?.transformedMjml === 'string' ? response.transformedMjml : ''
+    const hrefLinks = Array.isArray(response?.hrefLinks) ? response.hrefLinks : []
 
+    const hrefPlaceholderSet = new Set(
+      hrefLinks
+        .map(link => (typeof link?.hrefPlaceholder === 'string' ? link.hrefPlaceholder.trim() : ''))
+        .filter(Boolean)
+    )
     const placeholders = extractBracketPlaceholders(transformedMjml)
-    const builtEntries = buildEditableEntries(placeholders, extractedTexts)
+      .filter(placeholder => !hrefPlaceholderSet.has(placeholder))
+    const builtEntries = attachHrefLinksToEntries(
+      buildEditableEntries(placeholders, extractedTexts),
+      hrefLinks
+    )
     editableMjmlTextEntries.value = attachPriorityMetadata(builtEntries, transformedMjml)
     transformedMjmlBase.value = transformedMjml
 
@@ -483,11 +681,58 @@ const buildEditableEntries = (placeholders: string[], texts: string[]): Editable
     entries.push({
       placeholder,
       originalText,
-      value: originalText
+      value: originalText,
+      hrefPlaceholder: null,
+      hrefOriginal: null,
+      hrefValue: '',
+      hrefTag: null,
+      priorityTag: null,
+      isPriority: false
     })
   }
 
   return entries
+}
+
+const attachHrefLinksToEntries = (
+  entries: EditableMjmlTextEntry[],
+  hrefLinks: ExtractTextsResponse['hrefLinks']
+): EditableMjmlTextEntry[] => {
+  if (!entries.length || !Array.isArray(hrefLinks) || hrefLinks.length === 0) {
+    return entries
+  }
+
+  const hrefByTextPlaceholder = new Map<string, { hrefPlaceholder: string, href: string, tagName: string }>()
+  for (const link of hrefLinks) {
+    if (!link || typeof link !== 'object') {
+      continue
+    }
+
+    const textPlaceholder = typeof link.textPlaceholder === 'string' ? link.textPlaceholder.trim() : ''
+    const hrefPlaceholder = typeof link.hrefPlaceholder === 'string' ? link.hrefPlaceholder.trim() : ''
+    const href = typeof link.href === 'string' ? link.href : ''
+    const tagName = typeof link.tagName === 'string' ? link.tagName : ''
+    if (!textPlaceholder || !hrefPlaceholder) {
+      continue
+    }
+
+    hrefByTextPlaceholder.set(textPlaceholder, { hrefPlaceholder, href, tagName })
+  }
+
+  return entries.map((entry) => {
+    const hrefLink = hrefByTextPlaceholder.get(entry.placeholder)
+    if (!hrefLink) {
+      return entry
+    }
+
+    return {
+      ...entry,
+      hrefPlaceholder: hrefLink.hrefPlaceholder,
+      hrefOriginal: hrefLink.href,
+      hrefValue: hrefLink.href,
+      hrefTag: hrefLink.tagName || null
+    }
+  })
 }
 
 const renderMjmlFromDetectedInputs = () => {
@@ -690,6 +935,21 @@ const renderMjmlFromDetectedInputs = () => {
                   :placeholder="entry.originalText"
                   @input="renderMjmlFromDetectedInputs"
                 />
+                <div v-if="entry.hrefPlaceholder" class="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-2">
+                  <p class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                    Priority · {{ entry.hrefTag || 'link' }} href
+                  </p>
+                  <label class="mt-1 block text-[11px] font-mono text-gray-500">
+                    [{{ entry.hrefPlaceholder }}] linked to [{{ entry.placeholder }}]
+                  </label>
+                  <input
+                    v-model="entry.hrefValue"
+                    type="text"
+                    class="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    :placeholder="entry.hrefOriginal || ''"
+                    @input="renderMjmlFromDetectedInputs"
+                  />
+                </div>
               </div>
               <div
                 v-if="!isDetectingTexts && editableMjmlTextEntries.length === 0"
@@ -702,8 +962,18 @@ const renderMjmlFromDetectedInputs = () => {
         </div>
       </section>
 
-      <section class="lg:col-span-7 lg:sticky lg:top-4 lg:self-start">
-        <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <section ref="previewSectionRef" class="lg:col-span-7">
+        <div
+          v-if="isPreviewFixed"
+          :style="{ height: `${previewPlaceholderHeight}px` }"
+          aria-hidden="true"
+        />
+        <div
+          ref="previewCardRef"
+          class="rounded-lg border border-gray-200 bg-white shadow-sm"
+          :class="{ 'email-preview-fixed': isPreviewFixed }"
+          :style="isPreviewFixed ? previewFixedStyle : undefined"
+        >
           <div class="border-b border-gray-200 px-6 py-4">
             <h2 class="text-base font-semibold text-gray-900">HTML preview</h2>
             <p class="text-xs text-gray-500">Rendered email as it will be sent.</p>
@@ -711,10 +981,12 @@ const renderMjmlFromDetectedInputs = () => {
           <div class="max-h-[36rem] overflow-y-auto">
             <ClientOnly>
               <iframe
+                ref="previewIframeRef"
                 :srcdoc="editorState.html"
                 class="w-full min-h-[500px]"
-                sandbox="allow-scripts"
+                sandbox="allow-scripts allow-same-origin"
                 title="Email preview"
+                @load="onPreviewIframeLoad"
               />
               <template #fallback>
                 <div class="w-full min-h-[500px] flex items-center justify-center text-gray-400">
@@ -730,10 +1002,6 @@ const renderMjmlFromDetectedInputs = () => {
 </template>
 
 <style scoped>
-:global(body[data-email-template-page='true'] main.flex-1) {
-  overflow: visible;
-}
-
 .email-template-mjml-editor {
   position: relative;
 }
@@ -745,5 +1013,10 @@ const renderMjmlFromDetectedInputs = () => {
 .email-template-mjml-editor :deep(.prism-codejar__editor),
 .email-template-mjml-editor :deep(.prism-codejar__fallback) {
   overflow: auto;
+}
+
+.email-preview-fixed {
+  position: fixed;
+  z-index: 30;
 }
 </style>
