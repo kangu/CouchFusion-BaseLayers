@@ -29,6 +29,8 @@ interface EmailTemplateDocument {
   mjml?: string
   html?: string
   params?: string[]
+  editableMjmlBase?: string
+  editableMjmlEntries?: unknown
   [key: string]: unknown
 }
 
@@ -36,6 +38,14 @@ interface ExtractTextsResponse {
   success: boolean
   texts: string[]
   transformedMjml: string
+}
+
+interface EditableMjmlTextEntry {
+  placeholder: string
+  originalText: string
+  value: string
+  priorityTag: 'mj-title' | 'mj-preview' | null
+  isPriority: boolean
 }
 
 const PLACEHOLDER_PATTERN = /{{\s*([\w.-]+)\s*}}/g
@@ -116,10 +126,95 @@ const hasUnsavedChanges = computed(() => {
 
 const isSaving = ref(false)
 const isDetectingTexts = ref(false)
-const detectedEditableTexts = ref<string[]>([])
+const editableMjmlTextEntries = ref<EditableMjmlTextEntry[]>([])
+const transformedMjmlBase = ref('')
+const hasAppliedFirstDetectedTransformation = ref(false)
 const detectTextsError = ref<string | null>(null)
 
 const canSave = computed(() => hasUnsavedChanges.value && !isTemplateLoading.value && !isSaving.value)
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const resolvePriorityTag = (baseMjml: string, placeholder: string): 'mj-title' | 'mj-preview' | null => {
+  if (!baseMjml || !placeholder) {
+    return null
+  }
+
+  const escapedPlaceholder = escapeRegExp(`[${placeholder}]`)
+  const titlePattern = new RegExp(`<mj-title\\b[^>]*>[\\s\\S]*?${escapedPlaceholder}[\\s\\S]*?<\\/mj-title>`, 'i')
+  if (titlePattern.test(baseMjml)) {
+    return 'mj-title'
+  }
+
+  const previewPattern = new RegExp(`<mj-preview\\b[^>]*>[\\s\\S]*?${escapedPlaceholder}[\\s\\S]*?<\\/mj-preview>`, 'i')
+  if (previewPattern.test(baseMjml)) {
+    return 'mj-preview'
+  }
+
+  return null
+}
+
+const attachPriorityMetadata = (entries: EditableMjmlTextEntry[], baseMjml: string): EditableMjmlTextEntry[] => {
+  return entries.map((entry) => {
+    const priorityTag = resolvePriorityTag(baseMjml, entry.placeholder)
+    return {
+      ...entry,
+      priorityTag,
+      isPriority: priorityTag !== null
+    }
+  })
+}
+
+function sanitizeEditableMjmlEntries (value: unknown): EditableMjmlTextEntry[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const entries: EditableMjmlTextEntry[] = []
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue
+    }
+
+    const placeholder = typeof (candidate as any).placeholder === 'string'
+      ? (candidate as any).placeholder.trim()
+      : ''
+    const originalText = typeof (candidate as any).originalText === 'string'
+      ? (candidate as any).originalText
+      : ''
+    const entryValue = typeof (candidate as any).value === 'string'
+      ? (candidate as any).value
+      : originalText
+
+    if (!placeholder) {
+      continue
+    }
+
+    entries.push({
+      placeholder,
+      originalText,
+      value: entryValue,
+      priorityTag: null,
+      isPriority: false
+    })
+  }
+
+  return entries
+}
+
+function renderMjmlFromEntries (baseMjml: string, entries: EditableMjmlTextEntry[]): string {
+  if (!baseMjml || entries.length === 0) {
+    return baseMjml
+  }
+
+  let nextMjml = baseMjml
+  for (const entry of entries) {
+    const token = `[${entry.placeholder}]`
+    nextMjml = nextMjml.split(token).join(entry.value)
+  }
+
+  return nextMjml
+}
 
 const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
   if (!template) {
@@ -129,6 +224,9 @@ const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
     editorState.subject = ''
     editorState.mjml = ''
     editorState.html = ''
+    editableMjmlTextEntries.value = []
+    transformedMjmlBase.value = ''
+    hasAppliedFirstDetectedTransformation.value = false
     return
   }
 
@@ -139,6 +237,20 @@ const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
   editorState.mjml = typeof template.mjml === 'string' ? template.mjml : ''
   // Use the stored HTML from the template (server returns the saved HTML)
   editorState.html = typeof template.html === 'string' ? template.html : ''
+
+  const persistedBase = typeof template.editableMjmlBase === 'string' ? template.editableMjmlBase : ''
+  const persistedEntries = sanitizeEditableMjmlEntries(template.editableMjmlEntries)
+
+  if (persistedBase && persistedEntries.length > 0) {
+    transformedMjmlBase.value = persistedBase
+    editableMjmlTextEntries.value = attachPriorityMetadata(persistedEntries, persistedBase)
+    hasAppliedFirstDetectedTransformation.value = true
+    editorState.mjml = renderMjmlFromEntries(persistedBase, editableMjmlTextEntries.value)
+  } else {
+    editableMjmlTextEntries.value = []
+    transformedMjmlBase.value = ''
+    hasAppliedFirstDetectedTransformation.value = false
+  }
 }
 
 watch(
@@ -229,7 +341,6 @@ onMounted(async () => {
 watch(
   () => editorState.mjml,
   async (value) => {
-    detectedEditableTexts.value = []
     detectTextsError.value = null
 
     if (!mjmlCompiler.value || !value) {
@@ -268,6 +379,8 @@ const saveTemplate = async () => {
           subject: editorState.subject,
           mjml: editorState.mjml,
           html: editorState.html,
+          editableMjmlBase: transformedMjmlBase.value || undefined,
+          editableMjmlEntries: editableMjmlTextEntries.value,
           params: extractedParams.value
         }
       }
@@ -304,9 +417,20 @@ const detectTextsFromMjml = async () => {
       }
     })
 
-    detectedEditableTexts.value = Array.isArray(response?.texts) ? response.texts : []
+    const extractedTexts = Array.isArray(response?.texts) ? response.texts : []
+    const transformedMjml = typeof response?.transformedMjml === 'string' ? response.transformedMjml : ''
+
+    const placeholders = extractBracketPlaceholders(transformedMjml)
+    const builtEntries = buildEditableEntries(placeholders, extractedTexts)
+    editableMjmlTextEntries.value = attachPriorityMetadata(builtEntries, transformedMjml)
+    transformedMjmlBase.value = transformedMjml
+
+    if (!hasAppliedFirstDetectedTransformation.value && transformedMjml.trim()) {
+      hasAppliedFirstDetectedTransformation.value = true
+      editorState.mjml = transformedMjml
+    }
   } catch (error: any) {
-    detectedEditableTexts.value = []
+    editableMjmlTextEntries.value = []
     const message = error?.statusMessage || error?.message || 'Failed to detect editable texts.'
     detectTextsError.value = message
     showError(message)
@@ -325,6 +449,53 @@ const goBack = () => {
 
 const toggleMjmlEditor = () => {
   isMjmlEditorExpanded.value = !isMjmlEditorExpanded.value
+}
+
+const extractBracketPlaceholders = (mjml: string): string[] => {
+  const found = new Set<string>()
+  const placeholders: string[] = []
+  const pattern = /\[([a-z0-9-]+)\]/gi
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(mjml)) !== null) {
+    const placeholder = match[1]?.trim()
+    if (!placeholder || found.has(placeholder)) {
+      continue
+    }
+    found.add(placeholder)
+    placeholders.push(placeholder)
+  }
+
+  return placeholders
+}
+
+const buildEditableEntries = (placeholders: string[], texts: string[]): EditableMjmlTextEntry[] => {
+  const length = Math.min(placeholders.length, texts.length)
+  const entries: EditableMjmlTextEntry[] = []
+
+  for (let index = 0; index < length; index++) {
+    const originalText = texts[index] ?? ''
+    const placeholder = placeholders[index] ?? ''
+    if (!placeholder) {
+      continue
+    }
+
+    entries.push({
+      placeholder,
+      originalText,
+      value: originalText
+    })
+  }
+
+  return entries
+}
+
+const renderMjmlFromDetectedInputs = () => {
+  if (!transformedMjmlBase.value || editableMjmlTextEntries.value.length === 0) {
+    return
+  }
+
+  editorState.mjml = renderMjmlFromEntries(transformedMjmlBase.value, editableMjmlTextEntries.value)
 }
 </script>
 
@@ -494,21 +665,39 @@ const toggleMjmlEditor = () => {
               {{ detectTextsError }}
             </div>
 
-            <ul class="mt-3 space-y-2">
-              <li
-                v-for="(text, index) in detectedEditableTexts"
-                :key="`${index}-${text}`"
-                class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+            <div class="mt-3 space-y-2">
+              <div
+                v-for="(entry, index) in editableMjmlTextEntries"
+                :key="`${entry.placeholder}-${index}`"
+                class="rounded border px-3 py-2"
+                :class="entry.isPriority
+                  ? 'border-blue-300 bg-blue-50'
+                  : 'border-gray-200 bg-gray-50'"
               >
-                {{ text }}
-              </li>
-              <li
-                v-if="!isDetectingTexts && detectedEditableTexts.length === 0"
+                <p
+                  v-if="entry.isPriority && entry.priorityTag"
+                  class="mb-1 inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700"
+                >
+                  Priority · {{ entry.priorityTag }}
+                </p>
+                <label class="block text-[11px] font-mono text-gray-500">
+                  [{{ entry.placeholder }}]
+                </label>
+                <input
+                  v-model="entry.value"
+                  type="text"
+                  class="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  :placeholder="entry.originalText"
+                  @input="renderMjmlFromDetectedInputs"
+                />
+              </div>
+              <div
+                v-if="!isDetectingTexts && editableMjmlTextEntries.length === 0"
                 class="rounded border border-dashed border-gray-200 px-3 py-3 text-xs text-gray-500"
               >
                 No editable texts detected yet. Click “Detect texts from MJML”.
-              </li>
-            </ul>
+              </div>
+            </div>
           </div>
         </div>
       </section>
