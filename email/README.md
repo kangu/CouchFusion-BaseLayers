@@ -102,6 +102,14 @@ Once installed, navigate to `/admin/email-templates` in your application.
 
 Use `{{variableName}}` syntax in your MJML/HTML templates. Placeholders are automatically detected and listed in the editor.
 
+### Editable Text Extraction (MJML)
+
+Server utility `extractEditableMjmlTexts(mjml)` can scan raw MJML and:
+- return extracted editable text fragments in encounter order,
+- return transformed MJML with each extracted text replaced by a distinct placeholder like `[new-lite-member]`.
+
+This intentionally avoids `{{ }}` placeholders, which remain reserved for dynamic runtime replacements.
+
 ## API Endpoints
 
 - `GET /api/email-templates` - List all templates (returns stripped names)

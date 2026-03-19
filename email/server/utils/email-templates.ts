@@ -1,4 +1,6 @@
 const PLACEHOLDER_PATTERN = /{{\s*([\w.-]+)\s*}}/g
+const INLINE_DYNAMIC_PATTERN = /{{\s*[\w.-]+\s*}}/g
+const MJ_STYLE_BLOCK_PATTERN = /<mj-style\b[^>]*>[\s\S]*?<\/mj-style>/gi
 
 export const EMAIL_DATABASE_NAME = 'email-sender'
 
@@ -41,4 +43,143 @@ export const extractTemplatePlaceholders = (...sources: Array<string | undefined
   }
 
   return Array.from(params).sort((a, b) => a.localeCompare(b))
+}
+
+export interface MjmlTextExtractionResult {
+  texts: string[]
+  transformedMjml: string
+}
+
+interface TextRange {
+  start: number
+  end: number
+}
+
+const hasAlphaNumeric = (value: string): boolean => {
+  return /[\p{L}\p{N}]/u.test(value)
+}
+
+const slugifyText = (value: string): string => {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return normalized || 'text'
+}
+
+const buildUniqueSlug = (baseSlug: string, counters: Map<string, number>): string => {
+  const currentCount = counters.get(baseSlug) ?? 0
+  const nextCount = currentCount + 1
+  counters.set(baseSlug, nextCount)
+
+  if (nextCount === 1) {
+    return baseSlug
+  }
+
+  return `${baseSlug}-${nextCount}`
+}
+
+const replaceChunkWithPlaceholder = (
+  chunk: string,
+  extractedTexts: string[],
+  slugCounters: Map<string, number>
+): string => {
+  if (!chunk.trim()) {
+    return chunk
+  }
+
+  const trimmedChunk = chunk.trim()
+  if (!hasAlphaNumeric(trimmedChunk)) {
+    return chunk
+  }
+
+  const baseSlug = slugifyText(trimmedChunk)
+  const uniqueSlug = buildUniqueSlug(baseSlug, slugCounters)
+  extractedTexts.push(trimmedChunk)
+
+  const leadingWhitespaceLength = chunk.length - chunk.trimStart().length
+  const trailingWhitespaceLength = chunk.length - chunk.trimEnd().length
+  const leadingWhitespace = chunk.slice(0, leadingWhitespaceLength)
+  const trailingWhitespace = trailingWhitespaceLength > 0
+    ? chunk.slice(chunk.length - trailingWhitespaceLength)
+    : ''
+
+  return `${leadingWhitespace}[${uniqueSlug}]${trailingWhitespace}`
+}
+
+const collectMjStyleRanges = (mjml: string): TextRange[] => {
+  const ranges: TextRange[] = []
+  let match: RegExpExecArray | null
+
+  MJ_STYLE_BLOCK_PATTERN.lastIndex = 0
+  while ((match = MJ_STYLE_BLOCK_PATTERN.exec(mjml)) !== null) {
+    ranges.push({
+      start: match.index,
+      end: match.index + match[0].length
+    })
+  }
+
+  return ranges
+}
+
+const isInsideRanges = (index: number, ranges: TextRange[]): boolean => {
+  for (const range of ranges) {
+    if (index >= range.start && index < range.end) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Extract editable text fragments from raw MJML and replace each extracted text
+ * with a distinct non-dynamic placeholder in the transformed markup.
+ */
+export const extractEditableMjmlTexts = (mjml: string): MjmlTextExtractionResult => {
+  if (typeof mjml !== 'string' || !mjml.length) {
+    return {
+      texts: [],
+      transformedMjml: typeof mjml === 'string' ? mjml : ''
+    }
+  }
+
+  const extractedTexts: string[] = []
+  const slugCounters = new Map<string, number>()
+  const mjStyleRanges = collectMjStyleRanges(mjml)
+
+  const transformedMjml = mjml.replace(/>([^<]+)</g, (_fullMatch, rawNodeText: string, offset: number) => {
+    if (isInsideRanges(offset, mjStyleRanges)) {
+      return `>${rawNodeText}<`
+    }
+
+    if (typeof rawNodeText !== 'string' || !rawNodeText.trim()) {
+      return `>${rawNodeText}<`
+    }
+
+    let cursor = 0
+    let transformedNodeText = ''
+    let dynamicMatch: RegExpExecArray | null
+
+    INLINE_DYNAMIC_PATTERN.lastIndex = 0
+
+    while ((dynamicMatch = INLINE_DYNAMIC_PATTERN.exec(rawNodeText)) !== null) {
+      const staticChunk = rawNodeText.slice(cursor, dynamicMatch.index)
+      transformedNodeText += replaceChunkWithPlaceholder(staticChunk, extractedTexts, slugCounters)
+      transformedNodeText += dynamicMatch[0]
+      cursor = dynamicMatch.index + dynamicMatch[0].length
+    }
+
+    transformedNodeText += replaceChunkWithPlaceholder(rawNodeText.slice(cursor), extractedTexts, slugCounters)
+
+    return `>${transformedNodeText}<`
+  })
+
+  return {
+    texts: extractedTexts,
+    transformedMjml
+  }
 }

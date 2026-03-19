@@ -32,6 +32,12 @@ interface EmailTemplateDocument {
   [key: string]: unknown
 }
 
+interface ExtractTextsResponse {
+  success: boolean
+  texts: string[]
+  transformedMjml: string
+}
+
 const PLACEHOLDER_PATTERN = /{{\s*([\w.-]+)\s*}}/g
 
 const extractPlaceholders = (...sources: Array<string | undefined | null>): string[] => {
@@ -109,6 +115,9 @@ const hasUnsavedChanges = computed(() => {
 })
 
 const isSaving = ref(false)
+const isDetectingTexts = ref(false)
+const detectedEditableTexts = ref<string[]>([])
+const detectTextsError = ref<string | null>(null)
 
 const canSave = computed(() => hasUnsavedChanges.value && !isTemplateLoading.value && !isSaving.value)
 
@@ -196,7 +205,7 @@ onMounted(async () => {
       }
       return false
     }
-    
+
     // Try immediately first
     if (!checkMjml()) {
       // If not available, poll for it (script might still be loading)
@@ -227,6 +236,9 @@ onMounted(async () => {
 watch(
   () => editorState.mjml,
   async (value) => {
+    detectedEditableTexts.value = []
+    detectTextsError.value = null
+
     if (!mjmlCompiler.value || !value) {
       return
     }
@@ -280,6 +292,33 @@ const saveTemplate = async () => {
     showError(message)
   } finally {
     isSaving.value = false
+  }
+}
+
+const detectTextsFromMjml = async () => {
+  if (!editorState.mjml.trim() || isDetectingTexts.value) {
+    return
+  }
+
+  isDetectingTexts.value = true
+  detectTextsError.value = null
+
+  try {
+    const response = await $fetch<ExtractTextsResponse>('/api/email-templates/extract-texts', {
+      method: 'POST',
+      body: {
+        mjml: editorState.mjml
+      }
+    })
+
+    detectedEditableTexts.value = Array.isArray(response?.texts) ? response.texts : []
+  } catch (error: any) {
+    detectedEditableTexts.value = []
+    const message = error?.statusMessage || error?.message || 'Failed to detect editable texts.'
+    detectTextsError.value = message
+    showError(message)
+  } finally {
+    isDetectingTexts.value = false
   }
 }
 
@@ -402,25 +441,15 @@ const goBack = () => {
                 {{ compileError }}
               </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">HTML (read-only)</label>
-              <textarea
-                v-model="editorState.html"
-                readonly
-                class="mt-1 block w-full cursor-not-allowed rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm shadow-sm focus:border-blue-300 focus:outline-none"
-                rows="10"
-                spellcheck="false"
-              />
-            </div>
           </div>
         </div>
 
         <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 class="text-sm font-semibold text-gray-900">Dynamic parameters</h3>
-          <p class="mt-1 text-xs text-gray-500">
-            Detected placeholders render as <code v-pre>{{param}}</code>.
-          </p>
-          <ul class="mt-4 space-y-2">
+            <h3 class="text-sm font-semibold text-gray-900">Dynamic parameters</h3>
+            <p class="mt-1 text-xs text-gray-500">
+              Detected placeholders render as <code v-pre>{{param}}</code>.
+            </p>
+            <ul class="mt-4 space-y-2">
             <li
               v-for="param in extractedParams"
               :key="param"
@@ -438,6 +467,50 @@ const goBack = () => {
               No dynamic parameters detected.
             </li>
           </ul>
+
+          <div class="mt-5 border-t border-gray-200 pt-4">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-xs text-gray-500">
+                Detect editable text segments from current MJML and map them to distinct placeholders.
+              </p>
+              <button
+                type="button"
+                class="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isDetectingTexts || !editorState.mjml.trim()"
+                @click="detectTextsFromMjml"
+              >
+                <Icon
+                  v-if="isDetectingTexts"
+                  name="mdi:loading"
+                  class="mr-1.5 h-3.5 w-3.5 animate-spin"
+                />
+                Detect texts from MJML
+              </button>
+            </div>
+
+            <div
+              v-if="detectTextsError"
+              class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+            >
+              {{ detectTextsError }}
+            </div>
+
+            <ul class="mt-3 space-y-2">
+              <li
+                v-for="(text, index) in detectedEditableTexts"
+                :key="`${index}-${text}`"
+                class="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+              >
+                {{ text }}
+              </li>
+              <li
+                v-if="!isDetectingTexts && detectedEditableTexts.length === 0"
+                class="rounded border border-dashed border-gray-200 px-3 py-3 text-xs text-gray-500"
+              >
+                No editable texts detected yet. Click “Detect texts from MJML”.
+              </li>
+            </ul>
+          </div>
         </div>
       </section>
 
