@@ -153,6 +153,7 @@ const editorModules = shallowRef<{
 const EditorContentComponent = shallowRef<any>(null);
 const editor = shallowRef<any>(null);
 const editorInstance = computed(() => editor.value);
+const pendingExternalContent = ref<string | null>(null);
 
 const lastEmitted = ref(sanitizeRichTextHtml(props.modelValue ?? ""));
 const placeholder = computed(
@@ -272,11 +273,16 @@ const emitSanitizedChange = (value: string) => {
 const syncExternalValue = (value: string | undefined) => {
     const sanitized = sanitizeRichTextHtml(value ?? "");
     lastEmitted.value = sanitized;
-    if (editorInstance.value && editorInstance.value.getHTML() !== sanitized) {
+    if (!editorInstance.value) {
+        pendingExternalContent.value = sanitized;
+        return;
+    }
+    if (editorInstance.value.getHTML() !== sanitized) {
         editorInstance.value.commands.setContent(sanitized || "<p></p>", false, {
             preserveWhitespace: false,
         });
     }
+    pendingExternalContent.value = null;
 };
 
 watch(
@@ -284,6 +290,7 @@ watch(
     (value) => {
         syncExternalValue(value);
     },
+    { immediate: true },
 );
 
 watch(
@@ -461,6 +468,19 @@ const createEditor = () => {
         },
         onUpdate: ({ editor }) => {
             emitSanitizedChange(editor.getHTML());
+        },
+        onCreate: ({ editor }) => {
+            const queued = pendingExternalContent.value;
+            if (queued === null) {
+                return;
+            }
+            const next = queued || "<p></p>";
+            if (editor.getHTML() !== next) {
+                editor.commands.setContent(next, false, {
+                    preserveWhitespace: false,
+                });
+            }
+            pendingExternalContent.value = null;
         },
     });
 };
