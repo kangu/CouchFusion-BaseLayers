@@ -14,7 +14,15 @@ export type MaintenanceClientStatus =
   | "renewed"
   | "discontinued";
 export type MaintenanceJobStatus = "pending" | "done" | "rejected";
+export type MaintenanceJobType =
+  | "check_2y"
+  | "overhaul_10y"
+  | "gas_sensor_change";
 export type MaintenanceNotificationStatus = "queued" | "sent" | "failed";
+export type MaintenanceNotificationCategory =
+  | "check_2y"
+  | "overhaul_10y"
+  | "gas_sensor_change";
 
 export interface MaintenanceAddress {
   line1: string;
@@ -48,6 +56,11 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
+  overhaulBaseDate: string | null;
+  overhaulDueDate: string | null;
+  gasSensorBaseDate: string | null;
+  gasSensorPeriodMonths: number | null;
+  gasSensorDueDate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +68,7 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
 export interface MaintenanceJobDocument extends CouchDBDocument {
   type: "maintenance_job";
   clientId: string;
+  jobType: MaintenanceJobType;
   scheduledFor: string;
   status: MaintenanceJobStatus;
   assignedTo: string | null;
@@ -67,7 +81,7 @@ export interface MaintenanceJobDocument extends CouchDBDocument {
 
 export interface MaintenanceNotificationDocument extends CouchDBDocument {
   type: "maintenance_notification";
-  category: "contract_expiry";
+  category: MaintenanceNotificationCategory;
   relatedId: string;
   channel: MaintenanceContactChannel;
   recipient: string;

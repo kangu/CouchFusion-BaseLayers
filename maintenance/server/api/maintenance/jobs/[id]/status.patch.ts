@@ -5,7 +5,7 @@ import {
   readBody,
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
-import { ensureIsoDateOnly } from "../../../../utils/dates";
+import { addMonthsToIsoDate, ensureIsoDateOnly, toIsoDateOnly } from "../../../../utils/dates";
 import { asJobStatusTransitionTarget, asOptionalText } from "../../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../../utils/maintenance-db";
@@ -60,6 +60,7 @@ export default defineEventHandler(async (event) => {
   const now = new Date().toISOString();
   const updatedJob: MaintenanceJobDocument = {
     ...job,
+    jobType: job.jobType || "check_2y",
     status: targetStatus,
     rejectionReason:
       targetStatus === "rejected"
@@ -89,20 +90,40 @@ export default defineEventHandler(async (event) => {
   let followUpJob: MaintenanceJobDocument | null = null;
 
   if (targetStatus === "done") {
-    const nextExpirationDate = ensureIsoDateOnly(
-      payload.nextExpirationDate,
-      "nextExpirationDate",
-    );
-
     const client = await getDocument<MaintenanceClientDocument>(
       databaseName,
       updatedJob.clientId,
     );
 
     if (client && client.type === "maintenance_client") {
+      const completionDate = toIsoDateOnly(new Date(now));
+      const effectiveJobType = updatedJob.jobType || "check_2y";
+      const nextExpirationDate =
+        effectiveJobType === "check_2y"
+          ? typeof payload.nextExpirationDate === "undefined" ||
+            payload.nextExpirationDate === null ||
+            payload.nextExpirationDate === ""
+            ? addMonthsToIsoDate(completionDate, 24)
+            : ensureIsoDateOnly(payload.nextExpirationDate, "nextExpirationDate")
+          : client.contractExpirationDate;
+      const nextOverhaulDueDate =
+        effectiveJobType === "overhaul_10y"
+          ? addMonthsToIsoDate(completionDate, 120)
+          : client.overhaulDueDate;
+      const nextGasSensorDueDate =
+        effectiveJobType === "gas_sensor_change" && client.gasSensorPeriodMonths
+          ? addMonthsToIsoDate(completionDate, client.gasSensorPeriodMonths)
+          : client.gasSensorDueDate;
+
       const nextClient: MaintenanceClientDocument = {
         ...client,
         contractExpirationDate: nextExpirationDate,
+        overhaulBaseDate:
+          effectiveJobType === "overhaul_10y" ? completionDate : client.overhaulBaseDate,
+        overhaulDueDate: nextOverhaulDueDate,
+        gasSensorBaseDate:
+          effectiveJobType === "gas_sensor_change" ? completionDate : client.gasSensorBaseDate,
+        gasSensorDueDate: nextGasSensorDueDate,
         status: client.status === "discontinued" ? "discontinued" : "active",
         updatedAt: now,
       };
@@ -121,6 +142,8 @@ export default defineEventHandler(async (event) => {
         nextState: {
           status: nextClient.status,
           contractExpirationDate: nextClient.contractExpirationDate,
+          overhaulDueDate: nextClient.overhaulDueDate,
+          gasSensorDueDate: nextClient.gasSensorDueDate,
         },
       });
     }

@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
 
       return {
         ...job,
+        jobType: job.jobType || "check_2y",
         clientName: client?.name ?? null,
         contractExpirationDate: client?.contractExpirationDate ?? null,
         clientCheckupIntervalMonths: client?.contractCheckupIntervalMonths ?? null,

@@ -45,7 +45,15 @@ export default defineEventHandler(async (event) => {
         .join(" ");
 
       return haystack.includes(search);
-    });
+    })
+    .map((client) => ({
+      ...client,
+      overhaulBaseDate: client.overhaulBaseDate ?? null,
+      overhaulDueDate: client.overhaulDueDate ?? null,
+      gasSensorBaseDate: client.gasSensorBaseDate ?? null,
+      gasSensorPeriodMonths: client.gasSensorPeriodMonths ?? null,
+      gasSensorDueDate: client.gasSensorDueDate ?? null,
+    }));
 
   return {
     clients,

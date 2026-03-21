@@ -15,6 +15,11 @@ interface MaintenanceClient {
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
+  overhaulBaseDate: string | null;
+  overhaulDueDate: string | null;
+  gasSensorBaseDate: string | null;
+  gasSensorPeriodMonths: number | null;
+  gasSensorDueDate: string | null;
   primaryContactName: string | null;
   counterId: string | null;
   serviceAddress: {
@@ -63,7 +68,10 @@ const form = reactive({
   country: "",
   contractStartDate: "",
   contractExpirationDate: "",
-  contractCheckupIntervalMonths: "6",
+  contractCheckupIntervalMonths: "24",
+  overhaulBaseDate: "",
+  gasSensorBaseDate: "",
+  gasSensorPeriodMonths: "12",
   status: "active" as "active" | "expiring_soon" | "expired" | "renewed" | "discontinued",
 });
 
@@ -98,7 +106,10 @@ const resetForm = () => {
   form.country = "";
   form.contractStartDate = "";
   form.contractExpirationDate = "";
-  form.contractCheckupIntervalMonths = "6";
+  form.contractCheckupIntervalMonths = "24";
+  form.overhaulBaseDate = "";
+  form.gasSensorBaseDate = "";
+  form.gasSensorPeriodMonths = "12";
   form.status = "active";
   editingClientId.value = null;
   editableContacts.value = [
@@ -133,7 +144,10 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.country = client.serviceAddress?.country ?? "";
   form.contractStartDate = client.contractStartDate ?? "";
   form.contractExpirationDate = client.contractExpirationDate ?? "";
-  form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 6);
+  form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 24);
+  form.overhaulBaseDate = client.overhaulBaseDate ?? "";
+  form.gasSensorBaseDate = client.gasSensorBaseDate ?? "";
+  form.gasSensorPeriodMonths = String(client.gasSensorPeriodMonths ?? 12);
   form.status = client.status ?? "active";
   editableContacts.value = (client.contacts ?? []).map((contact) => ({
     id: contact.id || crypto.randomUUID(),
@@ -212,6 +226,19 @@ const saveClient = async () => {
     }
   }
 
+  if ((form.gasSensorBaseDate && !form.gasSensorPeriodMonths) || (!form.gasSensorBaseDate && form.gasSensorPeriodMonths)) {
+    formError.value = "Gas sensor base date and period months must be provided together.";
+    return;
+  }
+
+  if (form.gasSensorBaseDate) {
+    const gasSensorPeriodMonths = Number.parseInt(form.gasSensorPeriodMonths, 10);
+    if (!Number.isInteger(gasSensorPeriodMonths) || gasSensorPeriodMonths <= 0) {
+      formError.value = "Gas sensor period months must be a positive integer.";
+      return;
+    }
+  }
+
   const contacts = buildContactsPayload();
   if (!contacts.length || !contacts.some((contact) => String(contact.value ?? "").trim().length > 0)) {
     formError.value = "At least one contact method is required.";
@@ -237,6 +264,11 @@ const saveClient = async () => {
       contractExpirationDate: form.contractExpirationDate || null,
       contractCheckupIntervalMonths: form.contractStartDate
         ? Number.parseInt(form.contractCheckupIntervalMonths, 10)
+        : null,
+      overhaulBaseDate: form.overhaulBaseDate || null,
+      gasSensorBaseDate: form.gasSensorBaseDate || null,
+      gasSensorPeriodMonths: form.gasSensorBaseDate
+        ? Number.parseInt(form.gasSensorPeriodMonths, 10)
         : null,
       status: form.status,
     };
@@ -346,6 +378,7 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Contacts</th>
               <th class="px-3 py-2 font-medium">Contract expires</th>
+              <th class="px-3 py-2 font-medium">Gas sensor</th>
               <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
@@ -374,6 +407,12 @@ const saveClient = async () => {
               </td>
               <td class="px-3 py-2 text-slate-700">
                 {{ client.contractExpirationDate || "-" }}
+              </td>
+              <td class="px-3 py-2 text-slate-700">
+                <span v-if="client.gasSensorDueDate">
+                  {{ client.gasSensorDueDate }} ({{ client.gasSensorPeriodMonths || "-" }} mo)
+                </span>
+                <span v-else>-</span>
               </td>
               <td class="px-3 py-2">
                 <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
@@ -557,12 +596,41 @@ const saveClient = async () => {
           </label>
 
           <label class="space-y-1 text-sm text-slate-700">
-            <span>Checkup interval (months)</span>
+            <span>2-year flow interval (months)</span>
             <input
               v-model="form.contractCheckupIntervalMonths"
               type="number"
               min="1"
-              max="24"
+              max="240"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Overhaul base date</span>
+            <input
+              v-model="form.overhaulBaseDate"
+              type="date"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Gas sensor base date</span>
+            <input
+              v-model="form.gasSensorBaseDate"
+              type="date"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+            >
+          </label>
+
+          <label class="space-y-1 text-sm text-slate-700">
+            <span>Gas sensor period (months)</span>
+            <input
+              v-model="form.gasSensorPeriodMonths"
+              type="number"
+              min="1"
+              max="240"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
           </label>

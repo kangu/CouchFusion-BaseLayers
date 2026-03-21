@@ -10,6 +10,8 @@ import {
 import type {
   MaintenanceClientDocument,
   MaintenanceJobDocument,
+  MaintenanceJobType,
+  MaintenanceNotificationCategory,
   MaintenanceNotificationDocument,
 } from "./types";
 import { writeMaintenanceAuditEntry } from "./audit";
@@ -36,6 +38,14 @@ export interface RunContractExpiryCheckSummary {
   notificationsDryRunQueued: number;
 }
 
+interface ScheduleEntry {
+  client: MaintenanceClientDocument;
+  dueDate: string;
+  jobType: MaintenanceJobType;
+  notificationCategory: MaintenanceNotificationCategory;
+  label: string;
+}
+
 const buildNotificationDocId = (idempotencyKey: string): string => {
   const encoded = Buffer.from(idempotencyKey, "utf8").toString("base64url");
   return `maintenance_notification:${encoded}`;
@@ -59,15 +69,61 @@ const wasNotificationAlreadyProcessed = async (
   return Array.isArray(view?.rows) && view.rows.length > 0;
 };
 
-const buildContractReminderText = (
+const buildReminderText = (
   clientName: string,
-  expirationDate: string,
+  label: string,
+  dueDate: string,
 ): string => {
   return [
     `Maintenance reminder for ${clientName}.`,
-    `Contract expiration date: ${expirationDate}.`,
+    `${label} due date: ${dueDate}.`,
     "Please contact the maintenance team to schedule the checkup.",
   ].join(" ");
+};
+
+const collectScheduleEntries = (
+  clients: MaintenanceClientDocument[],
+  targetDate: string,
+): { upcomingEntries: ScheduleEntry[]; pastEntries: ScheduleEntry[] } => {
+  const entries: ScheduleEntry[] = [];
+
+  for (const client of clients) {
+    if (client.contractExpirationDate) {
+      entries.push({
+        client,
+        dueDate: client.contractExpirationDate,
+        jobType: "check_2y",
+        notificationCategory: "check_2y",
+        label: "2-year check",
+      });
+    }
+
+    if (client.overhaulDueDate) {
+      entries.push({
+        client,
+        dueDate: client.overhaulDueDate,
+        jobType: "overhaul_10y",
+        notificationCategory: "overhaul_10y",
+        label: "10-year overhaul",
+      });
+    }
+
+    if (client.gasSensorDueDate) {
+      entries.push({
+        client,
+        dueDate: client.gasSensorDueDate,
+        jobType: "gas_sensor_change",
+        notificationCategory: "gas_sensor_change",
+        label: "Gas sensor change",
+      });
+    }
+  }
+
+  const inWindow = entries.filter((entry) => entry.dueDate <= targetDate);
+  return {
+    upcomingEntries: inWindow,
+    pastEntries: inWindow,
+  };
 };
 
 export const runContractExpiryCheck = async (
@@ -80,40 +136,37 @@ export const runContractExpiryCheck = async (
   const targetDate = toIsoDateOnly(addDaysUtc(now, config.reminderDaysBeforeExpiry));
   const databaseName = await ensureMaintenanceDatabase();
 
-  const clientView = await getView(
-    databaseName,
-    "maintenance",
-    "clients_by_contract_expiration_date",
-    {
-      startkey: ["0000-01-01"],
-      endkey: [targetDate, {}],
-      include_docs: true,
-      descending: false,
-    },
-  );
+  const clientView = await getView(databaseName, "maintenance", "clients_by_name", {
+    include_docs: true,
+    descending: false,
+  });
 
-  const clientsInScope = (clientView?.rows ?? [])
+  const clients = (clientView?.rows ?? [])
     .map((row) => row.doc as MaintenanceClientDocument | undefined)
     .filter(
       (doc): doc is MaintenanceClientDocument =>
-        Boolean(doc && doc.type === "maintenance_client" && doc.contractExpirationDate),
+        Boolean(doc && doc.type === "maintenance_client"),
     )
     .filter((client) => client.status !== "discontinued");
 
-  const upcomingClients = clientsInScope.filter(
-    (client) => (client.contractExpirationDate as string) >= todayDate,
+  const scheduleEntries = collectScheduleEntries(clients, targetDate);
+  const upcomingEntries = scheduleEntries.upcomingEntries.filter(
+    (entry) => entry.dueDate >= todayDate,
   );
-  const pastExpiredClients = clientsInScope.filter(
-    (client) => (client.contractExpirationDate as string) < todayDate,
+  const pastEntries = scheduleEntries.pastEntries.filter(
+    (entry) => entry.dueDate < todayDate,
   );
 
-  if (pastExpiredClients.length > 0 && typeof input.includePastExpired === "undefined") {
+  const upcomingClientCount = new Set(upcomingEntries.map((entry) => entry.client._id)).size;
+  const pastClientCount = new Set(pastEntries.map((entry) => entry.client._id)).size;
+
+  if (pastEntries.length > 0 && typeof input.includePastExpired === "undefined") {
     return {
       runAt: nowIso,
       windowStartDate: todayDate,
       targetDate,
-      clientsMatched: upcomingClients.length,
-      pastExpiredClientsFound: pastExpiredClients.length,
+      clientsMatched: upcomingClientCount,
+      pastExpiredClientsFound: pastClientCount,
       requiresPastExpiredDecision: true,
       jobsCreated: 0,
       jobsSkippedExistingPending: 0,
@@ -125,9 +178,9 @@ export const runContractExpiryCheck = async (
     };
   }
 
-  const clientsForJobCreation = input.includePastExpired
-    ? [...upcomingClients, ...pastExpiredClients]
-    : upcomingClients;
+  const entriesForJobCreation = input.includePastExpired
+    ? [...upcomingEntries, ...pastEntries]
+    : upcomingEntries;
 
   const pendingJobsView = await getView(
     databaseName,
@@ -141,19 +194,20 @@ export const runContractExpiryCheck = async (
     },
   );
 
-  const pendingClientIds = new Set(
+  const pendingJobKeys = new Set(
     (pendingJobsView?.rows ?? [])
       .map((row) => row.doc as MaintenanceJobDocument | undefined)
       .filter((doc): doc is MaintenanceJobDocument => Boolean(doc && doc.type === "maintenance_job"))
-      .map((job) => job.clientId),
+      .map((job) => `${job.clientId}:${job.jobType || "check_2y"}`),
   );
 
   let jobsCreated = 0;
   let jobsSkippedExistingPending = 0;
   let jobsDryRunQueued = 0;
 
-  for (const client of clientsForJobCreation) {
-    if (pendingClientIds.has(client._id)) {
+  for (const entry of entriesForJobCreation) {
+    const pendingKey = `${entry.client._id}:${entry.jobType}`;
+    if (pendingJobKeys.has(pendingKey)) {
       jobsSkippedExistingPending += 1;
       continue;
     }
@@ -166,8 +220,9 @@ export const runContractExpiryCheck = async (
     const job: MaintenanceJobDocument = {
       _id: `maintenance_job:${crypto.randomUUID()}`,
       type: "maintenance_job",
-      clientId: client._id,
-      scheduledFor: client.contractExpirationDate as string,
+      clientId: entry.client._id,
+      jobType: entry.jobType,
+      scheduledFor: entry.dueDate,
       status: "pending",
       assignedTo: null,
       completionNotes: null,
@@ -178,7 +233,7 @@ export const runContractExpiryCheck = async (
     };
 
     await putDocument(databaseName, job);
-    pendingClientIds.add(client._id);
+    pendingJobKeys.add(pendingKey);
     jobsCreated += 1;
 
     await writeMaintenanceAuditEntry({
@@ -191,6 +246,7 @@ export const runContractExpiryCheck = async (
       nextState: {
         status: job.status,
         clientId: job.clientId,
+        jobType: job.jobType,
         scheduledFor: job.scheduledFor,
       },
     });
@@ -201,10 +257,10 @@ export const runContractExpiryCheck = async (
   let notificationsSkipped = 0;
   let notificationsDryRunQueued = 0;
 
-  for (const client of upcomingClients) {
-    if (!input.dryRun && client.status === "active") {
+  for (const entry of upcomingEntries) {
+    if (!input.dryRun && entry.jobType === "check_2y" && entry.client.status === "active") {
       const updatedClient: MaintenanceClientDocument = {
-        ...client,
+        ...entry.client,
         status: "expiring_soon",
         updatedAt: nowIso,
       };
@@ -212,16 +268,16 @@ export const runContractExpiryCheck = async (
       await writeMaintenanceAuditEntry({
         databaseName,
         entityType: "client",
-        entityId: client._id,
+        entityId: entry.client._id,
         action: "cron_mark_expiring_soon",
         actor: input.actor,
-        previousState: { status: client.status },
+        previousState: { status: entry.client.status },
         nextState: { status: updatedClient.status },
       });
     }
 
     const recipients = buildNotificationRecipients(
-      client,
+      entry.client,
       config.companyNotificationEmails,
     );
 
@@ -254,9 +310,9 @@ export const runContractExpiryCheck = async (
 
     for (const destination of channels) {
       const idempotencyKey = [
-        "contract_expiry",
-        client.contractExpirationDate,
-        client._id,
+        entry.notificationCategory,
+        entry.dueDate,
+        entry.client._id,
         destination.channel,
         destination.recipient,
       ].join(":");
@@ -275,35 +331,36 @@ export const runContractExpiryCheck = async (
       const notificationDocument: MaintenanceNotificationDocument = {
         _id: notificationDocId,
         type: "maintenance_notification",
-        category: "contract_expiry",
-        relatedId: client._id,
+        category: entry.notificationCategory,
+        relatedId: entry.client._id,
         channel: destination.channel,
         recipient: destination.recipient,
         recipientRole: destination.recipientRole,
         status: "queued",
-        template: "contract_expiry_default",
+        template: `${entry.notificationCategory}_default`,
         idempotencyKey,
         attempts: 0,
         errorMessage: null,
         payload: {
-          clientName: client.name,
-          clientId: client._id,
-          expirationDate: client.contractExpirationDate as string,
+          clientName: entry.client.name,
+          clientId: entry.client._id,
+          expirationDate: entry.dueDate,
         },
         sentAt: null,
         createdAt: nowIso,
         updatedAt: nowIso,
       };
 
-      const reminderText = buildContractReminderText(
-        client.name,
-        client.contractExpirationDate as string,
+      const reminderText = buildReminderText(
+        entry.client.name,
+        entry.label,
+        entry.dueDate,
       );
       const sendResult =
         destination.channel === "email"
           ? await sendEmailNotification({
               to: destination.recipient,
-              subject: `Maintenance Reminder - ${client.name}`,
+              subject: `Maintenance Reminder - ${entry.client.name}`,
               text: reminderText,
             })
           : await sendSmsNotification({
@@ -335,8 +392,8 @@ export const runContractExpiryCheck = async (
     runAt: nowIso,
     windowStartDate: todayDate,
     targetDate,
-    clientsMatched: upcomingClients.length,
-    pastExpiredClientsFound: pastExpiredClients.length,
+    clientsMatched: upcomingClientCount,
+    pastExpiredClientsFound: pastClientCount,
     requiresPastExpiredDecision: false,
     jobsCreated,
     jobsSkippedExistingPending,

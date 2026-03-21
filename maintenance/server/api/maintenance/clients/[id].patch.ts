@@ -12,6 +12,7 @@ import {
   asRequiredText,
   parseClientContractFields,
   parseAddress,
+  parseClientScheduleFields,
 } from "../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../utils/maintenance-db";
@@ -31,6 +32,9 @@ interface ClientPatchPayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
+  overhaulBaseDate?: unknown;
+  gasSensorBaseDate?: unknown;
+  gasSensorPeriodMonths?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -78,6 +82,20 @@ export default defineEventHandler(async (event) => {
         ? existingClient.contractCheckupIntervalMonths
         : payload.contractCheckupIntervalMonths,
   });
+  const scheduleFields = parseClientScheduleFields({
+    overhaulBaseDate:
+      typeof payload.overhaulBaseDate === "undefined"
+        ? existingClient.overhaulBaseDate
+        : payload.overhaulBaseDate,
+    gasSensorBaseDate:
+      typeof payload.gasSensorBaseDate === "undefined"
+        ? existingClient.gasSensorBaseDate
+        : payload.gasSensorBaseDate,
+    gasSensorPeriodMonths:
+      typeof payload.gasSensorPeriodMonths === "undefined"
+        ? existingClient.gasSensorPeriodMonths
+        : payload.gasSensorPeriodMonths,
+  });
 
   const nextClient: MaintenanceClientDocument = {
     ...existingClient,
@@ -119,6 +137,7 @@ export default defineEventHandler(async (event) => {
         ? existingClient.contacts
         : parseClientContacts(payload.contacts),
     ...contractFields,
+    ...scheduleFields,
     updatedAt: new Date().toISOString(),
   };
 

@@ -2,6 +2,7 @@
 interface MaintenanceJob {
   _id: string;
   clientId: string;
+  jobType: "check_2y" | "overhaul_10y" | "gas_sensor_change";
   clientName: string | null;
   contractExpirationDate: string | null;
   clientCheckupIntervalMonths: number | null;
@@ -126,11 +127,24 @@ const addMonthsToTodayIso = (months: number): string => {
   return `${year}-${month}-${day}`;
 };
 
+const getJobTypeLabel = (jobType: MaintenanceJob["jobType"]): string => {
+  if (jobType === "overhaul_10y") {
+    return "10y overhaul";
+  }
+  if (jobType === "gas_sensor_change") {
+    return "Gas sensor";
+  }
+  return "2y check";
+};
+
 const openDoneConfirmation = (job: MaintenanceJob) => {
+  if (job.jobType !== "check_2y") {
+    void setJobStatus(job._id, "done");
+    return;
+  }
+
   doneJobId.value = job._id;
-  const months = job.clientCheckupIntervalMonths && job.clientCheckupIntervalMonths > 0
-    ? job.clientCheckupIntervalMonths
-    : 6;
+  const months = 24;
   doneNextExpirationDate.value = addMonthsToTodayIso(months);
   doneConfirmOpen.value = true;
 };
@@ -396,6 +410,7 @@ const confirmReject = async () => {
           <thead class="bg-slate-50 text-left text-slate-600">
             <tr>
               <th class="px-3 py-2 font-medium">Client</th>
+              <th class="px-3 py-2 font-medium">Type</th>
               <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Scheduled</th>
               <th class="px-3 py-2 font-medium">Assigned</th>
@@ -417,6 +432,7 @@ const confirmReject = async () => {
                   📞 {{ job.clientPhone }}
                 </div>
               </td>
+              <td class="px-3 py-2 text-slate-700">{{ getJobTypeLabel(job.jobType) }}</td>
               <td class="px-3 py-2">
                 <a
                   v-if="getGoogleMapsUrl(job.clientServiceAddress)"
@@ -515,7 +531,7 @@ const confirmReject = async () => {
           Confirm Mark Done
         </h3>
         <p class="mt-2 text-sm text-slate-600">
-          Choose the next expires date for this client.
+          Choose the next 2-year check due date for this client.
         </p>
 
         <label class="mt-4 block space-y-1 text-sm text-slate-700">

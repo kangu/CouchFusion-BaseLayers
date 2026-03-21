@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const updatedJob: MaintenanceJobDocument = {
     ...job,
+    jobType: job.jobType || "check_2y",
     scheduledFor: newScheduledFor,
     updatedAt: now,
   };

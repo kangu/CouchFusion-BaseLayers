@@ -7,6 +7,7 @@ import {
   asOptionalText,
   asRequiredText,
   parseClientContractFields,
+  parseClientScheduleFields,
 } from "../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../utils/maintenance-db";
@@ -26,6 +27,9 @@ interface ClientCreatePayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
+  overhaulBaseDate?: unknown;
+  gasSensorBaseDate?: unknown;
+  gasSensorPeriodMonths?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -53,6 +57,11 @@ export default defineEventHandler(async (event) => {
     expirationDate: payload.contractExpirationDate,
     checkupIntervalMonths: payload.contractCheckupIntervalMonths,
   });
+  const scheduleFields = parseClientScheduleFields({
+    overhaulBaseDate: payload.overhaulBaseDate,
+    gasSensorBaseDate: payload.gasSensorBaseDate,
+    gasSensorPeriodMonths: payload.gasSensorPeriodMonths,
+  });
 
   const client: MaintenanceClientDocument = {
     _id: `maintenance_client:${crypto.randomUUID()}`,
@@ -67,6 +76,7 @@ export default defineEventHandler(async (event) => {
     notes: asOptionalText(payload.notes, 5000, "notes"),
     contacts: parseClientContacts(payload.contacts),
     ...contractFields,
+    ...scheduleFields,
     createdAt: now,
     updatedAt: now,
   };
@@ -80,6 +90,7 @@ export default defineEventHandler(async (event) => {
       _id: `maintenance_job:${crypto.randomUUID()}`,
       type: "maintenance_job",
       clientId: client._id,
+      jobType: "check_2y",
       scheduledFor: client.contractStartDate,
       status: "pending",
       assignedTo: null,

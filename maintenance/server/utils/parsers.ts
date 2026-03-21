@@ -4,7 +4,7 @@ import type {
   MaintenanceClientStatus,
   MaintenanceJobStatus,
 } from "./types";
-import { ensureIsoDateOnly } from "./dates";
+import { addMonthsToIsoDate, ensureIsoDateOnly } from "./dates";
 
 export const asOptionalText = (
   value: unknown,
@@ -172,5 +172,64 @@ export const parseClientContractFields = (
       input.checkupIntervalMonths,
       "contractCheckupIntervalMonths",
     ),
+  };
+};
+
+interface ParseClientScheduleFieldsInput {
+  overhaulBaseDate?: unknown;
+  gasSensorBaseDate?: unknown;
+  gasSensorPeriodMonths?: unknown;
+}
+
+export const parseClientScheduleFields = (
+  input: ParseClientScheduleFieldsInput,
+): {
+  overhaulBaseDate: string | null;
+  overhaulDueDate: string | null;
+  gasSensorBaseDate: string | null;
+  gasSensorPeriodMonths: number | null;
+  gasSensorDueDate: string | null;
+} => {
+  const overhaulBaseDate =
+    typeof input.overhaulBaseDate === "undefined" ||
+    input.overhaulBaseDate === null ||
+    input.overhaulBaseDate === ""
+      ? null
+      : ensureIsoDateOnly(input.overhaulBaseDate, "overhaulBaseDate");
+
+  const gasSensorBaseDate =
+    typeof input.gasSensorBaseDate === "undefined" ||
+    input.gasSensorBaseDate === null ||
+    input.gasSensorBaseDate === ""
+      ? null
+      : ensureIsoDateOnly(input.gasSensorBaseDate, "gasSensorBaseDate");
+
+  const gasSensorPeriodMonths = asOptionalPositiveInteger(
+    input.gasSensorPeriodMonths,
+    "gasSensorPeriodMonths",
+  );
+
+  const hasGasSensorBaseDate = Boolean(gasSensorBaseDate);
+  const hasGasSensorPeriodMonths = Boolean(gasSensorPeriodMonths);
+
+  if (hasGasSensorBaseDate !== hasGasSensorPeriodMonths) {
+    throw createError({
+      statusCode: 400,
+      statusMessage:
+        "gasSensorBaseDate and gasSensorPeriodMonths must be provided together",
+    });
+  }
+
+  return {
+    overhaulBaseDate,
+    overhaulDueDate: overhaulBaseDate
+      ? addMonthsToIsoDate(overhaulBaseDate, 120)
+      : null,
+    gasSensorBaseDate,
+    gasSensorPeriodMonths,
+    gasSensorDueDate:
+      gasSensorBaseDate && gasSensorPeriodMonths
+        ? addMonthsToIsoDate(gasSensorBaseDate, gasSensorPeriodMonths)
+        : null,
   };
 };
