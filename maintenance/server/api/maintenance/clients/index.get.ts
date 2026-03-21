@@ -15,6 +15,19 @@ export default defineEventHandler(async (event) => {
     include_docs: true,
     descending: false,
   });
+  const failedCustomerNotificationsView = await getView(
+    databaseName,
+    "maintenance",
+    "notifications_failed_customer_by_client",
+    {
+      include_docs: false,
+    },
+  );
+  const clientsWithFailedCustomerDeliveries = new Set(
+    (failedCustomerNotificationsView?.rows ?? [])
+      .map((row) => String(row?.key ?? "").trim())
+      .filter(Boolean),
+  );
 
   const clients = (view?.rows ?? [])
     .map((row) => row.doc as MaintenanceClientDocument | undefined)
@@ -48,6 +61,7 @@ export default defineEventHandler(async (event) => {
     })
     .map((client) => ({
       ...client,
+      hasCustomerDeliveryFailure: clientsWithFailedCustomerDeliveries.has(client._id),
       overhaulBaseDate: client.overhaulBaseDate ?? null,
       overhaulDueDate: client.overhaulDueDate ?? null,
       gasSensorBaseDate: client.gasSensorBaseDate ?? null,

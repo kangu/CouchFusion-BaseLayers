@@ -12,6 +12,7 @@ interface MaintenanceClient {
   _id: string;
   name: string;
   status: "active" | "expiring_soon" | "expired" | "renewed" | "discontinued";
+  hasCustomerDeliveryFailure: boolean;
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
@@ -379,6 +380,7 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Contacts</th>
               <th class="px-3 py-2 font-medium">Contract expires</th>
               <th class="px-3 py-2 font-medium">Gas sensor</th>
+              <th class="px-3 py-2 font-medium">Delivery</th>
               <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
@@ -413,6 +415,20 @@ const saveClient = async () => {
                   {{ client.gasSensorDueDate }} ({{ client.gasSensorPeriodMonths || "-" }} mo)
                 </span>
                 <span v-else>-</span>
+              </td>
+              <td class="px-3 py-2">
+                <span
+                  v-if="client.hasCustomerDeliveryFailure"
+                  class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700"
+                >
+                  failed
+                </span>
+                <span
+                  v-else
+                  class="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700"
+                >
+                  ok
+                </span>
               </td>
               <td class="px-3 py-2">
                 <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">

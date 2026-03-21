@@ -46,5 +46,14 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
         });
       }`,
     },
+    notifications_failed_customer_by_client: {
+      map: `function (doc) {
+        if (doc.type !== 'maintenance_notification') return;
+        if (doc.status !== 'failed') return;
+        if (doc.recipientRole !== 'customer') return;
+        if (!doc.relatedId) return;
+        emit(doc.relatedId, 1);
+      }`,
+    },
   },
 };
