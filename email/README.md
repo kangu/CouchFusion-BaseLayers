@@ -28,7 +28,7 @@ export default defineNuxtConfig({
 Install required dependencies:
 
 ```bash
-bun install vue-codemirror @codemirror/lang-xml mjml-browser
+bun install mjml-browser codejar prismjs
 ```
 
 ## Configuration
@@ -149,8 +149,8 @@ POST /api/email-templates
 
 ## Dependencies
 
-- `vue-codemirror` - Code editor for MJML
-- `@codemirror/lang-xml` - XML syntax highlighting
+- `codejar` - Lightweight editable code surface
+- `prismjs` - Syntax highlighting for MJML/HTML editing
 - `mjml-browser` - Client-side MJML compilation
 
 ## Toast Notifications

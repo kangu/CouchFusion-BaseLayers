@@ -41,6 +41,33 @@ export const ensureIsoDateOnly = (
   return trimmed;
 };
 
+export const ensureIsoDateOrDateTime = (
+  value: unknown,
+  fieldLabel: string,
+): string => {
+  if (typeof value !== "string") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `${fieldLabel} is required`,
+    });
+  }
+
+  const trimmed = value.trim();
+  if (DATE_ONLY_PATTERN.test(trimmed)) {
+    return ensureIsoDateOnly(trimmed, fieldLabel);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `${fieldLabel} must be a valid ISO date or datetime`,
+    });
+  }
+
+  return parsed.toISOString();
+};
+
 export const toIsoDateOnly = (date: Date): string => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");

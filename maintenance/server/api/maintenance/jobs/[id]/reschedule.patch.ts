@@ -5,7 +5,7 @@ import {
   readBody,
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
-import { ensureIsoDateOnly } from "../../../../utils/dates";
+import { ensureIsoDateOrDateTime } from "../../../../utils/dates";
 import { assertMaintenanceRole } from "../../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../../utils/maintenance-db";
 import type { MaintenanceJobDocument } from "../../../../utils/types";
@@ -49,7 +49,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const newScheduledFor = ensureIsoDateOnly(payload.scheduledFor, "scheduledFor");
+  const newScheduledFor = ensureIsoDateOrDateTime(payload.scheduledFor, "scheduledFor");
   const now = new Date().toISOString();
 
   const updatedJob: MaintenanceJobDocument = {

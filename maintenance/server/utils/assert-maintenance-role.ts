@@ -15,8 +15,8 @@ export const assertMaintenanceRole = async (
 
   if (!hasRole) {
     throw createError({
-      statusCode: 404,
-      statusMessage: "Not found",
+      statusCode: 403,
+      statusMessage: "Access denied",
     });
   }
 
