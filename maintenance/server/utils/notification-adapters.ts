@@ -1,3 +1,5 @@
+import { sendSms } from "#sms/server/utils/sender";
+
 export interface EmailNotificationPayload {
   to: string;
   subject: string;
@@ -46,22 +48,14 @@ export const sendEmailNotification = async (
 export const sendSmsNotification = async (
   payload: SmsNotificationPayload,
 ): Promise<NotificationSendResult> => {
-  if (shouldFail(payload.to)) {
-    return {
-      ok: false,
-      providerMessageId: null,
-      errorMessage: "Simulated SMS provider failure",
-    };
-  }
-
-  console.info("[maintenance][sms]", {
+  const result = await sendSms({
     to: payload.to,
-    sender: payload.sender,
+    text: payload.text,
   });
 
   return {
-    ok: true,
-    providerMessageId: `mock-sms-${crypto.randomUUID()}`,
-    errorMessage: null,
+    ok: result.ok,
+    providerMessageId: result.providerMessageId,
+    errorMessage: result.errorMessage,
   };
 };
