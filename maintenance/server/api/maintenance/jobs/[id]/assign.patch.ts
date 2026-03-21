@@ -48,6 +48,8 @@ export default defineEventHandler(async (event) => {
   const updatedJob: MaintenanceJobDocument = {
     ...job,
     jobType: job.jobType || "check_2y",
+    appointmentAt: job.appointmentAt ?? null,
+    reservationNotes: job.reservationNotes ?? null,
     assignedTo: newAssignedTo,
     updatedAt: now,
   };

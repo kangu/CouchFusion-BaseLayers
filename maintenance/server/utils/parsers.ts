@@ -94,12 +94,18 @@ export const asClientStatus = (value: unknown): MaintenanceClientStatus => {
 
 export const asJobStatusTransitionTarget = (value: unknown): MaintenanceJobStatus => {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "done" || normalized === "rejected") {
+  if (
+    normalized === "scheduled" ||
+    normalized === "canceled_by_customer" ||
+    normalized === "done" ||
+    normalized === "rejected"
+  ) {
     return normalized;
   }
   throw createError({
     statusCode: 400,
-    statusMessage: "Status transition must be done or rejected",
+    statusMessage:
+      "Status transition must be scheduled, canceled_by_customer, done or rejected",
   });
 };
 

@@ -92,6 +92,8 @@ export default defineEventHandler(async (event) => {
       clientId: client._id,
       jobType: "check_2y",
       scheduledFor: client.contractStartDate,
+      appointmentAt: null,
+      reservationNotes: null,
       status: "pending",
       assignedTo: null,
       completionNotes: null,

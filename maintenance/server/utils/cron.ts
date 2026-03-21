@@ -223,6 +223,8 @@ export const runContractExpiryCheck = async (
       clientId: entry.client._id,
       jobType: entry.jobType,
       scheduledFor: entry.dueDate,
+      appointmentAt: null,
+      reservationNotes: null,
       status: "pending",
       assignedTo: null,
       completionNotes: null,

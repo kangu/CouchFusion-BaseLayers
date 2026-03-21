@@ -13,7 +13,12 @@ export type MaintenanceClientStatus =
   | "expired"
   | "renewed"
   | "discontinued";
-export type MaintenanceJobStatus = "pending" | "done" | "rejected";
+export type MaintenanceJobStatus =
+  | "pending"
+  | "scheduled"
+  | "done"
+  | "rejected"
+  | "canceled_by_customer";
 export type MaintenanceJobType =
   | "check_2y"
   | "overhaul_10y"
@@ -70,6 +75,8 @@ export interface MaintenanceJobDocument extends CouchDBDocument {
   clientId: string;
   jobType: MaintenanceJobType;
   scheduledFor: string;
+  appointmentAt: string | null;
+  reservationNotes: string | null;
   status: MaintenanceJobStatus;
   assignedTo: string | null;
   completionNotes: string | null;

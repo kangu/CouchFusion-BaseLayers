@@ -16,7 +16,7 @@ interface JobReschedulePayload {
 }
 
 export default defineEventHandler(async (event) => {
-  const actor = await assertMaintenanceRole(event, ["admin", "employee"]);
+  const actor = await assertMaintenanceRole(event, ["admin"]);
   const jobId = getRouterParam(event, "id", { decode: true });
   if (!jobId) {
     throw createError({
@@ -55,6 +55,8 @@ export default defineEventHandler(async (event) => {
   const updatedJob: MaintenanceJobDocument = {
     ...job,
     jobType: job.jobType || "check_2y",
+    appointmentAt: job.appointmentAt ?? null,
+    reservationNotes: job.reservationNotes ?? null,
     scheduledFor: newScheduledFor,
     updatedAt: now,
   };

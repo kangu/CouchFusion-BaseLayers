@@ -5,7 +5,12 @@ import {
   readBody,
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
-import { addMonthsToIsoDate, ensureIsoDateOnly, toIsoDateOnly } from "../../../../utils/dates";
+import {
+  addMonthsToIsoDate,
+  ensureIsoDateOnly,
+  ensureIsoDateOrDateTime,
+  toIsoDateOnly,
+} from "../../../../utils/dates";
 import { asJobStatusTransitionTarget, asOptionalText } from "../../../../utils/parsers";
 import { assertMaintenanceRole } from "../../../../utils/assert-maintenance-role";
 import { ensureMaintenanceDatabase } from "../../../../utils/maintenance-db";
@@ -20,6 +25,8 @@ interface JobStatusPayload {
   rejectionReason?: unknown;
   completionNotes?: unknown;
   nextExpirationDate?: unknown;
+  appointmentAt?: unknown;
+  reservationNotes?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -49,25 +56,103 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  if (job.status !== "pending") {
+  const targetStatus = asJobStatusTransitionTarget(payload.status);
+  const isAdmin = actor.roles.includes("admin");
+  const isEmployeeOnly = actor.roles.includes("employee") && !isAdmin;
+  const runtimeConfig = useRuntimeConfig();
+  const prefix = typeof runtimeConfig.dbLoginPrefix === "string" ? runtimeConfig.dbLoginPrefix : "";
+  const actorNameForAssignments =
+    prefix && actor.username.startsWith(prefix)
+      ? actor.username.slice(prefix.length)
+      : actor.username;
+
+  if (
+    (targetStatus === "scheduled" || targetStatus === "canceled_by_customer") &&
+    !isAdmin
+  ) {
     throw createError({
-      statusCode: 409,
-      statusMessage: "Only pending jobs can be transitioned",
+      statusCode: 403,
+      statusMessage: "Only admin can schedule or cancel reservations",
     });
   }
 
-  const targetStatus = asJobStatusTransitionTarget(payload.status);
+  if (targetStatus === "scheduled") {
+    if (job.status !== "pending") {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "Only pending jobs can be scheduled",
+      });
+    }
+    if (!job.assignedTo) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "A worker must be assigned before scheduling",
+      });
+    }
+    if (
+      typeof payload.appointmentAt === "undefined" ||
+      payload.appointmentAt === null ||
+      payload.appointmentAt === ""
+    ) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "appointmentAt is required when scheduling",
+      });
+    }
+  } else if (targetStatus === "canceled_by_customer") {
+    if (job.status !== "scheduled") {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "Only scheduled jobs can be canceled by customer",
+      });
+    }
+  } else {
+    if (job.status !== "pending" && job.status !== "scheduled") {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "Only pending or scheduled jobs can be transitioned",
+      });
+    }
+    if (isEmployeeOnly && job.assignedTo !== actor.username) {
+      const isAssignedToActor =
+        job.assignedTo === actor.username || job.assignedTo === actorNameForAssignments;
+      if (!isAssignedToActor) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: "Employees can only update their assigned jobs",
+        });
+      }
+    }
+  }
+
   const now = new Date().toISOString();
+  const appointmentAt =
+    targetStatus === "scheduled"
+      ? ensureIsoDateOrDateTime(payload.appointmentAt, "appointmentAt")
+      : job.appointmentAt ?? null;
+  const reservationNotes =
+    targetStatus === "scheduled"
+      ? asOptionalText(payload.reservationNotes, 3000, "reservationNotes")
+      : job.reservationNotes ?? null;
+  const completedAt =
+    targetStatus === "done" ||
+    targetStatus === "rejected" ||
+    targetStatus === "canceled_by_customer"
+      ? now
+      : null;
+
   const updatedJob: MaintenanceJobDocument = {
     ...job,
     jobType: job.jobType || "check_2y",
     status: targetStatus,
+    appointmentAt,
+    reservationNotes,
     rejectionReason:
       targetStatus === "rejected"
         ? asOptionalText(payload.rejectionReason, 1000, "rejectionReason")
         : null,
     completionNotes: asOptionalText(payload.completionNotes, 5000, "completionNotes"),
-    completedAt: now,
+    completedAt,
     updatedAt: now,
   };
 
@@ -84,6 +169,7 @@ export default defineEventHandler(async (event) => {
     },
     nextState: {
       status: updatedJob.status,
+      appointmentAt: updatedJob.appointmentAt,
     },
   });
 

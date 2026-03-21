@@ -8,13 +8,20 @@ import type {
 } from "../../../utils/types";
 
 export default defineEventHandler(async (event) => {
-  await assertMaintenanceRole(event, ["admin", "employee"]);
+  const actor = await assertMaintenanceRole(event, ["admin", "employee"]);
   const query = getQuery(event);
   const statusFilter = String(query.status ?? "pending").trim().toLowerCase();
   const statuses = statusFilter
     .split(",")
     .map((status) => status.trim())
     .filter(Boolean);
+  const isEmployeeOnly = actor.roles.includes("employee") && !actor.roles.includes("admin");
+  const runtimeConfig = useRuntimeConfig();
+  const prefix = typeof runtimeConfig.dbLoginPrefix === "string" ? runtimeConfig.dbLoginPrefix : "";
+  const actorNameForAssignments =
+    prefix && actor.username.startsWith(prefix)
+      ? actor.username.slice(prefix.length)
+      : actor.username;
 
   const databaseName = await ensureMaintenanceDatabase();
   const view = await getView(databaseName, "maintenance", "jobs_by_status_scheduled", {
@@ -27,7 +34,13 @@ export default defineEventHandler(async (event) => {
     .filter(
       (doc): doc is MaintenanceJobDocument => Boolean(doc && doc.type === "maintenance_job"),
     )
-    .filter((job) => (statuses.length ? statuses.includes(job.status) : true));
+    .filter((job) => (statuses.length ? statuses.includes(job.status) : true))
+    .filter((job) => {
+      if (!isEmployeeOnly) {
+        return true;
+      }
+      return job.status === "scheduled" && job.assignedTo === actorNameForAssignments;
+    });
 
   const jobsWithRelations = await Promise.all(
     jobs.map(async (job) => {
@@ -43,6 +56,8 @@ export default defineEventHandler(async (event) => {
       return {
         ...job,
         jobType: job.jobType || "check_2y",
+        appointmentAt: job.appointmentAt ?? null,
+        reservationNotes: job.reservationNotes ?? null,
         clientName: client?.name ?? null,
         contractExpirationDate: client?.contractExpirationDate ?? null,
         clientCheckupIntervalMonths: client?.contractCheckupIntervalMonths ?? null,
