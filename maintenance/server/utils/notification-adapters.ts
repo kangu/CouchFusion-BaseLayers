@@ -1,9 +1,10 @@
 import { sendSms } from "#sms/server/utils/sender";
+import { queueTemplateEmail } from "#email/server/utils/template-queue";
 
 export interface EmailNotificationPayload {
   to: string;
-  subject: string;
-  text: string;
+  template: string;
+  payload: Record<string, unknown>;
 }
 
 export interface SmsNotificationPayload {
@@ -18,31 +19,16 @@ export interface NotificationSendResult {
   errorMessage: string | null;
 }
 
-const shouldFail = (value: string): boolean => {
-  return value.toLowerCase().includes("fail-notification");
-};
-
 export const sendEmailNotification = async (
   payload: EmailNotificationPayload,
 ): Promise<NotificationSendResult> => {
-  if (shouldFail(payload.to)) {
-    return {
-      ok: false,
-      providerMessageId: null,
-      errorMessage: "Simulated email provider failure",
-    };
-  }
-
-  console.info("[maintenance][email]", {
+  const result = await queueTemplateEmail({
+    templateName: payload.template,
     to: payload.to,
-    subject: payload.subject,
+    payload: payload.payload,
   });
 
-  return {
-    ok: true,
-    providerMessageId: `mock-email-${crypto.randomUUID()}`,
-    errorMessage: null,
-  };
+  return result;
 };
 
 export const sendSmsNotification = async (

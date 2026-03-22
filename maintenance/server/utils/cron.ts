@@ -362,8 +362,16 @@ export const runContractExpiryCheck = async (
         destination.channel === "email"
           ? await sendEmailNotification({
               to: destination.recipient,
-              subject: `Maintenance Reminder - ${entry.client.name}`,
-              text: reminderText,
+              template: notificationDocument.template,
+              payload: {
+                clientName: entry.client.name,
+                clientId: entry.client._id,
+                expirationDate: entry.dueDate,
+                category: entry.notificationCategory,
+                reminderLabel: entry.label,
+                recipientRole: destination.recipientRole,
+                reminderText,
+              },
             })
           : await sendSmsNotification({
               to: destination.recipient,
