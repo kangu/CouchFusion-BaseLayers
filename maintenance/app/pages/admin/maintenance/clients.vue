@@ -11,16 +11,16 @@ interface MaintenanceContact {
 interface MaintenanceClient {
   _id: string;
   name: string;
-  status: "active" | "expiring_soon" | "expired" | "renewed" | "discontinued";
+  contractExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
+  overhaulExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
+  gasSensorExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
   hasCustomerDeliveryFailure: boolean;
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
-  overhaulBaseDate: string | null;
-  overhaulDueDate: string | null;
-  gasSensorBaseDate: string | null;
+  overhaulExpirationDate: string | null;
+  gasSensorExpirationDate: string | null;
   gasSensorPeriodMonths: number | null;
-  gasSensorDueDate: string | null;
   primaryContactName: string | null;
   counterId: string | null;
   serviceAddress: {
@@ -69,11 +69,23 @@ const form = reactive({
   country: "",
   contractStartDate: "",
   contractExpirationDate: "",
-  contractCheckupIntervalMonths: "24",
-  overhaulBaseDate: "",
-  gasSensorBaseDate: "",
+  overhaulExpirationDate: "",
+  gasSensorExpirationDate: "",
   gasSensorPeriodMonths: "12",
-  status: "active" as "active" | "expiring_soon" | "expired" | "renewed" | "discontinued",
+  contractExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
+  overhaulExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
+  gasSensorExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
+});
+
+const serviceAddressMapsUrl = computed(() => {
+  const parts = [form.addressLine1, form.city, form.country]
+    .map((value) => String(value ?? "").trim())
+    .filter((value) => value.length > 0);
+  if (!parts.length) {
+    return null;
+  }
+  const query = encodeURIComponent(parts.join(", "));
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
 });
 
 const {
@@ -107,11 +119,12 @@ const resetForm = () => {
   form.country = "";
   form.contractStartDate = "";
   form.contractExpirationDate = "";
-  form.contractCheckupIntervalMonths = "24";
-  form.overhaulBaseDate = "";
-  form.gasSensorBaseDate = "";
+  form.overhaulExpirationDate = "";
+  form.gasSensorExpirationDate = "";
   form.gasSensorPeriodMonths = "12";
-  form.status = "active";
+  form.contractExpirationStatus = "active";
+  form.overhaulExpirationStatus = "active";
+  form.gasSensorExpirationStatus = "active";
   editingClientId.value = null;
   editableContacts.value = [
     {
@@ -145,11 +158,12 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.country = client.serviceAddress?.country ?? "";
   form.contractStartDate = client.contractStartDate ?? "";
   form.contractExpirationDate = client.contractExpirationDate ?? "";
-  form.contractCheckupIntervalMonths = String(client.contractCheckupIntervalMonths ?? 24);
-  form.overhaulBaseDate = client.overhaulBaseDate ?? "";
-  form.gasSensorBaseDate = client.gasSensorBaseDate ?? "";
+  form.overhaulExpirationDate = client.overhaulExpirationDate ?? "";
+  form.gasSensorExpirationDate = client.gasSensorExpirationDate ?? "";
   form.gasSensorPeriodMonths = String(client.gasSensorPeriodMonths ?? 12);
-  form.status = client.status ?? "active";
+  form.contractExpirationStatus = client.contractExpirationStatus ?? "active";
+  form.overhaulExpirationStatus = client.overhaulExpirationStatus ?? "active";
+  form.gasSensorExpirationStatus = client.gasSensorExpirationStatus ?? "active";
   editableContacts.value = (client.contacts ?? []).map((contact) => ({
     id: contact.id || crypto.randomUUID(),
     channel: contact.channel,
@@ -219,20 +233,12 @@ const saveClient = async () => {
     return;
   }
 
-  if (form.contractStartDate) {
-    const interval = Number.parseInt(form.contractCheckupIntervalMonths, 10);
-    if (!Number.isInteger(interval) || interval <= 0) {
-      formError.value = "Checkup interval must be a positive integer.";
-      return;
-    }
-  }
-
-  if ((form.gasSensorBaseDate && !form.gasSensorPeriodMonths) || (!form.gasSensorBaseDate && form.gasSensorPeriodMonths)) {
-    formError.value = "Gas sensor base date and period months must be provided together.";
+  if ((form.gasSensorExpirationDate && !form.gasSensorPeriodMonths) || (!form.gasSensorExpirationDate && form.gasSensorPeriodMonths)) {
+    formError.value = "Gas sensor expiration date and period months must be provided together.";
     return;
   }
 
-  if (form.gasSensorBaseDate) {
+  if (form.gasSensorExpirationDate) {
     const gasSensorPeriodMonths = Number.parseInt(form.gasSensorPeriodMonths, 10);
     if (!Number.isInteger(gasSensorPeriodMonths) || gasSensorPeriodMonths <= 0) {
       formError.value = "Gas sensor period months must be a positive integer.";
@@ -263,15 +269,20 @@ const saveClient = async () => {
       contacts,
       contractStartDate: form.contractStartDate || null,
       contractExpirationDate: form.contractExpirationDate || null,
-      contractCheckupIntervalMonths: form.contractStartDate
-        ? Number.parseInt(form.contractCheckupIntervalMonths, 10)
+      contractExpirationStatus: form.contractExpirationDate
+        ? form.contractExpirationStatus
         : null,
-      overhaulBaseDate: form.overhaulBaseDate || null,
-      gasSensorBaseDate: form.gasSensorBaseDate || null,
-      gasSensorPeriodMonths: form.gasSensorBaseDate
+      overhaulExpirationDate: form.overhaulExpirationDate || null,
+      overhaulExpirationStatus: form.overhaulExpirationDate
+        ? form.overhaulExpirationStatus
+        : null,
+      gasSensorExpirationDate: form.gasSensorExpirationDate || null,
+      gasSensorExpirationStatus: form.gasSensorExpirationDate
+        ? form.gasSensorExpirationStatus
+        : null,
+      gasSensorPeriodMonths: form.gasSensorExpirationDate
         ? Number.parseInt(form.gasSensorPeriodMonths, 10)
         : null,
-      status: form.status,
     };
 
     if (dialogMode.value === "create") {
@@ -319,6 +330,7 @@ const saveClient = async () => {
 
         <button
           type="button"
+          data-testid="clients-new-button"
           class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
           @click="openCreateDialog"
         >
@@ -378,10 +390,10 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Primary contact</th>
               <th class="px-3 py-2 font-medium">Address</th>
               <th class="px-3 py-2 font-medium">Contacts</th>
-              <th class="px-3 py-2 font-medium">Contract expires</th>
-              <th class="px-3 py-2 font-medium">Gas sensor</th>
+              <th class="px-3 py-2 font-medium">2Y expiration</th>
+              <th class="px-3 py-2 font-medium">10Y expiration</th>
+              <th class="px-3 py-2 font-medium">Gas sensor expiration</th>
               <th class="px-3 py-2 font-medium">Delivery</th>
-              <th class="px-3 py-2 font-medium">Status</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
           </thead>
@@ -389,6 +401,7 @@ const saveClient = async () => {
             <tr
               v-for="client in clients"
               :key="client._id"
+              data-testid="client-row"
             >
               <td class="px-3 py-2 text-slate-900">{{ client.name }}</td>
               <td class="px-3 py-2 text-slate-700">{{ client.primaryContactName || "-" }}</td>
@@ -408,13 +421,19 @@ const saveClient = async () => {
                 </div>
               </td>
               <td class="px-3 py-2 text-slate-700">
-                {{ client.contractExpirationDate || "-" }}
+                <div>{{ client.contractExpirationDate || "-" }}</div>
+                <div class="text-xs text-slate-500">{{ client.contractExpirationStatus || "-" }}</div>
               </td>
               <td class="px-3 py-2 text-slate-700">
-                <span v-if="client.gasSensorDueDate">
-                  {{ client.gasSensorDueDate }} ({{ client.gasSensorPeriodMonths || "-" }} mo)
+                <div>{{ client.overhaulExpirationDate || "-" }}</div>
+                <div class="text-xs text-slate-500">{{ client.overhaulExpirationStatus || "-" }}</div>
+              </td>
+              <td class="px-3 py-2 text-slate-700">
+                <span v-if="client.gasSensorExpirationDate">
+                  {{ client.gasSensorExpirationDate }} ({{ client.gasSensorPeriodMonths || "-" }} mo)
                 </span>
                 <span v-else>-</span>
+                <span class="block text-xs text-slate-500">{{ client.gasSensorExpirationStatus || "-" }}</span>
               </td>
               <td class="px-3 py-2">
                 <span
@@ -431,13 +450,9 @@ const saveClient = async () => {
                 </span>
               </td>
               <td class="px-3 py-2">
-                <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
-                  {{ client.status }}
-                </span>
-              </td>
-              <td class="px-3 py-2">
                 <button
                   type="button"
+                  data-testid="client-edit-button"
                   class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   @click="openEditDialog(client)"
                 >
@@ -476,6 +491,7 @@ const saveClient = async () => {
             <span>Client name</span>
             <input
               v-model="form.name"
+              data-testid="client-form-name"
               type="text"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
@@ -485,6 +501,7 @@ const saveClient = async () => {
             <span>Primary contact</span>
             <input
               v-model="form.primaryContactName"
+              data-testid="client-form-primary-contact"
               type="text"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
@@ -499,39 +516,59 @@ const saveClient = async () => {
             >
           </label>
 
-          <label class="space-y-1 text-sm text-slate-700 md:col-span-2">
-            <span>Service address</span>
-            <input
-              v-model="form.addressLine1"
-              type="text"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+          <div class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-sm font-semibold text-slate-800">Service Address</h3>
+              <a
+                v-if="serviceAddressMapsUrl"
+                :href="serviceAddressMapsUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs font-medium text-orange-700 hover:text-orange-800 hover:underline"
+              >
+                Open in Google Maps
+              </a>
+            </div>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>City</span>
-            <input
-              v-model="form.city"
-              type="text"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+            <label class="space-y-1 text-sm text-slate-700">
+              <span>Address line</span>
+              <input
+                v-model="form.addressLine1"
+                data-testid="client-form-address-line1"
+                type="text"
+                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+              >
+            </label>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Country</span>
-            <input
-              v-model="form.country"
-              type="text"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>City</span>
+                <input
+                  v-model="form.city"
+                  data-testid="client-form-city"
+                  type="text"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
 
-          <div class="space-y-3 text-sm text-slate-700 md:col-span-2">
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Country</span>
+                <input
+                  v-model="form.country"
+                  data-testid="client-form-country"
+                  type="text"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2 text-sm text-slate-700 md:col-span-2">
             <div class="flex items-center justify-between gap-3">
               <span class="font-medium">Contact methods</span>
               <button
                 type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                class="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
                 @click="addContactMethod"
               >
                 Add method
@@ -539,15 +576,15 @@ const saveClient = async () => {
             </div>
 
             <div
-              v-for="contact in editableContacts"
+              v-for="(contact, contactIndex) in editableContacts"
               :key="contact.id"
-              class="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 md:grid-cols-12"
+              class="grid gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-2 md:grid-cols-12"
             >
               <label class="space-y-1 md:col-span-2">
-                <span>Channel</span>
+                <span class="text-xs text-slate-600">Channel</span>
                 <select
                   v-model="contact.channel"
-                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
                 >
                   <option value="email">email</option>
                   <option value="sms">sms</option>
@@ -555,10 +592,10 @@ const saveClient = async () => {
               </label>
 
               <label class="space-y-1 md:col-span-3">
-                <span>Purpose</span>
+                <span class="text-xs text-slate-600">Purpose</span>
                 <select
                   v-model="contact.purpose"
-                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
                 >
                   <option
                     v-for="purpose in contactPurposeOptions"
@@ -570,20 +607,21 @@ const saveClient = async () => {
                 </select>
               </label>
 
-              <label class="space-y-1 md:col-span-5">
-                <span>Value</span>
+              <label class="space-y-1 md:col-span-6">
+                <span class="text-xs text-slate-600">Value</span>
                 <input
                   v-model="contact.value"
+                  :data-testid="`client-form-contact-value-${contactIndex}`"
                   :type="contact.channel === 'email' ? 'email' : 'text'"
                   :placeholder="contact.channel === 'sms' ? '+40712345678' : 'name@example.com'"
-                  class="w-full rounded-md border border-slate-300 bg-white px-2 py-2 focus:border-orange-500 focus:outline-none"
+                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
                 >
               </label>
 
-              <div class="flex items-end justify-end gap-2 md:col-span-2">
+              <div class="flex items-end justify-end gap-2 md:col-span-1">
                 <button
                   type="button"
-                  class="rounded-md border border-rose-300 px-2 py-1.5 text-xs text-rose-700 hover:bg-rose-50"
+                  class="h-9 rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
                   :disabled="editableContacts.length === 1"
                   @click="removeContactMethod(contact.id)"
                 >
@@ -597,73 +635,100 @@ const saveClient = async () => {
             <span>Contract start date</span>
             <input
               v-model="form.contractStartDate"
+              data-testid="client-form-contract-start"
               type="date"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
           </label>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Contract expiration date</span>
-            <input
-              v-model="form.contractExpirationDate"
-              type="date"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+          <div class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+            <h3 class="text-sm font-semibold text-slate-800">2Y Flow</h3>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Expiration date</span>
+                <input
+                  v-model="form.contractExpirationDate"
+                  data-testid="client-form-contract-expiration"
+                  type="date"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Status</span>
+                <select
+                  v-model="form.contractExpirationStatus"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+                  <option value="active">active</option>
+                  <option value="expiring_soon">expiring_soon</option>
+                  <option value="expired">expired</option>
+                  <option value="renewed">renewed</option>
+                </select>
+              </label>
+            </div>
+          </div>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>2-year flow interval (months)</span>
-            <input
-              v-model="form.contractCheckupIntervalMonths"
-              type="number"
-              min="1"
-              max="240"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
+          <div class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+            <h3 class="text-sm font-semibold text-slate-800">10Y Overhaul</h3>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Expiration date</span>
+                <input
+                  v-model="form.overhaulExpirationDate"
+                  type="date"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Status</span>
+                <select
+                  v-model="form.overhaulExpirationStatus"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+                  <option value="active">active</option>
+                  <option value="expiring_soon">expiring_soon</option>
+                  <option value="expired">expired</option>
+                  <option value="renewed">renewed</option>
+                </select>
+              </label>
+            </div>
+          </div>
 
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Overhaul base date</span>
-            <input
-              v-model="form.overhaulBaseDate"
-              type="date"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
-
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Gas sensor base date</span>
-            <input
-              v-model="form.gasSensorBaseDate"
-              type="date"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
-
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Gas sensor period (months)</span>
-            <input
-              v-model="form.gasSensorPeriodMonths"
-              type="number"
-              min="1"
-              max="240"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-          </label>
-
-          <label class="space-y-1 text-sm text-slate-700">
-            <span>Status</span>
-            <select
-              v-model="form.status"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-            >
-              <option value="active">active</option>
-              <option value="expiring_soon">expiring_soon</option>
-              <option value="expired">expired</option>
-              <option value="renewed">renewed</option>
-              <option value="discontinued">discontinued</option>
-            </select>
-          </label>
+          <div class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+            <h3 class="text-sm font-semibold text-slate-800">Gas Sensor</h3>
+            <div class="grid gap-3 md:grid-cols-3">
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Expiration date</span>
+                <input
+                  v-model="form.gasSensorExpirationDate"
+                  type="date"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Status</span>
+                <select
+                  v-model="form.gasSensorExpirationStatus"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+                  <option value="active">active</option>
+                  <option value="expiring_soon">expiring_soon</option>
+                  <option value="expired">expired</option>
+                  <option value="renewed">renewed</option>
+                </select>
+              </label>
+              <label class="space-y-1 text-sm text-slate-700">
+                <span>Period (months)</span>
+                <input
+                  v-model="form.gasSensorPeriodMonths"
+                  type="number"
+                  min="1"
+                  max="240"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 focus:border-orange-500 focus:outline-none"
+                >
+              </label>
+            </div>
+          </div>
         </div>
 
         <p
@@ -685,6 +750,7 @@ const saveClient = async () => {
 
           <button
             type="button"
+            data-testid="client-form-save"
             class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="savePending"
             @click="saveClient"

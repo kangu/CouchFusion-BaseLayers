@@ -1,10 +1,10 @@
 import { createError } from "h3";
 import type {
   MaintenanceAddress,
-  MaintenanceClientStatus,
+  MaintenanceExpirationStatus,
   MaintenanceJobStatus,
 } from "./types";
-import { addMonthsToIsoDate, ensureIsoDateOnly } from "./dates";
+import { ensureIsoDateOnly } from "./dates";
 
 export const asOptionalText = (
   value: unknown,
@@ -75,20 +75,19 @@ export const asOptionalPositiveInteger = (
   return parsed;
 };
 
-export const asClientStatus = (value: unknown): MaintenanceClientStatus => {
+export const asExpirationStatus = (value: unknown): MaintenanceExpirationStatus => {
   const normalized = String(value ?? "active").trim().toLowerCase();
   if (
     normalized === "active" ||
     normalized === "expiring_soon" ||
     normalized === "expired" ||
-    normalized === "renewed" ||
-    normalized === "discontinued"
+    normalized === "renewed"
   ) {
     return normalized;
   }
   throw createError({
     statusCode: 400,
-    statusMessage: "Invalid client status",
+    statusMessage: "Invalid expiration status",
   });
 };
 
@@ -148,6 +147,7 @@ export const parseClientContractFields = (
 ): {
   contractStartDate: string | null;
   contractExpirationDate: string | null;
+  contractExpirationStatus: MaintenanceExpirationStatus | null;
   contractCheckupIntervalMonths: number | null;
 } => {
   const hasStartDate = typeof input.startDate !== "undefined" && input.startDate !== null && input.startDate !== "";
@@ -167,6 +167,7 @@ export const parseClientContractFields = (
     return {
       contractStartDate: null,
       contractExpirationDate: null,
+      contractExpirationStatus: null,
       contractCheckupIntervalMonths: null,
     };
   }
@@ -174,68 +175,94 @@ export const parseClientContractFields = (
   return {
     contractStartDate: ensureIsoDateOnly(input.startDate, "contractStartDate"),
     contractExpirationDate: ensureIsoDateOnly(input.expirationDate, "contractExpirationDate"),
-    contractCheckupIntervalMonths: asOptionalPositiveInteger(
-      input.checkupIntervalMonths,
-      "contractCheckupIntervalMonths",
-    ),
+    contractExpirationStatus: "active",
+    contractCheckupIntervalMonths: 12,
   };
 };
 
 interface ParseClientScheduleFieldsInput {
-  overhaulBaseDate?: unknown;
-  gasSensorBaseDate?: unknown;
+  overhaulExpirationDate?: unknown;
+  gasSensorExpirationDate?: unknown;
+  overhaulExpirationStatus?: unknown;
+  gasSensorExpirationStatus?: unknown;
   gasSensorPeriodMonths?: unknown;
+  legacyOverhaulBaseDate?: unknown;
+  legacyOverhaulDueDate?: unknown;
+  legacyGasSensorBaseDate?: unknown;
+  legacyGasSensorDueDate?: unknown;
 }
 
 export const parseClientScheduleFields = (
   input: ParseClientScheduleFieldsInput,
 ): {
-  overhaulBaseDate: string | null;
-  overhaulDueDate: string | null;
-  gasSensorBaseDate: string | null;
+  overhaulExpirationDate: string | null;
+  overhaulExpirationStatus: MaintenanceExpirationStatus | null;
+  gasSensorExpirationDate: string | null;
+  gasSensorExpirationStatus: MaintenanceExpirationStatus | null;
   gasSensorPeriodMonths: number | null;
-  gasSensorDueDate: string | null;
 } => {
-  const overhaulBaseDate =
-    typeof input.overhaulBaseDate === "undefined" ||
-    input.overhaulBaseDate === null ||
-    input.overhaulBaseDate === ""
-      ? null
-      : ensureIsoDateOnly(input.overhaulBaseDate, "overhaulBaseDate");
+  const rawOverhaulExpirationDate =
+    typeof input.overhaulExpirationDate !== "undefined"
+      ? input.overhaulExpirationDate
+      : typeof input.legacyOverhaulDueDate !== "undefined"
+        ? input.legacyOverhaulDueDate
+        : input.legacyOverhaulBaseDate;
 
-  const gasSensorBaseDate =
-    typeof input.gasSensorBaseDate === "undefined" ||
-    input.gasSensorBaseDate === null ||
-    input.gasSensorBaseDate === ""
+  const overhaulExpirationDate =
+    typeof rawOverhaulExpirationDate === "undefined" ||
+    rawOverhaulExpirationDate === null ||
+    rawOverhaulExpirationDate === ""
       ? null
-      : ensureIsoDateOnly(input.gasSensorBaseDate, "gasSensorBaseDate");
+      : ensureIsoDateOnly(rawOverhaulExpirationDate, "overhaulExpirationDate");
+
+  const rawGasSensorExpirationDate =
+    typeof input.gasSensorExpirationDate !== "undefined"
+      ? input.gasSensorExpirationDate
+      : typeof input.legacyGasSensorDueDate !== "undefined"
+        ? input.legacyGasSensorDueDate
+        : input.legacyGasSensorBaseDate;
+
+  const gasSensorExpirationDate =
+    typeof rawGasSensorExpirationDate === "undefined" ||
+    rawGasSensorExpirationDate === null ||
+    rawGasSensorExpirationDate === ""
+      ? null
+      : ensureIsoDateOnly(rawGasSensorExpirationDate, "gasSensorExpirationDate");
 
   const gasSensorPeriodMonths = asOptionalPositiveInteger(
     input.gasSensorPeriodMonths,
     "gasSensorPeriodMonths",
   );
 
-  const hasGasSensorBaseDate = Boolean(gasSensorBaseDate);
+  const hasGasSensorExpirationDate = Boolean(gasSensorExpirationDate);
   const hasGasSensorPeriodMonths = Boolean(gasSensorPeriodMonths);
 
-  if (hasGasSensorBaseDate !== hasGasSensorPeriodMonths) {
+  if (hasGasSensorExpirationDate !== hasGasSensorPeriodMonths) {
     throw createError({
       statusCode: 400,
       statusMessage:
-        "gasSensorBaseDate and gasSensorPeriodMonths must be provided together",
+        "gasSensorExpirationDate and gasSensorPeriodMonths must be provided together",
     });
   }
 
+  const overhaulExpirationStatus =
+    overhaulExpirationDate === null
+      ? null
+      : typeof input.overhaulExpirationStatus === "undefined"
+        ? "active"
+        : asExpirationStatus(input.overhaulExpirationStatus);
+  const gasSensorExpirationStatus =
+    gasSensorExpirationDate === null
+      ? null
+      : typeof input.gasSensorExpirationStatus === "undefined"
+        ? "active"
+        : asExpirationStatus(input.gasSensorExpirationStatus);
+
   return {
-    overhaulBaseDate,
-    overhaulDueDate: overhaulBaseDate
-      ? addMonthsToIsoDate(overhaulBaseDate, 120)
-      : null,
-    gasSensorBaseDate,
+    overhaulExpirationDate,
+    overhaulExpirationStatus,
+    gasSensorExpirationDate,
+    gasSensorExpirationStatus,
     gasSensorPeriodMonths,
-    gasSensorDueDate:
-      gasSensorBaseDate && gasSensorPeriodMonths
-        ? addMonthsToIsoDate(gasSensorBaseDate, gasSensorPeriodMonths)
-        : null,
   };
 };

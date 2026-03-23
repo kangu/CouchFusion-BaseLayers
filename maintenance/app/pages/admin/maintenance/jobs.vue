@@ -35,9 +35,6 @@ const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefine
 const actionPendingId = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const actionSuccess = ref<string | null>(null);
-const doneConfirmOpen = ref(false);
-const doneJobId = ref<string | null>(null);
-const doneNextExpirationDate = ref("");
 const rejectConfirmOpen = ref(false);
 const rejectJobId = ref<string | null>(null);
 const scheduleConfirmOpen = ref(false);
@@ -163,7 +160,6 @@ const filteredJobs = computed(() => {
 watch([listFilter, isAdmin], async () => {
   actionError.value = null;
   actionSuccess.value = null;
-  closeDoneConfirmation();
   closeScheduleConfirmation();
   closeCancelConfirmation();
   await refreshJobs();
@@ -174,16 +170,6 @@ const getGoogleMapsUrl = (address: { line1?: string | null; city?: string | null
   const parts = [address.line1, address.city, address.country].filter(Boolean);
   const query = encodeURIComponent(parts.join(", "));
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
-};
-
-const addMonthsToTodayIso = (months: number): string => {
-  const now = new Date();
-  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  date.setUTCMonth(date.getUTCMonth() + months);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 };
 
 const getJobTypeLabel = (jobType: MaintenanceJob["jobType"]): string => {
@@ -225,21 +211,7 @@ const canReject = (job: MaintenanceJob): boolean => {
 };
 
 const openDoneConfirmation = (job: MaintenanceJob) => {
-  if (job.jobType !== "check_2y") {
-    void setJobStatus(job._id, "done");
-    return;
-  }
-
-  doneJobId.value = job._id;
-  const months = 24;
-  doneNextExpirationDate.value = addMonthsToTodayIso(months);
-  doneConfirmOpen.value = true;
-};
-
-const closeDoneConfirmation = () => {
-  doneConfirmOpen.value = false;
-  doneJobId.value = null;
-  doneNextExpirationDate.value = "";
+  void setJobStatus(job._id, "done");
 };
 
 const openRejectConfirmation = (jobId: string) => {
@@ -363,7 +335,7 @@ const confirmReschedule = async () => {
 const setJobStatus = async (
   jobId: string,
   status: "scheduled" | "canceled_by_customer" | "done" | "rejected",
-  options?: { nextExpirationDate?: string; appointmentAt?: string; reservationNotes?: string },
+  options?: { appointmentAt?: string; reservationNotes?: string },
 ) => {
   if (actionPendingId.value) {
     return;
@@ -379,7 +351,6 @@ const setJobStatus = async (
       credentials: "include",
       body: {
         status,
-        ...(status === "done" ? { nextExpirationDate: options?.nextExpirationDate } : {}),
         ...(status === "scheduled"
           ? {
               appointmentAt: options?.appointmentAt,
@@ -390,8 +361,7 @@ const setJobStatus = async (
     });
 
     if (status === "done") {
-      actionSuccess.value = `Job marked done. Next expires date set to ${options?.nextExpirationDate}.`;
-      closeDoneConfirmation();
+      actionSuccess.value = "Job marked done.";
     } else if (status === "rejected") {
       actionSuccess.value = "Job moved to rejected.";
       closeRejectConfirmation();
@@ -410,16 +380,6 @@ const setJobStatus = async (
   } finally {
     actionPendingId.value = null;
   }
-};
-
-const confirmMarkDone = async () => {
-  if (!doneJobId.value || !doneNextExpirationDate.value) {
-    actionError.value = "Next expires date is required.";
-    return;
-  }
-  await setJobStatus(doneJobId.value, "done", {
-    nextExpirationDate: doneNextExpirationDate.value,
-  });
 };
 
 const confirmReject = async () => {
@@ -467,6 +427,7 @@ const confirmCustomerCancel = async () => {
         >
           <button
             type="button"
+            data-testid="jobs-filter-pending"
             class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
             :class="
               listFilter === 'pending'
@@ -479,6 +440,7 @@ const confirmCustomerCancel = async () => {
           </button>
           <button
             type="button"
+            data-testid="jobs-filter-scheduled"
             class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
             :class="
               listFilter === 'scheduled'
@@ -491,6 +453,7 @@ const confirmCustomerCancel = async () => {
           </button>
           <button
             type="button"
+            data-testid="jobs-filter-archived"
             class="rounded-full px-4 py-1.5 text-sm font-medium transition-colors"
             :class="
               listFilter === 'archived'
@@ -587,6 +550,7 @@ const confirmCustomerCancel = async () => {
             <tr
               v-for="job in filteredJobs"
               :key="job._id"
+              data-testid="job-row"
             >
               <td class="px-3 py-2 text-slate-900">
                 <div>{{ job.clientName || job.clientId }}</div>
@@ -629,6 +593,7 @@ const confirmCustomerCancel = async () => {
               <td class="px-3 py-2">
                 <select
                   v-if="isAdmin && (job.status === 'pending' || job.status === 'scheduled')"
+                  data-testid="job-assigned-select"
                   :value="job.assignedTo || ''"
                   class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-orange-500 focus:outline-none"
                   :disabled="Boolean(actionPendingId && assigningJobId === job._id)"
@@ -657,6 +622,7 @@ const confirmCustomerCancel = async () => {
                   <button
                     v-if="canScheduleReservation(job)"
                     type="button"
+                    data-testid="job-action-schedule"
                     class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="Boolean(actionPendingId)"
                     @click="openScheduleConfirmation(job)"
@@ -666,6 +632,7 @@ const confirmCustomerCancel = async () => {
                   <button
                     v-if="canMarkDone(job)"
                     type="button"
+                    data-testid="job-action-done"
                     class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                     :disabled="Boolean(actionPendingId)"
                     @click="openDoneConfirmation(job)"
@@ -730,6 +697,7 @@ const confirmCustomerCancel = async () => {
           <span>Appointment date and time</span>
           <input
             v-model="scheduleAppointmentAt"
+            data-testid="schedule-modal-appointment"
             type="datetime-local"
             class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
           >
@@ -739,6 +707,7 @@ const confirmCustomerCancel = async () => {
           <span>Reservation notes</span>
           <textarea
             v-model="scheduleReservationNotes"
+            data-testid="schedule-modal-notes"
             rows="4"
             class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
             placeholder="Access notes, call remarks, customer preferences..."
@@ -756,54 +725,12 @@ const confirmCustomerCancel = async () => {
           </button>
           <button
             type="button"
+            data-testid="schedule-modal-confirm"
             class="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="Boolean(actionPendingId)"
             @click="confirmSchedule"
           >
             {{ actionPendingId === scheduleJobId ? "Saving..." : "Confirm Reservation" }}
-          </button>
-        </div>
-      </section>
-    </div>
-
-    <div
-      v-if="doneConfirmOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
-      @click.self="closeDoneConfirmation"
-    >
-      <section class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-        <h3 class="text-lg font-semibold text-slate-900">
-          Confirm Mark Done
-        </h3>
-        <p class="mt-2 text-sm text-slate-600">
-          Choose the next 2-year check due date for this client.
-        </p>
-
-        <label class="mt-4 block space-y-1 text-sm text-slate-700">
-          <span>Next expires date</span>
-          <input
-            v-model="doneNextExpirationDate"
-            type="date"
-            class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
-          >
-        </label>
-
-        <div class="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-            :disabled="Boolean(actionPendingId)"
-            @click="closeDoneConfirmation"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="Boolean(actionPendingId)"
-            @click="confirmMarkDone"
-          >
-            {{ actionPendingId === doneJobId ? "Saving..." : "Confirm Done" }}
           </button>
         </div>
       </section>

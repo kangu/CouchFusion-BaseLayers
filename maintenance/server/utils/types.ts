@@ -7,12 +7,11 @@ export type MaintenanceContactPurpose =
   | "billing"
   | "technical";
 
-export type MaintenanceClientStatus =
+export type MaintenanceExpirationStatus =
   | "active"
   | "expiring_soon"
   | "expired"
-  | "renewed"
-  | "discontinued";
+  | "renewed";
 export type MaintenanceJobStatus =
   | "pending"
   | "scheduled"
@@ -50,7 +49,6 @@ export interface MaintenanceContactMethod {
 export interface MaintenanceClientDocument extends CouchDBDocument {
   type: "maintenance_client";
   name: string;
-  status: MaintenanceClientStatus;
   serviceAddress: MaintenanceAddress;
   billingAddress: MaintenanceAddress | null;
   primaryContactName: string | null;
@@ -60,12 +58,13 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   contacts: MaintenanceContactMethod[];
   contractStartDate: string | null;
   contractExpirationDate: string | null;
+  contractExpirationStatus: MaintenanceExpirationStatus | null;
   contractCheckupIntervalMonths: number | null;
-  overhaulBaseDate: string | null;
-  overhaulDueDate: string | null;
-  gasSensorBaseDate: string | null;
+  overhaulExpirationDate: string | null;
+  overhaulExpirationStatus: MaintenanceExpirationStatus | null;
+  gasSensorExpirationDate: string | null;
   gasSensorPeriodMonths: number | null;
-  gasSensorDueDate: string | null;
+  gasSensorExpirationStatus: MaintenanceExpirationStatus | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -7,7 +7,7 @@ import {
 import { getDocument, putDocument } from "#database/utils/couchdb";
 import { parseClientContacts } from "../../../utils/contacts";
 import {
-  asClientStatus,
+  asExpirationStatus,
   asOptionalText,
   asRequiredText,
   parseClientContractFields,
@@ -21,7 +21,6 @@ import { writeMaintenanceAuditEntry } from "../../../utils/audit";
 
 interface ClientPatchPayload {
   name?: unknown;
-  status?: unknown;
   serviceAddress?: unknown;
   billingAddress?: unknown;
   primaryContactName?: unknown;
@@ -32,9 +31,16 @@ interface ClientPatchPayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
-  overhaulBaseDate?: unknown;
-  gasSensorBaseDate?: unknown;
+  contractExpirationStatus?: unknown;
+  overhaulExpirationDate?: unknown;
+  overhaulExpirationStatus?: unknown;
+  gasSensorExpirationDate?: unknown;
+  gasSensorExpirationStatus?: unknown;
   gasSensorPeriodMonths?: unknown;
+  overhaulBaseDate?: unknown;
+  overhaulDueDate?: unknown;
+  gasSensorBaseDate?: unknown;
+  gasSensorDueDate?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -83,18 +89,42 @@ export default defineEventHandler(async (event) => {
         : payload.contractCheckupIntervalMonths,
   });
   const scheduleFields = parseClientScheduleFields({
-    overhaulBaseDate:
-      typeof payload.overhaulBaseDate === "undefined"
-        ? existingClient.overhaulBaseDate
-        : payload.overhaulBaseDate,
-    gasSensorBaseDate:
-      typeof payload.gasSensorBaseDate === "undefined"
-        ? existingClient.gasSensorBaseDate
-        : payload.gasSensorBaseDate,
+    overhaulExpirationDate:
+      typeof payload.overhaulExpirationDate === "undefined"
+        ? existingClient.overhaulExpirationDate
+        : payload.overhaulExpirationDate,
+    overhaulExpirationStatus:
+      typeof payload.overhaulExpirationStatus === "undefined"
+        ? existingClient.overhaulExpirationStatus
+        : payload.overhaulExpirationStatus,
+    gasSensorExpirationDate:
+      typeof payload.gasSensorExpirationDate === "undefined"
+        ? existingClient.gasSensorExpirationDate
+        : payload.gasSensorExpirationDate,
+    gasSensorExpirationStatus:
+      typeof payload.gasSensorExpirationStatus === "undefined"
+        ? existingClient.gasSensorExpirationStatus
+        : payload.gasSensorExpirationStatus,
     gasSensorPeriodMonths:
       typeof payload.gasSensorPeriodMonths === "undefined"
         ? existingClient.gasSensorPeriodMonths
         : payload.gasSensorPeriodMonths,
+    legacyOverhaulBaseDate:
+      typeof payload.overhaulBaseDate === "undefined"
+        ? null
+        : payload.overhaulBaseDate,
+    legacyOverhaulDueDate:
+      typeof payload.overhaulDueDate === "undefined"
+        ? null
+        : payload.overhaulDueDate,
+    legacyGasSensorBaseDate:
+      typeof payload.gasSensorBaseDate === "undefined"
+        ? null
+        : payload.gasSensorBaseDate,
+    legacyGasSensorDueDate:
+      typeof payload.gasSensorDueDate === "undefined"
+        ? null
+        : payload.gasSensorDueDate,
   });
 
   const nextClient: MaintenanceClientDocument = {
@@ -103,10 +133,6 @@ export default defineEventHandler(async (event) => {
       typeof payload.name === "undefined"
         ? existingClient.name
         : asRequiredText(payload.name, 180, "name"),
-    status:
-      typeof payload.status === "undefined"
-        ? existingClient.status
-        : asClientStatus(payload.status),
     serviceAddress:
       typeof payload.serviceAddress === "undefined"
         ? existingClient.serviceAddress
@@ -137,6 +163,12 @@ export default defineEventHandler(async (event) => {
         ? existingClient.contacts
         : parseClientContacts(payload.contacts),
     ...contractFields,
+    contractExpirationStatus:
+      contractFields.contractExpirationDate === null
+        ? null
+        : typeof payload.contractExpirationStatus === "undefined"
+          ? existingClient.contractExpirationStatus
+          : asExpirationStatus(payload.contractExpirationStatus),
     ...scheduleFields,
     updatedAt: new Date().toISOString(),
   };
@@ -150,13 +182,19 @@ export default defineEventHandler(async (event) => {
     action: "client_update",
     actor: actor.username,
     previousState: {
-      status: existingClient.status,
       name: existingClient.name,
+      contractExpirationStatus: existingClient.contractExpirationStatus,
+      overhaulExpirationStatus: existingClient.overhaulExpirationStatus,
+      gasSensorExpirationStatus: existingClient.gasSensorExpirationStatus,
     },
     nextState: {
-      status: nextClient.status,
       name: nextClient.name,
       contractExpirationDate: nextClient.contractExpirationDate,
+      contractExpirationStatus: nextClient.contractExpirationStatus,
+      overhaulExpirationDate: nextClient.overhaulExpirationDate,
+      overhaulExpirationStatus: nextClient.overhaulExpirationStatus,
+      gasSensorExpirationDate: nextClient.gasSensorExpirationDate,
+      gasSensorExpirationStatus: nextClient.gasSensorExpirationStatus,
     },
   });
 

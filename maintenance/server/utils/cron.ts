@@ -98,20 +98,20 @@ const collectScheduleEntries = (
       });
     }
 
-    if (client.overhaulDueDate) {
+    if (client.overhaulExpirationDate) {
       entries.push({
         client,
-        dueDate: client.overhaulDueDate,
+        dueDate: client.overhaulExpirationDate,
         jobType: "overhaul_10y",
         notificationCategory: "overhaul_10y",
         label: "10-year overhaul",
       });
     }
 
-    if (client.gasSensorDueDate) {
+    if (client.gasSensorExpirationDate) {
       entries.push({
         client,
-        dueDate: client.gasSensorDueDate,
+        dueDate: client.gasSensorExpirationDate,
         jobType: "gas_sensor_change",
         notificationCategory: "gas_sensor_change",
         label: "Gas sensor change",
@@ -146,8 +146,7 @@ export const runContractExpiryCheck = async (
     .filter(
       (doc): doc is MaintenanceClientDocument =>
         Boolean(doc && doc.type === "maintenance_client"),
-    )
-    .filter((client) => client.status !== "discontinued");
+    );
 
   const scheduleEntries = collectScheduleEntries(clients, targetDate);
   const upcomingEntries = scheduleEntries.upcomingEntries.filter(
@@ -260,22 +259,51 @@ export const runContractExpiryCheck = async (
   let notificationsDryRunQueued = 0;
 
   for (const entry of upcomingEntries) {
-    if (!input.dryRun && entry.jobType === "check_2y" && entry.client.status === "active") {
-      const updatedClient: MaintenanceClientDocument = {
-        ...entry.client,
-        status: "expiring_soon",
-        updatedAt: nowIso,
-      };
-      await putDocument(databaseName, updatedClient);
-      await writeMaintenanceAuditEntry({
-        databaseName,
-        entityType: "client",
-        entityId: entry.client._id,
-        action: "cron_mark_expiring_soon",
-        actor: input.actor,
-        previousState: { status: entry.client.status },
-        nextState: { status: updatedClient.status },
-      });
+    if (!input.dryRun) {
+      const maybeUpdatedClient =
+        entry.jobType === "check_2y" &&
+        entry.client.contractExpirationStatus === "active"
+          ? {
+              ...entry.client,
+              contractExpirationStatus: "expiring_soon" as const,
+              updatedAt: nowIso,
+            }
+          : entry.jobType === "overhaul_10y" &&
+              entry.client.overhaulExpirationStatus === "active"
+            ? {
+                ...entry.client,
+                overhaulExpirationStatus: "expiring_soon" as const,
+                updatedAt: nowIso,
+              }
+            : entry.jobType === "gas_sensor_change" &&
+                entry.client.gasSensorExpirationStatus === "active"
+              ? {
+                  ...entry.client,
+                  gasSensorExpirationStatus: "expiring_soon" as const,
+                  updatedAt: nowIso,
+                }
+              : null;
+
+      if (maybeUpdatedClient) {
+        await putDocument(databaseName, maybeUpdatedClient);
+        await writeMaintenanceAuditEntry({
+          databaseName,
+          entityType: "client",
+          entityId: entry.client._id,
+          action: "cron_mark_expiring_soon",
+          actor: input.actor,
+          previousState: {
+            contractExpirationStatus: entry.client.contractExpirationStatus,
+            overhaulExpirationStatus: entry.client.overhaulExpirationStatus,
+            gasSensorExpirationStatus: entry.client.gasSensorExpirationStatus,
+          },
+          nextState: {
+            contractExpirationStatus: maybeUpdatedClient.contractExpirationStatus,
+            overhaulExpirationStatus: maybeUpdatedClient.overhaulExpirationStatus,
+            gasSensorExpirationStatus: maybeUpdatedClient.gasSensorExpirationStatus,
+          },
+        });
+      }
     }
 
     const recipients = buildNotificationRecipients(

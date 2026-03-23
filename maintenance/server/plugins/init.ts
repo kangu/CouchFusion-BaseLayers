@@ -12,7 +12,7 @@ import type { MaintenanceClientDocument, MaintenanceJobDocument } from "../utils
 
 let schedulerStarted = false;
 const CONTRACT_MIGRATION_MARKER_ID = "maintenance_meta:contract-model-migration-v1";
-const STATUS_CONSOLIDATION_MARKER_ID = "maintenance_meta:client-status-consolidation-v1";
+const EXPIRATION_MODEL_MIGRATION_MARKER_ID = "maintenance_meta:client-expiration-model-v1";
 
 interface LegacyContractDocument {
   _id: string;
@@ -101,8 +101,8 @@ const migrateContractsToClients = async (databaseName: string): Promise<void> =>
       ...client,
       contractStartDate: contract.startDate ?? null,
       contractExpirationDate: contract.expirationDate ?? null,
-      contractCheckupIntervalMonths: contract.checkupIntervalMonths ?? null,
-      status: contract.status ?? "active",
+      contractExpirationStatus: contract.status ?? "active",
+      contractCheckupIntervalMonths: 12,
       updatedAt: new Date().toISOString(),
     };
 
@@ -141,8 +141,8 @@ const migrateContractsToClients = async (databaseName: string): Promise<void> =>
   });
 };
 
-const consolidateClientStatusModel = async (databaseName: string): Promise<void> => {
-  const marker = await getDocument(databaseName, STATUS_CONSOLIDATION_MARKER_ID);
+const migrateClientExpirationModel = async (databaseName: string): Promise<void> => {
+  const marker = await getDocument(databaseName, EXPIRATION_MODEL_MIGRATION_MARKER_ID);
   if (marker) {
     return;
   }
@@ -151,28 +151,46 @@ const consolidateClientStatusModel = async (databaseName: string): Promise<void>
   const updates: MaintenanceClientDocument[] = [];
 
   for (const client of clients) {
-    const candidateContractStatus = (client as Record<string, unknown>).contractStatus;
-    const rawStatus = String((client as Record<string, unknown>).status ?? "active");
-    const nextStatus =
-      typeof candidateContractStatus === "string"
-        ? candidateContractStatus
-        : rawStatus === "inactive"
-          ? "discontinued"
-          : rawStatus;
-
-    const { contractStatus: _legacyContractStatus, ...withoutLegacyContractStatus } = client as MaintenanceClientDocument & {
-      contractStatus?: unknown;
-    };
-
-    if (nextStatus === rawStatus && typeof candidateContractStatus === "undefined") {
-      continue;
-    }
-
-    updates.push({
-      ...withoutLegacyContractStatus,
-      status: nextStatus as MaintenanceClientDocument["status"],
+    const raw = client as MaintenanceClientDocument & Record<string, unknown>;
+    const legacyStatus = String(raw.contractStatus ?? raw.status ?? "active").trim().toLowerCase();
+    const normalizedStatus =
+      legacyStatus === "expiring_soon" || legacyStatus === "expired" || legacyStatus === "renewed"
+        ? legacyStatus
+        : "active";
+    const overhaulExpirationDate =
+      client.overhaulExpirationDate ??
+      (typeof raw.overhaulDueDate === "string" ? raw.overhaulDueDate : null) ??
+      (typeof raw.overhaulBaseDate === "string" ? raw.overhaulBaseDate : null);
+    const gasSensorExpirationDate =
+      client.gasSensorExpirationDate ??
+      (typeof raw.gasSensorDueDate === "string" ? raw.gasSensorDueDate : null) ??
+      (typeof raw.gasSensorBaseDate === "string" ? raw.gasSensorBaseDate : null);
+    const nextClient = {
+      ...raw,
+      contractExpirationStatus:
+        client.contractExpirationDate === null ? null : (normalizedStatus as "active" | "expiring_soon" | "expired" | "renewed"),
+      contractCheckupIntervalMonths:
+        Number.isInteger(client.contractCheckupIntervalMonths) &&
+        (client.contractCheckupIntervalMonths ?? 0) > 0
+          ? client.contractCheckupIntervalMonths
+          : client.contractStartDate
+            ? 12
+            : null,
+      overhaulExpirationDate,
+      overhaulExpirationStatus:
+        overhaulExpirationDate === null ? null : (normalizedStatus as "active" | "expiring_soon" | "expired" | "renewed"),
+      gasSensorExpirationDate,
+      gasSensorExpirationStatus:
+        gasSensorExpirationDate === null ? null : (normalizedStatus as "active" | "expiring_soon" | "expired" | "renewed"),
       updatedAt: new Date().toISOString(),
-    });
+    } as MaintenanceClientDocument & Record<string, unknown>;
+    delete nextClient.status;
+    delete nextClient.contractStatus;
+    delete nextClient.overhaulBaseDate;
+    delete nextClient.overhaulDueDate;
+    delete nextClient.gasSensorBaseDate;
+    delete nextClient.gasSensorDueDate;
+    updates.push(nextClient as MaintenanceClientDocument);
   }
 
   if (updates.length > 0) {
@@ -180,13 +198,13 @@ const consolidateClientStatusModel = async (databaseName: string): Promise<void>
   }
 
   await putDocument(databaseName, {
-    _id: STATUS_CONSOLIDATION_MARKER_ID,
+    _id: EXPIRATION_MODEL_MIGRATION_MARKER_ID,
     type: "maintenance_meta",
     completedAt: new Date().toISOString(),
     migratedClients: updates.length,
   });
 
-  console.info("[maintenance] client status consolidation completed", {
+  console.info("[maintenance] client expiration model migration completed", {
     migratedClients: updates.length,
   });
 };
@@ -237,7 +255,7 @@ const initializeMaintenanceLayer = async (): Promise<void> => {
     validateCouchDBEnvironment();
     const databaseName = await ensureMaintenanceDatabase();
     await migrateContractsToClients(databaseName);
-    await consolidateClientStatusModel(databaseName);
+    await migrateClientExpirationModel(databaseName);
     await startInProcessCronScheduler();
     console.info("[maintenance] initialization completed");
   } catch (error) {

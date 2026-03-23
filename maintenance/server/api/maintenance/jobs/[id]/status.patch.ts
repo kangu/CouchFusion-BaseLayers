@@ -7,7 +7,6 @@ import {
 import { getDocument, putDocument } from "#database/utils/couchdb";
 import {
   addMonthsToIsoDate,
-  ensureIsoDateOnly,
   ensureIsoDateOrDateTime,
   toIsoDateOnly,
 } from "../../../../utils/dates";
@@ -186,31 +185,36 @@ export default defineEventHandler(async (event) => {
       const effectiveJobType = updatedJob.jobType || "check_2y";
       const nextExpirationDate =
         effectiveJobType === "check_2y"
-          ? typeof payload.nextExpirationDate === "undefined" ||
-            payload.nextExpirationDate === null ||
-            payload.nextExpirationDate === ""
-            ? addMonthsToIsoDate(completionDate, 24)
-            : ensureIsoDateOnly(payload.nextExpirationDate, "nextExpirationDate")
+          ? addMonthsToIsoDate(
+              completionDate,
+              Number.isInteger(client.contractCheckupIntervalMonths) &&
+                (client.contractCheckupIntervalMonths ?? 0) > 0
+                ? (client.contractCheckupIntervalMonths as number)
+                : 12,
+            )
           : client.contractExpirationDate;
-      const nextOverhaulDueDate =
+      const nextOverhaulExpirationDate =
         effectiveJobType === "overhaul_10y"
           ? addMonthsToIsoDate(completionDate, 120)
-          : client.overhaulDueDate;
-      const nextGasSensorDueDate =
+          : client.overhaulExpirationDate;
+      const nextGasSensorExpirationDate =
         effectiveJobType === "gas_sensor_change" && client.gasSensorPeriodMonths
           ? addMonthsToIsoDate(completionDate, client.gasSensorPeriodMonths)
-          : client.gasSensorDueDate;
+          : client.gasSensorExpirationDate;
 
       const nextClient: MaintenanceClientDocument = {
         ...client,
         contractExpirationDate: nextExpirationDate,
-        overhaulBaseDate:
-          effectiveJobType === "overhaul_10y" ? completionDate : client.overhaulBaseDate,
-        overhaulDueDate: nextOverhaulDueDate,
-        gasSensorBaseDate:
-          effectiveJobType === "gas_sensor_change" ? completionDate : client.gasSensorBaseDate,
-        gasSensorDueDate: nextGasSensorDueDate,
-        status: client.status === "discontinued" ? "discontinued" : "active",
+        contractExpirationStatus:
+          effectiveJobType === "check_2y" ? "active" : client.contractExpirationStatus,
+        overhaulExpirationDate: nextOverhaulExpirationDate,
+        overhaulExpirationStatus:
+          effectiveJobType === "overhaul_10y" ? "active" : client.overhaulExpirationStatus,
+        gasSensorExpirationDate: nextGasSensorExpirationDate,
+        gasSensorExpirationStatus:
+          effectiveJobType === "gas_sensor_change"
+            ? "active"
+            : client.gasSensorExpirationStatus,
         updatedAt: now,
       };
       await putDocument(databaseName, nextClient);
@@ -222,14 +226,20 @@ export default defineEventHandler(async (event) => {
         action: "job_done_set_next_expiration",
         actor: actor.username,
         previousState: {
-          status: client.status,
           contractExpirationDate: client.contractExpirationDate,
+          contractExpirationStatus: client.contractExpirationStatus,
+          overhaulExpirationDate: client.overhaulExpirationDate,
+          overhaulExpirationStatus: client.overhaulExpirationStatus,
+          gasSensorExpirationDate: client.gasSensorExpirationDate,
+          gasSensorExpirationStatus: client.gasSensorExpirationStatus,
         },
         nextState: {
-          status: nextClient.status,
           contractExpirationDate: nextClient.contractExpirationDate,
-          overhaulDueDate: nextClient.overhaulDueDate,
-          gasSensorDueDate: nextClient.gasSensorDueDate,
+          contractExpirationStatus: nextClient.contractExpirationStatus,
+          overhaulExpirationDate: nextClient.overhaulExpirationDate,
+          overhaulExpirationStatus: nextClient.overhaulExpirationStatus,
+          gasSensorExpirationDate: nextClient.gasSensorExpirationDate,
+          gasSensorExpirationStatus: nextClient.gasSensorExpirationStatus,
         },
       });
     }

@@ -3,7 +3,7 @@ import { putDocument } from "#database/utils/couchdb";
 import { parseClientContacts } from "../../../utils/contacts";
 import {
   parseAddress,
-  asClientStatus,
+  asExpirationStatus,
   asOptionalText,
   asRequiredText,
   parseClientContractFields,
@@ -16,7 +16,6 @@ import { writeMaintenanceAuditEntry } from "../../../utils/audit";
 
 interface ClientCreatePayload {
   name?: unknown;
-  status?: unknown;
   serviceAddress?: unknown;
   billingAddress?: unknown;
   primaryContactName?: unknown;
@@ -27,9 +26,16 @@ interface ClientCreatePayload {
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
   contractCheckupIntervalMonths?: unknown;
-  overhaulBaseDate?: unknown;
-  gasSensorBaseDate?: unknown;
+  contractExpirationStatus?: unknown;
+  overhaulExpirationDate?: unknown;
+  overhaulExpirationStatus?: unknown;
+  gasSensorExpirationDate?: unknown;
+  gasSensorExpirationStatus?: unknown;
   gasSensorPeriodMonths?: unknown;
+  overhaulBaseDate?: unknown;
+  overhaulDueDate?: unknown;
+  gasSensorBaseDate?: unknown;
+  gasSensorDueDate?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -58,16 +64,21 @@ export default defineEventHandler(async (event) => {
     checkupIntervalMonths: payload.contractCheckupIntervalMonths,
   });
   const scheduleFields = parseClientScheduleFields({
-    overhaulBaseDate: payload.overhaulBaseDate,
-    gasSensorBaseDate: payload.gasSensorBaseDate,
+    overhaulExpirationDate: payload.overhaulExpirationDate,
+    overhaulExpirationStatus: payload.overhaulExpirationStatus,
+    gasSensorExpirationDate: payload.gasSensorExpirationDate,
+    gasSensorExpirationStatus: payload.gasSensorExpirationStatus,
     gasSensorPeriodMonths: payload.gasSensorPeriodMonths,
+    legacyOverhaulBaseDate: payload.overhaulBaseDate,
+    legacyOverhaulDueDate: payload.overhaulDueDate,
+    legacyGasSensorBaseDate: payload.gasSensorBaseDate,
+    legacyGasSensorDueDate: payload.gasSensorDueDate,
   });
 
   const client: MaintenanceClientDocument = {
     _id: `maintenance_client:${crypto.randomUUID()}`,
     type: "maintenance_client",
     name: asRequiredText(payload.name, 180, "name"),
-    status: asClientStatus(payload.status),
     serviceAddress,
     billingAddress: parseAddress(payload.billingAddress, "billingAddress"),
     primaryContactName: asOptionalText(payload.primaryContactName, 180, "primaryContactName"),
@@ -76,6 +87,12 @@ export default defineEventHandler(async (event) => {
     notes: asOptionalText(payload.notes, 5000, "notes"),
     contacts: parseClientContacts(payload.contacts),
     ...contractFields,
+    contractExpirationStatus:
+      contractFields.contractExpirationDate === null
+        ? null
+        : typeof payload.contractExpirationStatus === "undefined"
+          ? contractFields.contractExpirationStatus
+          : asExpirationStatus(payload.contractExpirationStatus),
     ...scheduleFields,
     createdAt: now,
     updatedAt: now,
@@ -115,8 +132,12 @@ export default defineEventHandler(async (event) => {
     previousState: null,
     nextState: {
       name: client.name,
-      status: client.status,
       contractExpirationDate: client.contractExpirationDate,
+      contractExpirationStatus: client.contractExpirationStatus,
+      overhaulExpirationDate: client.overhaulExpirationDate,
+      overhaulExpirationStatus: client.overhaulExpirationStatus,
+      gasSensorExpirationDate: client.gasSensorExpirationDate,
+      gasSensorExpirationStatus: client.gasSensorExpirationStatus,
     },
   });
 
