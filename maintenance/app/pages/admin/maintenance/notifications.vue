@@ -133,6 +133,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
       <div class="mt-4 flex flex-wrap gap-3">
         <button
           type="button"
+          data-testid="notifications-run-dry"
           class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="runPending"
           @click="runExpiryCron(true)"
@@ -141,6 +142,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
         </button>
         <button
           type="button"
+          data-testid="notifications-run-now"
           class="rounded-md bg-orange-600 px-3 py-1.5 text-sm text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="runPending"
           @click="runExpiryCron(false)"
@@ -165,6 +167,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
 
     <div
       v-if="pastExpiryConfirmOpen"
+      data-testid="notifications-past-expired-modal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
       @click.self="closePastExpiryConfirm"
     >
@@ -179,6 +182,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
         <div class="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
+            data-testid="notifications-past-expired-skip"
             class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
             :disabled="runPending"
             @click="confirmPastExpiryAction('skip')"
@@ -187,6 +191,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
           </button>
           <button
             type="button"
+            data-testid="notifications-past-expired-include"
             class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="runPending"
             @click="confirmPastExpiryAction('include')"
@@ -247,6 +252,7 @@ const confirmPastExpiryAction = async (action: "include" | "skip") => {
             <tr
               v-for="item in notifications"
               :key="item._id"
+              data-testid="notification-row"
             >
               <td class="px-3 py-2 text-slate-700">{{ item.createdAt }}</td>
               <td class="px-3 py-2 text-slate-700">{{ item.channel }}</td>

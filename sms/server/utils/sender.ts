@@ -1,4 +1,4 @@
-import { Twilio } from "twilio";
+import twilioModule from "twilio";
 import { readSmsEnvConfig } from "./config";
 
 export interface SmsSendPayload {
@@ -47,6 +47,40 @@ const hasTwilioConfig = (
   return Boolean(accountSid && authToken && messagingServiceSid);
 };
 
+type TwilioConstructor = new (
+  accountSid: string,
+  authToken: string,
+) => {
+  messages: {
+    create: (payload: {
+      to: string;
+      body: string;
+      messagingServiceSid: string;
+    }) => Promise<{ sid?: string | null }>;
+  };
+};
+
+const resolveTwilioConstructor = (): TwilioConstructor => {
+  const moduleValue = twilioModule as unknown as {
+    Twilio?: TwilioConstructor;
+    default?: TwilioConstructor;
+  };
+
+  if (typeof moduleValue.Twilio === "function") {
+    return moduleValue.Twilio;
+  }
+
+  if (typeof moduleValue.default === "function") {
+    return moduleValue.default;
+  }
+
+  if (typeof twilioModule === "function") {
+    return twilioModule as unknown as TwilioConstructor;
+  }
+
+  throw new Error("Twilio constructor could not be resolved from module export");
+};
+
 export const sendSms = async (payload: SmsSendPayload): Promise<SmsSendResult> => {
   const config = await readSmsEnvConfig();
 
@@ -70,6 +104,7 @@ export const sendSms = async (payload: SmsSendPayload): Promise<SmsSendResult> =
   }
 
   try {
+    const Twilio = resolveTwilioConstructor();
     const twilioClient = new Twilio(config.twilioAccountSid!, config.twilioAuthToken!);
     const message = await twilioClient.messages.create({
       to: payload.to,

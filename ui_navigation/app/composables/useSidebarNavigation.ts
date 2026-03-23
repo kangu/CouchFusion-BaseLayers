@@ -148,11 +148,6 @@ const buildBaseSections = (
                     icon: "mdi:file-document-edit-outline",
                 },
                 {
-                    label: "Email Templates",
-                    route: "/admin/email-templates",
-                    icon: "mdi:email-outline",
-                },
-                {
                     label: "Email Logs",
                     route: "/admin/email-logs",
                     icon: "mdi:email-check-outline",

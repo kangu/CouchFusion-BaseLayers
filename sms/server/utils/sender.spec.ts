@@ -12,14 +12,19 @@ vi.mock("#database/utils/couch-config", () => {
 });
 
 vi.mock("twilio", () => {
+  const Twilio = function Twilio(accountSid: string, authToken: string) {
+    twilioConstructorMock(accountSid, authToken);
+    return {
+      messages: {
+        create: twilioCreateMock,
+      },
+    };
+  };
+
   return {
-    Twilio: function Twilio(accountSid: string, authToken: string) {
-      twilioConstructorMock(accountSid, authToken);
-      return {
-        messages: {
-          create: twilioCreateMock,
-        },
-      };
+    Twilio,
+    default: {
+      Twilio,
     },
   };
 });
