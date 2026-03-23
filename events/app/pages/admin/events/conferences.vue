@@ -118,6 +118,16 @@ type ConferencesSortKey =
   | "status"
   | "isPublished"
   | "confirmedDates";
+type InlineEditableField =
+  | "name"
+  | "startDateIso"
+  | "location"
+  | "country"
+  | "discountCode"
+  | "status";
+type EditorContinentMode = "existing" | "custom";
+
+const EDITOR_ADD_NEW_CONTINENT = "__add_new_continent__";
 
 definePageMeta({
   layout: 'members',
@@ -163,6 +173,16 @@ const editingConferenceId = ref<string | null>(null);
 const editorPending = ref(false);
 const editorError = ref<string | null>(null);
 const editorSuccess = ref<string | null>(null);
+const editorContinentMode = ref<EditorContinentMode>("existing");
+const editorCustomContinent = ref("");
+const inlineEditingCell = ref<{
+  conferenceId: string;
+  field: InlineEditableField;
+} | null>(null);
+const inlineDraftValue = ref("");
+const inlineSavingCellKey = ref<string | null>(null);
+const inlineErrorsByCell = ref<Record<string, string>>({});
+const inlineStatusMenuConferenceId = ref<string | null>(null);
 const notificationPreviewOpen = ref(false);
 const notificationPreviewPending = ref(false);
 const notificationPreviewMessage = ref("");
@@ -671,6 +691,213 @@ const toNullableText = (value: string): string | null => {
   return trimmed.length ? trimmed : null;
 };
 
+const inlineCellKey = (conferenceId: string, field: InlineEditableField): string =>
+  `${conferenceId}:${field}`;
+
+const isInlineEditing = (
+  conferenceId: string,
+  field: InlineEditableField,
+): boolean =>
+  inlineEditingCell.value?.conferenceId === conferenceId &&
+  inlineEditingCell.value?.field === field;
+
+const inlineCellError = (
+  conferenceId: string,
+  field: InlineEditableField,
+): string | null => inlineErrorsByCell.value[inlineCellKey(conferenceId, field)] || null;
+
+const inlineCellSaving = (
+  conferenceId: string,
+  field: InlineEditableField,
+): boolean => inlineSavingCellKey.value === inlineCellKey(conferenceId, field);
+
+const clearInlineCellError = (
+  conferenceId: string,
+  field: InlineEditableField,
+) => {
+  const key = inlineCellKey(conferenceId, field);
+  if (!inlineErrorsByCell.value[key]) return;
+  const next = { ...inlineErrorsByCell.value };
+  delete next[key];
+  inlineErrorsByCell.value = next;
+};
+
+const startInlineEdit = async (
+  conference: ConferenceItem,
+  field: InlineEditableField,
+) => {
+  if (inlineSavingCellKey.value) return;
+  inlineStatusMenuConferenceId.value = null;
+  clearInlineCellError(conference._id, field);
+  inlineEditingCell.value = {
+    conferenceId: conference._id,
+    field,
+  };
+
+  switch (field) {
+    case "name":
+      inlineDraftValue.value = conference.name || "";
+      break;
+    case "startDateIso":
+      inlineDraftValue.value = conference.startDateIso || "";
+      break;
+    case "location":
+      inlineDraftValue.value = conference.location || "";
+      break;
+    case "country":
+      inlineDraftValue.value = conference.country || "";
+      break;
+    case "discountCode":
+      inlineDraftValue.value = conference.discountCode || "";
+      break;
+    case "status":
+      inlineDraftValue.value = conference.status || editableStatusOptions[0] || "";
+      break;
+  }
+
+  await nextTick();
+  const selector = `[data-inline-editor-key="${inlineCellKey(
+    conference._id,
+    field,
+  )}"]`;
+  const input = document.querySelector(selector);
+  if (input instanceof HTMLInputElement) {
+    input.focus();
+    if (field !== "startDateIso") {
+      input.select();
+    }
+  }
+};
+
+const cancelInlineEdit = () => {
+  inlineEditingCell.value = null;
+  inlineDraftValue.value = "";
+};
+
+const toggleInlineStatusMenu = (conferenceId: string) => {
+  if (inlineSavingCellKey.value) return;
+  cancelInlineEdit();
+  inlineStatusMenuConferenceId.value =
+    inlineStatusMenuConferenceId.value === conferenceId ? null : conferenceId;
+};
+
+const inlineCurrentValue = (
+  conference: ConferenceItem,
+  field: InlineEditableField,
+): string => {
+  switch (field) {
+    case "name":
+      return conference.name || "";
+    case "startDateIso":
+      return conference.startDateIso || "";
+    case "location":
+      return conference.location || "";
+    case "country":
+      return conference.country || "";
+    case "discountCode":
+      return conference.discountCode || "";
+    case "status":
+      return conference.status || "";
+  }
+};
+
+const saveInlineEdit = async (
+  conference: ConferenceItem,
+  field: InlineEditableField,
+) => {
+  if (!isInlineEditing(conference._id, field)) return;
+
+  const cellKey = inlineCellKey(conference._id, field);
+  if (inlineSavingCellKey.value === cellKey) return;
+
+  const currentValue = inlineCurrentValue(conference, field);
+  const nextRawValue = inlineDraftValue.value;
+  const nextComparable =
+    field === "name" || field === "status" ? nextRawValue.trim() : nextRawValue;
+  const currentComparable =
+    field === "name" || field === "status" ? currentValue.trim() : currentValue;
+
+  if (nextComparable === currentComparable) {
+    cancelInlineEdit();
+    return;
+  }
+
+  if ((field === "name" || field === "status") && !nextComparable.length) {
+    inlineErrorsByCell.value = {
+      ...inlineErrorsByCell.value,
+      [cellKey]: `${field === "name" ? "Name" : "Status"} cannot be empty.`,
+    };
+    return;
+  }
+
+  inlineSavingCellKey.value = cellKey;
+  clearInlineCellError(conference._id, field);
+
+  const payload: Record<string, unknown> = {
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (field === "name" || field === "status") {
+    payload[field] = nextComparable;
+  } else {
+    const normalized = nextRawValue.trim();
+    payload[field] = normalized.length ? normalized : null;
+  }
+
+  try {
+    const response = await $fetch<ConferencePatchResponse>(
+      `/api/events/conferences/${encodeURIComponent(conference._id)}`,
+      {
+        method: "PATCH",
+        body: payload,
+      },
+    );
+
+    patchConferenceInList(conference._id, response.conference);
+    cancelInlineEdit();
+    inlineStatusMenuConferenceId.value = null;
+  } catch (error: any) {
+    inlineErrorsByCell.value = {
+      ...inlineErrorsByCell.value,
+      [cellKey]: error?.data?.statusMessage || "Inline update failed.",
+    };
+  } finally {
+    inlineSavingCellKey.value = null;
+  }
+};
+
+const selectInlineStatus = async (
+  conference: ConferenceItem,
+  nextStatus: string,
+) => {
+  inlineEditingCell.value = {
+    conferenceId: conference._id,
+    field: "status",
+  };
+  inlineDraftValue.value = nextStatus;
+  await saveInlineEdit(conference, "status");
+  if (!inlineCellError(conference._id, "status")) {
+    inlineStatusMenuConferenceId.value = null;
+  }
+};
+
+const editorContinentValue = (): string =>
+  editorContinentMode.value === "custom"
+    ? editorCustomContinent.value
+    : editorForm.continent;
+
+const onEditorContinentSelectionChange = (value: string) => {
+  if (value === EDITOR_ADD_NEW_CONTINENT) {
+    editorContinentMode.value = "custom";
+    editorForm.continent = EDITOR_ADD_NEW_CONTINENT;
+    return;
+  }
+
+  editorContinentMode.value = "existing";
+  editorForm.continent = value;
+  editorCustomContinent.value = "";
+};
+
 const toggleSort = (key: ConferencesSortKey) => {
   if (sortState.key === key) {
     sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
@@ -1063,7 +1290,7 @@ const quickTogglePublished = async (
     patchConferenceInList(conference._id, {
       isPublished: response.conference.isPublished,
       updatedAt: response.conference.updatedAt,
-      _rev: response.rev,
+      _rev: response.conference._rev || response.rev,
     });
   } catch (error: any) {
     const rollbackPatch: Partial<ConferenceItem> = {
@@ -1192,7 +1419,20 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.startDateIso = conference.startDateIso || "";
   editorForm.dateRangeLabel = conference.dateRangeLabel || "";
   editorForm.country = conference.country || "";
-  editorForm.continent = conference.continent || "";
+  const normalizedContinent = String(conference.continent ?? "").trim();
+  if (!normalizedContinent.length) {
+    editorContinentMode.value = "existing";
+    editorForm.continent = "";
+    editorCustomContinent.value = "";
+  } else if (continentOptions.value.includes(normalizedContinent)) {
+    editorContinentMode.value = "existing";
+    editorForm.continent = normalizedContinent;
+    editorCustomContinent.value = "";
+  } else {
+    editorContinentMode.value = "custom";
+    editorForm.continent = EDITOR_ADD_NEW_CONTINENT;
+    editorCustomContinent.value = normalizedContinent;
+  }
   editorForm.discountCode = conference.discountCode || "";
   editorForm.discountLabel = conference.discountLabel || "";
   editorForm.commissionLabel = conference.commissionLabel || "";
@@ -1297,7 +1537,7 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
     startDateIso: toNullableText(editorForm.startDateIso),
     dateRangeLabel: toNullableText(editorForm.dateRangeLabel),
     country: toNullableText(editorForm.country),
-    continent: toNullableText(editorForm.continent),
+    continent: toNullableText(editorContinentValue()),
     discountCode: toNullableText(editorForm.discountCode),
     discountLabel: toNullableText(editorForm.discountLabel),
     commissionLabel: toNullableText(editorForm.commissionLabel),
@@ -1329,25 +1569,32 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
 const persistEditorChanges = async (
   payload: Record<string, unknown>,
 ): Promise<void> => {
+  if (editorPending.value) {
+    return;
+  }
+
   if (!editingConferenceId.value) {
     editorError.value = "No conference selected for editing.";
     return;
   }
+  const conferenceId = editingConferenceId.value;
 
   editorPending.value = true;
   editorError.value = null;
   editorSuccess.value = null;
+  let closeEditorOnSuccess = false;
 
   try {
     const response = await $fetch<ConferencePatchResponse>(
-      `/api/events/conferences/${encodeURIComponent(editingConferenceId.value)}`,
+      `/api/events/conferences/${encodeURIComponent(conferenceId)}`,
       {
         method: "PATCH",
         body: payload,
       },
     );
 
-    editorForm.documentRev = response.rev || editorForm.documentRev;
+    editorForm.documentRev =
+      response.conference._rev || response.rev || editorForm.documentRev;
     editorForm.updatedAt = response.conference.updatedAt;
     if (response.notifiedWatchers?.requested) {
       editorSuccess.value = `Conference updated. Nostr watchers notified: ${response.notifiedWatchers.sent}/${response.notifiedWatchers.eligible}.`;
@@ -1358,11 +1605,15 @@ const persistEditorChanges = async (
     editorForm.notifyMessage = "";
     notificationPreviewOpen.value = false;
     notificationPreviewPayload.value = null;
-    await refreshConferences();
+    patchConferenceInList(conferenceId, response.conference);
+    closeEditorOnSuccess = true;
   } catch (error: any) {
     editorError.value = error?.data?.statusMessage || "Update failed.";
   } finally {
     editorPending.value = false;
+    if (closeEditorOnSuccess) {
+      closeEditor();
+    }
   }
 };
 
@@ -1818,10 +2069,61 @@ const saveEditor = async () => {
                 :class="hasConferenceDiscount(conference) ? 'bg-orange-50/70' : ''"
               >
                 <td class="px-3 py-2.5">
-                  <p class="font-medium text-slate-900">{{ conference.name }}</p>
-<!--                  <p class="text-xs text-slate-500">{{ conference.slug }}</p>-->
+                  <div v-if="isInlineEditing(conference._id, 'name')" class="space-y-1">
+                    <input
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'name')"
+                      v-model="inlineDraftValue"
+                      type="text"
+                      class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                      :disabled="inlineCellSaving(conference._id, 'name')"
+                      @blur="saveInlineEdit(conference, 'name')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                      @keydown.esc.prevent="cancelInlineEdit"
+                    >
+                    <p v-if="inlineCellSaving(conference._id, 'name')" class="text-[11px] text-slate-500">
+                      Saving...
+                    </p>
+                    <p v-if="inlineCellError(conference._id, 'name')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "name") }}
+                    </p>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="font-medium text-slate-900 hover:text-orange-700"
+                    @click="startInlineEdit(conference, 'name')"
+                  >
+                    {{ conference.name }}
+                  </button>
                 </td>
-                <td class="px-3 py-2.5 text-slate-700 text-nowrap">{{ formatDate(conference.startDateIso) }}</td>
+                <td class="px-3 py-2.5 text-slate-700 text-nowrap">
+                  <div v-if="isInlineEditing(conference._id, 'startDateIso')" class="space-y-1">
+                    <input
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'startDateIso')"
+                      v-model="inlineDraftValue"
+                      type="date"
+                      class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                      :disabled="inlineCellSaving(conference._id, 'startDateIso')"
+                      @blur="saveInlineEdit(conference, 'startDateIso')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                      @keydown.esc.prevent="cancelInlineEdit"
+                    >
+                    <p v-if="inlineCellSaving(conference._id, 'startDateIso')" class="text-[11px] text-slate-500">
+                      Saving...
+                    </p>
+                    <p v-if="inlineCellError(conference._id, 'startDateIso')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "startDateIso") }}
+                    </p>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="hover:text-orange-700"
+                    @click="startInlineEdit(conference, 'startDateIso')"
+                  >
+                    {{ formatDate(conference.startDateIso) }}
+                  </button>
+                </td>
                 <td class="px-3 py-2.5 text-slate-700">
                   <span
                     class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-nowrap"
@@ -1830,16 +2132,125 @@ const saveEditor = async () => {
                     {{ conferenceMonthLabel(conference) }}
                   </span>
                 </td>
-                <td class="px-3 py-2.5 text-slate-700">{{ conference.location || "Location TBD" }}</td>
-                <td class="px-3 py-2.5 text-slate-700">{{ conference.country || "—" }}</td>
-                <td class="px-3 py-2.5 text-slate-700">{{ conference.discountCode || "—" }}</td>
-                <td class="px-3 py-2.5">
-                  <span
+                <td class="px-3 py-2.5 text-slate-700">
+                  <div v-if="isInlineEditing(conference._id, 'location')" class="space-y-1">
+                    <input
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'location')"
+                      v-model="inlineDraftValue"
+                      type="text"
+                      class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                      :disabled="inlineCellSaving(conference._id, 'location')"
+                      @blur="saveInlineEdit(conference, 'location')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                      @keydown.esc.prevent="cancelInlineEdit"
+                    >
+                    <p v-if="inlineCellSaving(conference._id, 'location')" class="text-[11px] text-slate-500">
+                      Saving...
+                    </p>
+                    <p v-if="inlineCellError(conference._id, 'location')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "location") }}
+                    </p>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="hover:text-orange-700"
+                    @click="startInlineEdit(conference, 'location')"
+                  >
+                    {{ conference.location || "Location TBD" }}
+                  </button>
+                </td>
+                <td class="px-3 py-2.5 text-slate-700">
+                  <div v-if="isInlineEditing(conference._id, 'country')" class="space-y-1">
+                    <input
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'country')"
+                      v-model="inlineDraftValue"
+                      type="text"
+                      class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                      :disabled="inlineCellSaving(conference._id, 'country')"
+                      @blur="saveInlineEdit(conference, 'country')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                      @keydown.esc.prevent="cancelInlineEdit"
+                    >
+                    <p v-if="inlineCellSaving(conference._id, 'country')" class="text-[11px] text-slate-500">
+                      Saving...
+                    </p>
+                    <p v-if="inlineCellError(conference._id, 'country')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "country") }}
+                    </p>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="hover:text-orange-700"
+                    @click="startInlineEdit(conference, 'country')"
+                  >
+                    {{ conference.country || "—" }}
+                  </button>
+                </td>
+                <td class="px-3 py-2.5 text-slate-700">
+                  <div v-if="isInlineEditing(conference._id, 'discountCode')" class="space-y-1">
+                    <input
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'discountCode')"
+                      v-model="inlineDraftValue"
+                      type="text"
+                      class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                      :disabled="inlineCellSaving(conference._id, 'discountCode')"
+                      @blur="saveInlineEdit(conference, 'discountCode')"
+                      @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                      @keydown.esc.prevent="cancelInlineEdit"
+                    >
+                    <p v-if="inlineCellSaving(conference._id, 'discountCode')" class="text-[11px] text-slate-500">
+                      Saving...
+                    </p>
+                    <p v-if="inlineCellError(conference._id, 'discountCode')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "discountCode") }}
+                    </p>
+                  </div>
+                  <button
+                    v-else
+                    type="button"
+                    class="hover:text-orange-700"
+                    @click="startInlineEdit(conference, 'discountCode')"
+                  >
+                    {{ conference.discountCode || "—" }}
+                  </button>
+                </td>
+                <td class="relative px-3 py-2.5">
+                  <button
+                    type="button"
                     class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium text-nowrap"
                     :class="statusTone(conference.status)"
+                    :disabled="inlineCellSaving(conference._id, 'status')"
+                    @click="toggleInlineStatusMenu(conference._id)"
                   >
-                    {{ conference.status }}
-                  </span>
+                    {{
+                      inlineCellSaving(conference._id, "status")
+                        ? "Saving..."
+                        : conference.status
+                    }}
+                  </button>
+                  <div
+                    v-if="inlineStatusMenuConferenceId === conference._id"
+                    class="absolute left-0 top-full z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white p-2 text-xs shadow-lg"
+                  >
+                    <div class="space-y-1">
+                      <button
+                        v-for="status in editableStatusOptions"
+                        :key="status"
+                        type="button"
+                        class="block w-full rounded px-2 py-1 text-left text-slate-700 hover:bg-slate-100"
+                        :class="status === conference.status ? 'bg-slate-100 font-medium' : ''"
+                        :disabled="inlineCellSaving(conference._id, 'status')"
+                        @click="selectInlineStatus(conference, status)"
+                      >
+                        {{ status }}
+                      </button>
+                    </div>
+                  </div>
+                  <p v-if="inlineCellError(conference._id, 'status')" class="mt-1 text-[11px] text-red-600">
+                    {{ inlineCellError(conference._id, "status") }}
+                  </p>
                 </td>
                 <td class="px-3 py-2.5">
                   <div class="relative inline-flex">
@@ -2509,8 +2920,20 @@ const saveEditor = async () => {
                 </div>
                 <div class="space-y-1">
                   <label class="block text-sm font-medium text-slate-800">Continent</label>
+                  <select
+                    :value="editorContinentMode === 'custom' ? EDITOR_ADD_NEW_CONTINENT : editorForm.continent"
+                    class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                    @change="onEditorContinentSelectionChange(($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select continent</option>
+                    <option v-for="continent in continentOptions" :key="continent" :value="continent">
+                      {{ continent }}
+                    </option>
+                    <option :value="EDITOR_ADD_NEW_CONTINENT">+ Add new...</option>
+                  </select>
                   <input
-                    v-model="editorForm.continent"
+                    v-if="editorContinentMode === 'custom'"
+                    v-model="editorCustomContinent"
                     type="text"
                     class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     placeholder="North America"

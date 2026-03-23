@@ -513,15 +513,23 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = await putDocument(databaseName, nextConference);
+  const persistedConference = await getDocument<ConferenceDocument>(
+    databaseName,
+    result.id,
+  );
+
+  if (!persistedConference || persistedConference.type !== "conference") {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Conference saved but could not be reloaded from database",
+    });
+  }
 
   return {
     success: true,
     id: result.id,
     rev: result.rev,
     notifiedWatchers: notifyResult,
-    conference: {
-      ...nextConference,
-      _rev: result.rev,
-    },
+    conference: persistedConference,
   };
 });

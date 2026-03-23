@@ -62,7 +62,7 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     descending: false,
   });
 
-  const conferences = (view?.rows ?? [])
+  const allConferences = (view?.rows ?? [])
     .map((row) => row.doc as ConferenceDocument | undefined)
     .filter(
       (doc): doc is ConferenceDocument =>
@@ -87,10 +87,6 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
       return normalize(doc.status) === statusFilter;
     })
     .filter((doc) => {
-      if (!continentFilter || continentFilter === "all") return true;
-      return normalize(doc.continent) === continentFilter;
-    })
-    .filter((doc) => {
       if (!yearFilter) return true;
       return doc.year === yearFilter;
     })
@@ -100,6 +96,11 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
       if (publishedFilter === "draft") return doc.isPublished !== true;
       return true;
     });
+
+  const conferences = allConferences.filter((doc) => {
+    if (!continentFilter || continentFilter === "all") return true;
+    return normalize(doc.continent) === continentFilter;
+  });
 
   const total = conferences.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -116,7 +117,7 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
 
   const continentOptions = Array.from(
     new Set(
-      conferences
+      allConferences
         .map((conference) => conference.continent)
         .filter(
           (continent): continent is string =>
