@@ -143,6 +143,7 @@ useHead({
 
 // == composables ==
 const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefined;
+const runtimeConfig = useRuntimeConfig();
 
 const queryState = reactive({
   search: "",
@@ -484,6 +485,27 @@ const featuredAvailableConferences = computed(() => {
 
     return haystack.includes(search);
   });
+});
+const publicSiteBaseUrl = computed(() => {
+  const configuredSiteUrl = runtimeConfig.public?.siteUrl;
+  if (typeof configuredSiteUrl === "string" && configuredSiteUrl.trim().length > 0) {
+    return configuredSiteUrl.trim().replace(/\/+$/, "");
+  }
+
+  if (process.client && typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+
+  return "";
+});
+const editorPublicUrl = computed(() => {
+  const normalizedSlug = editorForm.slug.trim();
+  if (!normalizedSlug) {
+    return "";
+  }
+
+  const redirectPath = `/to/${encodeURIComponent(normalizedSlug)}`;
+  return publicSiteBaseUrl.value ? `${publicSiteBaseUrl.value}${redirectPath}` : redirectPath;
 });
 
 const confirmedCount = computed(
@@ -2732,10 +2754,7 @@ const saveEditor = async () => {
         >
           <div class="bg-gradient-to-r from-slate-900 to-orange-900 px-6 py-5 text-white">
             <p class="text-xs uppercase tracking-[0.18em] text-orange-300">Conference Editor</p>
-            <h2 class="mt-2 text-xl font-semibold">Full Conference Document</h2>
-            <p class="mt-1 text-sm text-slate-200">
-              Edit all conference document fields, grouped by meaning and source context.
-            </p>
+            <h2 class="mt-2 text-xl font-semibold">{{ editorForm.name }}</h2>
           </div>
 
           <div class="flex-1 space-y-6 overflow-y-auto px-6 py-5">
@@ -2846,6 +2865,16 @@ const saveEditor = async () => {
                     type="text"
                     class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     placeholder="email or URL"
+                  >
+                </div>
+                <div class="space-y-1 md:col-span-2">
+                  <label class="block text-sm font-semibold uppercase tracking-wide text-orange-800">Public URL</label>
+                  <input
+                    :value="editorPublicUrl"
+                    type="text"
+                    readonly
+                    class="block w-full rounded-md border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-900 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                    placeholder="Set slug to generate public URL"
                   >
                 </div>
               </div>
