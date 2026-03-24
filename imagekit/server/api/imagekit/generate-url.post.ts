@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from 'h3'
-import { assertAdminSession } from '#auth/server/utils/assert-admin-session'
+import { assertImagekitSession } from '../../utils/assert-imagekit-session'
 import imageKitService from '#imagekit/utils/imagekit'
 
 interface GenerateUrlPayload {
@@ -8,7 +8,7 @@ interface GenerateUrlPayload {
 }
 
 export default defineEventHandler(async (event) => {
-  await assertAdminSession(event)
+  await assertImagekitSession(event)
 
   const body = await readBody<GenerateUrlPayload>(event)
 

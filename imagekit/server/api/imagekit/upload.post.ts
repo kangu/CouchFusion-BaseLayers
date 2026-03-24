@@ -1,6 +1,6 @@
 import { createError, defineEventHandler, readMultipartFormData } from 'h3'
 import { useRuntimeConfig } from '#imports'
-import { assertAdminSession } from '#auth/server/utils/assert-admin-session'
+import { assertImagekitSession } from '../../utils/assert-imagekit-session'
 import imageKitService from '#imagekit/utils/imagekit'
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024 // 200MB ceiling for uploads
@@ -14,7 +14,7 @@ const normalizeFolderName = (value?: string | null): string | undefined => {
 }
 
 export default defineEventHandler(async (event) => {
-  await assertAdminSession(event)
+  await assertImagekitSession(event)
   const runtimeConfig = useRuntimeConfig()
   const defaultFolder =
     normalizeFolderName(runtimeConfig.imagekit?.folder) ??

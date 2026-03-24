@@ -13,6 +13,14 @@ export const conferencesDesignDocument: CouchDBDesignDocument = {
         });
       }`,
     },
+    by_slug: {
+      map: `function (doc) {
+        if (doc.type !== 'conference' || !doc.slug || !doc.websiteUrl) return;
+        emit(doc.slug, {
+          url: doc.websiteUrl
+        });
+      }`,
+    },
     by_status: {
       map: `function (doc) {
         if (doc.type !== 'conference' || !doc.status) return;

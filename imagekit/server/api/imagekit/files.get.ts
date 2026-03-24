@@ -1,6 +1,6 @@
 import { defineEventHandler, getQuery, setResponseHeader } from 'h3'
 import { useRuntimeConfig } from '#imports'
-import { assertAdminSession } from '#auth/server/utils/assert-admin-session'
+import { assertImagekitSession } from '../../utils/assert-imagekit-session'
 import imageKitService from '#imagekit/utils/imagekit'
 
 const normalizeFolderName = (value?: string | null): string | undefined => {
@@ -12,7 +12,7 @@ const normalizeFolderName = (value?: string | null): string | undefined => {
 }
 
 export default defineEventHandler(async (event) => {
-  await assertAdminSession(event)
+  await assertImagekitSession(event)
   const runtimeConfig = useRuntimeConfig()
   const defaultPath =
     normalizeFolderName(runtimeConfig.imagekit?.folder) ??

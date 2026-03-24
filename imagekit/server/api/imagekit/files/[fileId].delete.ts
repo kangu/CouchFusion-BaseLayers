@@ -1,9 +1,9 @@
 import { createError, defineEventHandler, getRouterParam } from 'h3'
-import { assertAdminSession } from '#auth/server/utils/assert-admin-session'
+import { assertImagekitSession } from '../../../utils/assert-imagekit-session'
 import imageKitService from '#imagekit/utils/imagekit'
 
 export default defineEventHandler(async (event) => {
-  await assertAdminSession(event)
+  await assertImagekitSession(event)
 
   const fileId = getRouterParam(event, 'fileId')
 
