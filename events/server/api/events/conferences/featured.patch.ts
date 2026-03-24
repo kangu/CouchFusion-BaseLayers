@@ -64,7 +64,31 @@ export default defineEventHandler(async (event) => {
     updatedAt: nowIso,
   };
 
-  const result = await putDocument(databaseName, nextDocument);
+  let result: Awaited<ReturnType<typeof putDocument>>;
+  try {
+    result = await putDocument(databaseName, nextDocument);
+  } catch (error: any) {
+    const rawReason =
+      String(error?.data?.reason ?? error?.reason ?? error?.message ?? "")
+        .trim()
+        .toLowerCase();
+
+    if (rawReason.includes("conflict")) {
+      throw createError({
+        statusCode: 409,
+        statusMessage:
+          "Featured list save conflict: another update happened in parallel. Reload this section and save again.",
+      });
+    }
+
+    throw createError({
+      statusCode: 500,
+      statusMessage:
+        error?.data?.statusMessage ||
+        error?.message ||
+        "Failed to save featured conferences due to a server error.",
+    });
+  }
 
   return {
     success: true,

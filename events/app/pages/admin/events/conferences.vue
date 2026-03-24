@@ -90,6 +90,39 @@ interface ConferencePatchResponse {
   conference: ConferenceItem;
 }
 
+interface ConferenceProposalItem {
+  _id: string;
+  _rev?: string;
+  type: "conference_proposal";
+  status: "pending" | "accepted" | "rejected";
+  name: string;
+  websiteUrl: string | null;
+  location: string | null;
+  city: string | null;
+  country: string | null;
+  continent: string | null;
+  startDateIso: string | null;
+  notes: string | null;
+  conferenceId: string | null;
+  submittedBy: {
+    username: string;
+    userDocId: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+interface ConferenceProposalListPayload {
+  proposals: ConferenceProposalItem[];
+  meta: {
+    pending: number;
+    accepted: number;
+    rejected: number;
+    total: number;
+  };
+}
+
 interface FeaturedConferenceSummary {
   _id: string;
   name: string;
@@ -216,6 +249,11 @@ const featuredSearch = ref("");
 const ADMIN_FILTERS_SESSION_KEY = "bv-admin-events-conferences-filters";
 const featuredDraft = ref<FeaturedConferenceEntry[]>([]);
 const featuredSectionExpanded = ref(false);
+const proposalActionPendingId = ref<string | null>(null);
+const proposalActionError = ref<string | null>(null);
+const proposalDetailsOpen = ref(false);
+const selectedProposal = ref<ConferenceProposalItem | null>(null);
+const createFromProposalId = ref<string | null>(null);
 const featuredDocumentRev = ref<string | null>(null);
 const featuredSavePending = ref(false);
 const featuredSaveError = ref<string | null>(null);
@@ -360,7 +398,48 @@ const {
   },
 );
 
+const {
+  data: conferenceProposalsData,
+  pending: proposalsPending,
+  error: proposalsError,
+  refresh: refreshConferenceProposals,
+} = await useAsyncData<ConferenceProposalListPayload>(
+  "events-conference-proposals",
+  () => {
+    return $fetch("/api/events/conference-proposals", {
+      headers: requestHeaders,
+      credentials: "include",
+    });
+  },
+  {
+    default: () => ({
+      proposals: [],
+      meta: {
+        pending: 0,
+        accepted: 0,
+        rejected: 0,
+        total: 0,
+      },
+    }),
+  },
+);
+
 const conferences = computed(() => conferencesData.value?.conferences ?? []);
+const conferenceProposals = computed(
+  () => conferenceProposalsData.value?.proposals ?? [],
+);
+const conferenceProposalCounts = computed(
+  () =>
+    conferenceProposalsData.value?.meta ?? {
+      pending: 0,
+      accepted: 0,
+      rejected: 0,
+      total: 0,
+    },
+);
+const pendingConferenceProposals = computed(() =>
+  conferenceProposals.value.filter((proposal) => proposal.status === "pending"),
+);
 const currentUtcDateOnly = (): string => {
   const now = new Date();
   const year = String(now.getUTCFullYear());
@@ -1144,6 +1223,29 @@ const clearFeaturedImage = (conferenceId: string) => {
   featuredSaveSuccess.value = null;
 };
 
+const buildFeaturedSaveErrorMessage = (error: any): string => {
+  const statusCode =
+    Number(error?.statusCode) ||
+    Number(error?.response?.status) ||
+    Number(error?.data?.statusCode) ||
+    0;
+  const statusMessage = String(error?.data?.statusMessage ?? "").trim();
+  const serverMessage = String(error?.data?.message ?? "").trim();
+  const directMessage = String(error?.message ?? "").trim();
+  const baseMessage =
+    statusMessage || serverMessage || directMessage || "Failed to save featured conferences.";
+
+  if (statusCode === 409 || baseMessage.toLowerCase().includes("conflict")) {
+    return `${baseMessage} (HTTP 409)`;
+  }
+
+  if (statusCode >= 400) {
+    return `${baseMessage} (HTTP ${statusCode})`;
+  }
+
+  return baseMessage;
+};
+
 const saveFeaturedConferences = async () => {
   if (featuredSavePending.value) {
     return;
@@ -1174,10 +1276,7 @@ const saveFeaturedConferences = async () => {
     featuredSaveSuccess.value = "Featured conferences updated.";
     await refreshFeatured();
   } catch (error: any) {
-    featuredSaveError.value =
-      error?.data?.statusMessage ||
-      error?.message ||
-      "Failed to save featured conferences.";
+    featuredSaveError.value = buildFeaturedSaveErrorMessage(error);
   } finally {
     featuredSavePending.value = false;
   }
@@ -1219,7 +1318,27 @@ const resetCreateForm = () => {
 const openCreateDialog = () => {
   createError.value = null;
   createSuccess.value = null;
+  createFromProposalId.value = null;
   resetCreateForm();
+  createDialogOpen.value = true;
+};
+
+const openCreateDialogFromProposal = (proposal: ConferenceProposalItem) => {
+  createError.value = null;
+  createSuccess.value = null;
+  createFromProposalId.value = proposal._id;
+  resetCreateForm();
+  createForm.name = proposal.name || "";
+  createForm.websiteUrl = proposal.websiteUrl || "";
+  createForm.location = proposal.location || "";
+  createForm.city = proposal.city || "";
+  createForm.country = proposal.country || "";
+  createForm.continent = proposal.continent || "";
+  createForm.notes = proposal.notes || "";
+  createForm.startDateIso = proposal.startDateIso || "";
+  if (proposal.startDateIso && DATE_ONLY_PATTERN.test(proposal.startDateIso)) {
+    createForm.year = proposal.startDateIso.slice(0, 4);
+  }
   createDialogOpen.value = true;
 };
 
@@ -1227,6 +1346,7 @@ const closeCreateDialog = () => {
   if (createPending.value) return;
   createDialogOpen.value = false;
   createError.value = null;
+  createFromProposalId.value = null;
 };
 
 const saveCreateConference = async () => {
@@ -1259,7 +1379,7 @@ const saveCreateConference = async () => {
   createSuccess.value = null;
 
   try {
-    await $fetch<ConferencePatchResponse>("/api/events/conferences", {
+    const created = await $fetch<ConferencePatchResponse>("/api/events/conferences", {
       method: "POST",
       body: {
         name: normalizedName,
@@ -1286,6 +1406,19 @@ const saveCreateConference = async () => {
       },
     });
 
+    if (createFromProposalId.value) {
+      await $fetch(`/api/events/conference-proposals/${encodeURIComponent(createFromProposalId.value)}`, {
+        method: "PATCH",
+        body: {
+          status: "accepted",
+          conferenceId: created.id,
+        },
+        credentials: "include",
+      });
+      await refreshConferenceProposals();
+      createFromProposalId.value = null;
+    }
+
     createSuccess.value = "Conference created.";
     createDialogOpen.value = false;
     await refreshConferences();
@@ -1294,6 +1427,74 @@ const saveCreateConference = async () => {
   } finally {
     createPending.value = false;
   }
+};
+
+const setConferenceProposalStatus = async (
+  proposal: ConferenceProposalItem,
+  status: "accepted" | "rejected",
+  conferenceId?: string,
+) => {
+  if (proposalActionPendingId.value) return;
+
+  proposalActionPendingId.value = proposal._id;
+  proposalActionError.value = null;
+
+  try {
+    await $fetch(`/api/events/conference-proposals/${encodeURIComponent(proposal._id)}`, {
+      method: "PATCH",
+      body: {
+        status,
+        conferenceId: conferenceId ?? null,
+      },
+      credentials: "include",
+    });
+    await refreshConferenceProposals();
+  } catch (error: any) {
+    proposalActionError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to update proposal status.";
+  } finally {
+    proposalActionPendingId.value = null;
+  }
+};
+
+const deleteRejectedProposal = async (proposal: ConferenceProposalItem) => {
+  if (proposalActionPendingId.value) return;
+  if (!process.client) return;
+
+  const confirmed = window.confirm(
+    `Delete rejected proposal "${proposal.name}"? This action cannot be undone.`,
+  );
+  if (!confirmed) return;
+
+  proposalActionPendingId.value = proposal._id;
+  proposalActionError.value = null;
+
+  try {
+    await $fetch(`/api/events/conference-proposals/${encodeURIComponent(proposal._id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    await refreshConferenceProposals();
+  } catch (error: any) {
+    proposalActionError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to delete rejected proposal.";
+  } finally {
+    proposalActionPendingId.value = null;
+  }
+};
+
+const openProposalDetails = (proposal: ConferenceProposalItem) => {
+  selectedProposal.value = proposal;
+  proposalDetailsOpen.value = true;
+};
+
+const closeProposalDetails = () => {
+  proposalDetailsOpen.value = false;
+  selectedProposal.value = null;
 };
 
 const patchConferenceInList = (
@@ -1873,6 +2074,203 @@ const saveEditor = async () => {
         </div>
       </div>
     </section>
+
+    <section
+      v-if="conferenceProposals.length > 0"
+      class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Conference Proposals</h2>
+          <p class="text-sm text-slate-600">
+            Submitted by logged-in users and ready for curation.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+          <span class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">
+            Pending {{ conferenceProposalCounts.pending }}
+          </span>
+          <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+            Accepted {{ conferenceProposalCounts.accepted }}
+          </span>
+          <span class="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">
+            Rejected {{ conferenceProposalCounts.rejected }}
+          </span>
+        </div>
+      </div>
+
+      <p v-if="proposalsError" class="text-sm text-red-600">
+        Failed to load conference proposals.
+      </p>
+      <p v-else-if="proposalActionError" class="text-sm text-red-600">
+        {{ proposalActionError }}
+      </p>
+      <p v-else-if="proposalsPending" class="text-sm text-slate-600">
+        Loading proposals...
+      </p>
+
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Conference</th>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Submitted By</th>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">When</th>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Status</th>
+              <th class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-for="proposal in conferenceProposals" :key="proposal._id">
+              <td class="px-3 py-2.5">
+                <p class="font-medium text-slate-900">{{ proposal.name }}</p>
+                <p class="text-xs text-slate-600">
+                  {{ proposal.location || proposal.country || "Location not provided" }}
+                </p>
+                <p v-if="proposal.websiteUrl" class="text-xs text-slate-600">
+                  {{ proposal.websiteUrl }}
+                </p>
+              </td>
+              <td class="px-3 py-2.5 text-slate-700">
+                {{ proposal.submittedBy?.username || "Unknown user" }}
+              </td>
+              <td class="px-3 py-2.5 text-slate-700 text-nowrap">
+                {{ formatDate(proposal.createdAt || null) }}
+              </td>
+              <td class="px-3 py-2.5">
+                <span
+                  class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium"
+                  :class="
+                    proposal.status === 'accepted'
+                      ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
+                      : proposal.status === 'rejected'
+                        ? 'border-rose-300 bg-rose-100 text-rose-700'
+                        : 'border-amber-300 bg-amber-100 text-amber-700'
+                  "
+                >
+                  {{ proposal.status }}
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-right">
+                <div class="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    @click="openProposalDetails(proposal)"
+                  >
+                    Details
+                  </button>
+                  <button
+                    v-if="proposal.status === 'pending'"
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    :disabled="proposalActionPendingId === proposal._id"
+                    @click="openCreateDialogFromProposal(proposal)"
+                  >
+                    Transform
+                  </button>
+                  <button
+                    v-if="proposal.status === 'pending'"
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                    :disabled="proposalActionPendingId === proposal._id"
+                    @click="setConferenceProposalStatus(proposal, 'rejected')"
+                  >
+                    {{ proposalActionPendingId === proposal._id ? "Saving..." : "Reject" }}
+                  </button>
+                  <button
+                    v-if="proposal.status === 'rejected'"
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                    :disabled="proposalActionPendingId === proposal._id"
+                    @click="deleteRejectedProposal(proposal)"
+                  >
+                    {{ proposalActionPendingId === proposal._id ? "Deleting..." : "Delete" }}
+                  </button>
+                  <span v-if="proposal.status === 'accepted' && proposal.conferenceId" class="text-xs text-emerald-700">
+                    {{ proposal.conferenceId }}
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <Teleport to="body">
+      <div
+        v-if="proposalDetailsOpen && selectedProposal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+        @click="closeProposalDetails"
+      >
+        <div
+          class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+          @click.stop
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-slate-900">Conference Proposal Details</h3>
+              <p class="text-sm text-slate-600">{{ selectedProposal.name }}</p>
+            </div>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+              @click="closeProposalDetails"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="mt-4 grid gap-3 text-sm md:grid-cols-2">
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+              <p class="text-slate-800">{{ selectedProposal.status }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Submitted By</p>
+              <p class="text-slate-800">{{ selectedProposal.submittedBy?.username || "Unknown user" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Website</p>
+              <p class="break-all text-slate-800">{{ selectedProposal.websiteUrl || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</p>
+              <p class="text-slate-800">{{ formatDate(selectedProposal.startDateIso || null) }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Location</p>
+              <p class="text-slate-800">{{ selectedProposal.location || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">City</p>
+              <p class="text-slate-800">{{ selectedProposal.city || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Country</p>
+              <p class="text-slate-800">{{ selectedProposal.country || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Continent</p>
+              <p class="text-slate-800">{{ selectedProposal.continent || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Created At</p>
+              <p class="text-slate-800">{{ formatDate(selectedProposal.createdAt || null) }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Resolved At</p>
+              <p class="text-slate-800">{{ selectedProposal.resolvedAt ? formatDate(selectedProposal.resolvedAt) : "—" }}</p>
+            </div>
+            <div class="space-y-1 md:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</p>
+              <p class="whitespace-pre-wrap text-slate-800">{{ selectedProposal.notes || "—" }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <button
