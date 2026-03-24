@@ -16,7 +16,7 @@ Added conference inline editing workflow:
 - Supports all conference business fields from `ConferenceDocument`, including:
   - Identity: `name`, `slug`, `year`, `status`, `bitvocationParticipation`, `isPublished`
   - Links/contact: `websiteUrl`, `xAccountUrl`, `contactName`, `contactChannel`
-  - Schedule/location: `startDateIso`, `startDateLabel`, `monthLabel`, `dateRangeLabel`, `location`, `city`, `country`, `continent`, `confirmedDates`, `hasAirtable`
+  - Schedule/location: `startDateIso`, `startDateLabel`, `monthLabel`, `dateRangeLabel`, `location`, `city`, `country`, `continent`, `hasAirtable`
   - Commercial: `discountCode`, `discountLabel`, `commissionLabel`, `ticketsSold`, `commissionEarnedLabel`, `commissionReceived`
   - Internal: `ownerTodo`, `notes`
   - Source/audit: `source.format`, `source.rowNumber`, `source.importedAt`, `createdAt`, `updatedAt`

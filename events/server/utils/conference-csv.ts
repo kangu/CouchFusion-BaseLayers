@@ -1,4 +1,5 @@
 import type { CouchDBDocument } from "#database/utils/couchdb";
+import { normalizeConferenceStatus } from "./conference-status";
 
 const BOOLEAN_TRUE_TOKENS = new Set([
   "1",
@@ -29,7 +30,6 @@ export interface ConferenceDocument extends CouchDBDocument {
   dateRangeLabel: string | null;
   country: string | null;
   continent: string | null;
-  confirmedDates: boolean;
   hasAirtable: boolean;
   isPublished: boolean;
   discountCode: string | null;
@@ -284,16 +284,8 @@ export const parseConferenceCsv = (csvText: string): ParsedConferenceCsv => {
       );
     }
 
-    const confirmedDatesRaw = getField(row, headers, "Confirmed dates?");
     const airtableRaw = getField(row, headers, "Airtable?");
-    const confirmedDates = toBool(confirmedDatesRaw) || toBool(airtableRaw);
     const hasAirtable = toBool(airtableRaw);
-
-    if (!toBool(confirmedDatesRaw) && toBool(airtableRaw)) {
-      warnings.push(
-        `Row ${rowIndex + 1} (${name}): using Airtable marker as date confirmation fallback.`,
-      );
-    }
 
     const docId = [
       "conference",
@@ -318,7 +310,6 @@ export const parseConferenceCsv = (csvText: string): ParsedConferenceCsv => {
       dateRangeLabel: maybeText(getField(row, headers, "Date")),
       country: maybeText(getField(row, headers, "Country")),
       continent: maybeText(getField(row, headers, "Continent")),
-      confirmedDates,
       hasAirtable,
       isPublished: false,
       discountCode: maybeText(getField(row, headers, "Discount Code?")),
@@ -338,7 +329,7 @@ export const parseConferenceCsv = (csvText: string): ParsedConferenceCsv => {
       bitvocationParticipation: parseParticipation(
         getField(row, headers, "Bitvocation Participation"),
       ),
-      status: maybeText(getField(row, headers, "Status")) ?? "Not started",
+      status: normalizeConferenceStatus(maybeText(getField(row, headers, "Status"))),
       notes: maybeText(getField(row, headers, "Notes")),
       ownerTodo: maybeText(getField(row, headers, "Anja to do")),
       source: {

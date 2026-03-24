@@ -17,7 +17,6 @@ Table sorting supports toggling ascending/descending on:
 - Country
 - Status
 - Published
-- Confirmed
 
 Sorting state is visible above the table and updates on each header click.
 

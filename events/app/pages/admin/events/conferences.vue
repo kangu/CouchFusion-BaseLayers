@@ -16,7 +16,6 @@ interface ConferenceItem {
   dateRangeLabel: string | null;
   country: string | null;
   continent: string | null;
-  confirmedDates: boolean;
   hasAirtable: boolean;
   isPublished: boolean;
   discountCode: string | null;
@@ -43,6 +42,12 @@ interface ConferenceItem {
 interface ConferenceListPayload {
   conferences: ConferenceItem[];
   total: number;
+  unfilteredCounts: {
+    total: number;
+    inProgress: number;
+    published: number;
+    draft: number;
+  };
   statusCounts: Record<string, number>;
   publicationCounts: {
     published: number;
@@ -116,8 +121,7 @@ type ConferencesSortKey =
   | "location"
   | "country"
   | "status"
-  | "isPublished"
-  | "confirmedDates";
+  | "isPublished";
 type InlineEditableField =
   | "name"
   | "startDateIso"
@@ -128,6 +132,16 @@ type InlineEditableField =
 type EditorContinentMode = "existing" | "custom";
 
 const EDITOR_ADD_NEW_CONTINENT = "__add_new_continent__";
+const STATUS_TO_BE_CONTACTED = "To be Contacted";
+const STATUS_IN_PROGRESS = "In progress";
+const STATUS_DONE_CONFIRMED = "Done (confirmed)";
+const STATUS_DECLINED = "Declined";
+const editableStatusOptions = [
+  STATUS_TO_BE_CONTACTED,
+  STATUS_IN_PROGRESS,
+  STATUS_DONE_CONFIRMED,
+  STATUS_DECLINED,
+];
 
 definePageMeta({
   layout: 'members',
@@ -151,6 +165,7 @@ const queryState = reactive({
   continent: "all",
   year: "all",
   published: "all",
+  showPastEvents: false,
 });
 
 // == local data ==
@@ -198,6 +213,7 @@ const sortState = reactive<{
   direction: "asc",
 });
 const featuredSearch = ref("");
+const ADMIN_FILTERS_SESSION_KEY = "bv-admin-events-conferences-filters";
 const featuredDraft = ref<FeaturedConferenceEntry[]>([]);
 const featuredSectionExpanded = ref(false);
 const featuredDocumentRev = ref<string | null>(null);
@@ -235,7 +251,6 @@ const editorForm = reactive({
   contactChannel: "",
   ownerTodo: "",
   notes: "",
-  confirmedDates: false,
   hasAirtable: false,
   isPublished: false,
   sourceFormat: "csv-semicolon",
@@ -260,14 +275,13 @@ const createForm = reactive({
   continent: "",
   websiteUrl: "",
   xAccountUrl: "",
-  status: "Not started",
+  status: STATUS_TO_BE_CONTACTED,
   bitvocationParticipation: "unknown" as "yes" | "no" | "unknown",
   contactName: "",
   contactChannel: "",
   notes: "",
   ownerTodo: "",
   isPublished: false,
-  confirmedDates: false,
   hasAirtable: false,
 });
 
@@ -276,6 +290,7 @@ const listQuery = computed(() => {
   const query: Record<string, string | number> = {
     page: 1,
     pageSize: 120,
+    includePast: "true",
   };
 
   if (queryState.search.trim()) query.search = queryState.search.trim();
@@ -306,6 +321,12 @@ const {
     default: () => ({
       conferences: [],
       total: 0,
+      unfilteredCounts: {
+        total: 0,
+        inProgress: 0,
+        published: 0,
+        draft: 0,
+      },
       statusCounts: {},
       publicationCounts: {
         published: 0,
@@ -340,8 +361,30 @@ const {
 );
 
 const conferences = computed(() => conferencesData.value?.conferences ?? []);
+const currentUtcDateOnly = (): string => {
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const isPastConference = (conference: ConferenceItem): boolean => {
+  const startDateIso = String(conference.startDateIso ?? "").trim();
+  if (!startDateIso.length) return false;
+  if (DATE_ONLY_PATTERN.test(startDateIso)) {
+    return startDateIso < currentUtcDateOnly();
+  }
+
+  const parsed = new Date(startDateIso);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed.getTime() < Date.now();
+};
+const visibleConferences = computed(() => {
+  if (queryState.showPastEvents) return conferences.value;
+  return conferences.value.filter((conference) => !isPastConference(conference));
+});
 const sortedConferences = computed(() => {
-  const items = [...conferences.value];
+  const items = [...visibleConferences.value];
   const isDescending = sortState.direction === "desc";
 
   const normalizeSortText = (value: string | null | undefined): string | null => {
@@ -409,11 +452,6 @@ const sortedConferences = computed(() => {
           Number(left.isPublished) - Number(right.isPublished),
         );
         break;
-      case "confirmedDates":
-        result = applyBooleanDirection(
-          Number(left.confirmedDates) - Number(right.confirmedDates),
-        );
-        break;
       default:
         result = 0;
     }
@@ -424,7 +462,16 @@ const sortedConferences = computed(() => {
 
   return items;
 });
-const totalConferences = computed(() => conferencesData.value?.total ?? 0);
+const unfilteredCounts = computed(
+  () =>
+    conferencesData.value?.unfilteredCounts ?? {
+      total: 0,
+      inProgress: 0,
+      published: 0,
+      draft: 0,
+    },
+);
+const totalConferences = computed(() => unfilteredCounts.value.total);
 const statusCounts = computed(() => conferencesData.value?.statusCounts ?? {});
 const publicationCounts = computed(
   () =>
@@ -433,11 +480,7 @@ const publicationCounts = computed(
       draft: 0,
     },
 );
-const statusOptions = computed(() =>
-  Object.keys(statusCounts.value).sort((left, right) =>
-    left.localeCompare(right),
-  ),
-);
+const statusOptions = computed(() => [...editableStatusOptions]);
 const yearOptions = computed(() => conferencesData.value?.yearOptions ?? []);
 const continentOptions = computed(
   () => conferencesData.value?.continentOptions ?? [],
@@ -508,22 +551,16 @@ const editorPublicUrl = computed(() => {
   return publicSiteBaseUrl.value ? `${publicSiteBaseUrl.value}${redirectPath}` : redirectPath;
 });
 
-const confirmedCount = computed(
-  () => conferences.value.filter((conference) => conference.confirmedDates).length,
-);
 const inProgressCount = computed(
-  () =>
-    conferences.value.filter(
-      (conference) => conference.status.toLowerCase() === "in progress",
-    ).length,
+  () => unfilteredCounts.value.inProgress,
 );
 const withContactCount = computed(
   () =>
     conferences.value.filter((conference) => Boolean(conference.contactChannel))
       .length,
 );
-const publishedCount = computed(() => publicationCounts.value.published);
-const draftCount = computed(() => publicationCounts.value.draft);
+const publishedCount = computed(() => unfilteredCounts.value.published);
+const draftCount = computed(() => unfilteredCounts.value.draft);
 
 const previewRows = computed(() => previewData.value?.preview ?? []);
 const previewWarnings = computed(() => previewData.value?.warnings ?? []);
@@ -535,14 +572,6 @@ const previewMeta = computed(
       ignoredRowCount: 0,
     },
 );
-const editableStatusOptions = [
-  "Not started",
-  "In progress",
-  "Completed",
-  "Blocked",
-  "Archived",
-];
-
 // == lifecycle ==
 
 // == watchers ==
@@ -577,14 +606,47 @@ watch(
   },
 );
 
+watch(
+  () => [
+    queryState.search,
+    queryState.status,
+    queryState.continent,
+    queryState.year,
+    queryState.published,
+    queryState.showPastEvents,
+  ],
+  () => {
+    if (!process.client) return;
+
+    try {
+      sessionStorage.setItem(
+        ADMIN_FILTERS_SESSION_KEY,
+        JSON.stringify({
+          search: queryState.search,
+          status: queryState.status,
+          continent: queryState.continent,
+          year: queryState.year,
+          published: queryState.published,
+          showPastEvents: queryState.showPastEvents,
+        }),
+      );
+    } catch (persistError) {
+      console.warn("Failed to persist admin conference filters", persistError);
+    }
+  },
+);
+
 // == local page api ==
 const statusTone = (status: string) => {
   const normalized = status.trim().toLowerCase();
-  if (normalized === "in progress") {
+  if (normalized === STATUS_IN_PROGRESS.toLowerCase()) {
     return "bg-amber-100 text-amber-800 border-amber-300";
   }
-  if (normalized === "completed" || normalized === "done") {
+  if (normalized === STATUS_DONE_CONFIRMED.toLowerCase()) {
     return "bg-emerald-100 text-emerald-800 border-emerald-300";
+  }
+  if (normalized === STATUS_DECLINED.toLowerCase()) {
+    return "bg-rose-100 text-rose-800 border-rose-300";
   }
   return "bg-slate-100 text-slate-700 border-slate-300";
 };
@@ -1144,14 +1206,13 @@ const resetCreateForm = () => {
   createForm.continent = "";
   createForm.websiteUrl = "";
   createForm.xAccountUrl = "";
-  createForm.status = "Not started";
+  createForm.status = STATUS_TO_BE_CONTACTED;
   createForm.bitvocationParticipation = "unknown";
   createForm.contactName = "";
   createForm.contactChannel = "";
   createForm.notes = "";
   createForm.ownerTodo = "";
   createForm.isPublished = false;
-  createForm.confirmedDates = false;
   createForm.hasAirtable = false;
 };
 
@@ -1214,14 +1275,13 @@ const saveCreateConference = async () => {
         continent: toNullableText(createForm.continent),
         websiteUrl: toNullableText(createForm.websiteUrl),
         xAccountUrl: toNullableText(createForm.xAccountUrl),
-        status: toNullableText(createForm.status) ?? "Not started",
+        status: toNullableText(createForm.status) ?? STATUS_TO_BE_CONTACTED,
         bitvocationParticipation: createForm.bitvocationParticipation,
         contactName: toNullableText(createForm.contactName),
         contactChannel: toNullableText(createForm.contactChannel),
         notes: toNullableText(createForm.notes),
         ownerTodo: toNullableText(createForm.ownerTodo),
         isPublished: createForm.isPublished,
-        confirmedDates: createForm.confirmedDates,
         hasAirtable: createForm.hasAirtable,
       },
     });
@@ -1349,6 +1409,64 @@ const confirmUnpublish = (conference: ConferenceItem) => {
   void quickTogglePublished(conference, false);
 };
 
+const handleDocumentPointerDown = (event: PointerEvent) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+
+  if (inlineStatusMenuConferenceId.value) {
+    const statusMenuContainer = target.closest("[data-inline-status-menu]");
+    const statusMenuToggle = target.closest("[data-inline-status-toggle]");
+    if (!statusMenuContainer && !statusMenuToggle) {
+      inlineStatusMenuConferenceId.value = null;
+    }
+  }
+
+  if (publishUnpublishConfirmId.value) {
+    const publishConfirmContainer = target.closest("[data-publish-confirm-menu]");
+    const publishConfirmToggle = target.closest("[data-publish-confirm-toggle]");
+    if (!publishConfirmContainer && !publishConfirmToggle) {
+      publishUnpublishConfirmId.value = null;
+    }
+  }
+};
+
+onMounted(() => {
+  document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+});
+
+onMounted(() => {
+  if (!process.client) return;
+
+  try {
+    const raw = sessionStorage.getItem(ADMIN_FILTERS_SESSION_KEY);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw) as Partial<{
+      search: string;
+      status: string;
+      continent: string;
+      year: string;
+      published: string;
+      showPastEvents: boolean;
+    }>;
+
+    if (typeof parsed.search === "string") queryState.search = parsed.search;
+    if (typeof parsed.status === "string") queryState.status = parsed.status;
+    if (typeof parsed.continent === "string") queryState.continent = parsed.continent;
+    if (typeof parsed.year === "string") queryState.year = parsed.year;
+    if (typeof parsed.published === "string") queryState.published = parsed.published;
+    if (typeof parsed.showPastEvents === "boolean") {
+      queryState.showPastEvents = parsed.showPastEvents;
+    }
+  } catch (loadError) {
+    console.warn("Failed to load admin conference filters", loadError);
+  }
+});
+
 const handleCsvFileInput = async (event: Event) => {
   const input = event.target as HTMLInputElement | null;
   const file = input?.files?.[0];
@@ -1429,7 +1547,7 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.name = conference.name || "";
   editorForm.slug = conference.slug || "";
   editorForm.year = typeof conference.year === "number" ? String(conference.year) : "";
-  editorForm.status = conference.status || "Not started";
+  editorForm.status = conference.status || STATUS_TO_BE_CONTACTED;
   editorForm.bitvocationParticipation =
     conference.bitvocationParticipation || "unknown";
   editorForm.websiteUrl = conference.websiteUrl || "";
@@ -1471,7 +1589,6 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.contactChannel = conference.contactChannel || "";
   editorForm.ownerTodo = conference.ownerTodo || "";
   editorForm.notes = conference.notes || "";
-  editorForm.confirmedDates = conference.confirmedDates;
   editorForm.hasAirtable = conference.hasAirtable;
   editorForm.isPublished = conference.isPublished;
   editorForm.sourceFormat = conference.source?.format || "csv-semicolon";
@@ -1573,7 +1690,6 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
     contactChannel: toNullableText(editorForm.contactChannel),
     ownerTodo: toNullableText(editorForm.ownerTodo),
     notes: toNullableText(editorForm.notes),
-    confirmedDates: editorForm.confirmedDates,
     hasAirtable: editorForm.hasAirtable,
     isPublished: editorForm.isPublished,
     source: {
@@ -1737,14 +1853,10 @@ const saveEditor = async () => {
             <code>#events</code> layer.
           </p>
         </div>
-        <div class="grid gap-3 sm:grid-cols-2 lg:mt-auto lg:grid-cols-5">
+        <div class="grid gap-3 sm:grid-cols-2 lg:mt-auto lg:grid-cols-4">
           <div class="rounded-2xl border border-white/20 bg-white/10 p-4">
             <p class="text-xs uppercase tracking-wide text-orange-200">Conferences</p>
             <p class="mt-2 text-2xl font-semibold">{{ totalConferences }}</p>
-          </div>
-          <div class="rounded-2xl border border-white/20 bg-white/10 p-4">
-            <p class="text-xs uppercase tracking-wide text-orange-200">Dates Confirmed</p>
-            <p class="mt-2 text-2xl font-semibold">{{ confirmedCount }}</p>
           </div>
           <div class="rounded-2xl border border-white/20 bg-white/10 p-4">
             <p class="text-xs uppercase tracking-wide text-orange-200">In Progress</p>
@@ -1950,7 +2062,7 @@ const saveEditor = async () => {
     </section>
 
     <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="grid gap-3 md:grid-cols-5">
+      <div class="grid gap-3 md:grid-cols-6">
         <input
           v-model="queryState.search"
           type="search"
@@ -1992,6 +2104,14 @@ const saveEditor = async () => {
           <option value="published">Published only</option>
           <option value="draft">Draft only</option>
         </select>
+        <label class="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">
+          <input
+            v-model="queryState.showPastEvents"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+          >
+          Past events
+        </label>
       </div>
     </section>
 
@@ -2014,7 +2134,7 @@ const saveEditor = async () => {
         Failed to load conferences.
       </p>
       <p
-        v-else-if="!conferences.length"
+        v-else-if="!sortedConferences.length"
         class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600"
       >
         No conferences found. Add a manual conference or import CSV to populate this section.
@@ -2073,11 +2193,6 @@ const saveEditor = async () => {
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                   <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('isPublished')">
                     Published <span class="text-slate-400">{{ sortIndicator("isPublished") }}</span>
-                  </button>
-                </th>
-                <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('confirmedDates')">
-                    Confirmed <span class="text-slate-400">{{ sortIndicator("confirmedDates") }}</span>
                   </button>
                 </th>
                 <th class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">Edit</th>
@@ -2241,6 +2356,7 @@ const saveEditor = async () => {
                 <td class="relative px-3 py-2.5">
                   <button
                     type="button"
+                    data-inline-status-toggle
                     class="inline-flex rounded-full border px-2 py-0.5 text-xs font-medium text-nowrap"
                     :class="statusTone(conference.status)"
                     :disabled="inlineCellSaving(conference._id, 'status')"
@@ -2254,6 +2370,7 @@ const saveEditor = async () => {
                   </button>
                   <div
                     v-if="inlineStatusMenuConferenceId === conference._id"
+                    data-inline-status-menu
                     class="absolute left-0 top-full z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white p-2 text-xs shadow-lg"
                   >
                     <div class="space-y-1">
@@ -2278,6 +2395,7 @@ const saveEditor = async () => {
                   <div class="relative inline-flex">
                     <button
                       type="button"
+                      data-publish-confirm-toggle
                       class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium transition"
                       :class="conference.isPublished ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'"
                       :disabled="publishTogglePendingId === conference._id"
@@ -2293,6 +2411,7 @@ const saveEditor = async () => {
                     </button>
                     <div
                       v-if="publishUnpublishConfirmId === conference._id"
+                      data-publish-confirm-menu
                       class="absolute left-0 top-full z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white p-2 text-xs shadow-lg"
                     >
                       <p class="text-slate-700">Unpublish this conference?</p>
@@ -2316,14 +2435,6 @@ const saveEditor = async () => {
                       </div>
                     </div>
                   </div>
-                </td>
-                <td class="px-3 py-2.5">
-                  <span
-                    class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
-                    :class="conference.confirmedDates ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'"
-                  >
-                    {{ conference.confirmedDates ? "Yes" : "No" }}
-                  </span>
                 </td>
                 <td class="px-3 py-2.5 text-right">
                   <button
@@ -2462,14 +2573,6 @@ const saveEditor = async () => {
                     class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                   >
                   Published
-                </label>
-                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    v-model="createForm.confirmedDates"
-                    type="checkbox"
-                    class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                  >
-                  Confirmed Dates
                 </label>
                 <label class="inline-flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -2721,7 +2824,6 @@ const saveEditor = async () => {
                       <th class="px-3 py-2 text-left font-medium text-slate-700">Conference</th>
                       <th class="px-3 py-2 text-left font-medium text-slate-700">Date</th>
                       <th class="px-3 py-2 text-left font-medium text-slate-700">Status</th>
-                      <th class="px-3 py-2 text-left font-medium text-slate-700">Confirmed</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100">
@@ -2731,9 +2833,6 @@ const saveEditor = async () => {
                         {{ formatDate(previewConference.startDateIso) }}
                       </td>
                       <td class="px-3 py-2 text-slate-600">{{ previewConference.status }}</td>
-                      <td class="px-3 py-2 text-slate-600">
-                        {{ previewConference.confirmedDates ? "Yes" : "No" }}
-                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -2970,14 +3069,6 @@ const saveEditor = async () => {
                 </div>
               </div>
               <div class="flex flex-wrap gap-4">
-                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    v-model="editorForm.confirmedDates"
-                    type="checkbox"
-                    class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                  >
-                  Confirmed Dates
-                </label>
                 <label class="inline-flex items-center gap-2 text-sm text-slate-700">
                   <input
                     v-model="editorForm.hasAirtable"

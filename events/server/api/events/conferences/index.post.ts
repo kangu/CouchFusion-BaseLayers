@@ -3,6 +3,7 @@ import { getDocument, putDocument } from "#database/utils/couchdb";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import type { ConferenceDocument } from "../../../utils/conference-csv";
 import { assertEventsAdminSession } from "../../../utils/assert-events-admin-session";
+import { normalizeConferenceStatus } from "../../../utils/conference-status";
 
 type Participation = "yes" | "no" | "unknown";
 
@@ -20,7 +21,6 @@ interface ConferenceCreatePayload {
   dateRangeLabel?: unknown;
   country?: unknown;
   continent?: unknown;
-  confirmedDates?: unknown;
   hasAirtable?: unknown;
   isPublished?: unknown;
   contactName?: unknown;
@@ -272,11 +272,6 @@ export default defineEventHandler(async (event) => {
       deriveStartDateLabel(startDateIso),
     country: asNullableText(payload.country, 180, "country"),
     continent: asNullableText(payload.continent, 120, "continent"),
-    confirmedDates: asOptionalBoolean(
-      payload.confirmedDates,
-      false,
-      "confirmedDates",
-    ),
     hasAirtable: asOptionalBoolean(payload.hasAirtable, false, "hasAirtable"),
     isPublished: asOptionalBoolean(payload.isPublished, false, "isPublished"),
     discountCode: null,
@@ -288,7 +283,7 @@ export default defineEventHandler(async (event) => {
     contactName: asNullableText(payload.contactName, 180, "contactName"),
     contactChannel: asNullableText(payload.contactChannel, 1200, "contactChannel"),
     bitvocationParticipation: asOptionalParticipation(payload.bitvocationParticipation),
-    status: asNullableText(payload.status, 80, "status") ?? "Not started",
+    status: normalizeConferenceStatus(asNullableText(payload.status, 80, "status")),
     notes: asNullableText(payload.notes, 5000, "notes"),
     ownerTodo: asNullableText(payload.ownerTodo, 5000, "ownerTodo"),
     source: {

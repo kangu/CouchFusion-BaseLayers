@@ -3,6 +3,7 @@ import { getDocument, putDocument } from "#database/utils/couchdb";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import type { ConferenceDocument } from "../../../utils/conference-csv";
 import { assertEventsAdminSession } from "../../../utils/assert-events-admin-session";
+import { normalizeConferenceStatus } from "../../../utils/conference-status";
 import {
   notifyConferenceWatchersViaNostr,
   previewConferenceWatchersNostrMessage,
@@ -24,7 +25,6 @@ interface ConferencePatchPayload {
   dateRangeLabel?: unknown;
   country?: unknown;
   continent?: unknown;
-  confirmedDates?: unknown;
   hasAirtable?: unknown;
   isPublished?: unknown;
   discountCode?: unknown;
@@ -348,7 +348,6 @@ export default defineEventHandler(async (event) => {
   const dateRangeLabel = asNullableText(payload.dateRangeLabel, 180, "dateRangeLabel");
   const country = asNullableText(payload.country, 180, "country");
   const continent = asNullableText(payload.continent, 120, "continent");
-  const confirmedDates = asOptionalBoolean(payload.confirmedDates, "confirmedDates");
   const hasAirtable = asOptionalBoolean(payload.hasAirtable, "hasAirtable");
   const isPublished = asOptionalBoolean(payload.isPublished, "isPublished");
   const discountCode = asNullableText(payload.discountCode, 120, "discountCode");
@@ -419,10 +418,6 @@ export default defineEventHandler(async (event) => {
     country: typeof country !== "undefined" ? country : existingConference.country,
     continent:
       typeof continent !== "undefined" ? continent : existingConference.continent,
-    confirmedDates:
-      typeof confirmedDates !== "undefined"
-        ? confirmedDates
-        : existingConference.confirmedDates,
     hasAirtable:
       typeof hasAirtable !== "undefined" ? hasAirtable : existingConference.hasAirtable,
     isPublished:
@@ -455,7 +450,9 @@ export default defineEventHandler(async (event) => {
       typeof bitvocationParticipation !== "undefined"
         ? bitvocationParticipation
         : existingConference.bitvocationParticipation,
-    status: typeof status !== "undefined" ? status : existingConference.status,
+    status: normalizeConferenceStatus(
+      typeof status !== "undefined" ? status : existingConference.status,
+    ),
     notes: typeof notes !== "undefined" ? notes : existingConference.notes,
     ownerTodo: typeof ownerTodo !== "undefined" ? ownerTodo : existingConference.ownerTodo,
     source: typeof source !== "undefined" ? source : existingConference.source,

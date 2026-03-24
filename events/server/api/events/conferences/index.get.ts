@@ -3,6 +3,10 @@ import { getView } from "#database/utils/couchdb";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import type { ConferenceDocument } from "../../../utils/conference-csv";
 import { assertEventsAdminSession } from "../../../utils/assert-events-admin-session";
+import {
+  CONFERENCE_STATUS_IN_PROGRESS,
+  normalizeConferenceStatus,
+} from "../../../utils/conference-status";
 
 interface ConferenceListResponse {
   conferences: ConferenceDocument[];
@@ -10,6 +14,12 @@ interface ConferenceListResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+  unfilteredCounts: {
+    total: number;
+    inProgress: number;
+    published: number;
+    draft: number;
+  };
   statusCounts: Record<string, number>;
   publicationCounts: {
     published: number;
@@ -18,6 +28,8 @@ interface ConferenceListResponse {
   yearOptions: number[];
   continentOptions: string[];
 }
+
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const parsePositiveInt = (value: unknown, fallback: number, max: number) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -29,14 +41,42 @@ const parsePositiveInt = (value: unknown, fallback: number, max: number) => {
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+const parseBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === "boolean") return value;
+  const normalized = normalize(value);
+  if (!normalized.length) return fallback;
+  if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+  if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  return fallback;
+};
+const currentUtcDateOnly = (): string => {
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const isPastConference = (conference: ConferenceDocument): boolean => {
+  const startDateIso = String(conference.startDateIso ?? "").trim();
+  if (!startDateIso) return false;
 
-const buildStatusCounts = (
-  conferences: ConferenceDocument[],
-): Record<string, number> => {
+  if (DATE_ONLY_PATTERN.test(startDateIso)) {
+    return startDateIso < currentUtcDateOnly();
+  }
+
+  const parsed = new Date(startDateIso);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return parsed.getTime() < Date.now();
+};
+
+const buildStatusCounts = (conferences: ConferenceDocument[]): Record<string, number> => {
   const counts: Record<string, number> = {};
 
   for (const conference of conferences) {
-    const key = conference.status || "Unknown";
+    const key = normalizeConferenceStatus(conference.status);
     counts[key] = (counts[key] || 0) + 1;
   }
 
@@ -49,9 +89,11 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
   const query = getQuery(event);
 
   const search = normalize(query.search);
-  const statusFilter = normalize(query.status);
+  const statusFilterRaw = String(query.status ?? "").trim();
+  const statusFilter = normalize(statusFilterRaw);
   const continentFilter = normalize(query.continent);
   const publishedFilter = normalize(query.published);
+  const includePast = parseBoolean(query.includePast, false);
   const yearFilter = parsePositiveInt(query.year, 0, 9999);
 
   const page = parsePositiveInt(query.page, 1, 10_000);
@@ -62,12 +104,19 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     descending: false,
   });
 
-  const allConferences = (view?.rows ?? [])
+  const baseConferences = (view?.rows ?? [])
     .map((row) => row.doc as ConferenceDocument | undefined)
     .filter(
       (doc): doc is ConferenceDocument =>
         Boolean(doc && doc.type === "conference" && doc._id),
-    )
+    );
+
+  const normalizedBaseConferences = baseConferences.map((conference) => ({
+    ...conference,
+    status: normalizeConferenceStatus(conference.status),
+  }));
+
+  const allConferences = normalizedBaseConferences
     .filter((doc) => {
       if (!search) return true;
       const haystack = [
@@ -84,7 +133,10 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     })
     .filter((doc) => {
       if (!statusFilter || statusFilter === "all") return true;
-      return normalize(doc.status) === statusFilter;
+      return (
+        normalizeConferenceStatus(doc.status) ===
+        normalizeConferenceStatus(statusFilterRaw)
+      );
     })
     .filter((doc) => {
       if (!yearFilter) return true;
@@ -95,6 +147,10 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
       if (publishedFilter === "published") return doc.isPublished === true;
       if (publishedFilter === "draft") return doc.isPublished !== true;
       return true;
+    })
+    .filter((doc) => {
+      if (includePast) return true;
+      return !isPastConference(doc);
     });
 
   const conferences = allConferences.filter((doc) => {
@@ -132,6 +188,14 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     page,
     pageSize,
     totalPages,
+    unfilteredCounts: {
+      total: normalizedBaseConferences.length,
+      inProgress: normalizedBaseConferences.filter(
+        (conference) => normalizeConferenceStatus(conference.status) === CONFERENCE_STATUS_IN_PROGRESS,
+      ).length,
+      published: normalizedBaseConferences.filter((conference) => conference.isPublished).length,
+      draft: normalizedBaseConferences.filter((conference) => !conference.isPublished).length,
+    },
     statusCounts: buildStatusCounts(conferences),
     publicationCounts: {
       published: conferences.filter((conference) => conference.isPublished).length,
