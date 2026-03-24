@@ -114,6 +114,20 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
     },
 
     /**
+    * Query invoices by amount range
+    * Key: amount, Value: {userName, email}
+    */
+    by_user: {
+      map: `function(doc) {
+        if (doc.userName && ((doc.type === 'lightning_invoice') || (doc.type === 'invoice'))) {
+          emit(doc.userName, {
+            email: doc.email
+          });
+        }
+      }`
+    },
+
+    /**
      * Statistics view - count orders by status
      * Key: status, Value: 1 (for counting with reduce)
      */

@@ -40,7 +40,7 @@ const applyExistingRevision = async (
 };
 
 export default defineEventHandler(async (event) => {
-  await assertEventsAdminSession(event);
+  await assertEventsAdminSession(event, ["admin", "curator"]);
 
   const payload = await readBody<ImportCsvPayload>(event);
   const csvText = typeof payload?.csvText === "string" ? payload.csvText : "";

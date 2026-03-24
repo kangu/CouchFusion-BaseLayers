@@ -216,7 +216,7 @@ const deriveMonthLabel = (startDateIso: string): string => {
 };
 
 export default defineEventHandler(async (event) => {
-  await assertEventsAdminSession(event);
+  await assertEventsAdminSession(event, ["admin", "curator"]);
 
   const payload = await readBody<ConferenceCreatePayload>(event);
   if (!payload || typeof payload !== "object") {

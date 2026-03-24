@@ -317,7 +317,7 @@ const asOptionalNotifyMessage = (value: unknown): string | undefined => {
 };
 
 export default defineEventHandler(async (event) => {
-  await assertEventsAdminSession(event);
+  await assertEventsAdminSession(event, ["admin", "curator"]);
   const conferenceId = getRouterParam(event, "id", { decode: true });
 
   if (!conferenceId) {
