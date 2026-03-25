@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from "h3";
-import { putDocument } from "#database/utils/couchdb";
+import { getDocument, putDocument } from "#database/utils/couchdb";
 import { requireAuthenticatedUser } from "#auth/server/utils/authenticated-user";
 import { ensureEventsDatabase } from "../../../utils/events-db";
 import {
@@ -116,6 +116,32 @@ export default defineEventHandler(async (event) => {
   const startDateIso = asOptionalIsoDate(payload.startDateIso);
   const notes = asNullableText(payload.notes, 3000, "notes");
 
+  const userDocumentId = userDoc?._id || `org.couchdb.user:${session.userCtx.name}`;
+  const persistedUserDoc = await getDocument<Record<string, unknown>>(
+    "_users",
+    userDocumentId,
+  );
+  if (!persistedUserDoc) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "User document not found",
+    });
+  }
+
+  const conferenceSubmissionStatus = String(
+    persistedUserDoc.conference_submission_status ?? "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (conferenceSubmissionStatus !== "paid") {
+    throw createError({
+      statusCode: 402,
+      statusMessage:
+        "Conference submission requires a paid lightning invoice. Please complete payment first.",
+    });
+  }
+
   const now = new Date().toISOString();
   const randomTail = Math.random().toString(36).slice(2, 9);
   const proposalId = [
@@ -148,7 +174,35 @@ export default defineEventHandler(async (event) => {
   };
 
   const databaseName = await ensureEventsDatabase();
-  const result = await putDocument(databaseName, proposal);
+  const nextUserDocument = {
+    ...persistedUserDoc,
+    conference_submission_status: "pending",
+    conference_submission_invoice: "",
+  };
+
+  // Consume payment first so one paid status can create only one proposal.
+  const consumeResult = await putDocument("_users", nextUserDocument);
+  const rollbackUserDocument = {
+    ...persistedUserDoc,
+    _rev: consumeResult.rev,
+  };
+
+  let result;
+  try {
+    result = await putDocument(databaseName, proposal);
+  } catch (proposalError) {
+    // Best-effort rollback in case proposal persistence fails after consume.
+    try {
+      await putDocument("_users", rollbackUserDocument);
+    } catch (rollbackError) {
+      console.warn(
+        "Conference proposal rollback failed after payment consume",
+        rollbackError,
+      );
+    }
+
+    throw proposalError;
+  }
 
   return {
     success: true,
@@ -160,4 +214,3 @@ export default defineEventHandler(async (event) => {
     },
   };
 });
-
