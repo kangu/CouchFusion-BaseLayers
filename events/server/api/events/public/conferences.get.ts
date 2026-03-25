@@ -25,6 +25,8 @@ interface PublicFeaturedConference {
   conferenceId: string;
   name: string;
   slug: string | null;
+  discountCode: string | null;
+  discountLabel: string | null;
   startDateIso: string | null;
   dateRangeLabel: string | null;
   location: string | null;
@@ -161,6 +163,8 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
         conferenceId: conference._id,
         name: conference.name,
         slug: conference.slug ?? null,
+        discountCode: conference.discountCode ?? null,
+        discountLabel: conference.discountLabel ?? null,
         startDateIso: conference.startDateIso ?? null,
         dateRangeLabel: conference.dateRangeLabel ?? null,
         location: conference.location ?? null,
