@@ -192,6 +192,8 @@ useHead({
 // == composables ==
 const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefined;
 const runtimeConfig = useRuntimeConfig();
+const authStore = useAuthStore();
+const { adminUsersDirectory, userFullNameDirectory } = storeToRefs(authStore);
 
 const queryState = reactive({
   search: "",
@@ -201,6 +203,12 @@ const queryState = reactive({
   published: "all",
   showPastEvents: false,
 });
+
+try {
+  await authStore.fetchAdminUsers();
+} catch (error) {
+  console.warn("Failed to preload admin user directories", error);
+}
 
 // == local data ==
 const csvInput = ref("");
@@ -733,6 +741,36 @@ const statusTone = (status: string) => {
     return "bg-rose-100 text-rose-800 border-rose-300";
   }
   return "bg-slate-100 text-slate-700 border-slate-300";
+};
+
+const customerDirectory = computed(() => ({
+  ...userFullNameDirectory.value,
+  ...adminUsersDirectory.value,
+}));
+
+const stripCouchPrefix = (value: string): string =>
+  value.replace(/^org\.couchdb\.user:/, "");
+
+const extractRawCustomerCode = (value: string): string => {
+  const sanitized = stripCouchPrefix(value);
+  const dashIndex = sanitized.indexOf("-");
+  return dashIndex === -1 ? sanitized : sanitized.slice(dashIndex + 1);
+};
+
+const resolveCustomerName = (userName?: string | null): string => {
+  if (!userName) return "Unknown user";
+
+  const sanitized = stripCouchPrefix(userName);
+  const rawCode = extractRawCustomerCode(userName);
+  const directory = customerDirectory.value;
+
+  return (
+    directory[userName] ||
+    directory[sanitized] ||
+    directory[rawCode] ||
+    sanitized ||
+    "Unknown user"
+  );
 };
 
 const hasConferenceDiscount = (conference: ConferenceItem): boolean => {
@@ -2153,7 +2191,7 @@ const saveEditor = async () => {
                 </p>
               </td>
               <td class="px-3 py-2.5 text-slate-700">
-                {{ proposal.submittedBy?.username || "Unknown user" }}
+                {{ resolveCustomerName(proposal.submittedBy?.username || null) }}
               </td>
               <td class="px-3 py-2.5 text-slate-700 text-nowrap">
                 {{ formatDate(proposal.createdAt || null) }}
@@ -2250,7 +2288,7 @@ const saveEditor = async () => {
             </div>
             <div class="space-y-1">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Submitted By</p>
-              <p class="text-slate-800">{{ selectedProposal.submittedBy?.username || "Unknown user" }}</p>
+              <p class="text-slate-800">{{ resolveCustomerName(selectedProposal.submittedBy?.username || null) }}</p>
             </div>
             <div class="space-y-1">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Website</p>
