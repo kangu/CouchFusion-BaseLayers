@@ -23,6 +23,7 @@ interface ConferenceCreatePayload {
   continent?: unknown;
   hasAirtable?: unknown;
   isPublished?: unknown;
+  recreateNextYear?: unknown;
   contactName?: unknown;
   contactChannel?: unknown;
   bitvocationParticipation?: unknown;
@@ -274,6 +275,11 @@ export default defineEventHandler(async (event) => {
     continent: asNullableText(payload.continent, 120, "continent"),
     hasAirtable: asOptionalBoolean(payload.hasAirtable, false, "hasAirtable"),
     isPublished: asOptionalBoolean(payload.isPublished, false, "isPublished"),
+    recreateNextYear: asOptionalBoolean(
+      payload.recreateNextYear,
+      false,
+      "recreateNextYear",
+    ),
     discountCode: null,
     discountLabel: null,
     commissionLabel: null,

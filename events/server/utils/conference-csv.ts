@@ -32,6 +32,7 @@ export interface ConferenceDocument extends CouchDBDocument {
   continent: string | null;
   hasAirtable: boolean;
   isPublished: boolean;
+  recreateNextYear: boolean;
   discountCode: string | null;
   discountLabel: string | null;
   commissionLabel: string | null;
@@ -312,6 +313,7 @@ export const parseConferenceCsv = (csvText: string): ParsedConferenceCsv => {
       continent: maybeText(getField(row, headers, "Continent")),
       hasAirtable,
       isPublished: false,
+      recreateNextYear: false,
       discountCode: maybeText(getField(row, headers, "Discount Code?")),
       discountLabel: maybeText(getField(row, headers, "Discount")),
       commissionLabel: maybeText(getField(row, headers, "Our commission")),

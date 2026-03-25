@@ -27,6 +27,7 @@ interface ConferencePatchPayload {
   continent?: unknown;
   hasAirtable?: unknown;
   isPublished?: unknown;
+  recreateNextYear?: unknown;
   discountCode?: unknown;
   discountLabel?: unknown;
   commissionLabel?: unknown;
@@ -350,6 +351,10 @@ export default defineEventHandler(async (event) => {
   const continent = asNullableText(payload.continent, 120, "continent");
   const hasAirtable = asOptionalBoolean(payload.hasAirtable, "hasAirtable");
   const isPublished = asOptionalBoolean(payload.isPublished, "isPublished");
+  const recreateNextYear = asOptionalBoolean(
+    payload.recreateNextYear,
+    "recreateNextYear",
+  );
   const discountCode = asNullableText(payload.discountCode, 120, "discountCode");
   const discountLabel = asNullableText(payload.discountLabel, 180, "discountLabel");
   const commissionLabel = asNullableText(payload.commissionLabel, 180, "commissionLabel");
@@ -422,6 +427,10 @@ export default defineEventHandler(async (event) => {
       typeof hasAirtable !== "undefined" ? hasAirtable : existingConference.hasAirtable,
     isPublished:
       typeof isPublished !== "undefined" ? isPublished : existingConference.isPublished,
+    recreateNextYear:
+      typeof recreateNextYear !== "undefined"
+        ? recreateNextYear
+        : Boolean(existingConference.recreateNextYear),
     discountCode:
       typeof discountCode !== "undefined" ? discountCode : existingConference.discountCode,
     discountLabel:

@@ -18,6 +18,7 @@ interface ConferenceItem {
   continent: string | null;
   hasAirtable: boolean;
   isPublished: boolean;
+  recreateNextYear: boolean;
   discountCode: string | null;
   discountLabel: string | null;
   commissionLabel: string | null;
@@ -290,6 +291,7 @@ const editorForm = reactive({
   ownerTodo: "",
   notes: "",
   hasAirtable: false,
+  recreateNextYear: false,
   isPublished: false,
   sourceFormat: "csv-semicolon",
   sourceRowNumber: "",
@@ -321,6 +323,7 @@ const createForm = reactive({
   ownerTodo: "",
   isPublished: false,
   hasAirtable: false,
+  recreateNextYear: false,
 });
 
 // == computed ==
@@ -1313,6 +1316,7 @@ const resetCreateForm = () => {
   createForm.ownerTodo = "";
   createForm.isPublished = false;
   createForm.hasAirtable = false;
+  createForm.recreateNextYear = false;
 };
 
 const openCreateDialog = () => {
@@ -1403,6 +1407,7 @@ const saveCreateConference = async () => {
         ownerTodo: toNullableText(createForm.ownerTodo),
         isPublished: createForm.isPublished,
         hasAirtable: createForm.hasAirtable,
+        recreateNextYear: createForm.recreateNextYear,
       },
     });
 
@@ -1791,6 +1796,7 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.ownerTodo = conference.ownerTodo || "";
   editorForm.notes = conference.notes || "";
   editorForm.hasAirtable = conference.hasAirtable;
+  editorForm.recreateNextYear = Boolean(conference.recreateNextYear);
   editorForm.isPublished = conference.isPublished;
   editorForm.sourceFormat = conference.source?.format || "csv-semicolon";
   editorForm.sourceRowNumber = conference.source?.rowNumber
@@ -1892,6 +1898,7 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
     ownerTodo: toNullableText(editorForm.ownerTodo),
     notes: toNullableText(editorForm.notes),
     hasAirtable: editorForm.hasAirtable,
+    recreateNextYear: editorForm.recreateNextYear,
     isPublished: editorForm.isPublished,
     source: {
       format: editorForm.sourceFormat || "csv-semicolon",
@@ -2625,7 +2632,7 @@ const saveEditor = async () => {
                   <button
                     v-else
                     type="button"
-                    class="font-medium text-slate-900 hover:text-orange-700"
+                    class="font-medium text-left text-slate-900 hover:text-orange-700"
                     @click="startInlineEdit(conference, 'name')"
                   >
                     {{ conference.name }}
@@ -2689,7 +2696,7 @@ const saveEditor = async () => {
                   <button
                     v-else
                     type="button"
-                    class="hover:text-orange-700"
+                    class="hover:text-orange-700 text-left"
                     @click="startInlineEdit(conference, 'location')"
                   >
                     {{ conference.location || "Location TBD" }}
@@ -2717,7 +2724,7 @@ const saveEditor = async () => {
                   <button
                     v-else
                     type="button"
-                    class="hover:text-orange-700"
+                    class="hover:text-orange-700 text-left"
                     @click="startInlineEdit(conference, 'country')"
                   >
                     {{ conference.country || "—" }}
@@ -2979,6 +2986,14 @@ const saveEditor = async () => {
                     class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                   >
                   Airtable Linked
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    v-model="createForm.recreateNextYear"
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                  >
+                  Recreate on next year
                 </label>
               </div>
             </section>
@@ -3474,6 +3489,14 @@ const saveEditor = async () => {
                     class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                   >
                   Airtable Linked
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    v-model="editorForm.recreateNextYear"
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                  >
+                  Recreate on next year
                 </label>
               </div>
             </section>
