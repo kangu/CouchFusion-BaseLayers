@@ -9,6 +9,7 @@ interface FeaturedConferenceSummary {
   _id: string;
   name: string;
   startDateIso: string | null;
+  city: string | null;
   location: string | null;
   country: string | null;
   isPublished: boolean;
@@ -48,6 +49,7 @@ export default defineEventHandler(async (event): Promise<FeaturedConferenceRespo
       _id: conference._id,
       name: conference.name,
       startDateIso: conference.startDateIso ?? null,
+      city: conference.city ?? null,
       location: conference.location ?? null,
       country: conference.country ?? null,
       isPublished: conference.isPublished === true,

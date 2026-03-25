@@ -10,7 +10,6 @@ interface ConferenceItem {
   xAccountUrl: string | null;
   location: string | null;
   city: string | null;
-  monthLabel: string | null;
   startDateLabel: string | null;
   startDateIso: string | null;
   dateRangeLabel: string | null;
@@ -128,6 +127,7 @@ interface FeaturedConferenceSummary {
   _id: string;
   name: string;
   startDateIso: string | null;
+  city: string | null;
   location: string | null;
   country: string | null;
   isPublished: boolean;
@@ -159,7 +159,7 @@ type ConferencesSortKey =
 type InlineEditableField =
   | "name"
   | "startDateIso"
-  | "location"
+  | "city"
   | "country"
   | "discountCode"
   | "status";
@@ -274,7 +274,6 @@ const editorForm = reactive({
   xAccountUrl: "",
   location: "",
   city: "",
-  monthLabel: "",
   startDateLabel: "",
   startDateIso: "",
   dateRangeLabel: "",
@@ -308,7 +307,6 @@ const createForm = reactive({
   startDateIso: "",
   startDateLabel: "",
   dateRangeLabel: "",
-  monthLabel: "",
   location: "",
   city: "",
   country: "",
@@ -521,7 +519,10 @@ const sortedConferences = computed(() => {
         result = compareNullableText(left.startDateIso, right.startDateIso);
         break;
       case "location":
-        result = compareNullableText(left.location, right.location);
+        result = compareNullableText(
+          left.city,
+          right.city,
+        );
         break;
       case "country":
         result = compareNullableText(left.country, right.country);
@@ -586,6 +587,7 @@ const featuredCards = computed(() =>
         _id: entry.conferenceId,
         name: `Unknown conference (${entry.conferenceId})`,
         startDateIso: null,
+        city: null,
         location: null,
         country: null,
         isPublished: false,
@@ -604,7 +606,7 @@ const featuredAvailableConferences = computed(() => {
       return true;
     }
 
-    const haystack = [conference.name, conference.location, conference.country]
+    const haystack = [conference.name, conference.city, conference.country]
       .map((value) => String(value ?? "").trim().toLowerCase())
       .join(" ");
 
@@ -769,6 +771,22 @@ const formatDate = (value: string | null) => {
   }).format(date);
 };
 
+const formatCityCountryFromParts = (
+  city: string | null | undefined,
+  country: string | null | undefined,
+): string => {
+  const normalizedCity = String(city ?? "").trim();
+  const normalizedCountry = String(country ?? "").trim();
+
+  if (normalizedCity && normalizedCountry) {
+    return `${normalizedCity}, ${normalizedCountry}`;
+  }
+
+  if (normalizedCity) return normalizedCity;
+  if (normalizedCountry) return normalizedCountry;
+  return "Location TBD";
+};
+
 const monthPillPalette = [
   "border-emerald-200 bg-emerald-50 text-emerald-800",
   "border-blue-200 bg-blue-50 text-blue-800",
@@ -907,8 +925,8 @@ const startInlineEdit = async (
     case "startDateIso":
       inlineDraftValue.value = conference.startDateIso || "";
       break;
-    case "location":
-      inlineDraftValue.value = conference.location || "";
+    case "city":
+      inlineDraftValue.value = conference.city || "";
       break;
     case "country":
       inlineDraftValue.value = conference.country || "";
@@ -956,8 +974,8 @@ const inlineCurrentValue = (
       return conference.name || "";
     case "startDateIso":
       return conference.startDateIso || "";
-    case "location":
-      return conference.location || "";
+    case "city":
+      return conference.city || "";
     case "country":
       return conference.country || "";
     case "discountCode":
@@ -1301,7 +1319,6 @@ const resetCreateForm = () => {
   createForm.startDateIso = "";
   createForm.startDateLabel = "";
   createForm.dateRangeLabel = "";
-  createForm.monthLabel = "";
   createForm.location = "";
   createForm.city = "";
   createForm.country = "";
@@ -1392,7 +1409,6 @@ const saveCreateConference = async () => {
         startDateIso,
         startDateLabel: toNullableText(createForm.startDateLabel),
         dateRangeLabel: toNullableText(createForm.dateRangeLabel),
-        monthLabel: toNullableText(createForm.monthLabel),
         location: toNullableText(createForm.location),
         city: toNullableText(createForm.city),
         country: toNullableText(createForm.country),
@@ -1760,7 +1776,6 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.xAccountUrl = conference.xAccountUrl || "";
   editorForm.location = conference.location || "";
   editorForm.city = conference.city || "";
-  editorForm.monthLabel = conference.monthLabel || "";
   editorForm.startDateLabel = conference.startDateLabel || "";
   editorForm.startDateIso = conference.startDateIso || "";
   editorForm.dateRangeLabel = conference.dateRangeLabel || "";
@@ -1878,7 +1893,6 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
     xAccountUrl: toNullableText(editorForm.xAccountUrl),
     location: toNullableText(editorForm.location),
     city: toNullableText(editorForm.city),
-    monthLabel: toNullableText(editorForm.monthLabel),
     startDateLabel: toNullableText(editorForm.startDateLabel),
     startDateIso: toNullableText(editorForm.startDateIso),
     dateRangeLabel: toNullableText(editorForm.dateRangeLabel),
@@ -2330,7 +2344,7 @@ const saveEditor = async () => {
             v-model="featuredSearch"
             type="search"
             class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-            placeholder="Search conference name, location, country..."
+            placeholder="Search conference name, city, country..."
           >
 
           <div class="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -2356,7 +2370,7 @@ const saveEditor = async () => {
               <div>
                 <p class="text-sm font-medium text-slate-900">{{ conference.name }}</p>
                 <p class="text-xs text-slate-500">
-                  {{ conference.location || conference.country || "Location TBD" }}
+                  {{ formatCityCountryFromParts(conference.city, conference.country) }}
                 </p>
               </div>
               <span class="text-xs font-semibold text-orange-700">Add</span>
@@ -2390,7 +2404,7 @@ const saveEditor = async () => {
                   {{ formatDate(card.conference.startDateIso) }}
                 </p>
                 <p class="text-xs text-slate-500">
-                  {{ card.conference.location || card.conference.country || "Location TBD" }}
+                  {{ formatCityCountryFromParts(card.conference.city, card.conference.country) }}
                 </p>
               </div>
 
@@ -2472,7 +2486,7 @@ const saveEditor = async () => {
           v-model="queryState.search"
           type="search"
           class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-          placeholder="Search conference, location, notes..."
+          placeholder="Search conference, city, country, notes..."
         >
         <select
           v-model="queryState.status"
@@ -2579,7 +2593,7 @@ const saveEditor = async () => {
                 </th>
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                   <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('location')">
-                    Location <span class="text-slate-400">{{ sortIndicator("location") }}</span>
+                    City <span class="text-slate-400">{{ sortIndicator("location") }}</span>
                   </button>
                 </th>
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2675,31 +2689,31 @@ const saveEditor = async () => {
                   </span>
                 </td>
                 <td class="px-3 py-2.5 text-slate-700">
-                  <div v-if="isInlineEditing(conference._id, 'location')" class="space-y-1">
+                  <div v-if="isInlineEditing(conference._id, 'city')" class="space-y-1">
                     <input
-                      :data-inline-editor-key="inlineCellKey(conference._id, 'location')"
+                      :data-inline-editor-key="inlineCellKey(conference._id, 'city')"
                       v-model="inlineDraftValue"
                       type="text"
                       class="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                      :disabled="inlineCellSaving(conference._id, 'location')"
-                      @blur="saveInlineEdit(conference, 'location')"
+                      :disabled="inlineCellSaving(conference._id, 'city')"
+                      @blur="saveInlineEdit(conference, 'city')"
                       @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                       @keydown.esc.prevent="cancelInlineEdit"
                     >
-                    <p v-if="inlineCellSaving(conference._id, 'location')" class="text-[11px] text-slate-500">
+                    <p v-if="inlineCellSaving(conference._id, 'city')" class="text-[11px] text-slate-500">
                       Saving...
                     </p>
-                    <p v-if="inlineCellError(conference._id, 'location')" class="text-[11px] text-red-600">
-                      {{ inlineCellError(conference._id, "location") }}
+                    <p v-if="inlineCellError(conference._id, 'city')" class="text-[11px] text-red-600">
+                      {{ inlineCellError(conference._id, "city") }}
                     </p>
                   </div>
                   <button
                     v-else
                     type="button"
                     class="hover:text-orange-700 text-left"
-                    @click="startInlineEdit(conference, 'location')"
+                    @click="startInlineEdit(conference, 'city')"
                   >
-                    {{ conference.location || "Location TBD" }}
+                    {{ conference.city || "—" }}
                   </button>
                 </td>
                 <td class="px-3 py-2.5 text-slate-700">
@@ -3002,12 +3016,6 @@ const saveEditor = async () => {
               <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-700">Location & Links</h3>
               <div class="grid gap-3 md:grid-cols-2">
                 <input
-                  v-model="createForm.location"
-                  type="text"
-                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                  placeholder="Location"
-                >
-                <input
                   v-model="createForm.city"
                   type="text"
                   class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
@@ -3048,12 +3056,6 @@ const saveEditor = async () => {
                   type="text"
                   class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                   placeholder="Date Range Label (optional)"
-                >
-                <input
-                  v-model="createForm.monthLabel"
-                  type="text"
-                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                  placeholder="Month Label (optional)"
                 >
                 <select
                   v-model="createForm.bitvocationParticipation"
@@ -3415,30 +3417,12 @@ const saveEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Month Label</label>
-                  <input
-                    v-model="editorForm.monthLabel"
-                    type="text"
-                    class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                    placeholder="01 Jan"
-                  >
-                </div>
-                <div class="space-y-1">
                   <label class="block text-sm font-medium text-slate-800">Date Range Label</label>
                   <input
                     v-model="editorForm.dateRangeLabel"
                     type="text"
                     class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     placeholder="January 16-17"
-                  >
-                </div>
-                <div class="space-y-1 md:col-span-2">
-                  <label class="block text-sm font-medium text-slate-800">Location</label>
-                  <input
-                    v-model="editorForm.location"
-                    type="text"
-                    class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                    placeholder="US - Naples, FL"
                   >
                 </div>
                 <div class="space-y-1">
