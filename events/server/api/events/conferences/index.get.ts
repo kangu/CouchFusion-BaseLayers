@@ -39,6 +39,20 @@ const parsePositiveInt = (value: unknown, fallback: number, max: number) => {
 
   return Math.min(parsed, max);
 };
+const parseYearFilter = (
+  value: unknown,
+): number | "tba" | null => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized || normalized === "all") return null;
+  if (normalized === "tba") return "tba";
+
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 9999) {
+    return null;
+  }
+
+  return parsed;
+};
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const parseBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -94,7 +108,7 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
   const continentFilter = normalize(query.continent);
   const publishedFilter = normalize(query.published);
   const includePast = parseBoolean(query.includePast, false);
-  const yearFilter = parsePositiveInt(query.year, 0, 9999);
+  const yearFilter = parseYearFilter(query.year);
 
   const page = parsePositiveInt(query.page, 1, 10_000);
   const pageSize = parsePositiveInt(query.pageSize, 24, 200);
@@ -140,6 +154,9 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     })
     .filter((doc) => {
       if (!yearFilter) return true;
+      if (yearFilter === "tba") {
+        return !String(doc.startDateIso ?? "").trim().length;
+      }
       return doc.year === yearFilter;
     })
     .filter((doc) => {
@@ -165,7 +182,7 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
 
   const yearOptions = Array.from(
     new Set(
-      conferences
+      normalizedBaseConferences
         .map((conference) => conference.year)
         .filter((year): year is number => typeof year === "number"),
     ),
@@ -173,7 +190,7 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
 
   const continentOptions = Array.from(
     new Set(
-      allConferences
+      normalizedBaseConferences
         .map((conference) => conference.continent)
         .filter(
           (continent): continent is string =>

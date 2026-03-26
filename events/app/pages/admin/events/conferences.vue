@@ -343,7 +343,16 @@ const listQuery = computed(() => {
   if (queryState.search.trim()) query.search = queryState.search.trim();
   if (queryState.status !== "all") query.status = queryState.status;
   if (queryState.continent !== "all") query.continent = queryState.continent;
-  if (queryState.year !== "all") query.year = Number.parseInt(queryState.year, 10);
+  if (queryState.year !== "all") {
+    if (queryState.year === "tba") {
+      query.year = "tba";
+    } else {
+      const parsedYear = Number.parseInt(queryState.year, 10);
+      if (Number.isFinite(parsedYear) && parsedYear > 0) {
+        query.year = parsedYear;
+      }
+    }
+  }
   if (queryState.published !== "all") query.published = queryState.published;
 
   return query;
@@ -553,6 +562,12 @@ const sortedConferences = computed(() => {
 
   return items;
 });
+const hasPastOnlyMatchesHidden = computed(
+  () =>
+    !queryState.showPastEvents &&
+    conferences.value.length > 0 &&
+    conferences.value.every((conference) => isPastConference(conference)),
+);
 const unfilteredCounts = computed(
   () =>
     conferencesData.value?.unfilteredCounts ?? {
@@ -2549,6 +2564,7 @@ const saveEditor = async () => {
           class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
         >
           <option value="all">All years</option>
+          <option value="tba">TBA</option>
           <option v-for="year in yearOptions" :key="year" :value="String(year)">
             {{ year }}
           </option>
@@ -2595,6 +2611,12 @@ const saveEditor = async () => {
         class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600"
       >
         No conferences found. Add a manual conference or import CSV to populate this section.
+        <span
+          v-if="hasPastOnlyMatchesHidden"
+          class="mt-3 block rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800"
+        >
+          Matching conferences are in the past. Enable <span class="font-semibold">Past events</span> to view them.
+        </span>
       </p>
       <div v-else class="space-y-3">
         <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
