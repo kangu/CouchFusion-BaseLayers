@@ -20,7 +20,6 @@ interface ConferencePatchPayload {
   location?: unknown;
   city?: unknown;
   monthLabel?: unknown;
-  startDateLabel?: unknown;
   startDateIso?: unknown;
   dateRangeLabel?: unknown;
   country?: unknown;
@@ -344,7 +343,6 @@ export default defineEventHandler(async (event) => {
   const location = asNullableText(payload.location, 280, "location");
   const city = asNullableText(payload.city, 180, "city");
   const monthLabel = asNullableText(payload.monthLabel, 80, "monthLabel");
-  const startDateLabel = asNullableText(payload.startDateLabel, 120, "startDateLabel");
   const startDateIso = asOptionalIsoDate(payload.startDateIso, "startDateIso");
   const dateRangeLabel = asNullableText(payload.dateRangeLabel, 180, "dateRangeLabel");
   const country = asNullableText(payload.country, 180, "country");
@@ -410,10 +408,6 @@ export default defineEventHandler(async (event) => {
     city: typeof city !== "undefined" ? city : existingConference.city,
     monthLabel:
       typeof monthLabel !== "undefined" ? monthLabel : existingConference.monthLabel,
-    startDateLabel:
-      typeof startDateLabel !== "undefined"
-        ? startDateLabel
-        : existingConference.startDateLabel,
     startDateIso:
       typeof startDateIso !== "undefined" ? startDateIso : existingConference.startDateIso,
     dateRangeLabel:
@@ -468,6 +462,7 @@ export default defineEventHandler(async (event) => {
     createdAt: typeof createdAt !== "undefined" ? createdAt : existingConference.createdAt,
     updatedAt: typeof updatedAt !== "undefined" ? updatedAt : new Date().toISOString(),
   };
+  delete (nextConference as { startDateLabel?: unknown }).startDateLabel;
 
   if (previewNotificationOnly === true) {
     if (notifyWatchers !== true) {

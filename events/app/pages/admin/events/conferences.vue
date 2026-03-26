@@ -10,7 +10,6 @@ interface ConferenceItem {
   xAccountUrl: string | null;
   location: string | null;
   city: string | null;
-  startDateLabel: string | null;
   startDateIso: string | null;
   dateRangeLabel: string | null;
   country: string | null;
@@ -282,7 +281,6 @@ const editorForm = reactive({
   xAccountUrl: "",
   location: "",
   city: "",
-  startDateLabel: "",
   startDateIso: "",
   dateRangeLabel: "",
   country: "",
@@ -313,7 +311,6 @@ const createForm = reactive({
   slug: "",
   year: "",
   startDateIso: "",
-  startDateLabel: "",
   dateRangeLabel: "",
   location: "",
   city: "",
@@ -1370,7 +1367,6 @@ const resetCreateForm = () => {
   createForm.slug = "";
   createForm.year = "";
   createForm.startDateIso = "";
-  createForm.startDateLabel = "";
   createForm.dateRangeLabel = "";
   createForm.location = "";
   createForm.city = "";
@@ -1460,7 +1456,6 @@ const saveCreateConference = async () => {
         slug: normalizedSlug,
         year: parsedYear,
         startDateIso: startDateIso.length ? startDateIso : null,
-        startDateLabel: toNullableText(createForm.startDateLabel),
         dateRangeLabel: toNullableText(createForm.dateRangeLabel),
         location: toNullableText(createForm.location),
         city: toNullableText(createForm.city),
@@ -1829,7 +1824,6 @@ const openEditor = (conference: ConferenceItem) => {
   editorForm.xAccountUrl = conference.xAccountUrl || "";
   editorForm.location = conference.location || "";
   editorForm.city = conference.city || "";
-  editorForm.startDateLabel = conference.startDateLabel || "";
   editorForm.startDateIso = conference.startDateIso || "";
   editorForm.dateRangeLabel = conference.dateRangeLabel || "";
   editorForm.country = conference.country || "";
@@ -1946,7 +1940,6 @@ const buildEditorPatchPayload = (): Record<string, unknown> | null => {
     xAccountUrl: toNullableText(editorForm.xAccountUrl),
     location: toNullableText(editorForm.location),
     city: toNullableText(editorForm.city),
-    startDateLabel: toNullableText(editorForm.startDateLabel),
     startDateIso: toNullableText(editorForm.startDateIso),
     dateRangeLabel: toNullableText(editorForm.dateRangeLabel),
     country: toNullableText(editorForm.country),
@@ -2106,6 +2099,50 @@ const saveEditor = async () => {
   }
 
   await persistEditorChanges(payload);
+};
+
+const deleteConferenceFromEditor = async () => {
+  if (!editingConferenceId.value) {
+    editorError.value = "No conference selected for deletion.";
+    return;
+  }
+
+  if (editorPending.value || notificationPreviewPending.value) {
+    return;
+  }
+
+  if (!process.client) return;
+
+  const conferenceName = editorForm.name.trim() || editingConferenceId.value;
+  const confirmed = window.confirm(
+    `Delete conference "${conferenceName}"? This action cannot be undone.`,
+  );
+  if (!confirmed) return;
+
+  editorPending.value = true;
+  editorError.value = null;
+  editorSuccess.value = null;
+
+  try {
+    await $fetch(`/api/events/conferences/${encodeURIComponent(editingConferenceId.value)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+
+    await refreshConferences();
+    editorPending.value = false;
+    closeEditor();
+    createSuccess.value = "Conference deleted.";
+  } catch (error: any) {
+    editorError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to delete conference.";
+  } finally {
+    if (editorPending.value) {
+      editorPending.value = false;
+    }
+  }
 };
 </script>
 
@@ -3106,12 +3143,6 @@ const saveEditor = async () => {
                   placeholder="X Account URL"
                 >
                 <input
-                  v-model="createForm.startDateLabel"
-                  type="text"
-                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                  placeholder="Start Date Label (optional)"
-                >
-                <input
                   v-model="createForm.dateRangeLabel"
                   type="text"
                   class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
@@ -3468,16 +3499,7 @@ const saveEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Start Date Label</label>
-                  <input
-                    v-model="editorForm.startDateLabel"
-                    type="text"
-                    class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                    placeholder="Jan 16, 2026"
-                  >
-                </div>
-                <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Date Range Label</label>
+                  <label class="block text-sm font-medium text-slate-800">Date Range Label (visible on public site)</label>
                   <input
                     v-model="editorForm.dateRangeLabel"
                     type="text"
@@ -3733,7 +3755,16 @@ const saveEditor = async () => {
             <p v-if="editorSuccess" class="text-sm text-emerald-700">{{ editorSuccess }}</p>
           </div>
 
-          <div class="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-4">
+          <div class="flex items-center justify-between gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="editorPending || notificationPreviewPending"
+              @click="deleteConferenceFromEditor"
+            >
+              {{ editorPending ? "Deleting..." : "Delete Conference" }}
+            </button>
+            <div class="flex items-center gap-2">
             <button
               type="button"
               class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -3756,6 +3787,7 @@ const saveEditor = async () => {
                     : "Save Changes"
               }}
             </button>
+            </div>
           </div>
         </aside>
 

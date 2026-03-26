@@ -25,7 +25,6 @@ export interface ConferenceDocument extends CouchDBDocument {
   location: string | null;
   city: string | null;
   monthLabel: string | null;
-  startDateLabel: string | null;
   startDateIso: string | null;
   dateRangeLabel: string | null;
   country: string | null;
@@ -306,7 +305,6 @@ export const parseConferenceCsv = (csvText: string): ParsedConferenceCsv => {
       location: maybeText(getField(row, headers, "Location")),
       city: deriveCity(getField(row, headers, "City"), getField(row, headers, "Location")),
       monthLabel: maybeText(getField(row, headers, "Month")),
-      startDateLabel: startDateLabel || null,
       startDateIso,
       dateRangeLabel: maybeText(getField(row, headers, "Date")),
       country: maybeText(getField(row, headers, "Country")),

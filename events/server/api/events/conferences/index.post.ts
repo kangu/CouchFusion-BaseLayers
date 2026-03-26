@@ -16,7 +16,6 @@ interface ConferenceCreatePayload {
   location?: unknown;
   city?: unknown;
   monthLabel?: unknown;
-  startDateLabel?: unknown;
   startDateIso?: unknown;
   dateRangeLabel?: unknown;
   country?: unknown;
@@ -266,9 +265,6 @@ export default defineEventHandler(async (event) => {
     monthLabel:
       asNullableText(payload.monthLabel, 80, "monthLabel") ??
       (startDateIso ? deriveMonthLabel(startDateIso) : null),
-    startDateLabel:
-      asNullableText(payload.startDateLabel, 120, "startDateLabel") ??
-      (startDateIso ? deriveStartDateLabel(startDateIso) : null),
     startDateIso,
     dateRangeLabel:
       asNullableText(payload.dateRangeLabel, 180, "dateRangeLabel") ??
