@@ -65,6 +65,40 @@ describe("queueTemplateEmail", () => {
     expect(result.errorMessage).toContain("update function missing");
   });
 
+  it("falls back to legacy dash-preserved prefix when normalized prefix template is not found", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        text: async () => '{"error":"Template document not found"}',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => "queued-legacy-456",
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { queueTemplateEmail } = await import("./template-queue");
+    const result = await queueTemplateEmail({
+      templateName: "check_2y_default",
+      to: "client@example.com",
+      payload: {},
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [primaryUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [legacyUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+
+    expect(primaryUrl).toBe(
+      "http://localhost:5984/email-sender/_design/pending_emails/_update/build_template_with_payload/template_gas_check_2y_default",
+    );
+    expect(legacyUrl).toBe(
+      "http://localhost:5984/email-sender/_design/pending_emails/_update/build_template_with_payload/template_gas-_check_2y_default",
+    );
+    expect(result.ok).toBe(true);
+    expect(result.providerMessageId).toBe("queued-legacy-456");
+  });
+
   it("returns failed result when COUCHDB_ADMIN_AUTH is missing", async () => {
     delete process.env.COUCHDB_ADMIN_AUTH;
     const fetchMock = vi.fn();

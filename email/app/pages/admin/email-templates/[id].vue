@@ -139,6 +139,8 @@ const isDetectingTexts = ref(false)
 const editableMjmlTextEntries = ref<EditableMjmlTextEntry[]>([])
 const transformedMjmlBase = ref('')
 const hasAppliedFirstDetectedTransformation = ref(false)
+const pendingAutoDetectOnLoad = ref(false)
+const autoDetectedTemplateId = ref('')
 const detectTextsError = ref<string | null>(null)
 let renderDetectedInputsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -259,6 +261,8 @@ const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
     editableMjmlTextEntries.value = []
     transformedMjmlBase.value = ''
     hasAppliedFirstDetectedTransformation.value = false
+    pendingAutoDetectOnLoad.value = false
+    autoDetectedTemplateId.value = ''
     return
   }
 
@@ -278,10 +282,13 @@ const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
     editableMjmlTextEntries.value = attachPriorityMetadata(persistedEntries, persistedBase)
     hasAppliedFirstDetectedTransformation.value = true
     editorState.mjml = renderMjmlFromEntries(persistedBase, editableMjmlTextEntries.value)
+    pendingAutoDetectOnLoad.value = false
   } else {
     editableMjmlTextEntries.value = []
     transformedMjmlBase.value = ''
     hasAppliedFirstDetectedTransformation.value = false
+    pendingAutoDetectOnLoad.value = Boolean(editorState.mjml.trim())
+    autoDetectedTemplateId.value = ''
   }
 }
 
@@ -626,12 +633,13 @@ const detectTextsFromMjml = async () => {
       buildEditableEntries(placeholders, extractedTexts),
       hrefLinks
     )
-    editableMjmlTextEntries.value = attachPriorityMetadata(builtEntries, transformedMjml)
+    const entriesWithPriority = attachPriorityMetadata(builtEntries, transformedMjml)
+    editableMjmlTextEntries.value = entriesWithPriority
     transformedMjmlBase.value = transformedMjml
 
     if (!hasAppliedFirstDetectedTransformation.value && transformedMjml.trim()) {
       hasAppliedFirstDetectedTransformation.value = true
-      editorState.mjml = transformedMjml
+      editorState.mjml = renderMjmlFromEntries(transformedMjml, entriesWithPriority)
     }
   } catch (error: any) {
     editableMjmlTextEntries.value = []
@@ -759,6 +767,25 @@ const scheduleRenderMjmlFromDetectedInputs = () => {
     renderMjmlFromDetectedInputs()
   }, 250)
 }
+
+watch(
+  () => [pendingAutoDetectOnLoad.value, editorState._id, editorState.mjml, isDetectingTexts.value] as const,
+  async ([shouldAutoDetect, templateId, mjml, detecting]) => {
+    if (!shouldAutoDetect || detecting || !templateId || !mjml.trim()) {
+      return
+    }
+
+    if (editableMjmlTextEntries.value.length > 0 || autoDetectedTemplateId.value === templateId) {
+      pendingAutoDetectOnLoad.value = false
+      return
+    }
+
+    autoDetectedTemplateId.value = templateId
+    await detectTextsFromMjml()
+    pendingAutoDetectOnLoad.value = false
+  },
+  { immediate: true }
+)
 </script>
 
 <template>

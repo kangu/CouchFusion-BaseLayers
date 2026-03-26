@@ -32,8 +32,12 @@ export const useSidebarNavigation = (options: SidebarNavigationOptions = {}) => 
     const baseSections = buildBaseSections(hasRole, navItems);
     const configuredSections = getConfiguredSections(appConfig);
     const mergedSections = dedupeSections([...baseSections, ...configuredSections]);
+    const sectionsWithIconOverrides = applyIconOverrides(
+      mergedSections,
+      appConfig.adminWorkspace?.iconOverrides,
+    );
 
-    return filterSectionsByRole(mergedSections, hasRole);
+    return filterSectionsByRole(sectionsWithIconOverrides, hasRole);
   });
 
   const toggleMobileMenu = () => {
@@ -203,4 +207,36 @@ const dedupeSections = (sections: SidebarNavigationSection[]): SidebarNavigation
   }
 
   return Array.from(sectionMap.values());
+};
+
+const normalizeIconOverrides = (
+  input: unknown,
+): Record<string, string> => {
+  if (!input || typeof input !== "object") {
+    return {};
+  }
+
+  const entries = Object.entries(input as Record<string, unknown>)
+    .map(([route, icon]) => [route.trim(), String(icon ?? "").trim()] as const)
+    .filter(([route, icon]) => route.length > 0 && icon.length > 0);
+
+  return Object.fromEntries(entries);
+};
+
+const applyIconOverrides = (
+  sections: SidebarNavigationSection[],
+  rawIconOverrides: unknown,
+): SidebarNavigationSection[] => {
+  const iconOverrides = normalizeIconOverrides(rawIconOverrides);
+  if (!Object.keys(iconOverrides).length) {
+    return sections;
+  }
+
+  return sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      icon: iconOverrides[item.route] ?? item.icon,
+    })),
+  }));
 };

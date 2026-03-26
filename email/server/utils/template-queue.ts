@@ -37,6 +37,45 @@ const normalizeTemplateId = (rawTemplateName: string, prefix: string): string | 
   return `${prefix}${templateName}`;
 };
 
+const toLegacyTemplatePrefix = (dbLoginPrefix: string): string | null => {
+  if (typeof dbLoginPrefix !== "string") {
+    return null;
+  }
+
+  const trimmed = dbLoginPrefix.trim();
+  if (!trimmed.endsWith("-")) {
+    return null;
+  }
+
+  return `template_${trimmed}_`;
+};
+
+const isTemplateNotFoundErrorBody = (bodyText: string): boolean => {
+  const text = String(bodyText ?? "").trim().toLowerCase();
+  return text.includes("template document not found");
+};
+
+const queueTemplatePayload = async (
+  endpoint: string,
+  authHeader: string,
+  input: QueueTemplateEmailInput,
+): Promise<Response> => {
+  return await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authHeader,
+    },
+    body: JSON.stringify({
+      ...input.payload,
+      to: input.to,
+      email: input.to,
+      admin_email: input.to,
+      created_at: new Date().toISOString(),
+    }),
+  });
+};
+
 export const queueTemplateEmail = async (
   input: QueueTemplateEmailInput,
 ): Promise<QueueTemplateEmailResult> => {
@@ -50,7 +89,8 @@ export const queueTemplateEmail = async (
   }
 
   const runtimeConfig = useRuntimeConfig();
-  const templatePrefix = getEmailTemplatePrefix(runtimeConfig.dbLoginPrefix || "");
+  const dbLoginPrefix = String(runtimeConfig.dbLoginPrefix || "");
+  const templatePrefix = getEmailTemplatePrefix(dbLoginPrefix);
   const fullTemplateId = normalizeTemplateId(input.templateName, templatePrefix);
 
   if (!fullTemplateId) {
@@ -65,22 +105,42 @@ export const queueTemplateEmail = async (
   const endpoint = `${baseUrl}${EMAIL_SENDER_UPDATE_PREFIX}${fullTemplateId}`;
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader,
-      },
-      body: JSON.stringify({
-        ...input.payload,
-        to: input.to,
-        email: input.to,
-        admin_email: input.to,
-        created_at: new Date().toISOString(),
-      }),
-    });
+    const response = await queueTemplatePayload(endpoint, authHeader, input);
 
     const bodyText = await response.text().catch(() => "");
+
+    if (!response.ok && isTemplateNotFoundErrorBody(bodyText)) {
+      const legacyPrefix = toLegacyTemplatePrefix(dbLoginPrefix);
+      const legacyTemplateId = legacyPrefix
+        ? normalizeTemplateId(input.templateName, legacyPrefix)
+        : null;
+
+      if (legacyTemplateId && legacyTemplateId !== fullTemplateId) {
+        const legacyEndpoint = `${baseUrl}${EMAIL_SENDER_UPDATE_PREFIX}${legacyTemplateId}`;
+        const legacyResponse = await queueTemplatePayload(
+          legacyEndpoint,
+          authHeader,
+          input,
+        );
+        const legacyBodyText = await legacyResponse.text().catch(() => "");
+
+        if (legacyResponse.ok) {
+          return {
+            ok: true,
+            providerMessageId: legacyBodyText || null,
+            errorMessage: null,
+          };
+        }
+
+        return {
+          ok: false,
+          providerMessageId: null,
+          errorMessage:
+            legacyBodyText ||
+            `Failed to queue email template payload (${legacyResponse.status}).`,
+        };
+      }
+    }
 
     if (!response.ok) {
       return {
