@@ -145,15 +145,17 @@ const asOptionalParticipation = (value: unknown): Participation => {
   });
 };
 
-const asRequiredIsoDate = (value: unknown, fieldLabel: string): string => {
+const asOptionalIsoDate = (value: unknown, fieldLabel: string): string | null => {
+  if (typeof value === "undefined" || value === null) return null;
   if (typeof value !== "string") {
     throw createError({
       statusCode: 400,
-      statusMessage: `${fieldLabel} is required`,
+      statusMessage: `${fieldLabel} must be a YYYY-MM-DD string or null`,
     });
   }
 
   const trimmed = value.trim();
+  if (!trimmed.length) return null;
   const match = DATE_ONLY_PATTERN.exec(trimmed);
   if (!match) {
     throw createError({
@@ -230,7 +232,7 @@ export default defineEventHandler(async (event) => {
   const name = asRequiredText(payload.name, 180, "name");
   const slug = asNullableText(payload.slug, 220, "slug");
   const year = asRequiredPositiveInt(payload.year, "year");
-  const startDateIso = asRequiredIsoDate(payload.startDateIso, "startDateIso");
+  const startDateIso = asOptionalIsoDate(payload.startDateIso, "startDateIso");
 
   const normalizedSlug = slug ?? toSlug(name);
   if (!normalizedSlug.length) {
@@ -263,14 +265,14 @@ export default defineEventHandler(async (event) => {
     city: asNullableText(payload.city, 180, "city"),
     monthLabel:
       asNullableText(payload.monthLabel, 80, "monthLabel") ??
-      deriveMonthLabel(startDateIso),
+      (startDateIso ? deriveMonthLabel(startDateIso) : null),
     startDateLabel:
       asNullableText(payload.startDateLabel, 120, "startDateLabel") ??
-      deriveStartDateLabel(startDateIso),
+      (startDateIso ? deriveStartDateLabel(startDateIso) : null),
     startDateIso,
     dateRangeLabel:
       asNullableText(payload.dateRangeLabel, 180, "dateRangeLabel") ??
-      deriveStartDateLabel(startDateIso),
+      (startDateIso ? deriveStartDateLabel(startDateIso) : null),
     country: asNullableText(payload.country, 180, "country"),
     continent: asNullableText(payload.continent, 120, "continent"),
     hasAirtable: asOptionalBoolean(payload.hasAirtable, false, "hasAirtable"),

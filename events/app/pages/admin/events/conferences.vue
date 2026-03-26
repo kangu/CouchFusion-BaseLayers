@@ -1443,8 +1443,8 @@ const saveCreateConference = async () => {
   }
 
   const startDateIso = createForm.startDateIso.trim();
-  if (!DATE_ONLY_PATTERN.test(startDateIso)) {
-    createError.value = "Start Date (ISO) is required in YYYY-MM-DD format.";
+  if (startDateIso.length > 0 && !DATE_ONLY_PATTERN.test(startDateIso)) {
+    createError.value = "Start Date (ISO) must be in YYYY-MM-DD format when provided.";
     return;
   }
 
@@ -1459,7 +1459,7 @@ const saveCreateConference = async () => {
         name: normalizedName,
         slug: normalizedSlug,
         year: parsedYear,
-        startDateIso,
+        startDateIso: startDateIso.length ? startDateIso : null,
         startDateLabel: toNullableText(createForm.startDateLabel),
         dateRangeLabel: toNullableText(createForm.dateRangeLabel),
         location: toNullableText(createForm.location),
