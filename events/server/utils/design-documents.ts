@@ -6,7 +6,7 @@ export const conferencesDesignDocument: CouchDBDesignDocument = {
   views: {
     by_start_date: {
       map: `function (doc) {
-        if (doc.type !== 'conference' || !doc.startDateIso) return;
+        if (doc.type !== 'conference') return;
         emit([doc.year || 0, doc.startDateIso, doc.slug || doc._id], {
           status: doc.status || '',
           continent: doc.continent || ''
