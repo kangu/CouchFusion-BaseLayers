@@ -55,7 +55,9 @@ export interface MaintenanceClientDocument extends CouchDBDocument {
   primaryContactTitle: string | null;
   counterId: string | null;
   notes: string | null;
-  contacts: MaintenanceContactMethod[];
+  customerEmail: string | null;
+  customerPhone: string | null;
+  contacts?: MaintenanceContactMethod[];
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractExpirationStatus: MaintenanceExpirationStatus | null;
@@ -101,6 +103,7 @@ export interface MaintenanceNotificationDocument extends CouchDBDocument {
     clientName: string;
     clientId: string;
     expirationDate: string;
+    [key: string]: unknown;
   };
   sentAt: string | null;
   createdAt: string;

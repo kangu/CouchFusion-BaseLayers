@@ -1,6 +1,9 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { putDocument } from "#database/utils/couchdb";
-import { parseClientContacts } from "../../../utils/contacts";
+import {
+  parseClientContacts,
+  resolveCustomerContacts,
+} from "../../../utils/contacts";
 import {
   parseAddress,
   asExpirationStatus,
@@ -22,6 +25,8 @@ interface ClientCreatePayload {
   primaryContactTitle?: unknown;
   counterId?: unknown;
   notes?: unknown;
+  customerEmail?: unknown;
+  customerPhone?: unknown;
   contacts?: unknown;
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
@@ -58,6 +63,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const now = new Date().toISOString();
+  const legacyContacts = parseClientContacts(payload.contacts);
+  const { customerEmail, customerPhone } = resolveCustomerContacts({
+    customerEmail: payload.customerEmail,
+    customerPhone: payload.customerPhone,
+    legacyContacts,
+  });
+
+  if (!customerEmail && !customerPhone) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "At least one customer contact (email or phone) is required",
+    });
+  }
+
   const contractFields = parseClientContractFields({
     startDate: payload.contractStartDate,
     expirationDate: payload.contractExpirationDate,
@@ -85,7 +104,9 @@ export default defineEventHandler(async (event) => {
     primaryContactTitle: asOptionalText(payload.primaryContactTitle, 180, "primaryContactTitle"),
     counterId: asOptionalText(payload.counterId, 50, "counterId"),
     notes: asOptionalText(payload.notes, 5000, "notes"),
-    contacts: parseClientContacts(payload.contacts),
+    customerEmail,
+    customerPhone,
+    contacts: legacyContacts,
     ...contractFields,
     contractExpirationStatus:
       contractFields.contractExpirationDate === null

@@ -5,7 +5,10 @@ import {
   readBody,
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
-import { parseClientContacts } from "../../../utils/contacts";
+import {
+  parseClientContacts,
+  resolveCustomerContacts,
+} from "../../../utils/contacts";
 import {
   asExpirationStatus,
   asOptionalText,
@@ -27,6 +30,8 @@ interface ClientPatchPayload {
   primaryContactTitle?: unknown;
   counterId?: unknown;
   notes?: unknown;
+  customerEmail?: unknown;
+  customerPhone?: unknown;
   contacts?: unknown;
   contractStartDate?: unknown;
   contractExpirationDate?: unknown;
@@ -126,6 +131,30 @@ export default defineEventHandler(async (event) => {
         ? null
         : payload.gasSensorDueDate,
   });
+  const nextContacts =
+    typeof payload.contacts === "undefined"
+      ? Array.isArray(existingClient.contacts)
+        ? existingClient.contacts
+        : []
+      : parseClientContacts(payload.contacts);
+  const resolvedCustomerContacts = resolveCustomerContacts({
+    customerEmail:
+      typeof payload.customerEmail === "undefined"
+        ? existingClient.customerEmail
+        : payload.customerEmail,
+    customerPhone:
+      typeof payload.customerPhone === "undefined"
+        ? existingClient.customerPhone
+        : payload.customerPhone,
+    legacyContacts: nextContacts,
+  });
+
+  if (!resolvedCustomerContacts.customerEmail && !resolvedCustomerContacts.customerPhone) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "At least one customer contact (email or phone) is required",
+    });
+  }
 
   const nextClient: MaintenanceClientDocument = {
     ...existingClient,
@@ -158,10 +187,9 @@ export default defineEventHandler(async (event) => {
       typeof payload.notes === "undefined"
         ? existingClient.notes
         : asOptionalText(payload.notes, 5000, "notes"),
-    contacts:
-      typeof payload.contacts === "undefined"
-        ? existingClient.contacts
-        : parseClientContacts(payload.contacts),
+    customerEmail: resolvedCustomerContacts.customerEmail,
+    customerPhone: resolvedCustomerContacts.customerPhone,
+    contacts: nextContacts,
     ...contractFields,
     contractExpirationStatus:
       contractFields.contractExpirationDate === null

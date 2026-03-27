@@ -87,3 +87,34 @@ export const readCouchConfigValues = async (
 
   return result;
 };
+
+export const writeCouchConfigValue = async (
+  section: string,
+  key: string,
+  value: string | null,
+  baseUrl = process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL,
+): Promise<boolean> => {
+  if (!section || !key) {
+    return false;
+  }
+
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const encodedSection = encodeURIComponent(section);
+  const encodedKey = encodeURIComponent(key);
+  const url = `${normalizedBaseUrl}/_node/_local/_config/${encodedSection}/${encodedKey}`;
+
+  try {
+    const response = await couchDBRequest(url, {
+      method: "PUT",
+      body: JSON.stringify(value ?? ""),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.warn(
+      `[database] failed to write CouchDB _config value ${section}.${key}:`,
+      error,
+    );
+    return false;
+  }
+};

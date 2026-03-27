@@ -12,6 +12,8 @@ interface CreateEmailTemplatePayload {
   subject?: string
   mjml?: string
   html?: string
+  editableMjmlBase?: string
+  editableMjmlEntries?: unknown
 }
 
 /**
@@ -57,6 +59,8 @@ export default defineEventHandler(async (event) => {
     subject: typeof payload.subject === 'string' ? payload.subject : '',
     mjml: typeof payload.mjml === 'string' ? payload.mjml : '',
     html: typeof payload.html === 'string' ? payload.html : '',
+    editableMjmlBase: typeof payload.editableMjmlBase === 'string' ? payload.editableMjmlBase : '',
+    editableMjmlEntries: Array.isArray(payload.editableMjmlEntries) ? payload.editableMjmlEntries : [],
     params: extractTemplatePlaceholders(payload.mjml, payload.html)
   }
 

@@ -67,10 +67,14 @@ export const normalizeSmsNumber = (value: unknown): string => {
 };
 
 export const parseClientContacts = (value: unknown): MaintenanceContactMethod[] => {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (typeof value === "undefined" || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
     throw createError({
       statusCode: 400,
-      statusMessage: "At least one contact method is required",
+      statusMessage: "contacts must be an array",
     });
   }
 
@@ -119,6 +123,69 @@ export const parseClientContacts = (value: unknown): MaintenanceContactMethod[] 
   return Array.from(uniqueMap.values());
 };
 
+const firstActiveLegacyCustomerContact = (
+  contacts: MaintenanceContactMethod[],
+  channel: "email" | "sms",
+): string | null => {
+  for (const contact of contacts) {
+    if (
+      contact.active !== false &&
+      contact.purpose === "customer" &&
+      contact.channel === channel
+    ) {
+      return contact.value;
+    }
+  }
+  return null;
+};
+
+export const parseOptionalCustomerEmail = (value: unknown): string | null => {
+  if (typeof value === "undefined" || value === null) {
+    return null;
+  }
+
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return normalizeEmailAddress(normalized);
+};
+
+export const parseOptionalCustomerPhone = (value: unknown): string | null => {
+  if (typeof value === "undefined" || value === null) {
+    return null;
+  }
+
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return normalizeSmsNumber(normalized);
+};
+
+export const resolveCustomerContacts = (input: {
+  customerEmail?: unknown;
+  customerPhone?: unknown;
+  legacyContacts?: MaintenanceContactMethod[];
+}): { customerEmail: string | null; customerPhone: string | null } => {
+  const legacyContacts = Array.isArray(input.legacyContacts) ? input.legacyContacts : [];
+  const fallbackEmail = firstActiveLegacyCustomerContact(legacyContacts, "email");
+  const fallbackPhone = firstActiveLegacyCustomerContact(legacyContacts, "sms");
+
+  return {
+    customerEmail:
+      typeof input.customerEmail === "undefined"
+        ? fallbackEmail
+        : parseOptionalCustomerEmail(input.customerEmail),
+    customerPhone:
+      typeof input.customerPhone === "undefined"
+        ? fallbackPhone
+        : parseOptionalCustomerPhone(input.customerPhone),
+  };
+};
+
 const dedupe = (values: string[]): string[] => {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -159,9 +226,11 @@ export const buildNotificationRecipients = (
   ]);
 
   const customerEmails = dedupe(
-    activeContacts
-      .filter((contact) => contact.channel === "email" && contact.purpose === "customer")
-      .map((contact) => contact.value.toLowerCase()),
+    [
+      client.customerEmail
+        ? client.customerEmail.toLowerCase()
+        : firstActiveLegacyCustomerContact(activeContacts, "email")?.toLowerCase() ?? "",
+    ].filter(Boolean),
   );
 
   const companySms = dedupe(
@@ -171,9 +240,11 @@ export const buildNotificationRecipients = (
   );
 
   const customerSms = dedupe(
-    activeContacts
-      .filter((contact) => contact.channel === "sms" && contact.purpose === "customer")
-      .map((contact) => contact.value),
+    [
+      client.customerPhone ??
+        firstActiveLegacyCustomerContact(activeContacts, "sms") ??
+        "",
+    ].filter(Boolean),
   );
 
   return {

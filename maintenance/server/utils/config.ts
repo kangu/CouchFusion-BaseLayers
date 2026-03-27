@@ -9,6 +9,11 @@ interface MaintenanceEnvConfig {
   cronHourUtc: number;
   smsSender: string | null;
   companyNotificationEmails: string[];
+  companyName: string | null;
+  companyAddress: string | null;
+  emailTemplateCheck2y: string;
+  emailTemplateOverhaul10y: string;
+  emailTemplateGasSensorChange: string;
 }
 
 const asBoundedInteger = (
@@ -35,6 +40,11 @@ const parseCsv = (value: string | null): string[] => {
     .filter(Boolean);
 };
 
+const parseOptional = (value: string | null): string | null => {
+  const trimmed = String(value ?? "").trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 const normalizeAppSlug = (): string => {
   const runtimeConfig = useRuntimeConfig();
   const appSlug = runtimeConfig.public?.appSlug;
@@ -54,6 +64,11 @@ export const readMaintenanceEnvConfig = async (): Promise<MaintenanceEnvConfig> 
     "maintenance_reminder_days_before_expiry",
     "maintenance_sms_sender",
     "maintenance_company_notification_emails",
+    "maintenance_company_name",
+    "maintenance_company_address",
+    "maintenance_email_template_check_2y",
+    "maintenance_email_template_overhaul_10y",
+    "maintenance_email_template_gas_sensor_change",
   ]);
 
   return {
@@ -76,5 +91,22 @@ export const readMaintenanceEnvConfig = async (): Promise<MaintenanceEnvConfig> 
         ? values.maintenance_sms_sender.trim()
         : null,
     companyNotificationEmails: parseCsv(values.maintenance_company_notification_emails),
+    companyName: parseOptional(values.maintenance_company_name),
+    companyAddress: parseOptional(values.maintenance_company_address),
+    emailTemplateCheck2y:
+      typeof values.maintenance_email_template_check_2y === "string" &&
+      values.maintenance_email_template_check_2y.trim().length > 0
+        ? values.maintenance_email_template_check_2y.trim()
+        : "check_2y_default",
+    emailTemplateOverhaul10y:
+      typeof values.maintenance_email_template_overhaul_10y === "string" &&
+      values.maintenance_email_template_overhaul_10y.trim().length > 0
+        ? values.maintenance_email_template_overhaul_10y.trim()
+        : "overhaul_10y_default",
+    emailTemplateGasSensorChange:
+      typeof values.maintenance_email_template_gas_sensor_change === "string" &&
+      values.maintenance_email_template_gas_sensor_change.trim().length > 0
+        ? values.maintenance_email_template_gas_sensor_change.trim()
+        : "gas_sensor_change_default",
   };
 };

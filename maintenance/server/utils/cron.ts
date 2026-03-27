@@ -7,6 +7,7 @@ import {
   sendEmailNotification,
   sendSmsNotification,
 } from "./notification-adapters";
+import { buildMaintenanceEmailTemplatePayload } from "./email-template-payload";
 import type {
   MaintenanceClientDocument,
   MaintenanceJobDocument,
@@ -45,6 +46,105 @@ interface ScheduleEntry {
   notificationCategory: MaintenanceNotificationCategory;
   label: string;
 }
+
+const markPastDueEntriesExpired = async (input: {
+  databaseName: string;
+  actor: string;
+  entries: ScheduleEntry[];
+  nowIso: string;
+}): Promise<void> => {
+  const updatesByClientId = new Map<string, MaintenanceClientDocument>();
+  const originalByClientId = new Map<string, MaintenanceClientDocument>();
+
+  for (const entry of input.entries) {
+    const baseClient =
+      updatesByClientId.get(entry.client._id) ??
+      entry.client;
+    let nextClient: MaintenanceClientDocument | null = null;
+
+    if (
+      entry.jobType === "check_2y" &&
+      (baseClient.contractExpirationStatus === "active" ||
+        baseClient.contractExpirationStatus === "expiring_soon")
+    ) {
+      nextClient = {
+        ...baseClient,
+        contractExpirationStatus: "expired",
+        updatedAt: input.nowIso,
+      };
+    } else if (
+      entry.jobType === "overhaul_10y" &&
+      (baseClient.overhaulExpirationStatus === "active" ||
+        baseClient.overhaulExpirationStatus === "expiring_soon")
+    ) {
+      nextClient = {
+        ...baseClient,
+        overhaulExpirationStatus: "expired",
+        updatedAt: input.nowIso,
+      };
+    } else if (
+      entry.jobType === "gas_sensor_change" &&
+      (baseClient.gasSensorExpirationStatus === "active" ||
+        baseClient.gasSensorExpirationStatus === "expiring_soon")
+    ) {
+      nextClient = {
+        ...baseClient,
+        gasSensorExpirationStatus: "expired",
+        updatedAt: input.nowIso,
+      };
+    }
+
+    if (!nextClient) {
+      continue;
+    }
+
+    if (!originalByClientId.has(entry.client._id)) {
+      originalByClientId.set(entry.client._id, entry.client);
+    }
+    updatesByClientId.set(entry.client._id, nextClient);
+  }
+
+  for (const [clientId, nextClient] of updatesByClientId.entries()) {
+    const previousClient = originalByClientId.get(clientId);
+    if (!previousClient) {
+      continue;
+    }
+
+    await putDocument(input.databaseName, nextClient);
+    await writeMaintenanceAuditEntry({
+      databaseName: input.databaseName,
+      entityType: "client",
+      entityId: clientId,
+      action: "cron_mark_expired",
+      actor: input.actor,
+      previousState: {
+        contractExpirationStatus: previousClient.contractExpirationStatus,
+        overhaulExpirationStatus: previousClient.overhaulExpirationStatus,
+        gasSensorExpirationStatus: previousClient.gasSensorExpirationStatus,
+      },
+      nextState: {
+        contractExpirationStatus: nextClient.contractExpirationStatus,
+        overhaulExpirationStatus: nextClient.overhaulExpirationStatus,
+        gasSensorExpirationStatus: nextClient.gasSensorExpirationStatus,
+      },
+    });
+  }
+};
+
+const resolveEmailTemplateForCategory = (
+  category: MaintenanceNotificationCategory,
+  config: Awaited<ReturnType<typeof readMaintenanceEnvConfig>>,
+): string => {
+  if (category === "check_2y") {
+    return config.emailTemplateCheck2y;
+  }
+
+  if (category === "overhaul_10y") {
+    return config.emailTemplateOverhaul10y;
+  }
+
+  return config.emailTemplateGasSensorChange;
+};
 
 const buildNotificationDocId = (idempotencyKey: string): string => {
   const encoded = Buffer.from(idempotencyKey, "utf8").toString("base64url");
@@ -158,6 +258,15 @@ export const runContractExpiryCheck = async (
 
   const upcomingClientCount = new Set(upcomingEntries.map((entry) => entry.client._id)).size;
   const pastClientCount = new Set(pastEntries.map((entry) => entry.client._id)).size;
+
+  if (!input.dryRun && pastEntries.length > 0) {
+    await markPastDueEntriesExpired({
+      databaseName,
+      actor: input.actor,
+      entries: pastEntries,
+      nowIso,
+    });
+  }
 
   if (pastEntries.length > 0 && typeof input.includePastExpired === "undefined") {
     return {
@@ -358,6 +467,10 @@ export const runContractExpiryCheck = async (
       }
 
       const notificationDocId = buildNotificationDocId(idempotencyKey);
+      const emailTemplate = resolveEmailTemplateForCategory(
+        entry.notificationCategory,
+        config,
+      );
       const notificationDocument: MaintenanceNotificationDocument = {
         _id: notificationDocId,
         type: "maintenance_notification",
@@ -367,7 +480,7 @@ export const runContractExpiryCheck = async (
         recipient: destination.recipient,
         recipientRole: destination.recipientRole,
         status: "queued",
-        template: `${entry.notificationCategory}_default`,
+        template: emailTemplate,
         idempotencyKey,
         attempts: 0,
         errorMessage: null,
@@ -386,20 +499,28 @@ export const runContractExpiryCheck = async (
         entry.label,
         entry.dueDate,
       );
+      const emailPayload = buildMaintenanceEmailTemplatePayload({
+        client: entry.client,
+        dueDate: entry.dueDate,
+        category: entry.notificationCategory,
+        reminderLabel: entry.label,
+        recipientRole: destination.recipientRole,
+        reminderText,
+        companyName: config.companyName,
+        companyAddress: config.companyAddress,
+      });
+      notificationDocument.payload = {
+        clientName: entry.client.name,
+        clientId: entry.client._id,
+        expirationDate: entry.dueDate,
+        ...emailPayload,
+      };
       const sendResult =
         destination.channel === "email"
           ? await sendEmailNotification({
               to: destination.recipient,
               template: notificationDocument.template,
-              payload: {
-                clientName: entry.client.name,
-                clientId: entry.client._id,
-                expirationDate: entry.dueDate,
-                category: entry.notificationCategory,
-                reminderLabel: entry.label,
-                recipientRole: destination.recipientRole,
-                reminderText,
-              },
+              payload: emailPayload,
             })
           : await sendSmsNotification({
               to: destination.recipient,

@@ -65,6 +65,24 @@ export default defineEventHandler(async (event) => {
     })
     .map((client) => ({
       ...client,
+      customerEmail:
+        client.customerEmail ??
+        (client.contacts ?? []).find(
+          (contact) =>
+            contact.active !== false &&
+            contact.channel === "email" &&
+            contact.purpose === "customer",
+        )?.value ??
+        null,
+      customerPhone:
+        client.customerPhone ??
+        (client.contacts ?? []).find(
+          (contact) =>
+            contact.active !== false &&
+            contact.channel === "sms" &&
+            contact.purpose === "customer",
+        )?.value ??
+        null,
       hasCustomerDeliveryFailure: clientsWithFailedCustomerDeliveries.has(client._id),
       contractExpirationStatus:
         client.contractExpirationDate === null

@@ -16,6 +16,8 @@ interface EmailTemplateDocument {
   mjml?: string
   html?: string
   params?: string[]
+  editableMjmlBase?: string
+  editableMjmlEntries?: unknown
   [key: string]: unknown
 }
 
@@ -87,12 +89,16 @@ const navigateToTemplate = async (id: string) => {
 const isCreateModalOpen = ref(false)
 const isCreating = ref(false)
 const createError = ref<string | null>(null)
+const createModalMode = ref<'create' | 'clone'>('create')
+const cloneSourceName = ref('')
 
 const createForm = reactive({
   name: '',
   subject: '',
   mjml: '',
-  html: ''
+  html: '',
+  editableMjmlBase: '',
+  editableMjmlEntries: [] as unknown[]
 })
 
 const resetCreateForm = () => {
@@ -100,11 +106,30 @@ const resetCreateForm = () => {
   createForm.subject = ''
   createForm.mjml = ''
   createForm.html = ''
+  createForm.editableMjmlBase = ''
+  createForm.editableMjmlEntries = []
+  createModalMode.value = 'create'
+  cloneSourceName.value = ''
   createError.value = null
 }
 
 const openCreateModal = () => {
   resetCreateForm()
+  isCreateModalOpen.value = true
+}
+
+const openCloneModal = (template: EmailTemplateDocument) => {
+  resetCreateForm()
+  createModalMode.value = 'clone'
+  cloneSourceName.value = template._id
+  createForm.name = `${template._id}_copy`
+  createForm.subject = typeof template.subject === 'string' ? template.subject : ''
+  createForm.mjml = typeof template.mjml === 'string' ? template.mjml : ''
+  createForm.html = typeof template.html === 'string' ? template.html : ''
+  createForm.editableMjmlBase = typeof template.editableMjmlBase === 'string' ? template.editableMjmlBase : ''
+  createForm.editableMjmlEntries = Array.isArray(template.editableMjmlEntries)
+    ? template.editableMjmlEntries
+    : []
   isCreateModalOpen.value = true
 }
 
@@ -136,7 +161,9 @@ const submitCreateForm = async () => {
           name: templateName,
           subject: createForm.subject,
           mjml: createForm.mjml,
-          html: createForm.html
+          html: createForm.html,
+          editableMjmlBase: createForm.editableMjmlBase || undefined,
+          editableMjmlEntries: createForm.editableMjmlEntries
         }
       }
     )
@@ -146,7 +173,7 @@ const submitCreateForm = async () => {
     }
 
     closeCreateModal()
-    showSuccess('Template created successfully.')
+    showSuccess(createModalMode.value === 'clone' ? 'Template cloned successfully.' : 'Template created successfully.')
     await refreshTemplates()
     await navigateToTemplate(response.template._id)
   } catch (error: any) {
@@ -236,14 +263,24 @@ const submitCreateForm = async () => {
                 </div>
               </td>
               <td class="whitespace-nowrap px-6 py-4 text-sm text-blue-600">
-                <NuxtLink
-                  :to="{ name: detailRouteName, params: { id: template._id } }"
-                  class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
-                  @click.stop
-                >
-                  <Icon name="mdi:open-in-new" class="h-4 w-4" />
-                  Edit
-                </NuxtLink>
+                <div class="flex items-center gap-3">
+                  <NuxtLink
+                    :to="{ name: detailRouteName, params: { id: template._id } }"
+                    class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    @click.stop
+                  >
+                    <Icon name="mdi:open-in-new" class="h-4 w-4" />
+                    Edit
+                  </NuxtLink>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 text-gray-600 hover:text-gray-800"
+                    @click.stop="openCloneModal(template)"
+                  >
+                    <Icon name="mdi:content-copy" class="h-4 w-4" />
+                    Clone
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -272,9 +309,16 @@ const submitCreateForm = async () => {
       >
         <div class="w-full max-w-xl rounded-lg bg-white shadow-xl">
           <div class="border-b border-gray-200 px-6 py-4">
-            <h2 class="text-lg font-semibold text-gray-900">Create email template</h2>
+            <h2 class="text-lg font-semibold text-gray-900">
+              {{ createModalMode === 'clone' ? 'Clone email template' : 'Create email template' }}
+            </h2>
             <p class="mt-1 text-sm text-gray-500">
-              Enter a unique name for your template.
+              <template v-if="createModalMode === 'clone'">
+                Create a new template by cloning <span class="font-medium text-gray-700">{{ cloneSourceName }}</span>.
+              </template>
+              <template v-else>
+                Enter a unique name for your template.
+              </template>
             </p>
           </div>
           <div class="px-6 py-5 space-y-5">
@@ -340,7 +384,7 @@ const submitCreateForm = async () => {
                 name="mdi:loading"
                 class="mr-2 h-4 w-4 animate-spin"
               />
-              Create template
+              {{ createModalMode === 'clone' ? 'Clone template' : 'Create template' }}
             </button>
           </div>
         </div>

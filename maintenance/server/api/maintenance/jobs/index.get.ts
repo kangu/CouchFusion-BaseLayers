@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
         contractExpirationDate: client?.contractExpirationDate ?? null,
         clientCheckupIntervalMonths: client?.contractCheckupIntervalMonths ?? null,
         clientServiceAddress: client?.serviceAddress ?? null,
-        clientPhone: phoneContact?.value ?? null,
+        clientPhone: client?.customerPhone ?? phoneContact?.value ?? null,
       };
     }),
   );
