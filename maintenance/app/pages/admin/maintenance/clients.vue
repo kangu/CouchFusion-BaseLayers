@@ -1,12 +1,5 @@
 <script setup lang="ts">
-interface MaintenanceContact {
-  id: string;
-  channel: "email" | "sms";
-  value: string;
-  purpose: "company" | "customer" | "billing" | "technical";
-  active: boolean;
-  label?: string | null;
-}
+import { normalizeGasSensorFormFields } from "../../../utils/client-form";
 
 interface MaintenanceClient {
   _id: string;
@@ -14,7 +7,6 @@ interface MaintenanceClient {
   contractExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
   overhaulExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
   gasSensorExpirationStatus: "active" | "expiring_soon" | "expired" | "renewed";
-  hasCustomerDeliveryFailure: boolean;
   contractStartDate: string | null;
   contractExpirationDate: string | null;
   contractCheckupIntervalMonths: number | null;
@@ -23,12 +15,13 @@ interface MaintenanceClient {
   gasSensorPeriodMonths: number | null;
   primaryContactName: string | null;
   counterId: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
   serviceAddress: {
     line1: string;
     city?: string | null;
     country?: string | null;
   };
-  contacts: MaintenanceContact[];
 }
 
 type ClientDialogMode = "create" | "edit";
@@ -44,26 +37,25 @@ useHead({
 });
 
 const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefined;
+const route = useRoute();
+const router = useRouter();
 const savePending = ref(false);
+const deletePending = ref(false);
 const formError = ref<string | null>(null);
+const actionError = ref<string | null>(null);
 const actionSuccess = ref<string | null>(null);
 
 const isDialogOpen = ref(false);
 const dialogMode = ref<ClientDialogMode>("create");
 const editingClientId = ref<string | null>(null);
-const editableContacts = ref<MaintenanceContact[]>([]);
-
-const contactPurposeOptions: MaintenanceContact["purpose"][] = [
-  "customer",
-  "company",
-  "billing",
-  "technical",
-];
+const deleteClientTarget = ref<MaintenanceClient | null>(null);
 
 const form = reactive({
   name: "",
   primaryContactName: "",
   counterId: "",
+  customerEmail: "",
+  customerPhone: "",
   addressLine1: "",
   city: "",
   country: "",
@@ -71,7 +63,7 @@ const form = reactive({
   contractExpirationDate: "",
   overhaulExpirationDate: "",
   gasSensorExpirationDate: "",
-  gasSensorPeriodMonths: "12",
+  gasSensorPeriodMonths: "",
   contractExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
   overhaulExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
   gasSensorExpirationStatus: "active" as "active" | "expiring_soon" | "expired" | "renewed",
@@ -110,10 +102,22 @@ const {
 
 const clients = computed(() => clientsData.value?.clients ?? []);
 
+const clearCreateQuery = async () => {
+  if (route.query.create !== "1") {
+    return;
+  }
+
+  const nextQuery = { ...route.query };
+  delete nextQuery.create;
+  await router.replace({ query: nextQuery });
+};
+
 const resetForm = () => {
   form.name = "";
   form.primaryContactName = "";
   form.counterId = "";
+  form.customerEmail = "";
+  form.customerPhone = "";
   form.addressLine1 = "";
   form.city = "";
   form.country = "";
@@ -121,26 +125,17 @@ const resetForm = () => {
   form.contractExpirationDate = "";
   form.overhaulExpirationDate = "";
   form.gasSensorExpirationDate = "";
-  form.gasSensorPeriodMonths = "12";
+  form.gasSensorPeriodMonths = "";
   form.contractExpirationStatus = "active";
   form.overhaulExpirationStatus = "active";
   form.gasSensorExpirationStatus = "active";
   editingClientId.value = null;
-  editableContacts.value = [
-    {
-      id: crypto.randomUUID(),
-      channel: "email",
-      value: "",
-      purpose: "customer",
-      active: true,
-      label: null,
-    },
-  ];
 };
 
 const openCreateDialog = () => {
   dialogMode.value = "create";
   formError.value = null;
+  actionError.value = null;
   resetForm();
   isDialogOpen.value = true;
 };
@@ -148,11 +143,14 @@ const openCreateDialog = () => {
 const openEditDialog = (client: MaintenanceClient) => {
   dialogMode.value = "edit";
   formError.value = null;
+  actionError.value = null;
 
   editingClientId.value = client._id;
   form.name = client.name ?? "";
   form.primaryContactName = client.primaryContactName ?? "";
   form.counterId = client.counterId ?? "";
+  form.customerEmail = client.customerEmail ?? "";
+  form.customerPhone = client.customerPhone ?? "";
   form.addressLine1 = client.serviceAddress?.line1 ?? "";
   form.city = client.serviceAddress?.city ?? "";
   form.country = client.serviceAddress?.country ?? "";
@@ -160,32 +158,20 @@ const openEditDialog = (client: MaintenanceClient) => {
   form.contractExpirationDate = client.contractExpirationDate ?? "";
   form.overhaulExpirationDate = client.overhaulExpirationDate ?? "";
   form.gasSensorExpirationDate = client.gasSensorExpirationDate ?? "";
-  form.gasSensorPeriodMonths = String(client.gasSensorPeriodMonths ?? 12);
+  form.gasSensorPeriodMonths = client.gasSensorPeriodMonths
+    ? String(client.gasSensorPeriodMonths)
+    : "";
   form.contractExpirationStatus = client.contractExpirationStatus ?? "active";
   form.overhaulExpirationStatus = client.overhaulExpirationStatus ?? "active";
   form.gasSensorExpirationStatus = client.gasSensorExpirationStatus ?? "active";
-  editableContacts.value = (client.contacts ?? []).map((contact) => ({
-    id: contact.id || crypto.randomUUID(),
-    channel: contact.channel,
-    value: contact.value,
-    purpose: contact.purpose,
-    active: true,
-    label: contact.label ?? null,
-  })).filter((contact) => contact.value.trim().length > 0);
-  if (!editableContacts.value.length) {
-    editableContacts.value = [
-      {
-        id: crypto.randomUUID(),
-        channel: "email",
-        value: "",
-        purpose: "customer",
-        active: true,
-        label: null,
-      },
-    ];
-  }
 
   isDialogOpen.value = true;
+};
+
+const openDeleteDialog = (client: Pick<MaintenanceClient, "_id" | "name">) => {
+  actionSuccess.value = null;
+  actionError.value = null;
+  deleteClientTarget.value = client as MaintenanceClient;
 };
 
 const closeDialog = () => {
@@ -194,35 +180,23 @@ const closeDialog = () => {
   }
   isDialogOpen.value = false;
   formError.value = null;
+  void clearCreateQuery();
 };
 
-const buildContactsPayload = (): Array<Record<string, unknown>> => {
-  return editableContacts.value.map((contact) => ({
-    id: contact.id,
-    channel: contact.channel,
-    value: contact.value,
-    purpose: contact.purpose,
-    active: true,
-    label: contact.label ?? null,
-  }));
-};
+const closeDeleteDialog = () => {
+  if (deletePending.value) {
+    return;
+  }
 
-const addContactMethod = () => {
-  editableContacts.value.push({
-    id: crypto.randomUUID(),
-    channel: "email",
-    value: "",
-    purpose: "customer",
-    active: true,
-    label: null,
-  });
-};
-
-const removeContactMethod = (id: string) => {
-  editableContacts.value = editableContacts.value.filter((contact) => contact.id !== id);
+  deleteClientTarget.value = null;
 };
 
 const saveClient = async () => {
+  const normalizedGasSensor = normalizeGasSensorFormFields({
+    gasSensorExpirationDate: form.gasSensorExpirationDate,
+    gasSensorPeriodMonths: form.gasSensorPeriodMonths,
+  });
+
   if (!form.name.trim() || !form.addressLine1.trim()) {
     formError.value = "Name and service address are required.";
     return;
@@ -233,27 +207,22 @@ const saveClient = async () => {
     return;
   }
 
-  if ((form.gasSensorExpirationDate && !form.gasSensorPeriodMonths) || (!form.gasSensorExpirationDate && form.gasSensorPeriodMonths)) {
-    formError.value = "Gas sensor expiration date and period months must be provided together.";
-    return;
-  }
-
-  if (form.gasSensorExpirationDate) {
-    const gasSensorPeriodMonths = Number.parseInt(form.gasSensorPeriodMonths, 10);
+  if (normalizedGasSensor.gasSensorExpirationDate) {
+    const gasSensorPeriodMonths = normalizedGasSensor.gasSensorPeriodMonths;
     if (!Number.isInteger(gasSensorPeriodMonths) || gasSensorPeriodMonths <= 0) {
       formError.value = "Gas sensor period months must be a positive integer.";
       return;
     }
   }
 
-  const contacts = buildContactsPayload();
-  if (!contacts.length || !contacts.some((contact) => String(contact.value ?? "").trim().length > 0)) {
-    formError.value = "At least one contact method is required.";
+  if (!form.customerEmail.trim() && !form.customerPhone.trim()) {
+    formError.value = "At least one customer contact (email or phone) is required.";
     return;
   }
 
   savePending.value = true;
   formError.value = null;
+  actionError.value = null;
   actionSuccess.value = null;
 
   try {
@@ -261,12 +230,13 @@ const saveClient = async () => {
       name: form.name,
       primaryContactName: form.primaryContactName,
       counterId: form.counterId || null,
+      customerEmail: form.customerEmail || null,
+      customerPhone: form.customerPhone || null,
       serviceAddress: {
         line1: form.addressLine1,
         city: form.city || null,
         country: form.country || null,
       },
-      contacts,
       contractStartDate: form.contractStartDate || null,
       contractExpirationDate: form.contractExpirationDate || null,
       contractExpirationStatus: form.contractExpirationDate
@@ -276,13 +246,11 @@ const saveClient = async () => {
       overhaulExpirationStatus: form.overhaulExpirationDate
         ? form.overhaulExpirationStatus
         : null,
-      gasSensorExpirationDate: form.gasSensorExpirationDate || null,
-      gasSensorExpirationStatus: form.gasSensorExpirationDate
+      gasSensorExpirationDate: normalizedGasSensor.gasSensorExpirationDate,
+      gasSensorExpirationStatus: normalizedGasSensor.gasSensorExpirationDate
         ? form.gasSensorExpirationStatus
         : null,
-      gasSensorPeriodMonths: form.gasSensorExpirationDate
-        ? Number.parseInt(form.gasSensorPeriodMonths, 10)
-        : null,
+      gasSensorPeriodMonths: normalizedGasSensor.gasSensorPeriodMonths,
     };
 
     if (dialogMode.value === "create") {
@@ -315,6 +283,41 @@ const saveClient = async () => {
     savePending.value = false;
   }
 };
+
+const deleteClient = async () => {
+  if (!deleteClientTarget.value) {
+    return;
+  }
+
+  deletePending.value = true;
+  actionError.value = null;
+  actionSuccess.value = null;
+
+  try {
+    await $fetch(`/api/maintenance/clients/${encodeURIComponent(deleteClientTarget.value._id)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    actionSuccess.value = "Client deleted successfully.";
+    deleteClientTarget.value = null;
+    await refreshClients();
+  } catch (error: any) {
+    actionError.value =
+      error?.data?.statusMessage || error?.message || "Failed to delete client.";
+  } finally {
+    deletePending.value = false;
+  }
+};
+
+watch(
+  () => route.query.create,
+  (createQuery) => {
+    if (createQuery === "1" && !isDialogOpen.value) {
+      openCreateDialog();
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -324,7 +327,7 @@ const saveClient = async () => {
         <div>
           <h1 class="text-2xl font-semibold text-slate-900">Clients</h1>
           <p class="mt-2 text-sm text-slate-600">
-            Manage customer records, contact methods and contract lifecycle in one place.
+            Manage customer records, customer contacts and contract lifecycle in one place.
           </p>
         </div>
 
@@ -343,6 +346,13 @@ const saveClient = async () => {
         class="mt-3 text-sm text-emerald-700"
       >
         {{ actionSuccess }}
+      </p>
+
+      <p
+        v-if="actionError"
+        class="mt-3 text-sm text-red-600"
+      >
+        {{ actionError }}
       </p>
     </section>
 
@@ -389,11 +399,10 @@ const saveClient = async () => {
               <th class="px-3 py-2 font-medium">Name</th>
               <th class="px-3 py-2 font-medium">Primary contact</th>
               <th class="px-3 py-2 font-medium">Address</th>
-              <th class="px-3 py-2 font-medium">Contacts</th>
+              <th class="px-3 py-2 font-medium">Customer contacts</th>
               <th class="px-3 py-2 font-medium">2Y expiration</th>
               <th class="px-3 py-2 font-medium">10Y expiration</th>
               <th class="px-3 py-2 font-medium">Gas sensor expiration</th>
-              <th class="px-3 py-2 font-medium">Delivery</th>
               <th class="px-3 py-2 font-medium">Actions</th>
             </tr>
           </thead>
@@ -411,12 +420,11 @@ const saveClient = async () => {
               </td>
               <td class="px-3 py-2 text-slate-700">
                 <div class="flex flex-col items-start gap-1">
-                  <span
-                    v-for="contact in client.contacts"
-                    :key="contact.id"
-                    class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs"
-                  >
-                    {{ contact.channel }}: {{ contact.value }}
+                  <span class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                    email: {{ client.customerEmail || "-" }}
+                  </span>
+                  <span class="mr-2 inline-flex flex-col rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                    sms/phone: {{ client.customerPhone || "-" }}
                   </span>
                 </div>
               </td>
@@ -434,20 +442,6 @@ const saveClient = async () => {
                 </span>
                 <span v-else>-</span>
                 <span class="block text-xs text-slate-500">{{ client.gasSensorExpirationStatus || "-" }}</span>
-              </td>
-              <td class="px-3 py-2">
-                <span
-                  v-if="client.hasCustomerDeliveryFailure"
-                  class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700"
-                >
-                  failed
-                </span>
-                <span
-                  v-else
-                  class="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700"
-                >
-                  ok
-                </span>
               </td>
               <td class="px-3 py-2">
                 <button
@@ -563,72 +557,28 @@ const saveClient = async () => {
             </div>
           </div>
 
-          <div class="space-y-2 text-sm text-slate-700 md:col-span-2">
-            <div class="flex items-center justify-between gap-3">
-              <span class="font-medium">Contact methods</span>
-              <button
-                type="button"
-                class="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                @click="addContactMethod"
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="space-y-1 text-sm text-slate-700">
+              <span>Customer email</span>
+              <input
+                v-model="form.customerEmail"
+                data-testid="client-form-customer-email"
+                type="email"
+                placeholder="name@example.com"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
               >
-                Add method
-              </button>
-            </div>
+            </label>
 
-            <div
-              v-for="(contact, contactIndex) in editableContacts"
-              :key="contact.id"
-              class="grid gap-1.5 rounded-md border border-slate-200 bg-slate-50 p-2 md:grid-cols-12"
-            >
-              <label class="space-y-1 md:col-span-2">
-                <span class="text-xs text-slate-600">Channel</span>
-                <select
-                  v-model="contact.channel"
-                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
-                >
-                  <option value="email">email</option>
-                  <option value="sms">sms</option>
-                </select>
-              </label>
-
-              <label class="space-y-1 md:col-span-3">
-                <span class="text-xs text-slate-600">Purpose</span>
-                <select
-                  v-model="contact.purpose"
-                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
-                >
-                  <option
-                    v-for="purpose in contactPurposeOptions"
-                    :key="purpose"
-                    :value="purpose"
-                  >
-                    {{ purpose }}
-                  </option>
-                </select>
-              </label>
-
-              <label class="space-y-1 md:col-span-6">
-                <span class="text-xs text-slate-600">Value</span>
-                <input
-                  v-model="contact.value"
-                  :data-testid="`client-form-contact-value-${contactIndex}`"
-                  :type="contact.channel === 'email' ? 'email' : 'text'"
-                  :placeholder="contact.channel === 'sms' ? '+40712345678' : 'name@example.com'"
-                  class="h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
-                >
-              </label>
-
-              <div class="flex items-end justify-end gap-2 md:col-span-1">
-                <button
-                  type="button"
-                  class="h-9 rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                  :disabled="editableContacts.length === 1"
-                  @click="removeContactMethod(contact.id)"
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
+            <label class="space-y-1 text-sm text-slate-700">
+              <span>Customer sms/phone</span>
+              <input
+                v-model="form.customerPhone"
+                data-testid="client-form-customer-phone"
+                type="text"
+                placeholder="+40712345678"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
+              >
+            </label>
           </div>
 
           <label class="space-y-1 text-sm text-slate-700">
@@ -739,23 +689,86 @@ const saveClient = async () => {
         </p>
 
         <div class="mt-auto border-t border-slate-200 px-6 py-4">
+          <div class="flex items-center justify-between gap-3">
+            <button
+              v-if="dialogMode === 'edit' && editingClientId"
+              type="button"
+              data-testid="client-dialog-delete-button"
+              class="rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="savePending"
+              @click="openDeleteDialog({ _id: editingClientId, name: form.name || 'this client' })"
+            >
+              Delete Client
+            </button>
+            <div
+              v-else
+              class="w-0"
+            />
+
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="savePending"
+                @click="closeDialog"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                data-testid="client-form-save"
+                class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="savePending"
+                @click="saveClient"
+              >
+                {{ savePending ? (dialogMode === "create" ? "Creating..." : "Saving...") : "Save" }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      v-if="deleteClientTarget"
+      data-testid="client-delete-modal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4"
+      @click.self="closeDeleteDialog"
+    >
+      <section class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div class="border-b border-slate-200 px-6 py-4">
+          <h2 class="text-lg font-semibold text-slate-900">Delete Client</h2>
+        </div>
+
+        <div class="space-y-3 px-6 py-4 text-sm text-slate-700">
+          <p>
+            Delete <strong>{{ deleteClientTarget.name }}</strong>?
+          </p>
+          <p>
+            This only works when the client has no related jobs. Notification history will be kept.
+          </p>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
           <button
             type="button"
+            data-testid="client-delete-cancel"
             class="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="savePending"
-            @click="closeDialog"
+            :disabled="deletePending"
+            @click="closeDeleteDialog"
           >
             Cancel
           </button>
 
           <button
             type="button"
-            data-testid="client-form-save"
-            class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="savePending"
-            @click="saveClient"
+            data-testid="client-delete-confirm"
+            class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="deletePending"
+            @click="deleteClient"
           >
-            {{ savePending ? (dialogMode === "create" ? "Creating..." : "Saving...") : "Save" }}
+            {{ deletePending ? "Deleting..." : "Delete Client" }}
           </button>
         </div>
       </section>

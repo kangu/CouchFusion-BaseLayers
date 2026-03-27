@@ -28,6 +28,14 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
         });
       }`,
     },
+    jobs_by_client: {
+      map: `function (doc) {
+        if (doc.type !== 'maintenance_job' || !doc.clientId) return;
+        emit([doc.clientId, doc._id], {
+          status: doc.status || null
+        });
+      }`,
+    },
     notifications_by_created_at: {
       map: `function (doc) {
         if (doc.type !== 'maintenance_notification' || !doc.createdAt) return;
@@ -53,6 +61,14 @@ export const maintenanceDesignDocument: CouchDBDesignDocument = {
         if (doc.recipientRole !== 'customer') return;
         if (!doc.relatedId) return;
         emit(doc.relatedId, 1);
+      }`,
+    },
+    notifications_by_related: {
+      map: `function (doc) {
+        if (doc.type !== 'maintenance_notification' || !doc.relatedId) return;
+        emit([doc.relatedId, doc._id], {
+          status: doc.status || 'queued'
+        });
       }`,
     },
   },
