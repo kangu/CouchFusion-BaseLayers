@@ -5,16 +5,19 @@ import { getDocument } from '#database/utils/couchdb'
 export interface PaymentOptions {
   description?: string
   metadata?: Record<string, any>
-  provider?: 'strike' | 'alby'
+  provider?: 'strike' | 'alby' | 'blink'
 }
 
 export interface PaymentInfo {
   id: string
+  invoiceId: string
   paymentRequest: string
   amount: number
   currency: string
   status: 'pending' | 'paid' | 'expired' | 'cancelled'
   expiresAt?: Date
+  provider?: 'strike' | 'alby' | 'blink'
+  paymentContext?: Record<string, any>
 }
 
 export interface PaymentError {
@@ -63,7 +66,6 @@ export function useLightning() {
     loading = true
 
     try {
-      // console.log('Creating invoice', amount, options)
       const invoice = await createLightningInvoice(config, {
         amount,
         currency: 'sats',
@@ -71,17 +73,17 @@ export function useLightning() {
         metadata: options.metadata,
         provider: options.provider
       })
-        console.log('Haide ba', invoice)
 
       const payment: PaymentInfo = {
         id: invoice.invoiceId,
+        invoiceId: invoice.invoiceId,
         paymentRequest: invoice.paymentRequest || '',
         amount: invoice.amount,
         currency: invoice.currency,
         status: invoice.status,
         expiresAt: invoice.expiresAt,
-        liquidAddress: invoice.liquidAddress,
-        swapId: invoice.swapId
+        provider: invoice.provider,
+        paymentContext: invoice.paymentContext
       }
 
       currentPayment = payment

@@ -8,6 +8,7 @@ import {
   validateCouchDBEnvironment,
 } from "#database/utils/couchdb";
 import { lightningDesignDocument } from "../../utils/design-documents";
+import { createBlinkProvider } from "../../providers/blink";
 import { createStrikeProvider } from "../../providers/strike";
 import type { LightningConfig } from "../../types/lightning";
 
@@ -66,6 +67,41 @@ async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
   }
 }
 
+async function initializeBlinkWebhook(runtimeConfig: any): Promise<void> {
+  console.log("🔔 Initializing Blink webhook subscription...");
+
+  try {
+    const lightningConfig = runtimeConfig.lightning as LightningConfig;
+    const blinkConfig = lightningConfig.providers?.blink;
+
+    if (!blinkConfig) {
+      console.warn(
+        "⚠️ Blink provider configuration not found, skipping webhook subscription setup",
+      );
+      return;
+    }
+
+    const webhookUrl =
+      blinkConfig.webhookUrl ||
+      (process.env.NUXT_PUBLIC_SITE_URL
+        ? `${process.env.NUXT_PUBLIC_SITE_URL}/api/webhooks/blink`
+        : null);
+
+    if (!webhookUrl) {
+      console.warn(
+        "⚠️ NUXT_PUBLIC_SITE_URL not set and no Blink webhook URL configured, skipping webhook setup",
+      );
+      return;
+    }
+
+    const blinkProvider = createBlinkProvider(blinkConfig);
+    await blinkProvider.setupWebhookSubscription?.(webhookUrl);
+    console.log("🎉 Blink webhook subscription initialized successfully");
+  } catch (error) {
+    console.error("💥 Blink webhook subscription initialization failed:", error);
+  }
+}
+
 /**
  * Initialize CouchDB for lightning layer
  */
@@ -99,6 +135,8 @@ async function initializeLightningLayer(): Promise<void> {
     // initialize provider-specific webhook setup
     if (runtimeConfig.lightning.defaultProvider === "strike") {
       await initializeStrikeWebhook(runtimeConfig);
+    } else if (runtimeConfig.lightning.defaultProvider === "blink") {
+      await initializeBlinkWebhook(runtimeConfig);
     }
   } catch (error) {
     console.error("💥 CouchDB lightning layer initialization failed:", error);

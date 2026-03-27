@@ -33,10 +33,12 @@ export function createAlbyProvider(config: AlbyConfig): LightningProvider {
 
     return {
       invoiceId: res.payment_hash,
+      id: res.payment_hash,
       paymentRequest: res.payment_request,
       amount: request.amount,
       currency: request.currency || 'sats',
       status: 'pending',
+      provider: 'alby',
       expiresAt: res.expires_at ? new Date(res.expires_at) : undefined
     }
   }
@@ -48,10 +50,12 @@ export function createAlbyProvider(config: AlbyConfig): LightningProvider {
 
     return {
       invoiceId,
+      id: invoiceId,
       paymentRequest: res.payment_request,
       amount: res.amount || 0,
       currency: 'sats',
       status: settled ? 'paid' : expired ? 'expired' : 'pending',
+      provider: 'alby',
       expiresAt: res.expires_at ? new Date(res.expires_at) : undefined
     }
   }

@@ -8,11 +8,14 @@ export interface InvoiceRequest {
 
 export interface InvoiceResponse {
   invoiceId: string
+  id?: string
   paymentRequest?: string
   amount: number
   currency: string
   status: 'pending' | 'paid' | 'expired' | 'cancelled'
   expiresAt?: Date
+  provider?: 'strike' | 'alby' | 'blink'
+  paymentContext?: Record<string, any>
   // Quote data (Strike provider)
   quoteId?: string
   rate?: number
@@ -55,10 +58,19 @@ export interface AlbyConfig {
   webhookSecret?: string
 }
 
+export interface BlinkConfig {
+  apiUrl?: string
+  apiKey: string
+  walletId?: string
+  webhookUrl?: string
+  webhookEndpointId?: string
+}
+
 export interface LightningConfig {
-  defaultProvider: 'strike' | 'alby'
+  defaultProvider: 'strike' | 'alby' | 'blink'
   providers: {
     strike?: StrikeConfig
     alby?: AlbyConfig
+    blink?: BlinkConfig
   }
 }

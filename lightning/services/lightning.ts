@@ -1,6 +1,7 @@
 import type { LightningProvider, LightningConfig, InvoiceRequest, InvoiceResponse } from '../types/lightning'
 import { createStrikeProvider } from '../providers/strike'
 import { createAlbyProvider } from '../providers/alby'
+import { createBlinkProvider } from '../providers/blink'
 
 export function createLightningService(config: LightningConfig) {
   const providerInstances = new Map<string, LightningProvider>()
@@ -29,6 +30,13 @@ export function createLightningService(config: LightningConfig) {
           throw new Error('Alby provider not configured')
         }
         provider = createAlbyProvider(config.providers.alby)
+        break
+
+      case 'blink':
+        if (!config.providers.blink) {
+          throw new Error('Blink provider not configured')
+        }
+        provider = createBlinkProvider(config.providers.blink)
         break
         
       default:
