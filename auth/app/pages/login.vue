@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
+import { resolveLoginRedirectTarget } from "../utils/login-redirect";
 
 definePageMeta({
     layout: false,
@@ -9,10 +10,14 @@ definePageMeta({
 const authStore = useAuthStore();
 const { isAuthenticated, loading } = storeToRefs(authStore);
 const router = useRouter();
+const runtimeConfig = useRuntimeConfig();
 
 const getRedirectTarget = () => {
   const redirectTo = useCookie("redirectTo");
-  const target = redirectTo.value || "/builder";
+  const target = resolveLoginRedirectTarget({
+    redirectTo: redirectTo.value,
+    defaultTarget: runtimeConfig.public?.authDefaultRedirectPath,
+  });
   redirectTo.value = null;
   return target;
 };
@@ -102,7 +107,7 @@ useHead(() => ({
     <main class="login-page">
         <section class="login-card">
             <header class="login-header">
-                <h1>CouchFusion Login</h1>
+                <h1>{{ runtimeConfig.public?.authLoginHeading || "CouchFusion Login" }}</h1>
                 <p>Sign in with your editor credentials.</p>
             </header>
             <form class="login-form" @submit.prevent="handleSubmit">

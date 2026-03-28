@@ -61,6 +61,8 @@ export default defineNuxtConfig({
       ) || 300,
     public: {
       authLoginPath: "/login",
+      authDefaultRedirectPath: "/builder",
+      authLoginHeading: "CouchFusion Login",
     },
   },
 
