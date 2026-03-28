@@ -6,6 +6,7 @@ import type { CouchTestHarness } from '../../_tests/utils/couchdb'
 import { createEvent } from 'h3'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
+import { putDocument } from '#database/utils/couchdb'
 
 const runtimeConfig = {
   dbLoginPrefix: '',
@@ -111,6 +112,84 @@ describe('content pages API handlers', () => {
     expect(response.success).toBe(true)
     expect(response.page.path).toBe('/welcome')
     expect(response.page.title).toBe('Welcome')
+  })
+
+  it('fetches the root page from a legacy page-/ document id', async () => {
+    const context = contentHarness.getContext()
+    await putDocument(context.databaseName, {
+      _id: 'page-/',
+      title: 'Legacy Home',
+      layout: { spacing: 'none' },
+      body: { type: 'minimal', value: [] },
+      path: '/',
+      seo: { title: 'Legacy Home', description: 'Legacy root page' },
+      stem: 'index',
+      meta: {},
+      extension: 'md',
+      navigation: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      type: 'page',
+    })
+
+    const handler = (await import('../server/api/content/pages.get')).default
+    const event = createMockEvent({
+      query: { path: '/' },
+    })
+
+    const response = await handler(event)
+
+    expect(response.success).toBe(true)
+    expect(response.page.path).toBe('/')
+    expect(response.page.title).toBe('Legacy Home')
+    expect(response.page.id).toBe('page-/')
+  })
+
+  it('updates the root page using the existing legacy page-/ document id', async () => {
+    const context = contentHarness.getContext()
+    await putDocument(context.databaseName, {
+      _id: 'page-/',
+      title: 'Legacy Home',
+      layout: { spacing: 'none' },
+      body: { type: 'minimal', value: [] },
+      path: '/',
+      seo: { title: 'Legacy Home', description: 'Legacy root page' },
+      stem: 'index',
+      meta: {},
+      extension: 'md',
+      navigation: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      type: 'page',
+    })
+
+    const admin = await seedAdminUser(contentHarness, { username: 'root-editor-user' })
+    const cookieHeader = admin.setCookie?.split(';')[0] ?? ''
+
+    const handler = (await import('../server/api/content/pages.put')).default
+    const event = createMockEvent({
+      method: 'PUT',
+      body: {
+        document: {
+          path: '/',
+          title: 'Updated Legacy Home',
+          layout: { spacing: 'cozy' },
+          body: { type: 'minimal', value: [] },
+          seo: { title: 'Updated Legacy Home', description: 'Updated root page' },
+          meta: {},
+          navigation: true,
+        },
+      },
+      headers: {
+        cookie: cookieHeader,
+      },
+    })
+
+    const response = await handler(event)
+
+    expect(response.success).toBe(true)
+    expect(response.page._id).toBe('page-/')
+    expect(response.page.title).toBe('Updated Legacy Home')
   })
 
   it('creates a new page when admin authenticated', async () => {

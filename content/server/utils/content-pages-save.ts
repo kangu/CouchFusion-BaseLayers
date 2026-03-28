@@ -83,6 +83,25 @@ const getIncomingFixedBodyPaths = (document: Record<string, any>): string[] => {
   return normalizeFixedBodyPaths(rawI18n.fixedBodyPaths)
 }
 
+const buildRootLegacyDocumentIds = (
+  normalizedPath: string,
+  locale: string,
+  defaultLocale: string,
+): { legacyMasterId: string | null; legacyLocaleId: string | null } => {
+  if (normalizedPath !== '/') {
+    return {
+      legacyMasterId: null,
+      legacyLocaleId: null,
+    }
+  }
+
+  const legacyMasterId = 'page-/'
+  return {
+    legacyMasterId,
+    legacyLocaleId: locale === defaultLocale ? legacyMasterId : `${legacyMasterId}::${locale}`,
+  }
+}
+
 const toPersistableDocument = (document: Record<string, any>): Record<string, any> => {
   const next = clonePageDocument(document)
   next.type = 'page'
@@ -164,6 +183,17 @@ export const saveLocalizedPageDocument = async (
 
   const databaseName = getContentDatabaseName()
   const documentIds = buildLocaleDocumentIds(normalizedPath, contentI18nConfig)
+  const { legacyMasterId, legacyLocaleId } = buildRootLegacyDocumentIds(
+    normalizedPath,
+    requestedLocale,
+    contentI18nConfig.defaultLocale,
+  )
+  if (legacyMasterId && !documentIds.includes(legacyMasterId)) {
+    documentIds.push(legacyMasterId)
+  }
+  if (legacyLocaleId && !documentIds.includes(legacyLocaleId)) {
+    documentIds.push(legacyLocaleId)
+  }
   const allDocsResponse = await getAllDocs(databaseName, {
     keys: documentIds,
     include_docs: true,
@@ -179,8 +209,14 @@ export const saveLocalizedPageDocument = async (
     contentI18nConfig,
   )
 
-  const masterExisting = docsById.get(masterId) ?? null
-  const localeExisting = docsById.get(localeId) ?? null
+  const masterExisting = docsById.get(masterId) ??
+    (legacyMasterId ? docsById.get(legacyMasterId) : null) ??
+    null
+  const localeExisting = docsById.get(localeId) ??
+    (legacyLocaleId ? docsById.get(legacyLocaleId) : null) ??
+    null
+  const effectiveMasterId = masterExisting?._id ?? masterId
+  const effectiveLocaleId = localeExisting?._id ?? localeId
 
   if (options.isCreate) {
     if (requestedLocale === defaultLocale && masterExisting) {
@@ -223,7 +259,7 @@ export const saveLocalizedPageDocument = async (
     const masterUpdated = sanitiseIncomingDocument(payload.document, {
       isCreate: !masterExisting,
       existing: masterExisting ?? undefined,
-      documentId: masterId,
+      documentId: effectiveMasterId,
     }) as unknown as Record<string, any>
     const masterDocument = clonePageDocument(masterUpdated)
     masterDocument.path = normalizedPath
@@ -241,11 +277,11 @@ export const saveLocalizedPageDocument = async (
     mergedUpdatedAt[defaultLocale] = now
 
     masterDocument.updatedAt = now
-    ensureDocumentLocalizationMeta(masterDocument, {
-      locale: defaultLocale,
-      masterId,
-      basePath: normalizedPath,
-      defaultLocale,
+      ensureDocumentLocalizationMeta(masterDocument, {
+        locale: defaultLocale,
+        masterId: effectiveMasterId,
+        basePath: normalizedPath,
+        defaultLocale,
       touchedAt: now,
       fixedBodyPaths,
       mergedUpdatedAtByLocale: mergedUpdatedAt,
@@ -300,7 +336,7 @@ export const saveLocalizedPageDocument = async (
 
       ensureDocumentLocalizationMeta(translationDocument, {
         locale,
-        masterId,
+        masterId: effectiveMasterId,
         basePath: normalizedPath,
         defaultLocale,
         touchedAt:
@@ -321,7 +357,7 @@ export const saveLocalizedPageDocument = async (
 
     ensureDocumentLocalizationMeta(masterDocument, {
       locale: defaultLocale,
-      masterId,
+      masterId: effectiveMasterId,
       basePath: normalizedPath,
       defaultLocale,
       touchedAt: now,
@@ -345,7 +381,7 @@ export const saveLocalizedPageDocument = async (
     const localeUpdated = sanitiseIncomingDocument(payload.document, {
       isCreate: !localeExisting,
       existing: localeBase,
-      documentId: localeId,
+      documentId: effectiveLocaleId,
     }) as unknown as Record<string, any>
     const localeDocument = clonePageDocument(localeUpdated)
     localeDocument.path = buildLocalizedPath(
@@ -396,7 +432,7 @@ export const saveLocalizedPageDocument = async (
 
     ensureDocumentLocalizationMeta(localeDocument, {
       locale: requestedLocale,
-      masterId,
+      masterId: effectiveMasterId,
       basePath: normalizedPath,
       defaultLocale,
       touchedAt: now,
@@ -413,7 +449,7 @@ export const saveLocalizedPageDocument = async (
     if (masterBodyChanged) {
       ensureDocumentLocalizationMeta(activeMaster, {
         locale: defaultLocale,
-        masterId,
+        masterId: effectiveMasterId,
         basePath: normalizedPath,
         defaultLocale,
         touchedAt: mergedUpdatedAt[defaultLocale] ?? now,
@@ -469,7 +505,7 @@ export const saveLocalizedPageDocument = async (
 
       ensureDocumentLocalizationMeta(translationDocument, {
         locale,
-        masterId,
+        masterId: effectiveMasterId,
         basePath: normalizedPath,
         defaultLocale,
         touchedAt:
@@ -500,12 +536,12 @@ export const saveLocalizedPageDocument = async (
     persistableDocuments.map((doc) => [doc._id as string, doc]),
   )
   const latestMaster =
-    docsByPersistedId.get(masterId) ??
+    docsByPersistedId.get(effectiveMasterId) ??
     (currentMaster ? toPersistableDocument(currentMaster) : null)
   const latestLocale =
     requestedLocale === defaultLocale
       ? latestMaster
-      : docsByPersistedId.get(localeId) ??
+      : docsByPersistedId.get(effectiveLocaleId) ??
         (localeExisting ? toPersistableDocument(localeExisting) : null)
 
   const responseLocaleDocument = latestLocale && latestMaster

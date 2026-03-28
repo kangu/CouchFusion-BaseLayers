@@ -68,6 +68,25 @@ const mapRowsById = (rows: Array<{ id?: string; doc?: Record<string, any> }>): M
     return result
 }
 
+const buildRootLegacyDocumentIds = (
+    normalizedPath: string,
+    locale: string,
+    defaultLocale: string,
+): { legacyMasterId: string | null; legacyLocaleId: string | null } => {
+    if (normalizedPath !== '/') {
+        return {
+            legacyMasterId: null,
+            legacyLocaleId: null,
+        }
+    }
+
+    const legacyMasterId = 'page-/'
+    return {
+        legacyMasterId,
+        legacyLocaleId: locale === defaultLocale ? legacyMasterId : `${legacyMasterId}::${locale}`,
+    }
+}
+
 export default defineEventHandler(async (event) => {
     try {
         setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
@@ -91,6 +110,17 @@ export default defineEventHandler(async (event) => {
                 contentI18nConfig,
             )
             const documentIds = buildLocaleDocumentIds(normalizedPath, contentI18nConfig)
+            const { legacyMasterId, legacyLocaleId } = buildRootLegacyDocumentIds(
+                normalizedPath,
+                locale,
+                contentI18nConfig.defaultLocale,
+            )
+            if (legacyMasterId && !documentIds.includes(legacyMasterId)) {
+                documentIds.push(legacyMasterId)
+            }
+            if (legacyLocaleId && !documentIds.includes(legacyLocaleId)) {
+                documentIds.push(legacyLocaleId)
+            }
 
             const allDocsResponse = await getAllDocs(databaseName, {
                 keys: documentIds,
@@ -107,7 +137,9 @@ export default defineEventHandler(async (event) => {
             )
             const localeId = getLocaleDocumentId(normalizedPath, locale, contentI18nConfig)
 
-            const masterDocument = docsById.get(masterId)
+            const masterDocument = docsById.get(masterId) ?? (
+                legacyMasterId ? docsById.get(legacyMasterId) : undefined
+            )
 
             if (!masterDocument) {
                 throw createError({
@@ -119,7 +151,9 @@ export default defineEventHandler(async (event) => {
             const localeDocument =
                 locale === contentI18nConfig.defaultLocale
                     ? masterDocument
-                    : docsById.get(localeId) ?? null
+                    : docsById.get(localeId) ??
+                      (legacyLocaleId ? docsById.get(legacyLocaleId) : null) ??
+                      null
 
             const masterMeta = readContentDocumentLocalizationMeta(masterDocument, contentI18nConfig)
             const localeMeta = localeDocument
