@@ -40,12 +40,25 @@ function formatErrors(errors: BlinkError[] | undefined): string {
   }
 
   return errors
-    .map((error) => error.message || error.code || "Unknown error")
+    .map((error) => {
+      if (error.message && error.code) {
+        return `${error.message} (code: ${error.code})`;
+      }
+
+      return error.message || error.code || "Unknown error";
+    })
     .join("; ");
+}
+
+function isAuthorizationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.includes("AuthorizationError") ||
+    message.toLowerCase().includes("not authorized");
 }
 
 export function createBlinkProvider(config: BlinkConfig): LightningProvider {
   const baseUrl = config.apiUrl || "https://api.blink.sv/graphql";
+  let cachedWebhookEndpointId = config.webhookEndpointId;
 
   const request = async <T>(
     query: string,
@@ -196,36 +209,30 @@ export function createBlinkProvider(config: BlinkConfig): LightningProvider {
   const getInvoiceStatus = async (
     invoiceId: string,
   ): Promise<InvoiceResponse> => {
-    const walletId = await resolveWalletId(config.walletId);
     const data = await request<{
-      wallet?: {
-        invoiceByPaymentHash?: {
-          paymentHash?: string;
-          paymentRequest?: string;
-          paymentStatus?: string;
-          satoshis?: number;
-          externalId?: string;
-        };
+      lnInvoicePaymentStatusByHash?: {
+        paymentHash?: string;
+        paymentRequest?: string;
+        status?: string;
+        paymentPreimage?: string;
       };
     }>(
-      `query InvoiceByPaymentHash($walletId: WalletId!, $paymentHash: PaymentHash!) {
-        wallet(id: $walletId) {
-          invoiceByPaymentHash(paymentHash: $paymentHash) {
-            paymentHash
-            paymentRequest
-            paymentStatus
-            satoshis
-            externalId
-          }
+      `query lnInvoicePaymentStatusByHash($input: LnInvoicePaymentStatusByHashInput!) {
+        lnInvoicePaymentStatusByHash(input: $input) {
+          paymentHash
+          paymentRequest
+          status
+          paymentPreimage
         }
       }`,
       {
-        walletId,
-        paymentHash: invoiceId,
+        input: {
+          paymentHash: invoiceId,
+        },
       },
     );
 
-    const invoice = data.wallet?.invoiceByPaymentHash;
+    const invoice = data.lnInvoicePaymentStatusByHash;
     if (!invoice?.paymentHash) {
       throw new Error(`Blink invoice not found for payment hash ${invoiceId}`);
     }
@@ -234,13 +241,12 @@ export function createBlinkProvider(config: BlinkConfig): LightningProvider {
       invoiceId: invoice.paymentHash,
       id: invoice.paymentHash,
       paymentRequest: invoice.paymentRequest,
-      amount: invoice.satoshis || 0,
+      amount: 0,
       currency: "sats",
-      status: mapBlinkStatus(invoice.paymentStatus),
+      status: mapBlinkStatus(invoice.status),
       provider: "blink",
       paymentContext: {
-        walletId,
-        externalId: invoice.externalId,
+        walletId: config.walletId,
       },
     };
   };
@@ -248,17 +254,41 @@ export function createBlinkProvider(config: BlinkConfig): LightningProvider {
   const validateWebhook = (): boolean => true;
 
   const processWebhook = async (payload: any): Promise<WebhookEvent | null> => {
+    const paymentHash = payload?.transaction?.initiationVia?.paymentHash;
+    const transactionStatus = payload?.transaction?.status;
+
+    console.log("Blink webhook received:", {
+      eventType: payload?.eventType || null,
+      paymentHash: paymentHash || null,
+      transactionStatus: transactionStatus || null,
+    });
+
     if (payload?.eventType !== "receive.lightning") {
+      console.log("Blink webhook ignored:", {
+        reason: "unsupported_event_type",
+        eventType: payload?.eventType || null,
+      });
       return null;
     }
 
-    const paymentHash = payload?.transaction?.initiationVia?.paymentHash;
-    const transactionStatus = payload?.transaction?.status;
     if (!paymentHash || transactionStatus !== "success") {
+      console.log("Blink webhook ignored:", {
+        reason: !paymentHash ? "missing_payment_hash" : "unsupported_transaction_status",
+        eventType: payload?.eventType || null,
+        paymentHash: paymentHash || null,
+        transactionStatus: transactionStatus || null,
+      });
       return null;
     }
 
     const invoice = await getInvoiceStatus(paymentHash);
+    console.log("Blink webhook invoice status resolved:", {
+      invoiceId: paymentHash,
+      status: invoice.status,
+      walletId: invoice.paymentContext?.walletId || null,
+      externalId: invoice.paymentContext?.externalId || null,
+    });
+
     return {
       invoiceId: paymentHash,
       status: invoice.status,
@@ -277,44 +307,76 @@ export function createBlinkProvider(config: BlinkConfig): LightningProvider {
   };
 
   const setupWebhookSubscription = async (webhookUrl: string) => {
-    if (config.webhookEndpointId) {
-      return { success: true, endpointId: config.webhookEndpointId };
+    if (cachedWebhookEndpointId) {
+      return { success: true, endpointId: cachedWebhookEndpointId };
     }
 
-    const data = await request<{
-      callbackEndpointAdd?: {
-        id?: string;
-        errors?: BlinkError[];
-      };
-    }>(
-      `mutation CallbackEndpointAdd($input: CallbackEndpointAddInput!) {
-        callbackEndpointAdd(input: $input) {
-          id
-          errors {
-            code
-            message
-            path
+    try {
+      const existingEndpoints = await listWebhookSubscriptions();
+      const matchingEndpoint = existingEndpoints.find(
+        (endpoint: { id: string; url: string }) => endpoint.url === webhookUrl,
+      );
+
+      if (matchingEndpoint?.id) {
+        cachedWebhookEndpointId = matchingEndpoint.id;
+        return {
+          success: true,
+          endpointId: matchingEndpoint.id,
+          reused: true,
+        };
+      }
+    } catch (error) {
+      if (!isAuthorizationError(error)) {
+        throw error;
+      }
+    }
+
+    try {
+      const data = await request<{
+        callbackEndpointAdd?: {
+          id?: string;
+          errors?: BlinkError[];
+        };
+      }>(
+        `mutation CallbackEndpointAdd($input: CallbackEndpointAddInput!) {
+          callbackEndpointAdd(input: $input) {
+            id
+            errors {
+              code
+              message
+              path
+            }
           }
-        }
-      }`,
-      {
-        input: {
-          url: webhookUrl,
+        }`,
+        {
+          input: {
+            url: webhookUrl,
+          },
         },
-      },
-    );
+      );
 
-    const result = data.callbackEndpointAdd;
-    if (result?.errors?.length) {
-      throw new Error(`Blink API error: ${formatErrors(result.errors)}`);
+      const result = data.callbackEndpointAdd;
+      if (result?.errors?.length) {
+        throw new Error(`Blink API error: ${formatErrors(result.errors)}`);
+      }
+
+      if (!result?.id) {
+        throw new Error("Blink API error: callback endpoint ID missing");
+      }
+
+      cachedWebhookEndpointId = result.id;
+      return { success: true, endpointId: result.id };
+    } catch (error) {
+      if (isAuthorizationError(error)) {
+        return {
+          success: false,
+          skipped: true,
+          reason: "authorization_error",
+        };
+      }
+
+      throw error;
     }
-
-    if (!result?.id) {
-      throw new Error("Blink API error: callback endpoint ID missing");
-    }
-
-    config.webhookEndpointId = result.id;
-    return { success: true, endpointId: result.id };
   };
 
   const listWebhookSubscriptions = async () => {

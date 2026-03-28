@@ -95,7 +95,13 @@ async function initializeBlinkWebhook(runtimeConfig: any): Promise<void> {
     }
 
     const blinkProvider = createBlinkProvider(blinkConfig);
-    await blinkProvider.setupWebhookSubscription?.(webhookUrl);
+    const result = await blinkProvider.setupWebhookSubscription?.(webhookUrl);
+    if (result && result.success === false && result.skipped) {
+      console.warn(
+        "⚠️ Blink API key cannot manage callback endpoints; continuing without auto-created webhooks",
+      );
+      return;
+    }
     console.log("🎉 Blink webhook subscription initialized successfully");
   } catch (error) {
     console.error("💥 Blink webhook subscription initialization failed:", error);

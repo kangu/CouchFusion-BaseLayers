@@ -88,3 +88,15 @@ Covered by tests:
 - Blink BTC Lightning receive docs: `https://dev.blink.sv/api/btc-ln-receive`
 - Blink webhooks docs: `https://dev.blink.sv/api/webhooks`
 - Blink public GraphQL reference: `https://dev.blink.sv/public-api-reference.html`
+
+## Operational Note
+
+Blink callback endpoint management can be denied even when invoice creation is allowed. When Blink returns an authorization error for `callbackEndpointAdd`, the layer now logs a warning and continues without auto-created webhooks instead of surfacing a startup error.
+
+## Runtime Config Note
+
+Blink webhook setup must not mutate `runtimeConfig.lightning.providers.blink`. The provider now caches created callback endpoint ids in provider-local state so Nuxt read-only runtime config objects do not throw during startup.
+
+## Observability Note
+
+Blink webhook processing now logs the received event shape, ignored-event reasons, resolved invoice status, route-level processing start, invoice/order update steps, successful completion, and failures. Logs intentionally avoid raw payload dumps and sensitive values.

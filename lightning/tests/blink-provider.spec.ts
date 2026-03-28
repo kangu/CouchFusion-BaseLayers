@@ -128,17 +128,15 @@ describe("blink provider", () => {
     expect(invoice.paymentContext?.walletId).toBe("btc-wallet");
   });
 
-  it("maps invoice status from invoiceByPaymentHash", async () => {
+  it("maps invoice status from lnInvoicePaymentStatusByHash", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         data: {
-          wallet: {
-            invoiceByPaymentHash: {
-              paymentHash: "hash_paid",
-              paymentRequest: "lnbc1paid",
-              paymentStatus: "PAID"
-            }
+          lnInvoicePaymentStatusByHash: {
+            paymentHash: "hash_paid",
+            paymentRequest: "lnbc1paid",
+            status: "PAID"
           }
         }
       })
@@ -153,6 +151,7 @@ describe("blink provider", () => {
     });
 
     const invoice = await provider.getInvoiceStatus("hash_paid");
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
 
     expect(invoice).toMatchObject({
       invoiceId: "hash_paid",
@@ -160,19 +159,25 @@ describe("blink provider", () => {
       status: "paid",
       provider: "blink"
     });
+    expect(body.query).toContain("lnInvoicePaymentStatusByHash");
+    expect(body.variables).toEqual({
+      input: {
+        paymentHash: "hash_paid"
+      }
+    });
   });
 
   it("re-fetches invoice status for receive.lightning webhooks", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         data: {
-          wallet: {
-            invoiceByPaymentHash: {
-              paymentHash: "hash_webhook",
-              paymentRequest: "lnbc1paid",
-              paymentStatus: "PAID"
-            }
+          lnInvoicePaymentStatusByHash: {
+            paymentHash: "hash_webhook",
+            paymentRequest: "lnbc1paid",
+            status: "PAID"
           }
         }
       })
@@ -207,11 +212,38 @@ describe("blink provider", () => {
         eventType: "receive.lightning"
       }
     });
+    expect(console.log).toHaveBeenCalledWith(
+      "Blink webhook received:",
+      expect.objectContaining({
+        eventType: "receive.lightning",
+        paymentHash: "hash_webhook",
+        transactionStatus: "success",
+      }),
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      "Blink webhook invoice status resolved:",
+      expect.objectContaining({
+        invoiceId: "hash_webhook",
+        status: "paid",
+      }),
+    );
   });
 
   it("manages callback endpoints through GraphQL", async () => {
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            me: {
+              defaultAccount: {
+                callbackEndpoints: []
+              }
+            }
+          }
+        })
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -265,6 +297,131 @@ describe("blink provider", () => {
       { id: "ep_123", url: "https://example.com/api/webhooks/blink" }
     ]);
     expect(deleted).toEqual({ success: true, endpointId: "ep_123" });
+  });
+
+  it("reuses an existing callback endpoint for the same webhook url", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            me: {
+              defaultAccount: {
+                callbackEndpoints: [
+                  { id: "ep_existing", url: "https://example.com/api/webhooks/blink" },
+                ],
+              },
+            },
+          },
+        }),
+      });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createBlinkProvider } = await import("../providers/blink");
+    const provider = createBlinkProvider({
+      apiKey: "blink_key",
+    });
+
+    const created = await provider.setupWebhookSubscription?.(
+      "https://example.com/api/webhooks/blink",
+    );
+
+    expect(created).toEqual({ success: true, endpointId: "ep_existing", reused: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.query).toContain("callbackEndpoints");
+  });
+
+  it("skips webhook auto-registration when the API key cannot manage callback endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        errors: [
+          {
+            message:
+              "Unexpected error occurred, please try again or contact support if it persists",
+            code: "AuthorizationError: not authorized to execute mutations",
+          },
+        ],
+      }),
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createBlinkProvider } = await import("../providers/blink");
+    const provider = createBlinkProvider({
+      apiKey: "blink_key",
+    });
+
+    await expect(
+      provider.setupWebhookSubscription?.(
+        "https://example.com/api/webhooks/blink",
+      ),
+    ).resolves.toEqual({
+      success: false,
+      skipped: true,
+      reason: "authorization_error",
+    });
+  });
+
+  it("does not mutate a read-only blink config object when caching webhook endpoint ids", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          callbackEndpointAdd: {
+            id: "ep_readonly",
+            errors: [],
+          },
+        },
+      }),
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createBlinkProvider } = await import("../providers/blink");
+    const provider = createBlinkProvider(
+      Object.freeze({
+        apiKey: "blink_key",
+      }),
+    );
+
+    await expect(
+      provider.setupWebhookSubscription?.(
+        "https://example.com/api/webhooks/blink",
+      ),
+    ).resolves.toEqual({
+      success: true,
+      endpointId: "ep_readonly",
+    });
+  });
+
+  it("logs why a Blink webhook event was ignored", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const { createBlinkProvider } = await import("../providers/blink");
+    const provider = createBlinkProvider({
+      apiKey: "blink_key",
+      walletId: "btc-wallet",
+    });
+
+    const result = await provider.processWebhook({
+      eventType: "wallet",
+      transaction: {
+        status: "success",
+      },
+    });
+
+    expect(result).toBeNull();
+    expect(console.log).toHaveBeenCalledWith(
+      "Blink webhook ignored:",
+      expect.objectContaining({
+        reason: "unsupported_event_type",
+        eventType: "wallet",
+      }),
+    );
   });
 
   it("registers blink in the lightning service", async () => {
