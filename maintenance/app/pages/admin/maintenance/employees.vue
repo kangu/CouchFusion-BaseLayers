@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { getEmployeeDisplayLabel } from "#maintenance/utils/employee-display";
+
 interface Employee {
   name: string;
   email: string | null;
+  fullName: string | null;
   roles: string[];
 }
 
@@ -25,6 +28,7 @@ const editingEmployee = ref<Employee | null>(null);
 const form = reactive({
   username: "",
   email: "",
+  fullName: "",
   password: "",
 });
 
@@ -60,6 +64,7 @@ const stripPrefix = (name: string) => {
 const resetForm = () => {
   form.username = "";
   form.email = "";
+  form.fullName = "";
   form.password = "";
   editingEmployee.value = null;
 };
@@ -75,6 +80,7 @@ const openEditDialog = (employee: Employee) => {
   editingEmployee.value = employee;
   form.username = stripPrefix(employee.name);
   form.email = employee.email ?? "";
+  form.fullName = employee.fullName ?? "";
   isDialogOpen.value = true;
 };
 
@@ -101,6 +107,7 @@ const saveEmployee = async () => {
           credentials: "include",
           body: {
             email: form.email.trim() || null,
+            fullName: form.fullName.trim() || null,
           },
         },
       );
@@ -111,6 +118,7 @@ const saveEmployee = async () => {
         body: {
           username: form.username.trim(),
           email: form.email.trim() || null,
+          fullName: form.fullName.trim() || null,
           password: form.password || null,
         },
       });
@@ -127,7 +135,8 @@ const saveEmployee = async () => {
 };
 
 const deleteEmployee = async (employee: Employee) => {
-  if (!confirm(`Are you sure you want to delete employee "${employee.name}"?`)) {
+  const employeeLabel = getEmployeeDisplayLabel(employee, stripPrefix(employee.name));
+  if (!confirm(`Are you sure you want to delete employee "${employeeLabel}"?`)) {
     return;
   }
 
@@ -188,6 +197,7 @@ const deleteEmployee = async (employee: Employee) => {
         <thead class="bg-slate-50 text-left text-slate-600">
           <tr>
             <th class="px-3 py-2 font-medium">Username</th>
+            <th class="px-3 py-2 font-medium">Full name</th>
             <th class="px-3 py-2 font-medium">Email</th>
             <th class="px-3 py-2 font-medium">Actions</th>
           </tr>
@@ -198,6 +208,7 @@ const deleteEmployee = async (employee: Employee) => {
             :key="stripPrefix(employee.name)"
           >
             <td class="px-3 py-2 text-slate-900">{{ stripPrefix(employee.name) }}</td>
+            <td class="px-3 py-2 text-slate-700">{{ employee.fullName || "-" }}</td>
             <td class="px-3 py-2 text-slate-700">{{ employee.email || "-" }}</td>
             <td class="px-3 py-2">
               <div class="flex gap-2">
@@ -240,6 +251,16 @@ const deleteEmployee = async (employee: Employee) => {
               type="text"
               :disabled="!!editingEmployee"
               class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none disabled:bg-slate-100"
+            >
+          </label>
+
+          <label class="block space-y-1 text-sm text-slate-700">
+            <span>Full name</span>
+            <input
+              v-model="form.fullName"
+              data-testid="employee-form-full-name"
+              type="text"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-orange-500 focus:outline-none"
             >
           </label>
 

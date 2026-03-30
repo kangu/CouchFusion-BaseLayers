@@ -1,6 +1,7 @@
 import { defineEventHandler } from "h3";
 import { getAllDocs } from "#database/utils/couchdb";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
+import { readEmployeeFullName } from "#maintenance/utils/employee-display";
 
 export default defineEventHandler(async (event) => {
   await assertMaintenanceRole(event, ["admin"]);
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
     .map((doc) => ({
       name: String(doc.name),
       email: doc.email ?? null,
+      fullName: readEmployeeFullName(doc),
       roles: doc.roles ?? [],
     }));
 

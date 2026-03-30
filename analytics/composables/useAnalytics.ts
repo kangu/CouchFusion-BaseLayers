@@ -52,6 +52,57 @@ function normalizeEndpoint(value?: string) {
   return value.trim().length > 0 ? value : DEFAULT_CONFIG.endpoint;
 }
 
+/**
+ * Builds the analytics POST body once so multiple transports can reuse it.
+ */
+function buildRequestBody(payload: Record<string, any>) {
+  return JSON.stringify({ type: "event", payload, sentAt: nowIso() });
+}
+
+/**
+ * Sends analytics in a way that survives page unload when possible.
+ */
+function dispatchBrowserPayload(
+  endpoint: string,
+  body: string,
+  debug: boolean,
+) {
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const beaconPayload = new Blob([body], { type: "application/json" });
+    const delivered = navigator.sendBeacon(endpoint, beaconPayload);
+
+    if (!delivered && debug) {
+      console.warn("[analytics] sendBeacon rejected payload");
+    }
+
+    if (delivered) {
+      return true;
+    }
+  }
+
+  if (typeof fetch === "undefined") return false;
+
+  void fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body,
+    keepalive: true,
+  })
+    .then(async (res) => {
+      if (!res.ok && debug) {
+        const text = await res.text().catch(() => "");
+        console.warn("[analytics] backend error", res.status, text);
+      }
+    })
+    .catch((error) => {
+      if (debug) console.warn("[analytics] network error", error);
+    });
+
+  return true;
+}
+
 export function createAnalyticsClient(
   initialConfig: Partial<AnalyticsClientConfig> = {},
 ) {
@@ -63,6 +114,13 @@ export function createAnalyticsClient(
   const isLoaded = ref(true);
 
   async function sendPayload(payload: Record<string, any>) {
+    const body = buildRequestBody(payload);
+
+    if (typeof window !== "undefined") {
+      const dispatched = dispatchBrowserPayload(config.endpoint, body, config.debug);
+      if (dispatched) return;
+    }
+
     if (typeof fetch === "undefined") return;
     try {
       const res = await fetch(config.endpoint, {
@@ -70,7 +128,7 @@ export function createAnalyticsClient(
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ type: "event", payload, sentAt: nowIso() }),
+        body,
       });
       if (!res.ok && config.debug) {
         const text = await res.text().catch(() => "");

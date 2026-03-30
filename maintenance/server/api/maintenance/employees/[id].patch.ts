@@ -6,9 +6,11 @@ import {
 } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
 import { assertMaintenanceRole } from "../../../utils/assert-maintenance-role";
+import { readEmployeeFullName } from "#maintenance/utils/employee-display";
 
 interface EmployeePatchPayload {
   email?: unknown;
+  fullName?: unknown;
 }
 
 export default defineEventHandler(async (event) => {
@@ -56,6 +58,19 @@ export default defineEventHandler(async (event) => {
   const updatedUser = {
     ...existingUser,
     email: typeof payload.email === "string" ? payload.email.trim() : existingUser.email,
+    full_name:
+      typeof payload.fullName === "string"
+        ? (payload.fullName.trim() || null)
+        : (existingUser.full_name ?? null),
+    profile: {
+      ...(typeof existingUser.profile === "object" && existingUser.profile
+        ? existingUser.profile
+        : {}),
+      full_name:
+        typeof payload.fullName === "string"
+          ? (payload.fullName.trim() || null)
+          : readEmployeeFullName(existingUser),
+    },
   };
 
   const result = await putDocument("_users", updatedUser);
@@ -65,6 +80,7 @@ export default defineEventHandler(async (event) => {
     user: {
       name: fullUsername,
       email: updatedUser.email,
+      fullName: readEmployeeFullName(updatedUser),
       roles: updatedUser.roles,
     },
   };

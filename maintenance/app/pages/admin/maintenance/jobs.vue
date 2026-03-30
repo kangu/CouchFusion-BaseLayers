@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { getEmployeeDisplayLabel } from "#maintenance/utils/employee-display";
+
 interface MaintenanceJob {
   _id: string;
   clientId: string;
@@ -32,6 +34,7 @@ useHead({
 });
 
 const requestHeaders = process.server ? useRequestHeaders(["cookie"]) : undefined;
+const runtimeConfig = useRuntimeConfig();
 const actionPendingId = ref<string | null>(null);
 const actionError = ref<string | null>(null);
 const actionSuccess = ref<string | null>(null);
@@ -52,6 +55,8 @@ const assigningJobId = ref<string | null>(null);
 
 interface AuthUser {
   name: string;
+  full_name?: string | null;
+  profile?: Record<string, unknown> | null;
   roles: string[];
 }
 
@@ -106,6 +111,44 @@ const {
 const employees = computed(() =>
   (usersData.value?.users ?? []).filter((u) => u.roles.includes("employee")),
 );
+
+const stripEmployeePrefix = (name: string | null | undefined): string => {
+  if (typeof name !== "string") {
+    return "";
+  }
+
+  const prefix =
+    typeof runtimeConfig.dbLoginPrefix === "string" ? runtimeConfig.dbLoginPrefix : "";
+
+  return prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
+};
+
+const getEmployeeLabel = (employee: AuthUser | null | undefined): string => {
+  return getEmployeeDisplayLabel(employee, stripEmployeePrefix(employee?.name ?? null));
+};
+
+const employeeDirectory = computed(() => {
+  const directory: Record<string, string> = {};
+
+  for (const employee of employees.value) {
+    const label = getEmployeeLabel(employee);
+    if (!label) {
+      continue;
+    }
+
+    directory[employee.name] = label;
+  }
+
+  return directory;
+});
+
+const getAssignedEmployeeLabel = (assignedTo: string | null): string => {
+  if (!assignedTo) {
+    return "-";
+  }
+
+  return employeeDirectory.value[assignedTo] ?? stripEmployeePrefix(assignedTo);
+};
 
 const selectedStatusQuery = computed(() => {
   if (!isAdmin.value) {
@@ -282,7 +325,7 @@ const assignEmployee = async (jobId: string, employeeName: string | null) => {
     );
 
     actionSuccess.value = employeeName
-      ? `Job assigned to ${employeeName}.`
+      ? `Job assigned to ${getAssignedEmployeeLabel(employeeName)}.`
       : "Job unassigned.";
     assigningJobId.value = null;
     await refreshJobs();
@@ -608,13 +651,13 @@ const confirmCustomerCancel = async () => {
                     :key="emp.name"
                     :value="emp.name"
                   >
-                    {{ emp.name }}
+                    {{ getEmployeeLabel(emp) }}
                   </option>
                 </select>
                 <span
                   v-else
                   class="text-sm text-slate-700"
-                >{{ job.assignedTo || "-" }}</span>
+                >{{ getAssignedEmployeeLabel(job.assignedTo) }}</span>
               </td>
               <td class="px-3 py-2 text-slate-700">{{ job.status }}</td>
               <td class="px-3 py-2">

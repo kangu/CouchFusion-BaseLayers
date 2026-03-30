@@ -18,6 +18,7 @@ export default defineConfig({
       "~": resolve(dirname, "../apps/bitvocation/app"),
       "~~": resolve(dirname, "../apps/bitvocation"),
       "@": resolve(dirname, "../apps/bitvocation/app"),
+      "#app": resolve(dirname, "../apps/bitvocation/tests/support/nuxt-app-stub.ts"),
       "#content": resolve(dirname, "content"),
       vue: resolve(
         dirname,
