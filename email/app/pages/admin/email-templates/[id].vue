@@ -281,7 +281,12 @@ const applyTemplateToEditor = (template: EmailTemplateDocument | null) => {
     transformedMjmlBase.value = persistedBase
     editableMjmlTextEntries.value = attachPriorityMetadata(persistedEntries, persistedBase)
     hasAppliedFirstDetectedTransformation.value = true
-    editorState.mjml = renderMjmlFromEntries(persistedBase, editableMjmlTextEntries.value)
+    // Only re-render MJML from entries if the current editor MJML matches the template's stored MJML
+    // This prevents overwriting manual edits made to the raw MJML
+    const templateMjml = typeof template.mjml === 'string' ? template.mjml : ''
+    if (editorState.mjml === templateMjml || !editorState.mjml) {
+      editorState.mjml = renderMjmlFromEntries(persistedBase, editableMjmlTextEntries.value)
+    }
     pendingAutoDetectOnLoad.value = false
   } else {
     editableMjmlTextEntries.value = []
