@@ -143,6 +143,8 @@ const pendingAutoDetectOnLoad = ref(false)
 const autoDetectedTemplateId = ref('')
 const detectTextsError = ref<string | null>(null)
 let renderDetectedInputsDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let autoDetectDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const AUTO_DETECT_DELAY = 1500 // 1.5 seconds debounce
 
 const canSave = computed(() => hasUnsavedChanges.value && !isTemplateLoading.value && !isSaving.value)
 
@@ -791,6 +793,41 @@ watch(
   },
   { immediate: true }
 )
+
+// Auto-detect texts when MJML changes (debounced)
+const scheduleAutoDetect = () => {
+  if (autoDetectDebounceTimer) {
+    clearTimeout(autoDetectDebounceTimer)
+  }
+
+  autoDetectDebounceTimer = setTimeout(() => {
+    autoDetectDebounceTimer = null
+    if (editorState.mjml.trim() && !isDetectingTexts.value) {
+      detectTextsFromMjml()
+    }
+  }, AUTO_DETECT_DELAY)
+}
+
+// Watch for MJML changes and trigger auto-detect
+watch(
+  () => editorState.mjml,
+  (newValue, oldValue) => {
+    // Skip on initial load
+    if (!oldValue) {
+      return
+    }
+
+    // Schedule auto-detect when MJML changes
+    scheduleAutoDetect()
+  }
+)
+
+// Clean up timers on unmount
+onBeforeUnmount(() => {
+  if (autoDetectDebounceTimer) {
+    clearTimeout(autoDetectDebounceTimer)
+  }
+})
 </script>
 
 <template>
