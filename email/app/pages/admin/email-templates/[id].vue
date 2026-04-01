@@ -54,7 +54,7 @@ interface EditableMjmlTextEntry {
   hrefOriginal: string | null
   hrefValue: string
   hrefTag: string | null
-  priorityTag: 'mj-title' | 'mj-preview' | null
+  priorityTag: 'mj-preview' | null
   isPriority: boolean
 }
 
@@ -150,17 +150,12 @@ const canSave = computed(() => hasUnsavedChanges.value && !isTemplateLoading.val
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const resolvePriorityTag = (baseMjml: string, placeholder: string): 'mj-title' | 'mj-preview' | null => {
+const resolvePriorityTag = (baseMjml: string, placeholder: string): 'mj-preview' | null => {
   if (!baseMjml || !placeholder) {
     return null
   }
 
   const escapedPlaceholder = escapeRegExp(`[${placeholder}]`)
-  const titlePattern = new RegExp(`<mj-title\\b[^>]*>[\\s\\S]*?${escapedPlaceholder}[\\s\\S]*?<\\/mj-title>`, 'i')
-  if (titlePattern.test(baseMjml)) {
-    return 'mj-title'
-  }
-
   const previewPattern = new RegExp(`<mj-preview\\b[^>]*>[\\s\\S]*?${escapedPlaceholder}[\\s\\S]*?<\\/mj-preview>`, 'i')
   if (previewPattern.test(baseMjml)) {
     return 'mj-preview'
