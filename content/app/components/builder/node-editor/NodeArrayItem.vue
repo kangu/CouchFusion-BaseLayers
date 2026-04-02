@@ -321,7 +321,7 @@
                                     type="button"
                                     class="node-panel__array-add"
                                     @click="
-                                        addArrayItemStringArrayItem(
+                                        openArrayItemStringArrayInsertDialog(
                                             prop.key,
                                             arrayItemEntry.index,
                                             field,
@@ -683,7 +683,7 @@
                                     type="button"
                                     class="node-panel__array-add"
                                     @click="
-                                        addNestedArrayItem(
+                                        openNestedJsonArrayInsertDialog(
                                             prop.key,
                                             arrayItemEntry.index,
                                             field,
@@ -1193,7 +1193,7 @@
                                                         type="button"
                                                         class="node-panel__array-add"
                                                         @click="
-                                                            addNestedArrayItemStringArrayItem(
+                                                            openNestedStringArrayInsertDialog(
                                                                 prop.key,
                                                                 arrayItemEntry.index,
                                                                 field,
@@ -2134,6 +2134,9 @@ const props = defineProps<{
     removeNestedArrayItemStringArrayItem: AnyHandler;
     isNestedArrayCollapsed: AnyHandler;
     toggleNestedArray: AnyHandler;
+    openArrayItemStringArrayInsertDialog: AnyHandler;
+    openNestedJsonArrayInsertDialog: AnyHandler;
+    openNestedStringArrayInsertDialog: AnyHandler;
     openTopLevelArrayReorderDialog: AnyHandler;
     openArrayItemStringArrayReorderDialog: AnyHandler;
     openNestedJsonArrayReorderDialog: AnyHandler;

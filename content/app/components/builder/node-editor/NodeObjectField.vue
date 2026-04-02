@@ -244,7 +244,7 @@
                             <button
                                 type="button"
                                 class="node-panel__array-add"
-                                @click="addArrayItem(field)"
+                                @click="openArrayInsertDialog(field)"
                             >
                                 <span
                                     class="node-panel__array-add-icon"
@@ -725,6 +725,20 @@
                                     >
                                         Remove item
                                     </button>
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-reorder-link"
+                                        @click="
+                                            openArrayReorderDialog(
+                                                field,
+                                                index,
+                                            )
+                                        "
+                                    >
+                                        Move (#{{
+                                            index + 1
+                                        }})
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -797,6 +811,51 @@
                 </small>
             </label>
         </div>
+        <div
+            v-if="insertDialog.visible && insertDialog.field"
+            class="node-panel__insert-dialog"
+        >
+            <div
+                class="node-panel__insert-backdrop"
+                @click="closeArrayInsertDialog"
+            ></div>
+            <div class="node-panel__insert-content">
+                <header class="node-panel__insert-header">
+                    <h3>Select insertion point</h3>
+                    <button
+                        type="button"
+                        class="node-panel__insert-close"
+                        @click="closeArrayInsertDialog"
+                    >
+                        ×
+                    </button>
+                </header>
+                <p class="node-panel__insert-subtitle">
+                    Choose where to place the new entry.
+                </p>
+                <ul class="node-panel__insert-options">
+                    <li
+                        v-for="option in getInsertPositions()"
+                        :key="`${insertDialog.field.key}-${option.index}`"
+                    >
+                        <button
+                            type="button"
+                            @click="insertArrayItemAt(option.index)"
+                        >
+                            <strong>Position {{ option.index + 1 }}</strong>
+                            <span>{{ option.preview }}</span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <NodeReorderDialog
+            v-if="reorderDialog.visible"
+            :max-index="reorderDialog.maxIndex"
+            v-model:newIndex="reorderDialog.newIndex"
+            :confirm-reorder-dialog="confirmReorderDialog"
+            :close-reorder-dialog="closeReorderDialog"
+        />
     </template>
     <template v-else>
         <div class="node-panel__input-wrap">
@@ -820,9 +879,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
+import NodeReorderDialog from "./NodeReorderDialog.vue";
 import NodeTranslateInline from "./NodeTranslateInline.vue";
 
 type FieldContext = (field: ComponentArrayItemField) => Record<string, any>;
@@ -907,6 +967,26 @@ const visibleFields = computed(() =>
 );
 
 const collapsedArrays = ref<Record<string, boolean>>({});
+const insertDialog = ref<{
+    visible: boolean;
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }> | null;
+}>({
+    visible: false,
+    field: null,
+});
+const reorderDialog = ref<{
+    visible: boolean;
+    field: Extract<ComponentArrayItemField, { type: "jsonarray" }> | null;
+    currentIndex: number;
+    newIndex: number;
+    maxIndex: number;
+}>({
+    visible: false,
+    field: null,
+    currentIndex: 0,
+    newIndex: 1,
+    maxIndex: 1,
+});
 
 const highlightType = computed(
     () => props.jsonHighlightType ?? props.schema.type,
@@ -942,12 +1022,97 @@ const toggleArray = (key: string) => {
     collapsedArrays.value[key] = !collapsedArrays.value[key];
 };
 
-const addArrayItem = (field: ComponentArrayItemField) => {
-    const next = [...getArrayItems(field), buildArrayItem(field)];
+const closeArrayInsertDialog = () => {
+    insertDialog.value.visible = false;
+    insertDialog.value.field = null;
+};
+
+const openArrayInsertDialog = (field: ComponentArrayItemField) => {
+    if (field.type !== "jsonarray") {
+        return;
+    }
+    insertDialog.value.visible = true;
+    insertDialog.value.field = field;
+    collapsedArrays.value[field.key] = false;
+};
+
+const formatArrayItemPreview = (value: unknown): string => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+        const entries = Object.entries(value as Record<string, unknown>);
+        if (!entries.length) {
+            return "(empty object)";
+        }
+        return entries
+            .slice(0, 3)
+            .map(
+                ([key, entryValue]) =>
+                    `${key}: ${typeof entryValue === "string" ? entryValue : JSON.stringify(entryValue)}`,
+            )
+            .join(", ");
+    }
+    return "(empty)";
+};
+
+const getInsertPositions = () => {
+    const field = insertDialog.value.field;
+    if (!field) {
+        return [] as Array<{ index: number; preview: string }>;
+    }
+    const items = getArrayItems(field);
+    const positions: Array<{ index: number; preview: string }> = [];
+    for (let index = 0; index <= items.length; index += 1) {
+        const before =
+            index > 0 ? formatArrayItemPreview(items[index - 1]) : "Beginning";
+        const after =
+            index < items.length ? formatArrayItemPreview(items[index]) : "End";
+        positions.push({ index, preview: `${before} → ${after}` });
+    }
+    return positions;
+};
+
+const insertArrayItemAt = (index: number) => {
+    const field = insertDialog.value.field;
+    if (!field) {
+        return;
+    }
+    const next = [...getArrayItems(field)];
+    next.splice(index, 0, buildArrayItem(field));
     if (objectValue.value) {
         objectValue.value[field.key] = next;
     }
     applyFieldChange(field, next);
+    closeArrayInsertDialog();
+    const firstFieldKey = field.items?.[0]?.key;
+    const path = firstFieldKey
+        ? [...props.pathPrefix, field.key, index, firstFieldKey]
+        : [...props.pathPrefix, field.key, index];
+    void nextTick(() => {
+        if (typeof document === "undefined") {
+            return;
+        }
+        const targetPath = toPropPathAttr(path);
+        const fieldEl = document.querySelector<HTMLElement>(
+            `[data-content-prop-path="${targetPath}"]`,
+        );
+        if (!fieldEl) {
+            return;
+        }
+        fieldEl.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+        });
+        const focusTarget = fieldEl.querySelector<HTMLElement>(
+            'textarea, input:not([type="checkbox"]):not([type="hidden"]), [contenteditable="true"], .ProseMirror',
+        );
+        focusTarget?.focus({ preventScroll: true });
+        if (
+            focusTarget instanceof HTMLInputElement ||
+            focusTarget instanceof HTMLTextAreaElement
+        ) {
+            focusTarget.select();
+        }
+    });
 };
 
 const removeArrayItem = (field: ComponentArrayItemField, index: number) => {
@@ -957,6 +1122,64 @@ const removeArrayItem = (field: ComponentArrayItemField, index: number) => {
         objectValue.value[field.key] = next;
     }
     applyFieldChange(field, next);
+};
+
+const openArrayReorderDialog = (
+    field: ComponentArrayItemField,
+    currentIndex: number,
+) => {
+    if (field.type !== "jsonarray") {
+        return;
+    }
+    const items = getArrayItems(field);
+    reorderDialog.value.visible = true;
+    reorderDialog.value.field = field;
+    reorderDialog.value.currentIndex = currentIndex;
+    reorderDialog.value.newIndex = currentIndex + 1;
+    reorderDialog.value.maxIndex = Math.max(items.length, 1);
+};
+
+const closeReorderDialog = () => {
+    reorderDialog.value.visible = false;
+    reorderDialog.value.field = null;
+    reorderDialog.value.currentIndex = 0;
+    reorderDialog.value.newIndex = 1;
+    reorderDialog.value.maxIndex = 1;
+};
+
+const confirmReorderDialog = () => {
+    if (!reorderDialog.value.visible || !reorderDialog.value.field) {
+        return;
+    }
+    const field = reorderDialog.value.field;
+    const items = [...getArrayItems(field)];
+    const fromIndex = reorderDialog.value.currentIndex;
+    const rawIndex = Number(reorderDialog.value.newIndex);
+    if (!Number.isFinite(rawIndex)) {
+        return;
+    }
+    const toIndex = Math.min(
+        Math.max(Math.floor(rawIndex), 1),
+        reorderDialog.value.maxIndex,
+    ) - 1;
+    if (
+        fromIndex < 0 ||
+        fromIndex >= items.length ||
+        toIndex < 0 ||
+        toIndex >= items.length
+    ) {
+        closeReorderDialog();
+        return;
+    }
+    if (fromIndex !== toIndex) {
+        const [moved] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, moved);
+        if (objectValue.value) {
+            objectValue.value[field.key] = items;
+        }
+        applyFieldChange(field, items);
+    }
+    closeReorderDialog();
 };
 
 const updateArrayField = (

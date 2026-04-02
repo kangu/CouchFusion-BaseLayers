@@ -207,6 +207,9 @@
                 :remove-nested-array-item="removeNestedArrayItem"
                 :remove-nested-array-item-string-array-item="removeNestedArrayItemStringArrayItem"
                 :open-insert-dialog="openInsertDialog"
+                :open-array-item-string-array-insert-dialog="openArrayItemStringArrayInsertDialog"
+                :open-nested-json-array-insert-dialog="openNestedJsonArrayInsertDialog"
+                :open-nested-string-array-insert-dialog="openNestedStringArrayInsertDialog"
                 :toggle-array="toggleArray"
                 :is-nested-array-collapsed="isNestedArrayCollapsed"
                 :toggle-nested-array="toggleNestedArray"
@@ -349,6 +352,17 @@
             :get-insert-positions="getInsertPositions"
             :handle-insert-at="handleInsertAt"
             :close-insert-dialog="closeInsertDialog"
+        />
+        <NodeInsertDialog
+            v-if="nestedInsertDialog.visible && nestedInsertDialog.key && nestedInsertDialog.type"
+            :insert-dialog="{
+                key: nestedInsertDialog.key,
+                type: nestedInsertDialog.type,
+                schema: null,
+            }"
+            :get-insert-positions="getNestedInsertPositions"
+            :handle-insert-at="handleNestedInsertAt"
+            :close-insert-dialog="closeNestedInsertDialog"
         />
         <NodeReorderDialog
             v-if="reorderDialog.visible"
@@ -2695,11 +2709,20 @@ const toggleNode = (uid: string) => {
 
 const {
     insertDialog,
+    nestedInsertDialog,
+    insertFocusRequest,
     reorderDialog,
     openInsertDialog,
     closeInsertDialog,
     getInsertPositions,
     handleInsertAt,
+    openArrayItemStringArrayInsertDialog,
+    openNestedJsonArrayInsertDialog,
+    openNestedStringArrayInsertDialog,
+    closeNestedInsertDialog,
+    getNestedInsertPositions,
+    handleNestedInsertAt,
+    clearInsertFocusRequest,
     openTopLevelArrayReorderDialog,
     openArrayItemStringArrayReorderDialog,
     openNestedJsonArrayReorderDialog,
@@ -2720,7 +2743,28 @@ const {
     moveArrayItemStringArrayItem,
     moveNestedArrayItem,
     moveNestedArrayItemStringArrayItem,
+    addArrayItemStringArrayItem,
+    addNestedArrayItem,
+    addNestedArrayItemStringArrayItem,
 });
+
+watch(
+    () => insertFocusRequest.value?.token,
+    () => {
+        const request = insertFocusRequest.value;
+        if (!request) {
+            return;
+        }
+        void focusPropInput({
+            uidPath: [props.node.uid],
+            targetUid: props.node.uid,
+            propPath: request.path,
+            token: request.token,
+        }).finally(() => {
+            clearInsertFocusRequest();
+        });
+    },
+);
 
 const handleAddChildComponent = (componentId: string) => {
     props.onAddChildComponent(props.node.uid, componentId);

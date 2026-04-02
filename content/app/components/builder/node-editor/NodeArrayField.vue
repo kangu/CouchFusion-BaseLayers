@@ -75,6 +75,9 @@
             :remove-nested-array-item-string-array-item="removeNestedArrayItemStringArrayItem"
             :is-nested-array-collapsed="isNestedArrayCollapsed"
             :toggle-nested-array="toggleNestedArray"
+            :open-array-item-string-array-insert-dialog="openArrayItemStringArrayInsertDialog"
+            :open-nested-json-array-insert-dialog="openNestedJsonArrayInsertDialog"
+            :open-nested-string-array-insert-dialog="openNestedStringArrayInsertDialog"
             :open-top-level-array-reorder-dialog="openTopLevelArrayReorderDialog"
             :open-array-item-string-array-reorder-dialog="openArrayItemStringArrayReorderDialog"
             :open-nested-json-array-reorder-dialog="openNestedJsonArrayReorderDialog"
@@ -147,6 +150,9 @@ const props = defineProps<{
     toggleArray: AnyHandler;
     isNestedArrayCollapsed: AnyHandler;
     toggleNestedArray: AnyHandler;
+    openArrayItemStringArrayInsertDialog: AnyHandler;
+    openNestedJsonArrayInsertDialog: AnyHandler;
+    openNestedStringArrayInsertDialog: AnyHandler;
     openTopLevelArrayReorderDialog: AnyHandler;
     openArrayItemStringArrayReorderDialog: AnyHandler;
     openNestedJsonArrayReorderDialog: AnyHandler;
