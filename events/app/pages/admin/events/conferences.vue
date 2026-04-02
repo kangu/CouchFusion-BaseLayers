@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { compareConferenceYearByComputedDate } from "../../../utils/conference-sort";
+
 interface ConferenceItem {
   _id: string;
   _rev?: string;
@@ -153,6 +155,7 @@ type ConferencesSortKey =
   | "startDateIso"
   | "location"
   | "country"
+  | "discountCode"
   | "status"
   | "isPublished";
 type InlineEditableField =
@@ -501,6 +504,21 @@ const sortedConferences = computed(() => {
     return isDescending ? -result : result;
   };
 
+  const compareNullableTextEmptyFirst = (
+    leftValue: string | null | undefined,
+    rightValue: string | null | undefined,
+  ): number => {
+    const left = normalizeSortText(leftValue);
+    const right = normalizeSortText(rightValue);
+
+    if (!left && !right) return 0;
+    if (!left) return isDescending ? 1 : -1;
+    if (!right) return isDescending ? -1 : 1;
+
+    const result = left.localeCompare(right);
+    return isDescending ? -result : result;
+  };
+
   const compareNullableNumber = (
     leftValue: number | null | undefined,
     rightValue: number | null | undefined,
@@ -527,7 +545,14 @@ const sortedConferences = computed(() => {
         result = compareNullableText(left.name, right.name);
         break;
       case "year":
-        result = compareNullableNumber(left.year, right.year);
+        result = compareConferenceYearByComputedDate(
+          left.startDateIso,
+          right.startDateIso,
+          sortState.direction,
+        );
+        if (result === 0) {
+          result = compareNullableNumber(left.year, right.year);
+        }
         break;
       case "startDateIso":
         result = compareNullableText(left.startDateIso, right.startDateIso);
@@ -540,6 +565,9 @@ const sortedConferences = computed(() => {
         break;
       case "country":
         result = compareNullableText(left.country, right.country);
+        break;
+      case "discountCode":
+        result = compareNullableTextEmptyFirst(left.discountCode, right.discountCode);
         break;
       case "status":
         result = compareNullableText(left.status, right.status);
@@ -789,6 +817,24 @@ const hasConferenceDiscount = (conference: ConferenceItem): boolean => {
   const code = String(conference.discountCode ?? "").trim();
   const label = String(conference.discountLabel ?? "").trim();
   return code.length > 0 || label.length > 0;
+};
+
+const formatConferenceDiscountDisplay = (
+  conference: Pick<ConferenceItem, "discountCode" | "discountLabel">,
+): string => {
+  const code = String(conference.discountCode ?? "").trim();
+  const label = String(conference.discountLabel ?? "").trim();
+
+  if (label.length > 0 && code.length > 0) {
+    return `(${label}) ${code}`;
+  }
+  if (label.length > 0) {
+    return `(${label})`;
+  }
+  if (code.length > 0) {
+    return code;
+  }
+  return "—";
 };
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -2699,7 +2745,9 @@ const deleteConferenceFromEditor = async () => {
                   </button>
                 </th>
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Discount Code
+                  <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('discountCode')">
+                    Discount Code <span class="text-slate-400">{{ sortIndicator("discountCode") }}</span>
+                  </button>
                 </th>
                 <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                   <button type="button" class="inline-flex items-center gap-1" @click="toggleSort('status')">
@@ -2863,10 +2911,10 @@ const deleteConferenceFromEditor = async () => {
                   <button
                     v-else
                     type="button"
-                    class="hover:text-orange-700"
+                    class="hover:text-orange-700 text-left"
                     @click="startInlineEdit(conference, 'discountCode')"
                   >
-                    {{ conference.discountCode || "—" }}
+                    {{ formatConferenceDiscountDisplay(conference) }}
                   </button>
                 </td>
                 <td class="relative px-3 py-2.5">
@@ -3581,7 +3629,7 @@ const deleteConferenceFromEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Discount Label</label>
+                  <label class="block text-sm font-medium text-slate-800">Discount %</label>
                   <input
                     v-model="editorForm.discountLabel"
                     type="text"
@@ -3589,7 +3637,7 @@ const deleteConferenceFromEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Commission Label</label>
+                  <label class="block text-sm font-medium text-slate-800">Commission %</label>
                   <input
                     v-model="editorForm.commissionLabel"
                     type="text"
@@ -3614,7 +3662,7 @@ const deleteConferenceFromEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Commission Received</label>
+                  <label class="block text-sm font-medium text-slate-800">Payout Received</label>
                   <select
                     v-model="editorForm.commissionReceived"
                     class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
