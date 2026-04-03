@@ -95,10 +95,12 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
     // Combine invoice and quote data
     return {
       invoiceId: invoiceResponse.invoiceId,
+      id: invoiceResponse.invoiceId,
       paymentRequest: quoteResponse.lnInvoice,
       amount: parseFloat(invoiceResponse.amount.amount),
       currency: invoiceResponse.amount.currency.toLowerCase(),
       status: mapStrikeStatus(invoiceResponse.state),
+      provider: "strike",
       expiresAt: quoteResponse.expiration
         ? new Date(quoteResponse.expiration)
         : undefined,
@@ -138,10 +140,12 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
 
     return {
       invoiceId: response.invoiceId,
+      id: response.invoiceId,
       paymentRequest: response.lnInvoice,
       amount: parseFloat(response.amount.amount),
       currency: response.amount.currency.toLowerCase(),
       status: mapStrikeStatus(response.state),
+      provider: "strike",
       expiresAt: response.expiration
         ? new Date(response.expiration)
         : undefined,

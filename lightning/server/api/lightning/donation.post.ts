@@ -6,7 +6,7 @@ import {saveInvoiceToDatabase} from '../../../../../layers/lightning/utils/order
 import type {LightningConfig} from "../../../types/lightning";
 
 export default defineEventHandler(async (event) => {
-    const body = await readBody<{ amount?: number; memo?: string; provider?: 'strike' | 'alby' }>(event)
+    const body = await readBody<{ amount?: number; memo?: string; provider?: 'strike' | 'alby' | 'blink' }>(event)
     const amount = Number(body?.amount || 0)
     const memo = typeof body?.memo === 'string' ? body.memo : ''
     const donationOrderId = randomUUID()
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
         // Create invoice using the configured default provider with order ID
         const payment = await createPayment(amount, {
             description: memo,
-            provider: lightningConfig.defaultProvider,
+            provider: body?.provider || lightningConfig.defaultProvider,
             metadata: {
                 orderId: donationOrderId, // Pass order document ID as unique identifier
                 timestamp: new Date().toISOString(),
