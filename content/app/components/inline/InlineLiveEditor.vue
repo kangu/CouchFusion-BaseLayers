@@ -13,6 +13,7 @@ import { normalizePagePath } from "#content/utils/page";
 import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type { ContentPageSummary } from "#content/types/content-page";
 import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
+import type { InlinePreviewPropHint } from "#content/app/utils/inline-preview-prop-path";
 
 type ContentAdminWorkbenchProps = InstanceType<
     typeof ContentAdminWorkbenchComponent
@@ -23,6 +24,7 @@ type ContentAdminWorkbenchExpose = {
         path: string;
         propPath: string;
         sectionId?: string;
+        hint?: InlinePreviewPropHint;
     }) => void;
 };
 type WorkbenchComponentInstance = ComponentPublicInstance<
@@ -37,6 +39,7 @@ type InlinePreviewPropClickPayload = {
     path: string;
     propPath: string;
     sectionId?: string;
+    hint?: InlinePreviewPropHint;
 };
 
 const props = defineProps<{
@@ -575,11 +578,15 @@ const isInlinePreviewPropClickMessage = (
         return false;
     }
     const sectionId = (payload as Record<string, unknown>).sectionId;
+    const hint = (payload as Record<string, unknown>).hint;
     if (
         sectionId !== undefined &&
         sectionId !== null &&
         typeof sectionId !== "string"
     ) {
+        return false;
+    }
+    if (hint !== undefined && hint !== null && typeof hint !== "object") {
         return false;
     }
     return (
@@ -604,6 +611,7 @@ const handlePreviewPropClick = (payload: InlinePreviewPropClickPayload) => {
             path: normalizedPath,
             propPath: payload.propPath,
             sectionId: payload.sectionId,
+            hint: payload.hint,
         });
         return;
     }
@@ -615,6 +623,7 @@ const handlePreviewPropClick = (payload: InlinePreviewPropClickPayload) => {
             path: normalizedPath,
             propPath: payload.propPath,
             sectionId: payload.sectionId,
+            hint: payload.hint,
         });
     }
 };

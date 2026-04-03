@@ -46,6 +46,14 @@ interface InlinePropClickPayload {
   uid: string
   propPath: string
   sectionId?: string
+  hint?: {
+    text?: string
+    href?: string
+    src?: string
+    alt?: string
+    ariaLabel?: string
+    title?: string
+  }
 }
 
 /**
@@ -148,6 +156,32 @@ const notifyInlinePropClick = (payload: InlinePropClickPayload) => {
   } catch {
     // noop
   }
+}
+
+const collectInlineHint = (target: Element): InlinePropClickPayload['hint'] => {
+  const asHTMLElement = target instanceof HTMLElement ? target : null
+  const asAnchor = target instanceof HTMLAnchorElement ? target : null
+  const asImage = target instanceof HTMLImageElement ? target : null
+
+  const text = (target.textContent || '').trim()
+  const href = asAnchor
+    ? asAnchor.getAttribute('href')?.trim() || asAnchor.href.trim()
+    : ''
+  const src = asImage
+    ? asImage.getAttribute('src')?.trim() || asImage.src.trim()
+    : ''
+  const alt = asImage?.alt?.trim() || asHTMLElement?.getAttribute('alt')?.trim() || ''
+  const ariaLabel = asHTMLElement?.getAttribute('aria-label')?.trim() || ''
+  const title = asHTMLElement?.getAttribute('title')?.trim() || ''
+
+  const payload: InlinePropClickPayload['hint'] = {}
+  if (text) payload.text = text
+  if (href) payload.href = href
+  if (src) payload.src = src
+  if (alt) payload.alt = alt
+  if (ariaLabel) payload.ariaLabel = ariaLabel
+  if (title) payload.title = title
+  return Object.keys(payload).length ? payload : undefined
 }
 
 const toMarkerElement = (value: Element | null): HTMLElement | null => {
@@ -549,22 +583,15 @@ export const useContentLiveUpdates = (): void => {
         : []
 
     const marker = selectPreferredMarker(directMarker, markersFromPoint)
-    if (!marker) {
-      return
-    }
-
-    const rawPropPath = marker.getAttribute('data-prop-id')?.trim()
-    if (!rawPropPath) {
-      return
-    }
-
-    const owner = marker.closest<HTMLElement>('[data-builder-uid]')
+    const owner = (marker ?? target).closest<HTMLElement>('[data-builder-uid]')
     const uid = owner?.getAttribute('data-builder-uid')?.trim()
     if (!uid) {
       return
     }
-    const sectionOwner = marker.closest<HTMLElement>('[data-section-id]')
+    const rawPropPath = marker?.getAttribute('data-prop-id')?.trim() || ''
+    const sectionOwner = (marker ?? target).closest<HTMLElement>('[data-section-id]')
     const sectionId = sectionOwner?.getAttribute('data-section-id')?.trim() || undefined
+    const hint = collectInlineHint(target)
 
     if (event.cancelable) {
       event.preventDefault()
@@ -575,7 +602,8 @@ export const useContentLiveUpdates = (): void => {
       path: normalizePagePath(window.location.pathname || '/'),
       uid,
       propPath: rawPropPath,
-      sectionId
+      sectionId,
+      hint
     })
   }
 

@@ -33,6 +33,10 @@ import {
     buildComponentDefinitionLookup,
     collectFixedBodyPaths,
 } from "#content/utils/i18n-body";
+import {
+    inferPropPathFromPreviewHint,
+    type InlinePreviewPropHint,
+} from "#content/app/utils/inline-preview-prop-path";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -1177,16 +1181,56 @@ const parseDottedPropPath = (value: string): Array<string | number> =>
             /^-?\d+$/.test(segment) ? Number.parseInt(segment, 10) : segment,
         );
 
+const findBuilderNodeByUid = (
+    nodes: BuilderNodeChild[],
+    uid: string,
+): BuilderNodeChild | null => {
+    for (const node of nodes) {
+        if (node.uid === uid) {
+            return node;
+        }
+
+        if (node.type === "component") {
+            const nested = findBuilderNodeByUid(node.children, uid);
+            if (nested) {
+                return nested;
+            }
+        }
+    }
+
+    return null;
+};
+
+const resolveFallbackPropPath = (
+    uid: string,
+    hint: InlinePreviewPropHint | undefined,
+): Array<string | number> => {
+    if (!hint) {
+        return [];
+    }
+
+    const targetNode = findBuilderNodeByUid(builderTree.value, uid);
+    if (!targetNode || targetNode.type !== "component") {
+        return [];
+    }
+
+    const inferred = inferPropPathFromPreviewHint(targetNode.props ?? {}, hint);
+    return inferred ?? [];
+};
+
 const focusNodeProp = (payload: {
     uid: string;
     propPath: string;
     sectionId?: string;
+    hint?: InlinePreviewPropHint;
 }) => {
     if (!payload || typeof payload.uid !== "string") {
         return;
     }
 
-    const propPath = parseDottedPropPath(payload.propPath);
+    const propPath = payload.propPath.trim().length
+        ? parseDottedPropPath(payload.propPath)
+        : resolveFallbackPropPath(payload.uid, payload.hint);
     if (!propPath.length) {
         return;
     }

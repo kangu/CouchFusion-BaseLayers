@@ -44,6 +44,7 @@ import {
     type LlmTranslationTokenUsage,
 } from "#content/app/composables/useLlmTranslations";
 import { resolveLocaleMeta } from "#content/app/utils/locales-meta";
+import type { InlinePreviewPropHint } from "#content/app/utils/inline-preview-prop-path";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
 );
@@ -184,6 +185,7 @@ type BuilderWorkbenchInstance = ComponentPublicInstance<{
         uid: string;
         propPath: string;
         sectionId?: string;
+        hint?: InlinePreviewPropHint;
     }) => void;
 }>;
 
@@ -2618,6 +2620,7 @@ const focusPropFromPreview = (payload: {
     path: string;
     propPath: string;
     sectionId?: string;
+    hint?: InlinePreviewPropHint;
 }) => {
     if (
         !payload ||
@@ -2636,6 +2639,7 @@ const focusPropFromPreview = (payload: {
         uid: payload.uid,
         propPath: payload.propPath,
         sectionId: payload.sectionId,
+        hint: payload.hint,
     });
 };
 
