@@ -10,6 +10,9 @@
             :value="modelValue ?? ''"
             :placeholder="placeholder"
             :type="inputType"
+            :min="min"
+            :max="max"
+            :step="step"
             @input="handleInput"
             @blur="handleBlur"
         />
@@ -21,6 +24,9 @@ const props = defineProps<{
     modelValue: string | number;
     placeholder?: string;
     inputType?: string;
+    min?: number | string;
+    max?: number | string;
+    step?: number | string;
     showHighlight?: boolean;
     highlightMarkup?: string;
 }>();

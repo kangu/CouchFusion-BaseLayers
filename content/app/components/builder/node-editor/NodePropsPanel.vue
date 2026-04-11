@@ -324,10 +324,52 @@
             </template>
             <template v-else>
                 <div class="node-panel__field-inline-control">
+                    <div v-if="isRangeWidget(prop)" class="flex items-center gap-2">
+                        <NodeTextField
+                            v-model="propDraft[prop.key]"
+                            class="flex-1"
+                            :placeholder="prop.placeholder"
+                            :input-type="resolvePrimitiveInputType(prop)"
+                            :min="resolveNumericUiBound(prop, 'min')"
+                            :max="resolveNumericUiBound(prop, 'max')"
+                            :step="resolveNumericUiBound(prop, 'step')"
+                            :show-highlight="
+                                shouldHighlightText(propDraft[prop.key], prop.type)
+                            "
+                            :highlight-markup="
+                                getHighlightMarkup(propDraft[prop.key])
+                            "
+                            @input="
+                                () =>
+                                    schedulePropUpdate(
+                                        prop.key,
+                                        propDraft[prop.key],
+                                        prop.type,
+                                    )
+                            "
+                            @blur="
+                                () =>
+                                    flushPropUpdate(
+                                        prop.key,
+                                        propDraft[prop.key],
+                                        prop.type,
+                                    )
+                            "
+                        />
+                        <output
+                            class="min-w-16 rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-right text-xs font-semibold tabular-nums text-slate-700"
+                        >
+                            {{ formatRangeDisplayValue(propDraft[prop.key]) }}
+                        </output>
+                    </div>
                     <NodeTextField
+                        v-else
                         v-model="propDraft[prop.key]"
                         :placeholder="prop.placeholder"
-                        :input-type="prop.type === 'number' ? 'number' : 'text'"
+                        :input-type="resolvePrimitiveInputType(prop)"
+                        :min="resolveNumericUiBound(prop, 'min')"
+                        :max="resolveNumericUiBound(prop, 'max')"
+                        :step="resolveNumericUiBound(prop, 'step')"
                         :show-highlight="
                             shouldHighlightText(propDraft[prop.key], prop.type)
                         "
@@ -518,6 +560,44 @@ const props = defineProps<{
 
 const fieldWrapperTag = (schema: ComponentPropSchema) =>
     schema.ui?.component ? "div" : "label";
+
+const resolvePrimitiveInputType = (schema: ComponentPropSchema) => {
+    if (schema.type !== "number") {
+        return "text";
+    }
+    return schema.ui?.widget === "range" ? "range" : "number";
+};
+
+const isRangeWidget = (schema: ComponentPropSchema) =>
+    resolvePrimitiveInputType(schema) === "range";
+
+const resolveNumericUiBound = (
+    schema: ComponentPropSchema,
+    key: "min" | "max" | "step",
+) => {
+    if (schema.type !== "number") {
+        return undefined;
+    }
+    const value = schema.ui?.[key];
+    if (typeof value === "number" || typeof value === "string") {
+        return value;
+    }
+    return undefined;
+};
+
+const formatRangeDisplayValue = (value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+    }
+    if (typeof value === "string") {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+            return String(numeric);
+        }
+        return value.trim().length > 0 ? value : "0";
+    }
+    return "0";
+};
 
 const fieldWrapperRole = (schema: ComponentPropSchema) =>
     schema.ui?.component ? "group" : undefined;
