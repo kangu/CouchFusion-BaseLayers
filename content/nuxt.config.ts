@@ -65,6 +65,26 @@ export default defineNuxtConfig({
     },
   },
 
+  appConfig: {
+    adminWorkspace: {
+      sections: [
+        {
+          id: "content",
+          title: "Content",
+          requiresRoles: ["admin"],
+          items: [
+            {
+              label: "Pages",
+              route: "/admin/pages",
+              icon: "mdi:file-document-multiple-outline",
+              requiresRoles: ["admin"],
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   typescript: {
     strict: true,
   },

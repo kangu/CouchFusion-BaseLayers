@@ -34,6 +34,8 @@ export interface ContentPageLocalizationSummary {
     hasLocaleDocument: boolean
     missingLocalizedCount: number
     updatedAtByLocale: Record<string, string>
+    availableLocales?: string[]
+    missingLocales?: string[]
 }
 
 export interface ContentPageSummary {

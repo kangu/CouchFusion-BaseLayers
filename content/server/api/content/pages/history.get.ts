@@ -3,7 +3,8 @@ import { requireAdminSession } from '../../../utils/auth'
 import { fetchPageHistory } from '../../../utils/page-history'
 import { normalizePagePath } from '#content/utils/page'
 import { contentToMinimalDocument } from '#content/utils/page-documents'
-import { resolveRequestedLocale, resolveRuntimeContentI18nConfig } from '../../../utils/content-i18n'
+import { resolveRequestedLocale } from '../../../utils/content-i18n'
+import { getEffectiveContentI18nConfig } from '../../../utils/content-i18n-settings'
 
 export default defineEventHandler(async (event) => {
     await requireAdminSession(event)
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const normalizedPath = normalizePagePath(requestedPath)
-    const contentI18nConfig = resolveRuntimeContentI18nConfig()
+    const { effective: contentI18nConfig } = await getEffectiveContentI18nConfig()
     const resolvedLocale = resolveRequestedLocale(locale, contentI18nConfig)
     const limit = Number.isFinite(limitParam) && limitParam! > 0 ? Math.min(limitParam!, 10) : undefined
 

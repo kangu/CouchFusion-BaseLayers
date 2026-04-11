@@ -20,11 +20,11 @@ import {
   mergeUpdatedAtByLocale,
   readContentDocumentLocalizationMeta,
   resolveRequestedLocale,
-  resolveRuntimeContentI18nConfig,
   setBodyValue,
   toPageDocumentRecord,
   valuesDeepEqual,
 } from './content-i18n'
+import { getEffectiveContentI18nConfig } from './content-i18n-settings'
 
 const isPlainObject = (value: unknown): value is Record<string, any> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -171,7 +171,7 @@ export const saveLocalizedPageDocument = async (
     })
   }
 
-  const contentI18nConfig = resolveRuntimeContentI18nConfig()
+  const { effective: contentI18nConfig } = await getEffectiveContentI18nConfig()
   const requestedPath = normalizePagePath(payload.document.path ?? '/')
   const resolvedPath = resolveContentLocalePath(requestedPath, contentI18nConfig)
   const requestedLocale = resolveRequestedLocale(

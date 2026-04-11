@@ -5,10 +5,10 @@ import { getContentDatabaseName } from '../../utils/database'
 import { bulkDocs, getAllDocs, deleteDocument } from '#database/utils/couchdb'
 import {
   buildLocaleDocumentIds,
-  resolveRuntimeContentI18nConfig,
   resolveRequestedLocale,
   toPageDocumentRecord,
 } from '../../utils/content-i18n'
+import { getEffectiveContentI18nConfig } from '../../utils/content-i18n-settings'
 
 export default defineEventHandler(async (event) => {
   await requireAdminSession(event)
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const normalizedPath = normalizePagePath(path)
-    const contentI18nConfig = resolveRuntimeContentI18nConfig()
+    const { effective: contentI18nConfig } = await getEffectiveContentI18nConfig()
     const requestedLocale = resolveRequestedLocale(query.locale, contentI18nConfig)
     const databaseName = getContentDatabaseName()
 

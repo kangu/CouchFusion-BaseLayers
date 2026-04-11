@@ -14,9 +14,9 @@ import {
   getLocaleDocumentId,
   readContentDocumentLocalizationMeta,
   resolveRequestedLocale,
-  resolveRuntimeContentI18nConfig,
   toPageDocumentRecord,
 } from '../../../utils/content-i18n'
+import { getEffectiveContentI18nConfig } from '../../../utils/content-i18n-settings'
 import {
   applyTranslationsToBody,
   collectTranslatableTextEntries,
@@ -411,7 +411,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const sourceDocument = ensureMinimalDocument(body.sourceDocument)
-  const i18nConfig = resolveRuntimeContentI18nConfig()
+  const { effective: i18nConfig } = await getEffectiveContentI18nConfig()
   const requestedPath = typeof body.path === 'string' ? body.path : sourceDocument.path
   const resolvedPath = resolveContentLocalePath(requestedPath, i18nConfig)
   const basePath = resolvedPath.basePath

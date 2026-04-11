@@ -13,11 +13,11 @@ import {
     mergeUpdatedAtByLocale,
     readContentDocumentLocalizationMeta,
     resolveRequestedLocale,
-    resolveRuntimeContentI18nConfig,
     setBodyValue,
     toPageDocumentRecord,
 } from '../../utils/content-i18n'
 import { normalizeSeoImage } from '#content/utils/page-documents'
+import { getEffectiveContentI18nConfig } from '../../utils/content-i18n-settings'
 
 const toResponseEntry = (
     document: Record<string, any>,
@@ -29,6 +29,8 @@ const toResponseEntry = (
         hasLocaleDocument: boolean
         updatedAtByLocale: Record<string, string>
         missingLocalizedCount: number
+        availableLocales?: string[]
+        missingLocales?: string[]
     },
 ) => {
     const normalizedPath = normalizePagePath(path)
@@ -95,7 +97,7 @@ export default defineEventHandler(async (event) => {
 
         const query = getQuery(event)
         const requestedPath = typeof query.path === 'string' ? query.path : null
-        const contentI18nConfig = resolveRuntimeContentI18nConfig()
+        const { effective: contentI18nConfig } = await getEffectiveContentI18nConfig()
         const databaseName = getContentDatabaseName()
 
         if (requestedPath) {
@@ -228,7 +230,15 @@ export default defineEventHandler(async (event) => {
         })
 
         const rows = Array.isArray(viewResult?.rows) ? viewResult.rows : []
-        const pageByPath = new Map<string, ReturnType<typeof toResponseEntry>>()
+        const pagesByBasePath = new Map<
+            string,
+            {
+                masterId: string
+                masterDocument: Record<string, any> | null
+                docsByLocale: Map<string, Record<string, any>>
+                updatedAtByLocale: Record<string, string>
+            }
+        >()
 
         for (const row of rows) {
             const document = toPageDocumentRecord(row.doc)
@@ -248,44 +258,88 @@ export default defineEventHandler(async (event) => {
                 contentI18nConfig,
             )
 
-            if (localizationMeta.locale !== contentI18nConfig.defaultLocale) {
-                continue
+            const basePath = normalizePagePath(localizationMeta.basePath ?? normalizedPath)
+            const locale = localizationMeta.locale
+            const updatedAt =
+                localizationMeta.updatedAtByLocale[locale] ??
+                document.updatedAt ??
+                document.updated_at ??
+                ''
+
+            if (!pagesByBasePath.has(basePath)) {
+                pagesByBasePath.set(basePath, {
+                    masterId: localizationMeta.masterId,
+                    masterDocument: null,
+                    docsByLocale: new Map<string, Record<string, any>>(),
+                    updatedAtByLocale: {},
+                })
             }
 
-            if (
-                typeof document._id === 'string' &&
-                document._id !== localizationMeta.masterId
-            ) {
-                continue
+            const group = pagesByBasePath.get(basePath)!
+            group.masterId = localizationMeta.masterId
+
+            const existingLocaleDoc = group.docsByLocale.get(locale)
+            const existingLocaleUpdatedAt =
+                existingLocaleDoc?.updatedAt ?? existingLocaleDoc?.updated_at ?? ''
+            if (!existingLocaleDoc || updatedAt >= existingLocaleUpdatedAt) {
+                group.docsByLocale.set(locale, document)
             }
 
-            const entry = toResponseEntry(document, normalizedPath, {
-                locale: contentI18nConfig.defaultLocale,
-                defaultLocale: contentI18nConfig.defaultLocale,
-                masterId: localizationMeta.masterId,
-                hasLocaleDocument: false,
-                updatedAtByLocale: localizationMeta.updatedAtByLocale,
-                missingLocalizedCount: 0,
-            })
-
-            const existing = pageByPath.get(normalizedPath)
-            if (!existing) {
-                pageByPath.set(normalizedPath, entry)
-                continue
+            group.updatedAtByLocale = mergeUpdatedAtByLocale(
+                group.updatedAtByLocale,
+                localizationMeta.updatedAtByLocale,
+            )
+            if (updatedAt) {
+                group.updatedAtByLocale[locale] = updatedAt
             }
 
-            const existingUpdatedAt = existing.updatedAt ?? ''
-            const nextUpdatedAt = entry.updatedAt ?? ''
-            if (nextUpdatedAt > existingUpdatedAt) {
-                pageByPath.set(normalizedPath, entry)
+            if (locale === contentI18nConfig.defaultLocale) {
+                const existingMasterUpdatedAt =
+                    group.masterDocument?.updatedAt ??
+                    group.masterDocument?.updated_at ??
+                    ''
+                if (!group.masterDocument || updatedAt >= existingMasterUpdatedAt) {
+                    group.masterDocument = document
+                }
             }
         }
 
+        const pages = Array.from(pagesByBasePath.entries())
+            .map(([basePath, group]) => {
+                const defaultLocale = contentI18nConfig.defaultLocale
+                const masterDocument =
+                    group.masterDocument ??
+                    group.docsByLocale.get(defaultLocale) ??
+                    null
+
+                if (!masterDocument) {
+                    return null
+                }
+
+                const availableLocales = contentI18nConfig.locales.filter((locale) =>
+                    group.docsByLocale.has(locale),
+                )
+                const missingLocales = contentI18nConfig.locales.filter(
+                    (locale) => !availableLocales.includes(locale),
+                )
+
+                return toResponseEntry(masterDocument, basePath, {
+                    locale: defaultLocale,
+                    defaultLocale,
+                    masterId: group.masterId,
+                    hasLocaleDocument: false,
+                    updatedAtByLocale: group.updatedAtByLocale,
+                    missingLocalizedCount: missingLocales.length,
+                    availableLocales,
+                    missingLocales,
+                })
+            })
+            .filter((entry): entry is ReturnType<typeof toResponseEntry> => Boolean(entry))
+            .sort((left, right) => left.path.localeCompare(right.path))
+
         return {
             success: true,
-            pages: Array.from(pageByPath.values()).sort((left, right) =>
-                left.path.localeCompare(right.path),
-            ),
+            pages,
         }
     } catch (error: any) {
         if (error?.statusCode) {
