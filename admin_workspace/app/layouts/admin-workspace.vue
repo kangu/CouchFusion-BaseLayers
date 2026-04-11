@@ -20,14 +20,9 @@ const footerText = computed(
 );
 const hasSiteLogo = computed(() => Boolean(nuxtApp.vueApp.component("SiteLogo")));
 const hasToastNotification = computed(() => Boolean(nuxtApp.vueApp.component("ToastNotification")));
-const userInitial = computed(() => user.value?.name?.charAt(0).toUpperCase() || "U");
-const userAvatar = computed(() => {
-  const avatar = user.value?.profile?.avatar;
-  const version = user.value?.profile?.avatarVersion;
-  if (!avatar) {
-    return null;
-  }
-  return version ? `${avatar}?v=${version}` : avatar;
+const userInitial = computed(() => {
+  const username = (user.value?.name ?? "").trim();
+  return username ? username.charAt(0).toUpperCase() : "U";
 });
 
 const {
@@ -265,14 +260,7 @@ onMounted(() => {
                   :aria-expanded="profileMenuOpen"
                   @click="toggleProfileMenu"
                 >
-                  <img
-                    v-if="userAvatar"
-                    :src="userAvatar"
-                    alt="Profile avatar"
-                    class="h-full w-full object-cover"
-                  />
                   <div
-                    v-else
                     class="h-full w-full rounded-full bg-gradient-to-br from-orange-400 to-orange-600 text-white flex items-center justify-center font-semibold shadow-sm"
                   >
                     {{ userInitial }}

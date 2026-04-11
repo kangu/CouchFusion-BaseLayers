@@ -99,6 +99,7 @@ export type ComponentFlowItem =
 export interface ComponentDefinition {
   id: string; // used internally by registry
   label: string; // display name in UI
+  category?: string;
   description?: string;
   icon?: string;
   props?: ComponentPropSchema[];

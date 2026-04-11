@@ -6,6 +6,7 @@ const defaultDefinitions: ComponentDefinition[] = [
   {
     id: 'p',
     label: 'Paragraph',
+    category: 'basic',
     description: 'Rich text paragraph wrapper. Combine with text nodes or inline elements.',
     allowChildren: true,
     childHint: 'Add text nodes or inline components as children.',
@@ -26,12 +27,14 @@ const defaultDefinitions: ComponentDefinition[] = [
   {
     id: 'span',
     label: 'Span',
+    category: 'basic',
     description: 'Inline span element.',
     allowChildren: true
   },
   {
     id: 'strong',
     label: 'Strong Text',
+    category: 'basic',
     description: 'Inline wrapper that renders children with bold emphasis.',
     allowChildren: true,
     childHint: 'Add text nodes or inline components that should display in bold.'
@@ -39,6 +42,7 @@ const defaultDefinitions: ComponentDefinition[] = [
   {
     id: 'template',
     label: 'Template (Slot)',
+    category: 'basic',
     description: 'Wrapper for slot content, e.g. title slot.',
     props: [
       {
@@ -103,6 +107,7 @@ const extractDefinitions = (module: DefinitionModule | undefined): ComponentDefi
 
 const mergedDefinitions = (() => {
   const merged = new Map<string, ComponentDefinition>()
+  const alwaysBasicIds = new Set(['p', 'span', 'strong', 'template'])
 
   for (const definition of defaultDefinitions) {
     merged.set(definition.id, definition)
@@ -118,7 +123,16 @@ const mergedDefinitions = (() => {
     }
   }
 
-  return Array.from(merged.values())
+  return Array.from(merged.values()).map((definition) => ({
+    ...definition,
+    category: alwaysBasicIds.has(definition.id)
+      ? 'basic'
+      : (
+          typeof definition.category === 'string' && definition.category.trim().length > 0
+            ? definition.category.trim().toLowerCase()
+            : 'default'
+        )
+  }))
 })()
 
 const lookup = mergedDefinitions.reduce<ComponentRegistry['lookup']>((acc, def) => {

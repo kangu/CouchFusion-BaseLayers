@@ -1538,6 +1538,7 @@ const generateDefinitions = async (vueFiles, helpers) => {
     const definition = {
       id: toKebabCase(componentName),
       label: toTitleCase(componentName),
+      category: 'default',
       description: `Auto-generated registry entry for ${componentName}.`
     }
 
@@ -1591,9 +1592,22 @@ const generateDefinitions = async (vueFiles, helpers) => {
       .filter(Boolean)
       .join('\n')
 
-    const builderMeta = extractBuilderMeta(scriptsContent, helpers)
-    if (builderMeta) {
-      applyBuilderMeta(definition, builderMeta)
+    const builderFieldMeta = extractBuilderNamedMeta(
+      scriptsContent,
+      helpers,
+      'builderFieldMeta'
+    )
+    if (builderFieldMeta) {
+      applyBuilderMeta(definition, builderFieldMeta)
+    }
+
+    const builderComponentMeta = extractBuilderNamedMeta(
+      scriptsContent,
+      helpers,
+      'builderComponentMeta'
+    )
+    if (builderComponentMeta) {
+      applyBuilderComponentMeta(definition, builderComponentMeta)
     }
 
     definitions.push(definition)
@@ -1602,7 +1616,7 @@ const generateDefinitions = async (vueFiles, helpers) => {
   return definitions.sort((a, b) => a.label.localeCompare(b.label))
 }
 
-const extractBuilderMeta = (scriptContent, helpers) => {
+const extractBuilderNamedMeta = (scriptContent, helpers, exportName) => {
   if (!scriptContent) return null
   const { parser, traverse, types } = helpers
   try {
@@ -1620,7 +1634,7 @@ const extractBuilderMeta = (scriptContent, helpers) => {
         if (types.isVariableDeclaration(node.declaration)) {
           for (const decl of node.declaration.declarations) {
             const id = decl.id
-            if (!types.isIdentifier(id) || id.name !== 'builderFieldMeta') continue
+            if (!types.isIdentifier(id) || id.name !== exportName) continue
             if (types.isObjectExpression(decl.init)) {
               meta = objectExpressionToLiteral(decl.init, types)
             }
@@ -1631,7 +1645,7 @@ const extractBuilderMeta = (scriptContent, helpers) => {
 
     return meta
   } catch (error) {
-    console.warn('[registry] Failed to parse builder metadata:', error?.message || error)
+    console.warn(`[registry] Failed to parse ${exportName}:`, error?.message || error)
     return null
   }
 }
@@ -1707,6 +1721,14 @@ const applyBuilderMeta = (definition, meta) => {
       }
     }
   })
+}
+
+const applyBuilderComponentMeta = (definition, meta) => {
+  if (!meta || typeof meta !== 'object') return
+
+  if (typeof meta.category === 'string' && meta.category.trim().length > 0) {
+    definition.category = meta.category.trim().toLowerCase()
+  }
 }
 
 const escapeString = (value) =>

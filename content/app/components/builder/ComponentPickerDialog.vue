@@ -22,6 +22,24 @@
                         autofocus
                     />
                 </div>
+                <div class="component-picker-view-toggle">
+                    <button
+                        type="button"
+                        class="component-picker-view-toggle__button"
+                        :class="{ 'is-active': previewDevice === 'desktop' }"
+                        @click="previewDevice = 'desktop'"
+                    >
+                        Desktop
+                    </button>
+                    <button
+                        type="button"
+                        class="component-picker-view-toggle__button"
+                        :class="{ 'is-active': previewDevice === 'mobile' }"
+                        @click="previewDevice = 'mobile'"
+                    >
+                        Mobile
+                    </button>
+                </div>
                 <button class="close-button" @click="close">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18" />
@@ -29,7 +47,19 @@
                     </svg>
                 </button>
             </header>
-            <div class="component-picker-grid">
+            <div class="component-picker-tabs">
+                <button
+                    v-for="tab in categoryTabs"
+                    :key="tab.id"
+                    type="button"
+                    class="component-picker-tab"
+                    :class="{ 'is-active': selectedCategory === tab.id }"
+                    @click="selectedCategory = tab.id"
+                >
+                    {{ tab.label }}
+                </button>
+            </div>
+            <div class="component-picker-grid" :class="{ 'is-mobile-grid': previewDevice === 'mobile' }">
                 <div
                     v-for="comp in filteredComponents"
                     :key="comp.id"
@@ -39,19 +69,13 @@
 
                 >
                     <div class="component-card-preview" @click="select(comp.id)">
-                        <div class="preview-desktop">
-                            <div class="preview-scaler">
-                                <LazyLoader min-height="200px">
-                                    <PreviewFrame :width="1024" :height="800">
-                                        <component :is="comp.id" v-bind="getDefaultProps(comp)" />
-                                    </PreviewFrame>
-                                </LazyLoader>
-                            </div>
-                        </div>
-                        <div class="preview-mobile">
-                            <div class="preview-scaler">
-                                <LazyLoader min-height="200px">
-                                    <PreviewFrame :width="375" :height="800">
+                        <div class="preview-pane">
+                            <div class="preview-scaler" :class="{ 'is-desktop': previewDevice === 'desktop' }">
+                                <LazyLoader min-height="100%" class="preview-lazy-loader">
+                                    <PreviewFrame
+                                        width="100%"
+                                        height="100%"
+                                    >
                                         <component :is="comp.id" v-bind="getDefaultProps(comp)" />
                                     </PreviewFrame>
                                 </LazyLoader>
@@ -152,6 +176,8 @@ const emit = defineEmits<{
 
 const searchQuery = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
+const selectedCategory = ref("all");
+const previewDevice = ref<'desktop' | 'mobile'>('desktop');
 
 const expandedComp = ref<ComponentDefinition | null>(null);
 const expandedDevice = ref<'desktop' | 'mobile'>('desktop');
@@ -165,18 +191,78 @@ const closeExpanded = () => {
     expandedComp.value = null;
 };
 
+const normalizeCategory = (value?: string): string => {
+    if (typeof value !== "string") {
+        return "default";
+    }
+    const trimmed = value.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : "default";
+};
+
+const formatCategoryLabel = (value: string): string => {
+    if (value === "all") {
+        return "All";
+    }
+    if (value === "basic") {
+        return "Basic";
+    }
+    if (value === "default") {
+        return "Default";
+    }
+    return value
+        .split(/[-_\s]+/)
+        .filter(Boolean)
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(" ");
+};
+
+const categoryTabs = computed(() => {
+    const discovered = new Set<string>();
+    for (const definition of props.componentOptions) {
+        discovered.add(normalizeCategory(definition.category));
+    }
+
+    const ordered = Array.from(discovered.values()).sort((left, right) =>
+        left.localeCompare(right)
+    );
+    const prioritized = [
+        ...ordered.filter((value) => value === "basic"),
+        ...ordered.filter((value) => value !== "basic")
+    ];
+
+    return [
+        { id: "all", label: "All" },
+        ...prioritized.map((id) => ({
+            id,
+            label: formatCategoryLabel(id)
+        }))
+    ];
+});
+
 const filteredComponents = computed(() => {
-    if (!searchQuery.value.trim()) return props.componentOptions;
+    const selected = selectedCategory.value;
+    const byCategory =
+        selected === "all"
+            ? props.componentOptions
+            : props.componentOptions.filter(
+                  (component) => normalizeCategory(component.category) === selected
+              );
+
+    if (!searchQuery.value.trim()) return byCategory;
     const q = searchQuery.value.toLowerCase();
-    return props.componentOptions.filter(
+    return byCategory.filter(
         (c) =>
-            c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+            c.label.toLowerCase().includes(q) ||
+            c.id.toLowerCase().includes(q) ||
+            normalizeCategory(c.category).includes(q)
     );
 });
 
 const close = () => {
     emit("close");
     searchQuery.value = "";
+    selectedCategory.value = "all";
+    previewDevice.value = "desktop";
     closeExpanded();
 };
 
@@ -231,6 +317,9 @@ watch(
              nextTick(() => {
                 searchInput.value?.focus();
             });
+        } else {
+            selectedCategory.value = "all";
+            previewDevice.value = "desktop";
         }
     }
 );
@@ -341,12 +430,103 @@ watch(
     overflow-y: auto;
     padding: 24px;
     display: grid;
-    /* Adjusted to minmax 340px to favor 2 columns on typical desktop (900px max-width) */
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: max-content;
     gap: 20px;
     background: #f9fafb;
     overscroll-behavior: contain; /* Prevent parent scroll */
+}
+
+@media (max-width: 1100px) {
+    .component-picker-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.component-picker-grid.is-mobile-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1400px) {
+    .component-picker-grid.is-mobile-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1100px) {
+    .component-picker-grid.is-mobile-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .component-picker-grid.is-mobile-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.component-picker-view-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f3f4f6;
+    border-radius: 999px;
+    padding: 4px;
+}
+
+.component-picker-view-toggle__button {
+    border: 0;
+    background: transparent;
+    border-radius: 999px;
+    padding: 6px 10px;
+    color: #4b5563;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.component-picker-view-toggle__button.is-active {
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.component-picker-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.component-picker-tab {
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #374151;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.component-picker-tab:hover {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
+.component-picker-tab.is-active {
+    border-color: #2563eb;
+    color: #ffffff;
+    background: #2563eb;
 }
 
 .component-card {
@@ -370,7 +550,8 @@ watch(
 }
 
 .component-card-preview {
-    height: 200px;
+    aspect-ratio: 4 / 3;
+    height: auto;
     background: #f3f4f6;
     position: relative;
     overflow: hidden;
@@ -378,6 +559,10 @@ watch(
     padding: 12px;
     gap: 12px;
     border-bottom: 1px solid #e5e7eb;
+}
+
+.component-picker-grid.is-mobile-grid .component-card-preview {
+    aspect-ratio: 9 / 16;
 }
 
 .expand-preview-btn {
@@ -417,8 +602,10 @@ watch(
 }
 
 /* ... preview styles same ... */
-.preview-desktop {
-    flex: 2;
+.preview-pane {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     background: white;
     border: 1px solid #e5e7eb;
     border-radius: 4px;
@@ -427,23 +614,30 @@ watch(
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-.preview-mobile {
-    flex: 1;
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    overflow: hidden;
-    position: relative;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+.preview-lazy-loader {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+}
+
+.preview-lazy-loader :deep(.preview-frame-container),
+.preview-lazy-loader :deep(.preview-iframe) {
+    width: 100% !important;
+    height: 100% !important;
 }
 
 .preview-scaler {
+    width: 100%;
+    height: 100%;
+    transform-origin: top left;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.preview-scaler.is-desktop {
     width: 400%;
     height: 400%;
     transform: scale(0.25);
-    transform-origin: top left;
-    pointer-events: none;
-    overflow: hidden;
 }
 
 
