@@ -289,6 +289,7 @@ const headerPlaceholderHeight = ref(0);
 const headerPosition = reactive({ top: "0px", left: "0px", width: "auto" });
 const hasLoadedInitialDocument = ref(false);
 const isHistoryMenuOpen = ref(false);
+const isActionsMenuOpen = ref(false);
 const historyMenuRef = ref<HTMLElement | null>(null);
 
 const headerFixedStyles = computed(() => {
@@ -575,6 +576,7 @@ watch(
     () => selectedSummary.value?.path,
     (path) => {
         closeHistoryMenu();
+        closeActionsMenu();
         if (!path) {
             emit("page-selected", null);
             return;
@@ -742,19 +744,21 @@ const handleIntersection: IntersectionObserverCallback = (entries) => {
     }
 };
 
-const handleHistoryMenuOutsideClick = (event: MouseEvent) => {
-    if (!isHistoryMenuOpen.value) {
+const handleHistoryMenuOutsidePointerDown = (event: PointerEvent) => {
+    if (!isHistoryMenuOpen.value && !isActionsMenuOpen.value) {
         return;
     }
     const target = event.target as Node | null;
     if (historyMenuRef.value && target && !historyMenuRef.value.contains(target)) {
         closeHistoryMenu();
+        closeActionsMenu();
     }
 };
 
 const handleHistoryMenuEscape = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
         closeHistoryMenu();
+        closeActionsMenu();
     }
 };
 
@@ -766,7 +770,7 @@ onMounted(() => {
     updateHeaderMeasurements();
 
     window.addEventListener("resize", updateHeaderMeasurements);
-    window.addEventListener("click", handleHistoryMenuOutsideClick);
+    window.addEventListener("pointerdown", handleHistoryMenuOutsidePointerDown);
     window.addEventListener("keydown", handleHistoryMenuEscape);
 
     if ("ResizeObserver" in window) {
@@ -793,7 +797,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", updateHeaderMeasurements);
-        window.removeEventListener("click", handleHistoryMenuOutsideClick);
+        window.removeEventListener(
+            "pointerdown",
+            handleHistoryMenuOutsidePointerDown,
+        );
         window.removeEventListener("keydown", handleHistoryMenuEscape);
     }
 
@@ -2523,6 +2530,10 @@ const closeHistoryMenu = () => {
     isHistoryMenuOpen.value = false;
 };
 
+const closeActionsMenu = () => {
+    isActionsMenuOpen.value = false;
+};
+
 watch(
     () => forcePreviewMotion.value,
     (value) => {
@@ -2538,7 +2549,31 @@ const toggleHistoryMenu = () => {
     if (!selectedSummary.value) {
         return;
     }
+    closeActionsMenu();
     isHistoryMenuOpen.value = !isHistoryMenuOpen.value;
+};
+
+const toggleActionsMenu = () => {
+    if (!selectedSummary.value) {
+        return;
+    }
+    closeHistoryMenu();
+    isActionsMenuOpen.value = !isActionsMenuOpen.value;
+};
+
+const handleDuplicateFromActionsMenu = () => {
+    closeActionsMenu();
+    showDuplicateModal();
+};
+
+const handleTranslateFromActionsMenu = () => {
+    closeActionsMenu();
+    handleTranslatePage();
+};
+
+const handleDeleteFromActionsMenu = () => {
+    closeActionsMenu();
+    handleDeletePage();
 };
 
 const handleHistoryMenuSelection = async (historyId: string): Promise<void> => {
@@ -2756,143 +2791,113 @@ defineExpose({
               <div class="flex flex-col flex-1">
 
                 <div class="flex-none flex">
-                  <div class="editor-header__actions" debug>
-                    <button
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--primary"
-                        :class="ui.saveButton"
-                        :disabled="isSavePending || !selectedSummary"
-                        @click="handleSaveDocument"
-                    >
-                      <svg
-                          v-if="isSavePending"
-                          class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                      >
-                        <path
-                            fill="currentColor"
-                            d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
-                        />
-                      </svg>
-                      <span>{{
-                          isSavePending ? "Saving…" : "Save Changes"
-                        }}</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--danger"
-                        :class="ui.deleteButton"
-                        :disabled="isDeletePending || !selectedSummary"
-                        @click="handleDeletePage"
-                    >
-                      <svg
-                          class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                      >
-                        <path
-                            fill="currentColor"
-                            d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14Zm-1 3H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2Zm-3 2v10h-2V9Zm-4 0v10H9V9Z"
-                        />
-                      </svg>
-                      <span>Delete</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--muted"
-                        :class="ui.cancelButton"
-                        :disabled="isDuplicatePending || !selectedSummary"
-                        @click="showDuplicateModal"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 512 512">
-                        <rect width="336" height="336" x="128" y="128" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="32" rx="57" ry="57" />
-                        <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="m383.5 128l.5-24a56.16 56.16 0 0 0-56-56H112a64.19 64.19 0 0 0-64 64v216a56.16 56.16 0 0 0 56 56h24m168-168v160m80-80H216" />
-                      </svg>
-                    </button>
-                    <label class="editor-header__locale">
-                        <span>Locale</span>
-                        <select
-                            v-model="activeLocale"
+                  <div class="editor-header__actions">
+                    <div class="editor-header__save-group" ref="historyMenuRef">
+                      <div class="editor-header__save-split">
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--primary"
+                            :class="ui.saveButton"
+                            :disabled="isSavePending || !selectedSummary"
+                            @click="handleSaveDocument"
+                        >
+                          <svg
+                              v-if="isSavePending"
+                              class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                          >
+                            <path
+                                fill="currentColor"
+                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                            />
+                          </svg>
+                          <span>{{ isSavePending ? "Saving…" : "Save Changes" }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
+                            :class="{ 'is-active': isHistoryMenuOpen }"
                             :disabled="!selectedSummary"
+                            :aria-expanded="isHistoryMenuOpen"
+                            aria-haspopup="menu"
+                            @click="toggleHistoryMenu"
                         >
-                            <option
-                                v-for="locale in availableLocales"
-                                :key="locale"
-                                :value="locale"
-                            >
-                                {{ locale }}
-                            </option>
-                        </select>
-                    </label>
-                    <button
-                        v-if="selectedSummary"
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--muted"
-                        :disabled="
-                            isTranslationPending ||
-                            !translationLocaleOptions.length ||
-                            !!selectedHistoryId
-                        "
-                        @click="handleTranslatePage"
-                    >
-                        <span>{{
-                            isTranslationPending
-                                ? "Translating..."
-                                : "Translate"
-                        }}</span>
-                    </button>
-                    <div class="editor-header__motion-toggle-wrap group">
-                      <button
-                          type="button"
-                          class="editor-header__motion-toggle-button"
-                          :aria-pressed="forcePreviewMotion"
-                          :aria-label="forcePreviewMotion ? 'Keep Animations Running enabled' : 'Keep Animations Running disabled'"
-                          @click="forcePreviewMotion = !forcePreviewMotion"
-                      >
-                        <svg
-                            class="editor-header__motion-toggle-icon"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
+                          History
+                        </button>
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__save-menu-toggle"
+                            :disabled="!selectedSummary"
+                            :aria-expanded="isActionsMenuOpen"
+                            aria-haspopup="menu"
+                            aria-label="Open save actions menu"
+                            @click="toggleActionsMenu"
                         >
-                          <path
-                              fill="currentColor"
-                              d="M3 11.5a1 1 0 0 1 1-1h7.4a3.5 3.5 0 0 0 0-7H8.5a1 1 0 1 1 0-2h2.9a5.5 5.5 0 0 1 0 11H4a1 1 0 0 1-1-1m11.6 9H4a1 1 0 1 1 0-2h10.6a3.5 3.5 0 1 0 0-7h-2.1a1 1 0 1 1 0-2h2.1a5.5 5.5 0 1 1 0 11"
-                          />
-                        </svg>
-                      </button>
-                      <div class="editor-header__motion-tooltip" role="tooltip">
-                        <div class="editor-header__motion-tooltip-title">Keep Animations Running</div>
-                        <div class="editor-header__motion-tooltip-state">
-                          {{ forcePreviewMotion ? 'Enabled' : 'Disabled' }}
-                        </div>
+                          <svg
+                              class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                          >
+                            <path fill="currentColor" d="M7 10l5 5l5-5z" />
+                          </svg>
+                        </button>
                       </div>
-                    </div>
-                    <div class="editor-header__history" ref="historyMenuRef">
-                      <button
-                          type="button"
-                          class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
-                          :disabled="!selectedSummary"
-                          :aria-expanded="isHistoryMenuOpen"
-                          aria-haspopup="menu"
-                          aria-label="Open history"
-                          @click="toggleHistoryMenu"
+
+                      <div
+                          v-if="isActionsMenuOpen"
+                          class="editor-header__actions-dropdown"
+                          role="menu"
                       >
-                        <svg
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
+                        <button
+                            type="button"
+                            role="menuitem"
+                            class="editor-header__actions-item"
+                            :disabled="isDuplicatePending || !selectedSummary"
+                            @click="handleDuplicateFromActionsMenu"
                         >
-                          <path
-                              fill="currentColor"
-                              d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.65Z"
-                          />
-                        </svg>
-                      </button>
+                          Duplicate
+                        </button>
+                        <button
+                            type="button"
+                            role="menuitem"
+                            class="editor-header__actions-item"
+                            :disabled="
+                                isTranslationPending ||
+                                !translationLocaleOptions.length ||
+                                !!selectedHistoryId
+                            "
+                            @click="handleTranslateFromActionsMenu"
+                        >
+                          {{ isTranslationPending ? "Translating..." : "Translate" }}
+                        </button>
+                        <button
+                            type="button"
+                            role="menuitemcheckbox"
+                            class="editor-header__actions-item editor-header__actions-item--toggle"
+                            :aria-checked="forcePreviewMotion"
+                            :disabled="!selectedSummary"
+                            @click="
+                                forcePreviewMotion = !forcePreviewMotion;
+                                closeActionsMenu();
+                            "
+                        >
+                          Keep Animations Running
+                          <span>{{ forcePreviewMotion ? "On" : "Off" }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="menuitem"
+                            class="editor-header__actions-item editor-header__actions-item--danger"
+                            :disabled="isDeletePending || !selectedSummary"
+                            @click="handleDeleteFromActionsMenu"
+                        >
+                          Delete
+                        </button>
+                      </div>
+
                       <div
                           v-if="isHistoryMenuOpen"
                           class="editor-header__history-dropdown"
@@ -2951,6 +2956,22 @@ defineExpose({
                         </div>
                       </div>
                     </div>
+
+                    <label class="editor-header__locale">
+                        <span>Locale</span>
+                        <select
+                            v-model="activeLocale"
+                            :disabled="!selectedSummary"
+                        >
+                            <option
+                                v-for="locale in availableLocales"
+                                :key="locale"
+                                :value="locale"
+                            >
+                                {{ locale }}
+                            </option>
+                        </select>
+                    </label>
                   </div>
                 </div>
 
@@ -4366,6 +4387,84 @@ defineExpose({
     flex-wrap: wrap;
 }
 
+.editor-header__save-group {
+    position: relative;
+}
+
+.editor-header__save-split {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+
+.editor-header__save-menu-toggle {
+    min-width: 2.35rem;
+    justify-content: center;
+    padding-inline: 0.5rem;
+}
+
+.editor-header__actions-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 1200;
+    min-width: 230px;
+    padding: 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background-color: #ffffff;
+    box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.35);
+    display: grid;
+    gap: 0.25rem;
+}
+
+.editor-header__actions-item {
+    width: 100%;
+    text-align: left;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.4rem;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition:
+        border-color 0.15s ease,
+        color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.editor-header__actions-item:hover:not(:disabled) {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    background-color: #f8fafc;
+}
+
+.editor-header__actions-item:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.editor-header__actions-item--toggle span {
+    color: #475569;
+    font-size: 0.75rem;
+}
+
+.editor-header__actions-item--danger {
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.editor-header__actions-item--danger:hover:not(:disabled) {
+    background-color: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+
 .editor-header__locale {
     display: inline-flex;
     align-items: center;
@@ -4596,97 +4695,6 @@ defineExpose({
     color: #0f172a;
     font-size: 0.87rem;
     font-weight: 700;
-}
-
-.editor-header__motion-toggle-wrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-}
-
-.editor-header__motion-toggle-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 999px;
-    border: 1px solid #d1d5db;
-    background: #ffffff;
-    color: #475569;
-    transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease,
-        background-color 0.18s ease, transform 0.18s ease;
-}
-
-.editor-header__motion-toggle-button[aria-pressed="true"] {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #1d4ed8;
-}
-
-.editor-header__motion-toggle-button:hover {
-    border-color: #94a3b8;
-    color: #0f172a;
-    transform: translateY(-1px);
-}
-
-.editor-header__motion-toggle-button:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-}
-
-.editor-header__motion-toggle-icon {
-    width: 16px;
-    height: 16px;
-}
-
-.editor-header__motion-tooltip {
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 10px);
-    transform: translateX(-50%) translateY(6px);
-    min-width: 214px;
-    padding: 0.55rem 0.65rem;
-    border-radius: 0.65rem;
-    border: 1px solid rgba(148, 163, 184, 0.35);
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #f8fafc;
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.32);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.16s ease, transform 0.16s ease;
-    z-index: 24;
-}
-
-.editor-header__motion-toggle-wrap:hover .editor-header__motion-tooltip,
-.editor-header__motion-toggle-wrap:focus-within .editor-header__motion-tooltip {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-}
-
-.editor-header__motion-tooltip::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 100%;
-    transform: translateX(-50%);
-    border-width: 7px;
-    border-style: solid;
-    border-color: #1e293b transparent transparent transparent;
-}
-
-.editor-header__motion-tooltip-title {
-    font-size: 0.76rem;
-    line-height: 1.15;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-}
-
-.editor-header__motion-tooltip-state {
-    margin-top: 0.22rem;
-    font-size: 0.72rem;
-    color: #bfdbfe;
-    font-weight: 600;
 }
 
 .editor-header__status-line {
