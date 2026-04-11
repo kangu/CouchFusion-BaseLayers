@@ -2756,7 +2756,7 @@ defineExpose({
               <div class="flex flex-col flex-1">
 
                 <div class="flex-none flex">
-                  <div class="editor-header__actions">
+                  <div class="editor-header__actions" debug>
                     <button
                         type="button"
                         class="content-admin-workbench__button content-admin-workbench__button--primary"
@@ -2844,13 +2844,33 @@ defineExpose({
                                 : "Translate"
                         }}</span>
                     </button>
-                    <label class="editor-header__motion-toggle" title="Preview motion preference">
-                      <input
-                          v-model="forcePreviewMotion"
-                          type="checkbox"
-                      />
-                      <span>Force Motion</span>
-                    </label>
+                    <div class="editor-header__motion-toggle-wrap group">
+                      <button
+                          type="button"
+                          class="editor-header__motion-toggle-button"
+                          :aria-pressed="forcePreviewMotion"
+                          :aria-label="forcePreviewMotion ? 'Keep Animations Running enabled' : 'Keep Animations Running disabled'"
+                          @click="forcePreviewMotion = !forcePreviewMotion"
+                      >
+                        <svg
+                            class="editor-header__motion-toggle-icon"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                          <path
+                              fill="currentColor"
+                              d="M3 11.5a1 1 0 0 1 1-1h7.4a3.5 3.5 0 0 0 0-7H8.5a1 1 0 1 1 0-2h2.9a5.5 5.5 0 0 1 0 11H4a1 1 0 0 1-1-1m11.6 9H4a1 1 0 1 1 0-2h10.6a3.5 3.5 0 1 0 0-7h-2.1a1 1 0 1 1 0-2h2.1a5.5 5.5 0 1 1 0 11"
+                          />
+                        </svg>
+                      </button>
+                      <div class="editor-header__motion-tooltip" role="tooltip">
+                        <div class="editor-header__motion-tooltip-title">Keep Animations Running</div>
+                        <div class="editor-header__motion-tooltip-state">
+                          {{ forcePreviewMotion ? 'Enabled' : 'Disabled' }}
+                        </div>
+                      </div>
+                    </div>
                     <div class="editor-header__history" ref="historyMenuRef">
                       <button
                           type="button"
@@ -4578,24 +4598,95 @@ defineExpose({
     font-weight: 700;
 }
 
-.editor-header__motion-toggle {
+.editor-header__motion-toggle-wrap {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.65rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.45rem;
-    background: #ffffff;
-    color: #4b5563;
-    font-size: 0.8rem;
-    font-weight: 600;
-    user-select: none;
 }
 
-.editor-header__motion-toggle input {
-    width: 14px;
-    height: 14px;
-    margin: 0;
+.editor-header__motion-toggle-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #475569;
+    transition: color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease,
+        background-color 0.18s ease, transform 0.18s ease;
+}
+
+.editor-header__motion-toggle-button[aria-pressed="true"] {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.editor-header__motion-toggle-button:hover {
+    border-color: #94a3b8;
+    color: #0f172a;
+    transform: translateY(-1px);
+}
+
+.editor-header__motion-toggle-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+.editor-header__motion-toggle-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.editor-header__motion-tooltip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%) translateY(6px);
+    min-width: 214px;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #f8fafc;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 24;
+}
+
+.editor-header__motion-toggle-wrap:hover .editor-header__motion-tooltip,
+.editor-header__motion-toggle-wrap:focus-within .editor-header__motion-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.editor-header__motion-tooltip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    border-width: 7px;
+    border-style: solid;
+    border-color: #1e293b transparent transparent transparent;
+}
+
+.editor-header__motion-tooltip-title {
+    font-size: 0.76rem;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.editor-header__motion-tooltip-state {
+    margin-top: 0.22rem;
+    font-size: 0.72rem;
+    color: #bfdbfe;
+    font-weight: 600;
 }
 
 .editor-header__status-line {

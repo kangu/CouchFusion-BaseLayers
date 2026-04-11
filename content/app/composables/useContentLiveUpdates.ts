@@ -563,6 +563,16 @@ export const useContentLiveUpdates = (): void => {
       return
     }
 
+    const interactiveControl = target.closest<HTMLElement>('button, [role="button"], input, select, textarea')
+    if (interactiveControl && !interactiveControl.hasAttribute('data-prop-id')) {
+      return
+    }
+
+    // Allow explicitly interactive controls to handle their own clicks in inline preview.
+    if (target.closest('[data-inline-preview-interactive="true"]')) {
+      return
+    }
+
     if (shouldAllowNaturalFollow(event, target)) {
       return
     }
