@@ -14,6 +14,14 @@ export type ComponentResolver =
 
 export type ComponentResolverMap = Record<string, ComponentResolver>;
 
+export interface GlobalComponentResolverEntry {
+    id: string;
+    component: string;
+    enabled?: boolean;
+    defaultProps?: Record<string, unknown>;
+    defaultPropsByLocale?: Record<string, Record<string, unknown>>;
+}
+
 export interface HastNode {
     type: string;
     children?: HastNode[];

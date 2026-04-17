@@ -76,7 +76,10 @@
                                         width="100%"
                                         height="100%"
                                     >
-                                        <component :is="comp.id" v-bind="getDefaultProps(comp)" />
+                                        <component
+                                            :is="getPreviewComponentId(comp)"
+                                            v-bind="getDefaultProps(comp)"
+                                        />
                                     </PreviewFrame>
                                 </LazyLoader>
                             </div>
@@ -149,7 +152,10 @@
                             :height="'100%'"
                             class="full-size-frame"
                         >
-                            <component :is="expandedComp.id" v-bind="getDefaultProps(expandedComp)" />
+                            <component
+                                :is="getPreviewComponentId(expandedComp)"
+                                v-bind="getDefaultProps(expandedComp)"
+                            />
                         </PreviewFrame>
                     </div>
                 </div>
@@ -307,7 +313,27 @@ const getDefaultProps = (def: ComponentDefinition) => {
             }
         }
     }
-    return defaults;
+    const previewOverrides =
+        def.previewProps &&
+        typeof def.previewProps === "object" &&
+        !Array.isArray(def.previewProps)
+            ? (def.previewProps as Record<string, BuilderValue>)
+            : {};
+
+    return {
+        ...defaults,
+        ...previewOverrides,
+    };
+};
+
+const getPreviewComponentId = (def: ComponentDefinition): string => {
+    if (
+        typeof def.previewComponentId === "string" &&
+        def.previewComponentId.trim().length > 0
+    ) {
+        return def.previewComponentId;
+    }
+    return def.id;
 };
 
 watch(

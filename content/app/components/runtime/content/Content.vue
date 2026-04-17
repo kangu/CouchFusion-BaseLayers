@@ -15,6 +15,7 @@ import { toHast } from "minimark/hast";
 import type { MinimarkTree } from "minimark";
 import type {
     ComponentResolverMap,
+    GlobalComponentResolverEntry,
     HastElement,
     HastNode,
     HastRoot,
@@ -36,6 +37,7 @@ const renderFunctions = ["render", "ssrRender", "__ssrInlineRender"] as const;
 type RenderContext = {
     tags: Record<string, unknown>;
     resolvers: ComponentResolverMap;
+    globalComponents: Record<string, GlobalComponentResolverEntry>;
     locale: string;
     defaultLocale: string;
     i18nEnabled: boolean;
@@ -295,6 +297,72 @@ function resolveComponentReference(
     return normalizeComponent(target);
 }
 
+const warnedGlobalOverrideKeys = new Set<string>();
+
+const safeStringify = (value: unknown): string => {
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
+const mergeGlobalAndLocalProps = (
+    alias: string,
+    globalDefaults: Record<string, unknown>,
+    localProps: Record<string, unknown>,
+) => {
+    const merged = {
+        ...globalDefaults,
+        ...localProps,
+    };
+
+    const overriddenKeys: string[] = [];
+    for (const [key, localValue] of Object.entries(localProps)) {
+        if (!Object.hasOwn(globalDefaults, key)) {
+            continue;
+        }
+        const globalValue = globalDefaults[key];
+        if (safeStringify(globalValue) === safeStringify(localValue)) {
+            continue;
+        }
+        overriddenKeys.push(key);
+    }
+
+    if (import.meta.dev && overriddenKeys.length > 0) {
+        const warningId = `${alias}:${overriddenKeys.sort().join(",")}`;
+        if (!warnedGlobalOverrideKeys.has(warningId)) {
+            warnedGlobalOverrideKeys.add(warningId);
+            console.warn(
+                `[content-layer] Global component "${alias}" has local prop overrides (${overriddenKeys.join(
+                    ", ",
+                )}). Local overrides are allowed and take precedence.`,
+            );
+        }
+    }
+
+    return merged;
+};
+
+const resolveGlobalDefaultsForLocale = (
+    entry: GlobalComponentResolverEntry,
+    locale: string,
+): Record<string, unknown> => {
+    const shared = entry.defaultProps ?? {};
+    const byLocale = entry.defaultPropsByLocale;
+    if (!byLocale || typeof byLocale !== "object") {
+        return shared;
+    }
+    const localeDefaults = byLocale[locale];
+    if (!localeDefaults || typeof localeDefaults !== "object") {
+        return shared;
+    }
+    return {
+        ...shared,
+        ...localeDefaults,
+    };
+};
+
 function flattenNamedSlots(
     slots: Record<string, () => VNodeChild[]>,
 ): VNodeChild[] {
@@ -393,12 +461,24 @@ function renderNode(
         const element = node as HastElement;
         const rawTag = getNodeTag(element);
         const mapped = mapTagName(rawTag, element, ctx.tags);
-        const component = resolveComponentReference(mapped, ctx);
-        const props = normalizeProps(getNodeProps(element), {
+        const globalEntry = ctx.globalComponents[rawTag] ?? null;
+        const componentTarget = globalEntry?.component || mapped;
+        const component = resolveComponentReference(componentTarget, ctx);
+        const localProps = normalizeProps(getNodeProps(element), {
             locale: ctx.locale,
             defaultLocale: ctx.defaultLocale,
             i18nEnabled: ctx.i18nEnabled,
         });
+        const globalDefaults = globalEntry
+            ? resolveGlobalDefaultsForLocale(globalEntry, ctx.locale)
+            : {};
+        const props = globalEntry
+            ? mergeGlobalAndLocalProps(
+                  rawTag,
+                  globalDefaults,
+                  localProps,
+              )
+            : localProps;
         const isTemplate =
             typeof rawTag === "string" && rawTag.toLowerCase() === "template";
 
@@ -493,6 +573,10 @@ export default defineComponent({
             type: Object as PropType<ComponentResolverMap>,
             default: () => ({}),
         },
+        globalComponents: {
+            type: Array as PropType<GlobalComponentResolverEntry[]>,
+            default: () => ([]),
+        },
         locale: {
             type: String,
             default: undefined,
@@ -583,11 +667,27 @@ export default defineComponent({
 
         const tags = computed(() => toRaw(props.components));
         const resolvers = computed(() => toRaw(props.componentResolvers));
+        const globalComponents = computed<
+            Record<string, GlobalComponentResolverEntry>
+        >(() => {
+            const byId: Record<string, GlobalComponentResolverEntry> = {};
+            for (const entry of props.globalComponents || []) {
+                if (!entry || !entry.id || !entry.component) {
+                    continue;
+                }
+                if (entry.enabled === false) {
+                    continue;
+                }
+                byId[entry.id] = entry;
+            }
+            return byId;
+        });
 
         return () => {
             const ctx: RenderContext = {
                 tags: (tags.value || {}) as Record<string, unknown>,
                 resolvers: (resolvers.value || {}) as ComponentResolverMap,
+                globalComponents: globalComponents.value,
                 locale: resolvedLocale.value,
                 defaultLocale: resolvedDefaultLocale.value,
                 i18nEnabled: contentI18nConfig.value.enabled,

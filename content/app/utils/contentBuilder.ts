@@ -125,6 +125,10 @@ const normalizeComponentId = (component: string): string => {
     return component
   }
 
+  if (/^[A-Z]/.test(component)) {
+    return component
+  }
+
   if (component.includes('-')) {
     return component
   }
@@ -284,6 +288,7 @@ const serializeChildren = (nodes: BuilderNodeChild[]): MinimalContentEntry[] => 
 interface SerializeOptions {
   annotateBuilderUids?: boolean;
   builderUidAttr?: string;
+  globalAliasIds?: string[] | Set<string>;
 }
 
 const BUILDER_SECTION_ID_PROP = '__builderSectionId'
@@ -291,8 +296,26 @@ const BUILDER_SECTION_ATTR = 'data-section-id'
 
 const defaultSerializeOptions: Required<SerializeOptions> = {
   annotateBuilderUids: false,
-  builderUidAttr: 'data-builder-uid'
+  builderUidAttr: 'data-builder-uid',
+  globalAliasIds: []
 };
+
+const isGlobalAliasComponent = (
+  componentName: string,
+  options: SerializeOptions
+): boolean => {
+  const aliases = options.globalAliasIds
+  if (!aliases) {
+    return false
+  }
+  if (aliases instanceof Set) {
+    return aliases.has(componentName)
+  }
+  if (Array.isArray(aliases)) {
+    return aliases.includes(componentName)
+  }
+  return false
+}
 
 const serializeChildrenWithOptions = (
   nodes: BuilderNodeChild[],
@@ -318,7 +341,12 @@ export const serializeNode = (
   const resolvedOptions = { ...defaultSerializeOptions, ...options }
 
   const componentName = normalizeComponentId(node.component)
-  const props = serializeProps(node, componentName)
+  const isGlobalAlias = isGlobalAliasComponent(componentName, resolvedOptions)
+  const props = isGlobalAlias
+    ? Object.fromEntries(
+        Object.entries(node.props || {}).filter(([key]) => key.startsWith('__builder') || key.startsWith('__content'))
+      )
+    : serializeProps(node, componentName)
 
   if (resolvedOptions.annotateBuilderUids && node.uid) {
     props[resolvedOptions.builderUidAttr] = node.uid
@@ -329,10 +357,17 @@ export const serializeNode = (
   }
 
   const children = serializeChildrenWithOptions(node.children, resolvedOptions)
-  const baseEntry: MinimalContentEntry =
-    children.length > 0
-      ? [componentName, Object.keys(props).length ? props : {}, ...children]
-      : [componentName, Object.keys(props).length ? props : {}]
+  const hasProps = Object.keys(props).length > 0
+  const shouldUseBareGlobalAlias =
+    !hasProps && children.length === 0 && /^[A-Z]/.test(componentName)
+
+  const baseEntry: MinimalContentEntry = shouldUseBareGlobalAlias
+    ? [componentName]
+    : (
+        children.length > 0
+          ? [componentName, hasProps ? props : {}, ...children]
+          : [componentName, hasProps ? props : {}]
+      )
 
   if (!hasMargins(node.margins)) {
     return baseEntry

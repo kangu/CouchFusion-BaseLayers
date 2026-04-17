@@ -102,6 +102,8 @@ export interface ComponentDefinition {
   category?: string;
   description?: string;
   icon?: string;
+  previewComponentId?: string;
+  previewProps?: Record<string, BuilderValue>;
   props?: ComponentPropSchema[];
   slots?: ComponentSlotSchema[];
   flow?: ComponentFlowItem[];

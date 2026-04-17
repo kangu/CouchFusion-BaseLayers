@@ -647,7 +647,10 @@ const handleDelete = async (page: ContentPageSummary) => {
 };
 
 onMounted(async () => {
-  await Promise.all([loadI18nSettings(), contentStore.fetchIndex()]);
+  await Promise.all([
+    loadI18nSettings(),
+    contentStore.fetchIndex(),
+  ]);
 });
 
 watch(
@@ -1759,4 +1762,5 @@ watch(totalPageCount, (value) => {
   justify-content: flex-end;
   gap: 0.75rem;
 }
+
 </style>

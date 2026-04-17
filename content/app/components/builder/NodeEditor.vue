@@ -2,6 +2,7 @@
     <div
         ref="panelRef"
         class="node-panel"
+        :class="{ 'node-panel--global-alias': isGlobalAliasNode }"
         :data-builder-node-uid="node.uid"
         :style="{ marginLeft: depth * 16 + 'px' }"
         @focusin="notifyFocus"
@@ -50,7 +51,7 @@
                             <span class="node-panel__slot-suffix">(Slot)</span>
                         </strong>
                         <strong v-else>{{ node.component }}</strong>
-                      <small class="component-internal-name">{{ node.component }}</small>
+                        <small class="component-internal-name">{{ node.component }}</small>
                     </div>
                     <button
                         v-if="isSectionNameEditable && !isSectionNameEditing"
@@ -80,25 +81,11 @@
                         {{ collapsedNodes[node.uid] ? "Expand" : "Collapse" }}
                     </button>
                     <button
-                        class="node-panel__toggle node-panel__toggle--icon"
-                        type="button"
-                        @click="triggerFocus"
-                        aria-label="Focus preview"
-                        title="Focus preview"
-                    >
-                        <svg
-                            class="node-panel__toggle-icon"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path
-                                fill="currentColor"
-                                d="M12 2a1 1 0 0 1 1 1v2.05A7.002 7.002 0 0 1 18.95 11H21a1 1 0 1 1 0 2h-2.05A7.002 7.002 0 0 1 13 18.95V21a1 1 0 1 1-2 0v-2.05A7.002 7.002 0 0 1 5.05 13H3a1 1 0 1 1 0-2h2.05A7.002 7.002 0 0 1 11 5.05V3a1 1 0 0 1 1-1Zm0 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"
-                            />
-                        </svg>
-                    </button>
-                    <button
-                        v-if="isSectionNameEditable && onTranslateSection"
+                        v-if="
+                            showTranslateSection &&
+                            isSectionNameEditable &&
+                            onTranslateSection
+                        "
                         class="node-panel__toggle node-panel__toggle--icon node-panel__toggle--translate"
                         type="button"
                         @click="triggerTranslateSection"
@@ -113,6 +100,24 @@
                             <path
                                 fill="currentColor"
                                 d="M12 3a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-1.1a10.2 10.2 0 0 1-1.7 4.1c.9.8 1.9 1.4 2.9 1.8a1 1 0 1 1-.7 1.9c-1.2-.5-2.4-1.2-3.5-2.2c-1.1 1-2.3 1.7-3.5 2.2a1 1 0 1 1-.7-1.9c1.1-.4 2-1 2.9-1.8A10.2 10.2 0 0 1 9.1 7H8a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1Zm-1 4a8.2 8.2 0 0 0 1 2.6A8.2 8.2 0 0 0 13 7h-2Zm6 10.6l.7 1.9a1 1 0 1 1-1.9.7l-.6-1.7h-4.4l-.6 1.7a1 1 0 0 1-1.9-.7l2.9-7.8a1 1 0 0 1 1.9 0l1.8 4.9ZM14.5 16l-1.5-4.1L11.5 16h3Z"
+                            />
+                        </svg>
+                    </button>
+                    <button
+                        class="node-panel__toggle node-panel__toggle--icon"
+                        type="button"
+                        @click="triggerCreateGlobalAlias"
+                        aria-label="Create global alias"
+                        title="Create global alias"
+                    >
+                        <svg
+                            class="node-panel__toggle-icon"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M7.75 3A2.75 2.75 0 0 0 5 5.75v12.5A2.75 2.75 0 0 0 7.75 21h8.5A2.75 2.75 0 0 0 19 18.25V8.83a2.75 2.75 0 0 0-.81-1.94l-2.08-2.08A2.75 2.75 0 0 0 14.17 4H7.75Zm6.5 1.75c.26 0 .52.1.71.29l2 2c.19.19.29.44.29.71V18.25c0 .55-.45 1-1 1h-8.5c-.55 0-1-.45-1-1V5.75c0-.55.45-1 1-1h6.5Zm-1.25 4a1 1 0 0 1 1 1v1h1a1 1 0 1 1 0 2h-1v1a1 1 0 1 1-2 0v-1h-1a1 1 0 1 1 0-2h1v-1a1 1 0 0 1 1-1Z"
                             />
                         </svg>
                     </button>
@@ -267,6 +272,8 @@
                         :node="child"
                         :registry="registry"
                         :component-options="componentOptions"
+                        :global-alias-ids="globalAliasIds"
+                        :show-translate-section="showTranslateSection"
                         :focus-request="focusRequest"
                         :search-query="normalizedSearchQuery"
                         :depth="depth + 1"
@@ -276,6 +283,7 @@
                         :on-add-child-text="onAddChildText"
                         :on-remove="onRemove"
                         :on-clone="onClone"
+                        :on-create-global-alias="onCreateGlobalAlias"
                         :on-toggle-expanded="onToggleExpanded"
                         :on-translate-field="onTranslateField"
                         :on-translate-section="onTranslateSection"
@@ -444,6 +452,8 @@ const props = defineProps<{
     node: BuilderNodeChild;
     registry: ComponentRegistry;
     componentOptions: ComponentDefinition[];
+    globalAliasIds?: string[];
+    showTranslateSection?: boolean;
     searchQuery?: string;
     depth?: number;
     onUpdateProp: (uid: string, key: string, value: unknown) => void;
@@ -452,6 +462,7 @@ const props = defineProps<{
     onAddChildText: (parentUid: string) => void;
     onRemove: (uid: string) => void;
     onClone: (uid: string) => void;
+    onCreateGlobalAlias?: (uid: string) => void;
     onToggleExpanded?: (uid: string, expanded: boolean) => void;
     onFocusNode?: (payload: {
         uid: string;
@@ -553,6 +564,16 @@ const componentDef = computed(() =>
         ? props.registry.lookup[props.node.component]
         : undefined,
 );
+const isGlobalAliasNode = computed(() => {
+    if (props.node.type !== "component") {
+        return false;
+    }
+    const aliases = props.globalAliasIds ?? [];
+    return aliases.includes(props.node.component);
+});
+const showTranslateSection = computed(
+    () => props.showTranslateSection !== false,
+);
 
 const stickyChildMatchUids = ref<Set<string> | null>(null);
 
@@ -608,8 +629,11 @@ const requestRemoveNode = (uid: string) => {
     props.onRemove(uid);
 };
 
-const triggerFocus = () => {
-    notifyFocus("flash");
+const triggerCreateGlobalAlias = () => {
+    if (props.node.type !== "component") {
+        return;
+    }
+    props.onCreateGlobalAlias?.(props.node.uid);
 };
 
 const toPropPathAttr = (segments: Array<string | number>): string =>
@@ -2819,6 +2843,15 @@ const applyTextValue = () => {
 .node-panel__header-text {
     display: flex;
     flex-direction: column;
+}
+
+.node-panel--global-alias {
+    border-color: #bfdbfe;
+    background: linear-gradient(
+        180deg,
+        rgba(239, 246, 255, 0.42) 0%,
+        rgba(255, 255, 255, 1) 38%
+    );
 }
 
 .node-panel__header-text .component-internal-name {

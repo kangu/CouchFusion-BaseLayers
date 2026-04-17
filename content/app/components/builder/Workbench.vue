@@ -3,6 +3,7 @@ import {
     computed,
     defineAsyncComponent,
     nextTick,
+    onMounted,
     onBeforeUnmount,
     reactive,
     ref,
@@ -12,6 +13,8 @@ import {
 import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
+import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
+import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
 import {
     filterNodesBySearch,
     normalizeSearchQuery,
@@ -20,6 +23,9 @@ import type {
     BuilderNode,
     BuilderNodeChild,
     BuilderTree,
+    BuilderValue,
+    ComponentDefinition,
+    ComponentRegistry,
 } from "~/types/builder";
 import {
     createDocumentFromTree,
@@ -28,7 +34,11 @@ import {
     type SpacingPresetId,
 } from "../../utils/contentBuilder";
 import type { ComponentPropSchema } from "~/types/builder";
-import { CONTENT_META_I18N_KEY } from "#content/utils/i18n";
+import {
+    CONTENT_META_I18N_KEY,
+    resolveContentI18nConfig,
+    resolveContentLocalePath,
+} from "#content/utils/i18n";
 import {
     buildComponentDefinitionLookup,
     collectFixedBodyPaths,
@@ -89,11 +99,16 @@ const normalizeComponentId = (component: unknown): string | null => {
         return null;
     }
 
-    if (component.includes("-")) {
-        return component;
+    const trimmed = component.trim();
+    if (/^[A-Z]/.test(trimmed)) {
+        return trimmed;
     }
 
-    return component
+    if (trimmed.includes("-")) {
+        return trimmed;
+    }
+
+    return trimmed
         .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
         .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
         .toLowerCase();
@@ -196,11 +211,109 @@ const emit = defineEmits<{
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
+const globalComponentsRegistry = useGlobalComponentsRegistry();
 const runtimeConfig = useRuntimeConfig();
-const componentOptions = computed(() => registry.list);
-const componentDefinitionLookup = computed(() =>
-    buildComponentDefinitionLookup(registry.list),
+const contentI18nConfig = computed(() =>
+    resolveContentI18nConfig(
+        runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+    ),
 );
+
+const resolveGlobalEntryDefaults = (
+    entry: ContentGlobalComponentEntry,
+    locale: string,
+) => {
+    const shared = entry.defaultProps ?? {};
+    const byLocale = entry.defaultPropsByLocale;
+    if (!byLocale || typeof byLocale !== "object") {
+        return shared;
+    }
+    const localeDefaults = byLocale[locale];
+    if (!localeDefaults || typeof localeDefaults !== "object") {
+        return shared;
+    }
+    return {
+        ...shared,
+        ...localeDefaults,
+    };
+};
+
+const toGlobalComponentDefinition = (
+    entry: ContentGlobalComponentEntry,
+): ComponentDefinition | null => {
+    const base = registry.lookup[entry.component];
+    if (!base) {
+        return null;
+    }
+
+    return {
+        ...base,
+        id: entry.id,
+        label: entry.id,
+        category: "global",
+        previewComponentId: entry.component,
+        previewProps: resolveGlobalEntryDefaults(
+            entry,
+            resolvedBuilderLocale.value,
+        ) as Record<string, BuilderValue>,
+        description: `Global alias for ${base.label}. Uses shared defaults from global registry.`,
+    };
+};
+
+const globalComponentOptions = computed<ComponentDefinition[]>(() =>
+    globalComponentsRegistry.components.value
+        .filter((entry) => entry.enabled)
+        .map((entry) => toGlobalComponentDefinition(entry))
+        .filter((entry): entry is ComponentDefinition => Boolean(entry)),
+);
+
+const globalAliasDefaultsById = computed<
+    Record<string, Record<string, unknown>>
+>(() => {
+    const map: Record<string, Record<string, unknown>> = {};
+    for (const entry of globalComponentsRegistry.components.value) {
+        if (entry.enabled === false) {
+            continue;
+        }
+        if (!entry?.id) {
+            continue;
+        }
+        map[entry.id] = {
+            ...resolveGlobalEntryDefaults(entry, resolvedBuilderLocale.value),
+        };
+    }
+    return map;
+});
+
+const componentOptions = computed<ComponentDefinition[]>(() => {
+    const merged = new Map<string, ComponentDefinition>();
+    for (const definition of registry.list) {
+        merged.set(definition.id, definition);
+    }
+    for (const definition of globalComponentOptions.value) {
+        merged.set(definition.id, definition);
+    }
+    return Array.from(merged.values());
+});
+
+const runtimeRegistry = computed<ComponentRegistry>(() => ({
+    list: componentOptions.value,
+    lookup: buildComponentDefinitionLookup(componentOptions.value),
+}));
+
+const componentDefinitionLookup = computed(() =>
+    buildComponentDefinitionLookup(componentOptions.value),
+);
+
+const globalAliasIds = computed(
+    () =>
+        new Set(
+            globalComponentsRegistry.components.value
+                .filter((entry) => entry.enabled !== false)
+                .map((entry) => entry.id),
+        ),
+);
+const globalAliasIdList = computed(() => Array.from(globalAliasIds.value));
 
 const builderTree = ref<BuilderTree>([]);
 const pageConfig = reactive<PageConfigInput>({
@@ -213,6 +326,18 @@ const pageConfig = reactive<PageConfigInput>({
     extension: "md",
     meta: {},
 });
+const resolvedBuilderLocale = computed(() =>
+    resolveContentLocalePath(pageConfig.path || "/", contentI18nConfig.value)
+        .locale,
+);
+const resolvedDefaultLocale = computed(
+    () => contentI18nConfig.value.defaultLocale,
+);
+const isMultiLanguageSite = computed(
+    () =>
+        contentI18nConfig.value.enabled &&
+        contentI18nConfig.value.locales.length > 1,
+);
 
 const getSectionNamesById = (): Record<string, string> => {
     const meta = toPlainRecord(pageConfig.meta);
@@ -470,6 +595,13 @@ const pendingSelectedComponentId = ref<string | null>(null);
 const pendingSectionNameDraft = ref("");
 const sectionNamePromptInputRef = ref<HTMLInputElement | null>(null);
 
+const isGlobalAliasModalOpen = ref(false);
+const isGlobalAliasSaving = ref(false);
+const pendingGlobalAliasNodeUid = ref<string | null>(null);
+const globalAliasNameDraft = ref("");
+const globalAliasError = ref<string | null>(null);
+const globalAliasNameInputRef = ref<HTMLInputElement | null>(null);
+
 const spacingPresets: Array<{
     id: SpacingPresetId;
     label: string;
@@ -704,6 +836,42 @@ const deserializeTree = (entries: any[]): BuilderTree => {
     return entries
         .map((entry) => deserializeEntry(entry))
         .filter((entry): entry is BuilderNodeChild => entry !== null);
+};
+
+const hydrateGlobalAliasProps = () => {
+    const aliases = globalAliasDefaultsById.value;
+    if (!Object.keys(aliases).length) {
+        return;
+    }
+
+    const visit = (nodes: BuilderNodeChild[]) => {
+        for (const node of nodes) {
+            if (node.type !== "component") {
+                continue;
+            }
+
+            const defaults = aliases[node.component];
+            if (defaults) {
+                const nextProps = { ...(node.props ?? {}) };
+                for (const [key, value] of Object.entries(defaults)) {
+                    if (
+                        nextProps[key] === undefined &&
+                        !key.startsWith("__builder") &&
+                        !key.startsWith("__content")
+                    ) {
+                        nextProps[key] = cloneNodeData(value);
+                    }
+                }
+                node.props = nextProps;
+            }
+
+            if (node.children?.length) {
+                visit(node.children);
+            }
+        }
+    };
+
+    visit(builderTree.value);
 };
 
 const resetExpandedRoots = () => {
@@ -979,6 +1147,36 @@ const updateNodeProp = (uid: string, key: string, value: unknown) => {
     if (!node || node.type !== "component") {
         return;
     }
+
+    const isInternalMetaProp =
+        key.startsWith("__builder") || key.startsWith("__content");
+    if (isInternalMetaProp) {
+        const props = { ...node.props };
+        if (value === undefined || value === null) {
+            delete props[key];
+        } else {
+            props[key] = value;
+        }
+        node.props = props;
+        return;
+    }
+
+    const aliasId = node.component;
+    const aliasEntryIndex = globalComponentsRegistry.components.value.findIndex(
+        (entry) => entry.id === aliasId && entry.enabled !== false,
+    );
+    if (aliasEntryIndex !== -1) {
+        const props = { ...node.props };
+        if (value === undefined || value === null) {
+            delete props[key];
+        } else {
+            props[key] = value;
+        }
+        node.props = props;
+        queueGlobalAliasPropPatch(aliasId, key, value);
+        return;
+    }
+
     const props = { ...node.props };
     if (value === undefined || value === null) {
         delete props[key];
@@ -986,6 +1184,166 @@ const updateNodeProp = (uid: string, key: string, value: unknown) => {
         props[key] = value;
     }
     node.props = props;
+};
+
+const cloneGlobalEntriesForSave = (
+    entries: ContentGlobalComponentEntry[],
+): ContentGlobalComponentEntry[] =>
+    entries.map((entry) => ({
+        ...entry,
+        defaultProps: { ...(entry.defaultProps ?? {}) },
+        defaultPropsByLocale: Object.fromEntries(
+            Object.entries(entry.defaultPropsByLocale ?? {}).map(
+                ([locale, props]) => [locale, { ...(props ?? {}) }],
+            ),
+        ),
+    }));
+
+type GlobalAliasPendingPatch = {
+    defaultProps: Record<string, unknown | undefined>;
+    defaultPropsByLocale: Record<string, Record<string, unknown | undefined>>;
+};
+
+const globalAliasPendingPatches = new Map<
+    string,
+    GlobalAliasPendingPatch
+>();
+let globalAliasPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let globalAliasAdminLoadPromise: Promise<void> | null = null;
+let isGlobalAliasAdminLoaded = false;
+
+const ensureGlobalAliasAdminLoaded = async () => {
+    if (isGlobalAliasAdminLoaded) {
+        return;
+    }
+    if (!globalAliasAdminLoadPromise) {
+        globalAliasAdminLoadPromise = globalComponentsRegistry
+            .fetchAdmin()
+            .then(() => {
+                isGlobalAliasAdminLoaded = true;
+            })
+            .finally(() => {
+                globalAliasAdminLoadPromise = null;
+            });
+    }
+    await globalAliasAdminLoadPromise;
+};
+
+const applyGlobalAliasPendingPatches = () => {
+    if (!globalAliasPendingPatches.size) {
+        return;
+    }
+
+    const nextEntries = cloneGlobalEntriesForSave(
+        globalComponentsRegistry.components.value,
+    );
+    let changed = false;
+
+    for (const [aliasId, patch] of globalAliasPendingPatches.entries()) {
+        const entryIndex = nextEntries.findIndex(
+            (entry) => entry.id === aliasId && entry.enabled !== false,
+        );
+        if (entryIndex === -1) {
+            continue;
+        }
+        const target = nextEntries[entryIndex];
+        const nextProps = { ...(target.defaultProps ?? {}) };
+        for (const [propKey, propValue] of Object.entries(
+            patch.defaultProps ?? {},
+        )) {
+            if (propValue === undefined || propValue === null) {
+                delete nextProps[propKey];
+            } else {
+                nextProps[propKey] = cloneNodeData(propValue);
+            }
+        }
+        const nextDefaultPropsByLocale: Record<string, Record<string, unknown>> =
+            Object.fromEntries(
+                Object.entries(target.defaultPropsByLocale ?? {}).map(
+                    ([locale, props]) => [locale, { ...(props ?? {}) }],
+                ),
+            );
+        for (const [locale, localePatch] of Object.entries(
+            patch.defaultPropsByLocale ?? {},
+        )) {
+            const nextLocaleProps = {
+                ...(nextDefaultPropsByLocale[locale] ?? {}),
+            };
+            for (const [propKey, propValue] of Object.entries(localePatch)) {
+                if (propValue === undefined || propValue === null) {
+                    delete nextLocaleProps[propKey];
+                } else {
+                    nextLocaleProps[propKey] = cloneNodeData(propValue);
+                }
+            }
+            if (Object.keys(nextLocaleProps).length === 0) {
+                delete nextDefaultPropsByLocale[locale];
+            } else {
+                nextDefaultPropsByLocale[locale] = nextLocaleProps;
+            }
+        }
+        nextEntries[entryIndex] = {
+            ...target,
+            defaultProps: nextProps,
+            defaultPropsByLocale: nextDefaultPropsByLocale,
+        };
+        changed = true;
+    }
+
+    if (changed) {
+        globalComponentsRegistry.components.value = nextEntries;
+    }
+};
+
+const persistGlobalAliasPatches = async () => {
+    try {
+        await ensureGlobalAliasAdminLoaded();
+        applyGlobalAliasPendingPatches();
+        const entriesToSave = cloneGlobalEntriesForSave(
+            globalComponentsRegistry.components.value,
+        );
+        await globalComponentsRegistry.saveAdmin(entriesToSave);
+        globalAliasPendingPatches.clear();
+    } catch (error) {
+        console.error(
+            "[builder] Failed to persist global component defaults from page editor.",
+            error,
+        );
+    }
+};
+
+const schedulePersistGlobalAliasPatches = () => {
+    if (globalAliasPersistTimer) {
+        clearTimeout(globalAliasPersistTimer);
+    }
+    globalAliasPersistTimer = setTimeout(() => {
+        globalAliasPersistTimer = null;
+        void persistGlobalAliasPatches();
+    }, 450);
+};
+
+const queueGlobalAliasPropPatch = (
+    aliasId: string,
+    key: string,
+    value: unknown,
+) => {
+    const currentPatch = globalAliasPendingPatches.get(aliasId) ?? {
+        defaultProps: {},
+        defaultPropsByLocale: {},
+    };
+    const locale = resolvedBuilderLocale.value;
+    const isDefaultLocale = locale === resolvedDefaultLocale.value;
+    if (isDefaultLocale) {
+        currentPatch.defaultProps[key] = value as unknown;
+    } else {
+        const localePatch = currentPatch.defaultPropsByLocale[locale] ?? {};
+        localePatch[key] = value as unknown;
+        currentPatch.defaultPropsByLocale[locale] = localePatch;
+    }
+    globalAliasPendingPatches.set(aliasId, currentPatch);
+
+    applyGlobalAliasPendingPatches();
+    schedulePersistGlobalAliasPatches();
 };
 
 const updateTextNode = (uid: string, value: string) => {
@@ -1049,6 +1407,160 @@ const cloneNode = (uid: string) => {
 
     const duplicated = cloneBuilderNode(entry.node);
     entry.parent.splice(entry.index + 1, 0, duplicated);
+};
+
+const toSuggestedGlobalAlias = (componentId: string): string => {
+    if (!componentId.trim()) {
+        return "GlobalComponent";
+    }
+    if (/^[A-Z][A-Za-z0-9_-]*$/.test(componentId)) {
+        return componentId;
+    }
+
+    const pascal = componentId
+        .split(/[-_\s]+/)
+        .filter((part) => part.length > 0)
+        .map((part) => part[0].toUpperCase() + part.slice(1))
+        .join("");
+
+    if (!pascal) {
+        return "GlobalComponent";
+    }
+    return `Global${pascal}`;
+};
+
+const sanitizeGlobalDefaultProps = (
+    input: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input ?? {})) {
+        if (key.startsWith("__builder") || key.startsWith("__content")) {
+            continue;
+        }
+        result[key] = cloneNodeData(value);
+    }
+    return result;
+};
+
+const sanitizeLocalAliasProps = (
+    input: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input ?? {})) {
+        if (key.startsWith("__builder") || key.startsWith("__content")) {
+            result[key] = cloneNodeData(value);
+        }
+    }
+    return result;
+};
+
+const openGlobalAliasModal = async (uid: string) => {
+    const node = findNode(builderTree.value, uid);
+    if (!node || node.type !== "component") {
+        return;
+    }
+    if (
+        globalComponentsRegistry.components.value.some(
+            (entry) => entry.id === node.component && entry.enabled !== false,
+        )
+    ) {
+        if (typeof window !== "undefined") {
+            window.alert(
+                "This node already uses a global alias. Create aliases only from base components.",
+            );
+        }
+        return;
+    }
+
+    pendingGlobalAliasNodeUid.value = uid;
+    globalAliasNameDraft.value = toSuggestedGlobalAlias(node.component);
+    globalAliasError.value = null;
+    isGlobalAliasModalOpen.value = true;
+    try {
+        await globalComponentsRegistry.fetchAdmin();
+    } catch {
+        // keep modal open; save path will show explicit error
+    }
+    await nextTick();
+    globalAliasNameInputRef.value?.focus();
+    globalAliasNameInputRef.value?.select();
+};
+
+const closeGlobalAliasModal = () => {
+    if (isGlobalAliasSaving.value) {
+        return;
+    }
+    isGlobalAliasModalOpen.value = false;
+    pendingGlobalAliasNodeUid.value = null;
+    globalAliasNameDraft.value = "";
+    globalAliasError.value = null;
+};
+
+const GLOBAL_ALIAS_NAME_PATTERN = /^[A-Z][A-Za-z0-9_-]*$/;
+
+const confirmCreateGlobalAlias = async () => {
+    const uid = pendingGlobalAliasNodeUid.value;
+    const aliasName = globalAliasNameDraft.value.trim();
+    const node = uid ? findNode(builderTree.value, uid) : null;
+
+    if (!uid || !node || node.type !== "component") {
+        globalAliasError.value = "The selected component is no longer available.";
+        return;
+    }
+    if (!GLOBAL_ALIAS_NAME_PATTERN.test(aliasName)) {
+        globalAliasError.value =
+            "Alias must start with uppercase and contain only letters, numbers, _ or -.";
+        return;
+    }
+    if (Object.hasOwn(registry.lookup, aliasName)) {
+        globalAliasError.value =
+            `Alias "${aliasName}" conflicts with an existing component id. Use a different alias name.`;
+        return;
+    }
+
+    isGlobalAliasSaving.value = true;
+    globalAliasError.value = null;
+
+    try {
+        const existing = [...globalComponentsRegistry.components.value];
+        const existingEntry = existing.find((entry) => entry.id === aliasName);
+
+        if (existingEntry) {
+            const overwrite =
+                typeof window === "undefined"
+                    ? true
+                    : window.confirm(
+                          `Global alias "${aliasName}" already exists. Overwrite its defaults with current node props?`,
+                      );
+            if (!overwrite) {
+                isGlobalAliasSaving.value = false;
+                return;
+            }
+        }
+
+        const updatedEntries = existing.filter((entry) => entry.id !== aliasName);
+        updatedEntries.push({
+            id: aliasName,
+            component: node.component,
+            enabled: true,
+            defaultProps: sanitizeGlobalDefaultProps(node.props),
+        });
+
+        await globalComponentsRegistry.saveAdmin(updatedEntries);
+
+        const localAliasProps = sanitizeLocalAliasProps(node.props);
+        node.component = aliasName;
+        node.props = localAliasProps;
+
+        closeGlobalAliasModal();
+    } catch (error: any) {
+        globalAliasError.value =
+            error?.data?.statusMessage ||
+            error?.message ||
+            "Failed to create global alias.";
+    } finally {
+        isGlobalAliasSaving.value = false;
+    }
 };
 
 const isRootExpanded = (uid: string) => expandedRootNodes[uid] === true;
@@ -1410,6 +1922,7 @@ const serializedDocument = computed(() =>
                 meta: pageConfig.meta ?? {},
             },
             { spacing: layout.spacing },
+            { globalAliasIds: globalAliasIds.value },
         );
 
         const fixedBodyPaths = collectFixedBodyPaths(
@@ -1440,7 +1953,9 @@ const previewDocument = computed(() =>
                 meta: pageConfig.meta ?? {},
             },
             { spacing: layout.spacing },
-            { annotateBuilderUids: true },
+            {
+                annotateBuilderUids: true,
+            },
         );
 
         const fixedBodyPaths = collectFixedBodyPaths(
@@ -1523,6 +2038,23 @@ watch(
     { deep: true, immediate: true },
 );
 
+onMounted(() => {
+    globalComponentsRegistry
+        .fetchPublic()
+        .then(() => {
+            hydrateGlobalAliasProps();
+        })
+        .catch(() => {});
+});
+
+watch(
+    () => globalAliasDefaultsById.value,
+    () => {
+        hydrateGlobalAliasProps();
+    },
+    { deep: true },
+);
+
 onBeforeUnmount(() => {
     if (documentEmitTimeout) {
         clearTimeout(documentEmitTimeout);
@@ -1531,6 +2063,13 @@ onBeforeUnmount(() => {
     if (previewDocumentEmitTimeout) {
         clearTimeout(previewDocumentEmitTimeout);
         previewDocumentEmitTimeout = null;
+    }
+    if (globalAliasPersistTimer) {
+        clearTimeout(globalAliasPersistTimer);
+        globalAliasPersistTimer = null;
+    }
+    if (globalAliasPendingPatches.size > 0) {
+        void persistGlobalAliasPatches();
     }
 });
 
@@ -1850,8 +2389,10 @@ const handleSaveDebugClick = () => {
                 </div>
                 <NodeEditor
                     :node="node"
-                    :registry="registry"
+                    :registry="runtimeRegistry"
                     :component-options="componentOptions"
+                    :global-alias-ids="globalAliasIdList"
+                    :show-translate-section="isMultiLanguageSite"
                     :focus-request="nodePropFocusRequest"
                     :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
@@ -1860,6 +2401,7 @@ const handleSaveDebugClick = () => {
                     :on-add-child-text="addChildText"
                     :on-remove="removeNode"
                     :on-clone="cloneNode"
+                    :on-create-global-alias="openGlobalAliasModal"
                     :on-toggle-expanded="handleRootExpansion"
                     :on-focus-node="handleNodeFocus"
                     :on-translate-field="handleTranslateField"
@@ -1920,6 +2462,52 @@ const handleSaveDebugClick = () => {
                 </form>
             </div>
             <div
+                v-if="isGlobalAliasModalOpen"
+                class="builder-section-name-modal-backdrop"
+                @click.self="closeGlobalAliasModal"
+            >
+                <form
+                    class="builder-section-name-modal"
+                    @submit.prevent="confirmCreateGlobalAlias"
+                >
+                    <h3>Create Global Alias</h3>
+                    <p>
+                        Save current node props as shared global defaults and replace this
+                        node with the alias.
+                    </p>
+                    <input
+                        ref="globalAliasNameInputRef"
+                        v-model="globalAliasNameDraft"
+                        type="text"
+                        placeholder="GlobalFooter"
+                        autocomplete="off"
+                    />
+                    <p v-if="globalAliasError" class="builder-section-name-modal__error">
+                        {{ globalAliasError }}
+                    </p>
+                    <div class="builder-section-name-modal__actions">
+                        <button
+                            type="button"
+                            class="builder-section-name-modal__cancel"
+                            @click="closeGlobalAliasModal"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="builder-section-name-modal__confirm"
+                            :disabled="!globalAliasNameDraft.trim() || isGlobalAliasSaving"
+                        >
+                            {{
+                                isGlobalAliasSaving
+                                    ? "Saving…"
+                                    : "Create Global Alias"
+                            }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div
                 v-if="filteredBuilderTree.length"
                 class="builder-root-dropzone"
                 @dragover.prevent="handleDragOver(null)"
@@ -1939,7 +2527,10 @@ const handleSaveDebugClick = () => {
         <section class="builder-preview" v-if="!hidePreview">
             <h2>Preview</h2>
             <div :class="['builder-preview__content', previewSpacingClass]">
-                <Content :value="serializedDocument" />
+                <Content
+                    :value="serializedDocument"
+                    :global-components="globalComponentsRegistry.components"
+                />
             </div>
         </section>
     </div>
@@ -2441,6 +3032,12 @@ const handleSaveDebugClick = () => {
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     font: inherit;
+}
+
+.builder-section-name-modal__error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #b91c1c;
 }
 
 .builder-section-name-modal__actions {
