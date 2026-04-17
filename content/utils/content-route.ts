@@ -4,6 +4,7 @@ export const RESERVED_CONTENT_PREFIXES = [
   "/api",
   "/assets",
   "/favicon",
+  "/login",
   "/builder",
   "/k",
   "/__",

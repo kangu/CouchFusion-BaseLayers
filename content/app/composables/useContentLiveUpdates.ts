@@ -271,6 +271,19 @@ const shouldAllowNaturalFollow = (event: MouseEvent, target: Element): boolean =
 }
 
 let highlightOverlay: HTMLDivElement | null = null
+let highlightClearTimer: ReturnType<typeof setTimeout> | null = null
+const HIGHLIGHT_FLASH_DURATION_MS = 900
+const SCROLL_SETTLE_FRAMES = 4
+const SCROLL_SETTLE_MAX_WAIT_MS = 1400
+const SCROLL_SETTLE_DELTA_PX = 1
+
+const clearPendingHighlightTimer = () => {
+  if (!highlightClearTimer) {
+    return
+  }
+  clearTimeout(highlightClearTimer)
+  highlightClearTimer = null
+}
 /**
  * Scroll only when the target is sufficiently outside the viewport.
  * Example: `0.6` means at least 60% of the element is out of view.
@@ -325,7 +338,9 @@ const ensureHighlightOverlay = (): HTMLDivElement => {
 
   const overlay = document.createElement('div')
   overlay.setAttribute('data-builder-highlight', 'true')
-  overlay.style.position = 'absolute'
+  overlay.style.position = 'fixed'
+  overlay.style.top = '0'
+  overlay.style.left = '0'
   overlay.style.border = '6px solid #2563eb'
   overlay.style.background = 'rgba(37, 99, 235, 0.08)'
   overlay.style.pointerEvents = 'none'
@@ -342,10 +357,11 @@ const ensureHighlightOverlay = (): HTMLDivElement => {
  * Positions and displays the highlight overlay around the current target.
  */
 const showHighlight = (target: HTMLElement) => {
+  clearPendingHighlightTimer()
   const overlay = ensureHighlightOverlay()
   const rect = target.getBoundingClientRect()
-  const top = rect.top + window.scrollY
-  const left = rect.left + window.scrollX
+  const top = rect.top
+  const left = rect.left
   overlay.style.width = `${rect.width}px`
   overlay.style.height = `${rect.height}px`
   overlay.style.transform = `translate(${left}px, ${top}px)`
@@ -356,9 +372,65 @@ const showHighlight = (target: HTMLElement) => {
  * Hides the persistent highlight overlay without removing the node.
  */
 const clearHighlight = () => {
+  clearPendingHighlightTimer()
   if (highlightOverlay) {
     highlightOverlay.style.opacity = '0'
   }
+}
+
+const scheduleHighlightClear = (mode: 'flash' | 'lock' | 'clear') => {
+  clearPendingHighlightTimer()
+
+  if (mode !== 'flash') {
+    return
+  }
+
+  highlightClearTimer = setTimeout(() => {
+    highlightClearTimer = null
+    clearHighlight()
+  }, HIGHLIGHT_FLASH_DURATION_MS)
+}
+
+const waitForScrollToSettle = async () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const startedAt = Date.now()
+  let stableFrames = 0
+  let lastX = window.scrollX
+  let lastY = window.scrollY
+
+  await new Promise<void>((resolve) => {
+    const tick = () => {
+      const currentX = window.scrollX
+      const currentY = window.scrollY
+      const moved =
+        Math.abs(currentX - lastX) > SCROLL_SETTLE_DELTA_PX ||
+        Math.abs(currentY - lastY) > SCROLL_SETTLE_DELTA_PX
+
+      if (moved) {
+        stableFrames = 0
+      } else {
+        stableFrames += 1
+      }
+
+      lastX = currentX
+      lastY = currentY
+
+      if (
+        stableFrames >= SCROLL_SETTLE_FRAMES ||
+        Date.now() - startedAt >= SCROLL_SETTLE_MAX_WAIT_MS
+      ) {
+        resolve()
+        return
+      }
+
+      requestAnimationFrame(tick)
+    }
+
+    requestAnimationFrame(tick)
+  })
 }
 
 /**
@@ -426,6 +498,7 @@ export const useContentLiveUpdates = (): void => {
 
   const contentStore = useContentPagesStore()
   let pendingScroll: { x: number; y: number } | null = null
+  let focusRequestId = 0
 
   /**
    * Live content replacement can nudge scroll unexpectedly.
@@ -471,7 +544,7 @@ export const useContentLiveUpdates = (): void => {
    * Unified postMessage entrypoint for both live document updates and
    * builder-driven focus events.
    */
-  const handleMessage = (event: MessageEvent) => {
+  const handleMessage = async (event: MessageEvent) => {
     const data = event.data
 
     const sameOrigin = typeof window === 'undefined' || !event.origin || event.origin === window.location.origin
@@ -481,6 +554,10 @@ export const useContentLiveUpdates = (): void => {
 
     if (isLiveUpdateMessage(data)) {
       try {
+        // Prevent stale focus overlay geometry from affecting preview UX
+        // while the document is being replaced.
+        clearHighlight()
+
         const path = normalizePagePath(data.payload?.path ?? '/')
         const document = data.payload!.document
 
@@ -534,18 +611,38 @@ export const useContentLiveUpdates = (): void => {
         const target = document.querySelector<HTMLElement>(
           `[data-builder-uid="${uid}"]`
         )
+        const requestId = ++focusRequestId
 
         if (!target) {
           clearHighlight()
           return
         }
 
+        const didTriggerScroll = shouldScrollTargetIntoView(target)
+
+        if (didTriggerScroll) {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          await waitForScrollToSettle()
+        }
+
+        if (requestId !== focusRequestId) {
+          return
+        }
+
+        if (mode === 'clear') {
+          clearHighlight()
+          applyElementShadow(target, mode)
+          return
+        }
+
         if (shouldScrollTargetIntoView(target)) {
+          // Fallback for any late layout shifts that still require visibility alignment.
           target.scrollIntoView({ block: 'center', behavior: 'smooth' })
         }
         ensureHighlightStyles()
         applyElementShadow(target, mode)
         showHighlight(target)
+        scheduleHighlightClear(mode)
       } catch (error) {
         console.error('Failed to highlight builder node:', error)
       }
@@ -626,5 +723,10 @@ export const useContentLiveUpdates = (): void => {
   onBeforeUnmount(() => {
     window.removeEventListener('message', handleMessage)
     document.removeEventListener('click', handleInlinePreviewClick, true)
+    clearPendingHighlightTimer()
+    if (highlightOverlay) {
+      highlightOverlay.remove()
+      highlightOverlay = null
+    }
   })
 }
