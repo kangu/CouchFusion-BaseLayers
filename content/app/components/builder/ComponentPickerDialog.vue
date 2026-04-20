@@ -70,7 +70,38 @@
                 >
                     <div class="component-card-preview" @click="select(comp.id)">
                         <div class="preview-pane">
-                            <div class="preview-scaler" :class="{ 'is-desktop': previewDevice === 'desktop' }">
+                            <div
+                                v-if="isPrimitiveComponent(comp)"
+                                class="primitive-preview"
+                                :class="`primitive-preview--${getPrimitivePreviewKind(comp)}`"
+                            >
+                                <template v-if="getPrimitivePreviewKind(comp) === 'paragraph'">
+                                    <p class="primitive-preview__line"></p>
+                                    <p class="primitive-preview__line primitive-preview__line--short"></p>
+                                    <p class="primitive-preview__line"></p>
+                                    <p class="primitive-preview__line primitive-preview__line--medium"></p>
+                                </template>
+                                <template v-else-if="getPrimitivePreviewKind(comp) === 'span'">
+                                    <div class="primitive-preview__inline">
+                                        <span class="primitive-preview__token">Inline</span>
+                                        <span class="primitive-preview__token primitive-preview__token--muted">text</span>
+                                        <span class="primitive-preview__token">sample</span>
+                                    </div>
+                                </template>
+                                <template v-else-if="getPrimitivePreviewKind(comp) === 'strong'">
+                                    <div class="primitive-preview__inline">
+                                        <span class="primitive-preview__token primitive-preview__token--strong">Strong</span>
+                                        <span class="primitive-preview__token primitive-preview__token--strong">emphasis</span>
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    <div class="primitive-preview__slot">
+                                        <span class="primitive-preview__slot-label">Slot</span>
+                                        <span class="primitive-preview__slot-content">Drop child components here</span>
+                                    </div>
+                                </template>
+                            </div>
+                            <div v-else class="preview-scaler" :class="{ 'is-desktop': previewDevice === 'desktop' }">
                                 <LazyLoader min-height="100%" class="preview-lazy-loader">
                                     <PreviewFrame
                                         width="100%"
@@ -182,7 +213,7 @@ const emit = defineEmits<{
 
 const searchQuery = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
-const selectedCategory = ref("all");
+const selectedCategory = ref("default");
 const previewDevice = ref<'desktop' | 'mobile'>('desktop');
 
 const expandedComp = ref<ComponentDefinition | null>(null);
@@ -197,6 +228,15 @@ const closeExpanded = () => {
     expandedComp.value = null;
 };
 
+const PRIMITIVE_COMPONENT_IDS = new Set(["p", "span", "strong", "template"]);
+const PRIMITIVE_COMPONENT_LABELS = new Set([
+    "paragraph",
+    "span",
+    "strong text",
+    "template (slot)",
+    "template",
+]);
+
 const normalizeCategory = (value?: string): string => {
     if (typeof value !== "string") {
         return "default";
@@ -209,11 +249,11 @@ const formatCategoryLabel = (value: string): string => {
     if (value === "all") {
         return "All";
     }
-    if (value === "basic") {
-        return "Basic";
+    if (value === "basic-html") {
+        return "Basic HTML";
     }
     if (value === "default") {
-        return "Default";
+        return "Sections";
     }
     return value
         .split(/[-_\s]+/)
@@ -222,18 +262,56 @@ const formatCategoryLabel = (value: string): string => {
         .join(" ");
 };
 
+const isPrimitiveComponent = (definition: ComponentDefinition): boolean => {
+    const id = definition.id.trim().toLowerCase();
+    const label = definition.label.trim().toLowerCase();
+    return PRIMITIVE_COMPONENT_IDS.has(id) || PRIMITIVE_COMPONENT_LABELS.has(label);
+};
+
+const normalizeComponentCategory = (definition: ComponentDefinition): string => {
+    if (isPrimitiveComponent(definition)) {
+        return "basic-html";
+    }
+    return normalizeCategory(definition.category);
+};
+
+const getPrimitivePreviewKind = (
+    definition: ComponentDefinition,
+): "paragraph" | "span" | "strong" | "template" => {
+    const id = definition.id.trim().toLowerCase();
+    const label = definition.label.trim().toLowerCase();
+
+    if (id === "p" || label === "paragraph") {
+        return "paragraph";
+    }
+    if (id === "span" || label === "span") {
+        return "span";
+    }
+    if (id === "strong" || label === "strong text") {
+        return "strong";
+    }
+    return "template";
+};
+
 const categoryTabs = computed(() => {
     const discovered = new Set<string>();
     for (const definition of props.componentOptions) {
-        discovered.add(normalizeCategory(definition.category));
+        discovered.add(normalizeComponentCategory(definition));
     }
 
     const ordered = Array.from(discovered.values()).sort((left, right) =>
         left.localeCompare(right)
     );
     const prioritized = [
-        ...ordered.filter((value) => value === "basic"),
-        ...ordered.filter((value) => value !== "basic")
+        ...ordered.filter((value) => value === "default"),
+        ...ordered.filter((value) => value === "global"),
+        ...ordered.filter((value) => value === "basic-html"),
+        ...ordered.filter(
+            (value) =>
+                value !== "default" &&
+                value !== "global" &&
+                value !== "basic-html"
+        ),
     ];
 
     return [
@@ -251,7 +329,8 @@ const filteredComponents = computed(() => {
         selected === "all"
             ? props.componentOptions
             : props.componentOptions.filter(
-                  (component) => normalizeCategory(component.category) === selected
+                  (component) =>
+                      normalizeComponentCategory(component) === selected
               );
 
     if (!searchQuery.value.trim()) return byCategory;
@@ -260,14 +339,14 @@ const filteredComponents = computed(() => {
         (c) =>
             c.label.toLowerCase().includes(q) ||
             c.id.toLowerCase().includes(q) ||
-            normalizeCategory(c.category).includes(q)
+            normalizeComponentCategory(c).includes(q)
     );
 });
 
 const close = () => {
     emit("close");
     searchQuery.value = "";
-    selectedCategory.value = "all";
+    selectedCategory.value = "default";
     previewDevice.value = "desktop";
     closeExpanded();
 };
@@ -344,10 +423,24 @@ watch(
                 searchInput.value?.focus();
             });
         } else {
-            selectedCategory.value = "all";
+            selectedCategory.value = "default";
             previewDevice.value = "desktop";
         }
     }
+);
+
+watch(
+    () => categoryTabs.value,
+    (tabs) => {
+        if (!tabs.length) {
+            return;
+        }
+        if (tabs.some((tab) => tab.id === selectedCategory.value)) {
+            return;
+        }
+        selectedCategory.value = tabs[0].id;
+    },
+    { immediate: true },
 );
 </script>
 
@@ -638,6 +731,94 @@ watch(
     overflow: hidden;
     position: relative;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.primitive-preview {
+    width: 100%;
+    height: 100%;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+}
+
+.primitive-preview--paragraph {
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.primitive-preview__line {
+    display: block;
+    height: 8px;
+    width: 100%;
+    border-radius: 999px;
+    background: #d1d5db;
+}
+
+.primitive-preview__line--short {
+    width: 68%;
+}
+
+.primitive-preview__line--medium {
+    width: 82%;
+}
+
+.primitive-preview__inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+}
+
+.primitive-preview__token {
+    padding: 5px 9px;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #374151;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.primitive-preview__token--muted {
+    color: #6b7280;
+    background: #f9fafb;
+}
+
+.primitive-preview__token--strong {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+    background: #eff6ff;
+    font-weight: 700;
+}
+
+.primitive-preview__slot {
+    width: 100%;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.primitive-preview__slot-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.primitive-preview__slot-content {
+    font-size: 0.78rem;
+    color: #64748b;
 }
 
 .preview-lazy-loader {
