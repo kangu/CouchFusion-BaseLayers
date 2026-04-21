@@ -80,6 +80,13 @@ definePageMeta({
 // == props ==
 
 // == composables ==
+const appConfig = useAppConfig();
+const resolvedAdminLayout =
+    appConfig.adminWorkspace?.layout ||
+    appConfig.uiNavigation?.adminLayout ||
+    "admin-workspace";
+setPageLayout(resolvedAdminLayout);
+
 const host = useLocalStorage("database-datasync-host", "");
 const username = useLocalStorage("database-datasync-username", "");
 const password = useLocalStorage("database-datasync-password", "");
