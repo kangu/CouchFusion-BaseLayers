@@ -70,6 +70,54 @@ async function resolveStartingDate(
     }
 }
 
+const resolveRenewalPrice = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return Math.round(value)
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+        const numeric = Number.parseInt(value.trim(), 10)
+        if (Number.isFinite(numeric) && numeric > 0) {
+            return Math.round(numeric)
+        }
+    }
+
+    return null
+}
+
+async function resolveProductRenewalPrice(
+    event: any,
+    productKey: string
+): Promise<number | null> {
+    const cookieHeader = getHeader(event, 'cookie')
+    const authSessionCookie = extractAuthSessionCookie(cookieHeader)
+
+    if (!authSessionCookie) {
+        return null
+    }
+
+    try {
+        const sessionResponse = await getSession({ authSessionCookie })
+        const userName = sessionResponse?.userCtx?.name
+
+        if (!userName) {
+            return null
+        }
+
+        const userDocId = `org.couchdb.user:${userName}`
+        const userDoc = await getDocument('_users', userDocId) as Record<string, unknown> | null
+        if (!userDoc) {
+            return null
+        }
+
+        const renewalKey = `${productKey}_renewal_price`
+        return resolveRenewalPrice(userDoc[renewalKey])
+    } catch (error) {
+        console.warn('Failed to resolve user renewal price override:', error)
+        return null
+    }
+}
+
 export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const runtimeConfig = useRuntimeConfig()
@@ -116,6 +164,8 @@ export default defineEventHandler(async (event) => {
         }
 
         const { memo, sats, valid_days } = productInfo
+        const renewalPriceOverride = await resolveProductRenewalPrice(event, body.product)
+        const resolvedSats = renewalPriceOverride ?? sats
 
         let validUntil: string | undefined
         if (typeof valid_days === 'number' && Number.isFinite(valid_days) && valid_days > 0) {
@@ -125,7 +175,7 @@ export default defineEventHandler(async (event) => {
             validUntil = expirationDate.toISOString()
         }
 
-        const orderPayload: Record<string, unknown> = { ...body, sats }
+        const orderPayload: Record<string, unknown> = { ...body, sats: resolvedSats }
         if (validUntil) {
             orderPayload.validUntil = validUntil
         }
@@ -146,7 +196,7 @@ export default defineEventHandler(async (event) => {
         const processedMemo = replaceMemoTemplate(memo, body)
 
         // Create invoice using the configured default provider with order ID
-        const payment = await createPayment(sats, {
+        const payment = await createPayment(resolvedSats, {
             description: processedMemo,
             provider: lightningConfig.defaultProvider,
             metadata: {
