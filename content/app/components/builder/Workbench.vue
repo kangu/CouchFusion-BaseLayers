@@ -13,6 +13,7 @@ import {
 import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
+import { useContentFontSettings } from "#content/app/composables/useContentFontSettings";
 import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
 import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
 import {
@@ -212,6 +213,7 @@ const emit = defineEmits<{
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
 const globalComponentsRegistry = useGlobalComponentsRegistry();
+const contentFontSettings = useContentFontSettings();
 const runtimeConfig = useRuntimeConfig();
 const contentI18nConfig = computed(() =>
     resolveContentI18nConfig(
@@ -2045,6 +2047,13 @@ onMounted(() => {
             hydrateGlobalAliasProps();
         })
         .catch(() => {});
+
+    contentFontSettings
+        .fetchAdmin()
+        .then(() => {
+            syncTypographyDraft();
+        })
+        .catch(() => {});
 });
 
 watch(
@@ -2072,6 +2081,106 @@ onBeforeUnmount(() => {
         void persistGlobalAliasPatches();
     }
 });
+
+const sansFamilyDraft = ref("");
+const displayFamilyDraft = ref("");
+const typographyNotice = ref<string | null>(null);
+const isTypographyApplying = ref(false);
+const isTypographyPanelExpanded = ref(false);
+
+const typographyOptions = computed(() => contentFontSettings.options.value ?? []);
+const typographyErrorMessage = computed(() => contentFontSettings.error.value);
+const isTypographyPending = computed(
+    () => contentFontSettings.loading.value || contentFontSettings.applying.value,
+);
+
+const hasTypographyDraftChanges = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    if (!settings) {
+        return false;
+    }
+    return (
+        settings.sansFamily !== sansFamilyDraft.value ||
+        settings.displayFamily !== displayFamilyDraft.value
+    );
+});
+
+const typographyStatusLabel = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    if (!settings) {
+        return "Not loaded";
+    }
+
+    if (settings.status === "failed") {
+        return "Last apply failed";
+    }
+
+    if (settings.lastAppliedAt) {
+        return `Applied ${new Date(settings.lastAppliedAt).toLocaleString()}`;
+    }
+
+    return "Not applied yet";
+});
+
+const typographyFamilyLabel = (slug: string) => {
+    const match = typographyOptions.value.find((option) => option.slug === slug);
+    return match?.label ?? slug;
+};
+
+const typographySummaryLabel = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    if (!settings) {
+        return "Sans: - · Display: -";
+    }
+    return `Sans: ${typographyFamilyLabel(settings.sansFamily)} · Display: ${typographyFamilyLabel(settings.displayFamily)}`;
+});
+
+const toggleTypographyPanel = () => {
+    isTypographyPanelExpanded.value = !isTypographyPanelExpanded.value;
+};
+
+const syncTypographyDraft = () => {
+    const settings = contentFontSettings.settings.value;
+    if (!settings) {
+        return;
+    }
+    sansFamilyDraft.value = settings.sansFamily;
+    displayFamilyDraft.value = settings.displayFamily;
+};
+
+const resetTypographyDraft = () => {
+    syncTypographyDraft();
+    typographyNotice.value = null;
+};
+
+const applyTypographySelection = async () => {
+    if (!sansFamilyDraft.value || !displayFamilyDraft.value) {
+        return;
+    }
+
+    typographyNotice.value = null;
+    isTypographyApplying.value = true;
+    try {
+        await contentFontSettings.saveAdmin({
+            sansFamily: sansFamilyDraft.value,
+            displayFamily: displayFamilyDraft.value,
+        });
+        await contentFontSettings.applyAdmin();
+        contentFontSettings.bumpRuntimeStylesheet();
+        syncTypographyDraft();
+        typographyNotice.value = "Fonts applied.";
+    } finally {
+        isTypographyApplying.value = false;
+    }
+};
+
+watch(
+    () => contentFontSettings.settings.value,
+    () => {
+        syncTypographyDraft();
+    },
+    { immediate: true },
+);
 
 const serializedJson = computed(() =>
     JSON.stringify(serializedDocument.value, null, 2),
@@ -2156,6 +2265,85 @@ const handleSaveDebugClick = () => {
 <template>
     <div class="builder-page">
         <section class="builder-controls">
+            <div class="builder-typography-toggle">
+                <button
+                    type="button"
+                    class="builder-typography-toggle__button"
+                    :aria-expanded="isTypographyPanelExpanded"
+                    @click="toggleTypographyPanel"
+                >
+                    {{
+                        isTypographyPanelExpanded
+                            ? "Hide Typography"
+                            : "Typography"
+                    }}
+                </button>
+                <span class="builder-typography-toggle__summary">
+                    {{ typographySummaryLabel }}
+                </span>
+            </div>
+
+            <div v-if="isTypographyPanelExpanded" class="builder-typography-card">
+                <div class="builder-typography-card__header">
+                    <h3>Typography</h3>
+                    <span>{{ typographyStatusLabel }}</span>
+                </div>
+                <div class="builder-typography-card__grid">
+                    <label>
+                        <span>Sans family</span>
+                        <select v-model="sansFamilyDraft" :disabled="isTypographyPending">
+                            <option
+                                v-for="option in typographyOptions"
+                                :key="`sans-${option.slug}`"
+                                :value="option.slug"
+                            >
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Serif family</span>
+                        <select v-model="displayFamilyDraft" :disabled="isTypographyPending">
+                            <option
+                                v-for="option in typographyOptions"
+                                :key="`display-${option.slug}`"
+                                :value="option.slug"
+                            >
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+                </div>
+                <p v-if="typographyErrorMessage" class="builder-typography-card__error">
+                    {{ typographyErrorMessage }}
+                </p>
+                <p v-else-if="typographyNotice" class="builder-typography-card__notice">
+                    {{ typographyNotice }}
+                </p>
+                <div class="builder-typography-card__actions">
+                    <button
+                        type="button"
+                        class="builder-typography-card__cancel"
+                        :disabled="isTypographyPending || !hasTypographyDraftChanges"
+                        @click="resetTypographyDraft"
+                    >
+                        Reset
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-typography-card__apply"
+                        :disabled="isTypographyPending || !sansFamilyDraft || !displayFamilyDraft"
+                        @click="applyTypographySelection"
+                    >
+                        {{
+                            isTypographyApplying
+                                ? "Applying…"
+                                : "Apply Fonts"
+                        }}
+                    </button>
+                </div>
+            </div>
+
             <button
                 v-if="!isSeoCardExpanded"
                 type="button"
@@ -2552,6 +2740,124 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #f8fafc;
+}
+
+.builder-typography-card {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.builder-typography-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.builder-typography-toggle__button {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-typography-toggle__summary {
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.builder-typography-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.builder-typography-card__header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.builder-typography-card__header span {
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.builder-typography-card__grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.builder-typography-card__grid label {
+    display: grid;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: #334155;
+}
+
+.builder-typography-card__grid select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.86rem;
+}
+
+.builder-typography-card__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.builder-typography-card__cancel,
+.builder-typography-card__apply {
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-typography-card__cancel {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.builder-typography-card__apply {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.builder-typography-card__cancel:disabled,
+.builder-typography-card__apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.builder-typography-card__error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #b91c1c;
+}
+
+.builder-typography-card__notice {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #0369a1;
 }
 
 .builder-seo-card {
