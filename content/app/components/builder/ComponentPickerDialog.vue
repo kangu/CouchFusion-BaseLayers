@@ -22,23 +22,38 @@
                         autofocus
                     />
                 </div>
-                <div class="component-picker-view-toggle">
-                    <button
-                        type="button"
-                        class="component-picker-view-toggle__button"
-                        :class="{ 'is-active': previewDevice === 'desktop' }"
-                        @click="previewDevice = 'desktop'"
-                    >
-                        Desktop
-                    </button>
-                    <button
-                        type="button"
-                        class="component-picker-view-toggle__button"
-                        :class="{ 'is-active': previewDevice === 'mobile' }"
-                        @click="previewDevice = 'mobile'"
-                    >
-                        Mobile
-                    </button>
+                <div class="component-picker-header-controls">
+                    <div class="component-picker-view-toggle">
+                        <button
+                            type="button"
+                            class="component-picker-view-toggle__button"
+                            :class="{ 'is-active': previewDevice === 'desktop' }"
+                            @click="previewDevice = 'desktop'"
+                        >
+                            Desktop
+                        </button>
+                        <button
+                            type="button"
+                            class="component-picker-view-toggle__button"
+                            :class="{ 'is-active': previewDevice === 'mobile' }"
+                            @click="previewDevice = 'mobile'"
+                        >
+                            Mobile
+                        </button>
+                    </div>
+                    <label class="component-picker-density-control" for="component-picker-thumbnail-columns">
+                        <span class="component-picker-density-control__label">Thumbnails</span>
+                        <input
+                            id="component-picker-thumbnail-columns"
+                            v-model.number="thumbnailColumns"
+                            type="range"
+                            :min="THUMBNAIL_COLUMNS_MIN"
+                            :max="THUMBNAIL_COLUMNS_MAX"
+                            step="1"
+                            @input="handleThumbnailColumnsInput"
+                        />
+                        <span class="component-picker-density-control__value">{{ thumbnailColumns }}</span>
+                    </label>
                 </div>
                 <button class="close-button" @click="close">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -59,7 +74,15 @@
                     {{ tab.label }}
                 </button>
             </div>
-            <div class="component-picker-grid" :class="{ 'is-mobile-grid': previewDevice === 'mobile' }">
+            <div
+                class="component-picker-grid"
+                :class="{ 'is-mobile-grid': previewDevice === 'mobile' }"
+                :style="{
+                    '--component-picker-columns': String(thumbnailColumns),
+                    '--component-picker-preview-scale-desktop': previewDesktopScale.toFixed(4),
+                    '--component-picker-preview-scale-mobile': previewMobileScale.toFixed(4)
+                }"
+            >
                 <div
                     v-for="comp in filteredComponents"
                     :key="comp.id"
@@ -101,7 +124,14 @@
                                     </div>
                                 </template>
                             </div>
-                            <div v-else class="preview-scaler" :class="{ 'is-desktop': previewDevice === 'desktop' }">
+                            <div
+                                v-else
+                                class="preview-scaler"
+                                :class="{
+                                    'is-desktop': previewDevice === 'desktop',
+                                    'is-mobile': previewDevice === 'mobile'
+                                }"
+                            >
                                 <LazyLoader min-height="100%" class="preview-lazy-loader">
                                     <PreviewFrame
                                         width="100%"
@@ -110,6 +140,7 @@
                                         <component
                                             :is="getPreviewComponentId(comp)"
                                             v-bind="getDefaultProps(comp)"
+                                            class="component-picker-preview-fill-target"
                                         />
                                     </PreviewFrame>
                                 </LazyLoader>
@@ -186,6 +217,7 @@
                             <component
                                 :is="getPreviewComponentId(expandedComp)"
                                 v-bind="getDefaultProps(expandedComp)"
+                                class="component-picker-preview-fill-target"
                             />
                         </PreviewFrame>
                     </div>
@@ -196,7 +228,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from "vue";
+import { ref, computed, nextTick, watch, onMounted } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
 import LazyLoader from "./LazyLoader.vue";
@@ -215,6 +247,17 @@ const searchQuery = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const selectedCategory = ref("default");
 const previewDevice = ref<'desktop' | 'mobile'>('desktop');
+const THUMBNAIL_COLUMNS_MIN = 2;
+const THUMBNAIL_COLUMNS_MAX = 10;
+const THUMBNAIL_COLUMNS_STORAGE_KEY = "content-builder:component-picker:thumbnail-columns";
+const thumbnailColumns = ref(2);
+const DESKTOP_PREVIEW_SCALE_MIN = 0.18;
+const DESKTOP_PREVIEW_SCALE_MAX = 0.55;
+const MOBILE_PREVIEW_SCALE_MIN = 0.24;
+const MOBILE_PREVIEW_SCALE_MAX = 0.42;
+// Global multiplier for thumbnail preview zoom density.
+// Increase for larger previews, decrease for smaller.
+const PREVIEW_SCALE_ADJUSTER = 1.2;
 
 const expandedComp = ref<ComponentDefinition | null>(null);
 const expandedDevice = ref<'desktop' | 'mobile'>('desktop');
@@ -415,6 +458,88 @@ const getPreviewComponentId = (def: ComponentDefinition): string => {
     return def.id;
 };
 
+const clampThumbnailColumns = (value: unknown): number => {
+    const numeric =
+        typeof value === "number"
+            ? value
+            : typeof value === "string"
+              ? Number.parseInt(value, 10)
+              : Number.NaN;
+    if (!Number.isFinite(numeric)) {
+        return THUMBNAIL_COLUMNS_MIN;
+    }
+    return Math.min(
+        THUMBNAIL_COLUMNS_MAX,
+        Math.max(THUMBNAIL_COLUMNS_MIN, Math.round(numeric))
+    );
+};
+
+const interpolatePreviewScale = (
+    columns: number,
+    minScale: number,
+    maxScale: number
+): number => {
+    const clampedColumns = clampThumbnailColumns(columns);
+    if (THUMBNAIL_COLUMNS_MAX === THUMBNAIL_COLUMNS_MIN) {
+        return minScale;
+    }
+    const normalized =
+        (clampedColumns - THUMBNAIL_COLUMNS_MIN) /
+        (THUMBNAIL_COLUMNS_MAX - THUMBNAIL_COLUMNS_MIN);
+    const baseScale = maxScale - normalized * (maxScale - minScale);
+    return Math.min(0.95, Math.max(0.08, baseScale * PREVIEW_SCALE_ADJUSTER));
+};
+
+const previewDesktopScale = computed(() =>
+    interpolatePreviewScale(
+        thumbnailColumns.value,
+        DESKTOP_PREVIEW_SCALE_MIN,
+        DESKTOP_PREVIEW_SCALE_MAX
+    )
+);
+
+const previewMobileScale = computed(() =>
+    interpolatePreviewScale(
+        thumbnailColumns.value,
+        MOBILE_PREVIEW_SCALE_MIN,
+        MOBILE_PREVIEW_SCALE_MAX
+    )
+);
+
+const loadThumbnailColumns = () => {
+    if (!import.meta.client) {
+        return;
+    }
+    const stored = window.localStorage.getItem(THUMBNAIL_COLUMNS_STORAGE_KEY);
+    if (!stored) {
+        return;
+    }
+    thumbnailColumns.value = clampThumbnailColumns(stored);
+};
+
+const persistThumbnailColumns = (value: number) => {
+    if (!import.meta.client) {
+        return;
+    }
+    window.localStorage.setItem(
+        THUMBNAIL_COLUMNS_STORAGE_KEY,
+        String(clampThumbnailColumns(value))
+    );
+};
+
+const handleThumbnailColumnsInput = (event: Event) => {
+    const target = event.target as HTMLInputElement | null;
+    const nextValue = clampThumbnailColumns(target?.value ?? thumbnailColumns.value);
+    if (thumbnailColumns.value !== nextValue) {
+        thumbnailColumns.value = nextValue;
+    }
+    persistThumbnailColumns(nextValue);
+};
+
+onMounted(() => {
+    loadThumbnailColumns();
+});
+
 watch(
     () => props.isOpen,
     (val) => {
@@ -441,6 +566,19 @@ watch(
         selectedCategory.value = tabs[0].id;
     },
     { immediate: true },
+);
+
+watch(
+    thumbnailColumns,
+    (value) => {
+        const normalized = clampThumbnailColumns(value);
+        if (value !== normalized) {
+            thumbnailColumns.value = normalized;
+            return;
+        }
+        persistThumbnailColumns(normalized);
+    },
+    { immediate: false }
 );
 </script>
 
@@ -549,39 +687,17 @@ watch(
     overflow-y: auto;
     padding: 24px;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--component-picker-columns, 2), minmax(0, 1fr));
     grid-auto-rows: max-content;
     gap: 20px;
     background: #f9fafb;
     overscroll-behavior: contain; /* Prevent parent scroll */
 }
 
-@media (max-width: 1100px) {
-    .component-picker-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-.component-picker-grid.is-mobile-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-@media (max-width: 1400px) {
-    .component-picker-grid.is-mobile-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 1100px) {
-    .component-picker-grid.is-mobile-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 760px) {
-    .component-picker-grid.is-mobile-grid {
-        grid-template-columns: 1fr;
-    }
+.component-picker-header-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .component-picker-view-toggle {
@@ -609,6 +725,30 @@ watch(
     background: #ffffff;
     color: #111827;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.component-picker-density-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #374151;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.component-picker-density-control__label {
+    white-space: nowrap;
+}
+
+.component-picker-density-control input[type="range"] {
+    width: 120px;
+    accent-color: #2563eb;
+}
+
+.component-picker-density-control__value {
+    min-width: 1.25rem;
+    text-align: right;
+    color: #111827;
 }
 
 .component-picker-tabs {
@@ -833,6 +973,12 @@ watch(
     height: 100% !important;
 }
 
+.preview-lazy-loader :deep(.component-picker-preview-fill-target),
+.expanded-content :deep(.component-picker-preview-fill-target) {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
 .preview-scaler {
     width: 100%;
     height: 100%;
@@ -842,9 +988,15 @@ watch(
 }
 
 .preview-scaler.is-desktop {
-    width: 400%;
-    height: 400%;
-    transform: scale(0.25);
+    width: calc(100% / var(--component-picker-preview-scale-desktop, 0.25));
+    height: calc(100% / var(--component-picker-preview-scale-desktop, 0.25));
+    transform: scale(var(--component-picker-preview-scale-desktop, 0.25));
+}
+
+.preview-scaler.is-mobile {
+    width: calc(100% / var(--component-picker-preview-scale-mobile, 0.33));
+    height: calc(100% / var(--component-picker-preview-scale-mobile, 0.33));
+    transform: scale(var(--component-picker-preview-scale-mobile, 0.33));
 }
 
 
