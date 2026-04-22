@@ -80,7 +80,9 @@
                 :style="{
                     '--component-picker-columns': String(thumbnailColumns),
                     '--component-picker-preview-scale-desktop': previewDesktopScale.toFixed(4),
-                    '--component-picker-preview-scale-mobile': previewMobileScale.toFixed(4)
+                    '--component-picker-preview-scale-mobile': previewMobileScale.toFixed(4),
+                    '--component-picker-preview-desktop-min-width': `${DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH}px`,
+                    '--component-picker-preview-mobile-min-width': `${MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH}px`
                 }"
             >
                 <div
@@ -255,6 +257,8 @@ const DESKTOP_PREVIEW_SCALE_MIN = 0.18;
 const DESKTOP_PREVIEW_SCALE_MAX = 0.55;
 const MOBILE_PREVIEW_SCALE_MIN = 0.24;
 const MOBILE_PREVIEW_SCALE_MAX = 0.42;
+const DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH = 1280;
+const MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH = 420;
 // Global multiplier for thumbnail preview zoom density.
 // Increase for larger previews, decrease for smaller.
 const PREVIEW_SCALE_ADJUSTER = 1.2;
@@ -865,6 +869,7 @@ watch(
     flex: 1;
     min-width: 0;
     min-height: 0;
+    container-type: inline-size;
     background: white;
     border: 1px solid #e5e7eb;
     border-radius: 4px;
@@ -988,15 +993,29 @@ watch(
 }
 
 .preview-scaler.is-desktop {
-    width: calc(100% / var(--component-picker-preview-scale-desktop, 0.25));
-    height: calc(100% / var(--component-picker-preview-scale-desktop, 0.25));
-    transform: scale(var(--component-picker-preview-scale-desktop, 0.25));
+    --component-picker-preview-scale-desktop-fit: calc(
+        100cqw / var(--component-picker-preview-desktop-min-width, 1280px)
+    );
+    --component-picker-preview-scale-desktop-effective: min(
+        var(--component-picker-preview-scale-desktop, 0.25),
+        var(--component-picker-preview-scale-desktop-fit)
+    );
+    width: calc(100% / var(--component-picker-preview-scale-desktop-effective, 0.25));
+    height: calc(100% / var(--component-picker-preview-scale-desktop-effective, 0.25));
+    transform: scale(var(--component-picker-preview-scale-desktop-effective, 0.25));
 }
 
 .preview-scaler.is-mobile {
-    width: calc(100% / var(--component-picker-preview-scale-mobile, 0.33));
-    height: calc(100% / var(--component-picker-preview-scale-mobile, 0.33));
-    transform: scale(var(--component-picker-preview-scale-mobile, 0.33));
+    --component-picker-preview-scale-mobile-fit: calc(
+        100cqw / var(--component-picker-preview-mobile-min-width, 420px)
+    );
+    --component-picker-preview-scale-mobile-effective: min(
+        var(--component-picker-preview-scale-mobile, 0.33),
+        var(--component-picker-preview-scale-mobile-fit)
+    );
+    width: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
+    height: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
+    transform: scale(var(--component-picker-preview-scale-mobile-effective, 0.33));
 }
 
 
