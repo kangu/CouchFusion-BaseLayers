@@ -41,6 +41,35 @@ type InlinePreviewPropClickPayload = {
     sectionId?: string;
     hint?: InlinePreviewPropHint;
 };
+type InlineFontPreviewPayload = {
+    sansFamily: string;
+    displayFamily: string;
+    cssHrefs: string[];
+};
+
+const normalizeFontPreviewPayload = (
+    payload: InlineFontPreviewPayload | null | undefined,
+): InlineFontPreviewPayload | null => {
+    if (!payload) {
+        return null;
+    }
+
+    const sansFamily =
+        typeof payload.sansFamily === "string" ? payload.sansFamily : "";
+    const displayFamily =
+        typeof payload.displayFamily === "string" ? payload.displayFamily : "";
+    const cssHrefs = Array.isArray(payload.cssHrefs)
+        ? payload.cssHrefs
+              .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+              .filter((entry) => entry.length > 0)
+        : [];
+
+    return {
+        sansFamily,
+        displayFamily,
+        cssHrefs: [...cssHrefs],
+    };
+};
 
 const props = defineProps<{
     previewBaseUrl?: string | null;
@@ -84,6 +113,8 @@ const pendingFocusTarget = ref<{
     mode?: "flash" | "lock" | "clear";
 } | null>(null);
 const pendingLiveUpdate = ref(false);
+const pendingFontPreview = ref(false);
+const latestFontPreview = ref<InlineFontPreviewPayload | null>(null);
 const dividerRef = ref<HTMLDivElement | null>(null);
 const isDraggingDivider = ref(false);
 const pendingDividerDrag = ref(false);
@@ -298,6 +329,25 @@ const postLiveUpdate = (document: MinimalContentDocument) => {
     );
 };
 
+const postFontPreview = (payload: InlineFontPreviewPayload) => {
+    if (!iframeRef.value?.contentWindow) {
+        return;
+    }
+
+    const normalizedPayload = normalizeFontPreviewPayload(payload);
+    if (!normalizedPayload) {
+        return;
+    }
+
+    iframeRef.value.contentWindow.postMessage(
+        {
+            type: "builder_font_preview",
+            payload: normalizedPayload,
+        },
+        previewOrigin.value,
+    );
+};
+
 const postFocusMessage = (
     uid: string,
     path: string,
@@ -330,6 +380,13 @@ const flushPendingPreviewMessages = () => {
         pendingLiveUpdate.value = false;
         if (payload) {
             postLiveUpdate(payload);
+        }
+    }
+
+    if (pendingFontPreview.value) {
+        pendingFontPreview.value = false;
+        if (latestFontPreview.value) {
+            postFontPreview(latestFontPreview.value);
         }
     }
 
@@ -374,6 +431,21 @@ const sendLiveUpdate = (document?: MinimalContentDocument | null) => {
     }
     pendingLiveUpdate.value = false;
     postLiveUpdate(sourceDocument);
+};
+
+const sendFontPreview = (payload?: InlineFontPreviewPayload | null) => {
+    const source = normalizeFontPreviewPayload(payload ?? latestFontPreview.value);
+    if (!source) {
+        return;
+    }
+
+    if (!canPostToPreview()) {
+        pendingFontPreview.value = true;
+        return;
+    }
+
+    pendingFontPreview.value = false;
+    postFontPreview(source);
 };
 
 const sendFocusMessage = (
@@ -429,6 +501,11 @@ const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
         isPreviewClientReady.value = false;
     }
     sendLiveUpdate();
+};
+
+const handleFontPreviewChange = (payload: InlineFontPreviewPayload) => {
+    latestFontPreview.value = normalizeFontPreviewPayload(payload);
+    sendFontPreview();
 };
 
 const handleNodeFocus = (payload: {
@@ -561,6 +638,9 @@ const beginDividerDrag = (event: PointerEvent) => {
 const handleIframeLoad = () => {
     isIframeReady.value = true;
     pendingLiveUpdate.value = true;
+    if (latestFontPreview.value) {
+        pendingFontPreview.value = true;
+    }
 };
 
 const isInlinePreviewPropClickMessage = (
@@ -647,6 +727,9 @@ const handlePreviewMessage = (event: MessageEvent) => {
     if ((data as { type?: string }).type === "content_inline_preview_ready") {
         isPreviewClientReady.value = true;
         pendingLiveUpdate.value = true;
+        if (latestFontPreview.value) {
+            pendingFontPreview.value = true;
+        }
         nextTick(() => {
             flushPendingPreviewMessages();
         });
@@ -756,6 +839,7 @@ watch(
         isPreviewClientReady.value = false;
         pendingLiveUpdate.value = false;
         pendingFocusTarget.value = null;
+        pendingFontPreview.value = false;
         workbenchInstanceKey.value += 1;
         setUnsavedState(false);
     },
@@ -840,6 +924,7 @@ onBeforeRouteLeave(() => {
                 @page-selected="handlePageSelected"
                 @document-change="handleDocumentChange"
                 @document-preview-change="handlePreviewDocumentChange"
+                @font-preview-change="handleFontPreviewChange"
                 @preview-motion-change="handlePreviewMotionChange"
                 @node-focus="handleNodeFocus"
                 @save-success="handleSaveSuccess"
