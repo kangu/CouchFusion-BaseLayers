@@ -801,10 +801,15 @@ export const useContentLiveUpdates = (): void => {
     const sectionId = sectionOwner?.getAttribute('data-section-id')?.trim() || undefined
     const hint = collectInlineHint(target)
 
-    if (event.cancelable) {
-      event.preventDefault()
+    // Preserve native interaction on form/button controls (for example
+    // accordion toggles) while still emitting prop-focus metadata.
+    const preserveNativeInteraction = Boolean(interactiveControl)
+    if (!preserveNativeInteraction) {
+      if (event.cancelable) {
+        event.preventDefault()
+      }
+      event.stopPropagation()
     }
-    event.stopPropagation()
 
     notifyInlinePropClick({
       path: normalizePagePath(window.location.pathname || '/'),
