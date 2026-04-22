@@ -82,7 +82,8 @@
                     '--component-picker-preview-scale-desktop': previewDesktopScale.toFixed(4),
                     '--component-picker-preview-scale-mobile': previewMobileScale.toFixed(4),
                     '--component-picker-preview-desktop-min-width': `${DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH}px`,
-                    '--component-picker-preview-mobile-min-width': `${MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH}px`
+                    '--component-picker-preview-mobile-min-width': `${MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH}px`,
+                    '--component-picker-preview-mobile-max-width': `${MOBILE_PREVIEW_MAX_VIEWPORT_WIDTH}px`
                 }"
             >
                 <div
@@ -258,7 +259,8 @@ const DESKTOP_PREVIEW_SCALE_MAX = 0.55;
 const MOBILE_PREVIEW_SCALE_MIN = 0.24;
 const MOBILE_PREVIEW_SCALE_MAX = 0.42;
 const DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH = 1280;
-const MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH = 420;
+const MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH = 360;
+const MOBILE_PREVIEW_MAX_VIEWPORT_WIDTH = 480;
 // Global multiplier for thumbnail preview zoom density.
 // Increase for larger previews, decrease for smaller.
 const PREVIEW_SCALE_ADJUSTER = 1.2;
@@ -1006,12 +1008,18 @@ watch(
 }
 
 .preview-scaler.is-mobile {
-    --component-picker-preview-scale-mobile-fit: calc(
-        100cqw / var(--component-picker-preview-mobile-min-width, 420px)
+    --component-picker-preview-scale-mobile-fit-min: calc(
+        100cqw / var(--component-picker-preview-mobile-max-width, 480px)
+    );
+    --component-picker-preview-scale-mobile-fit-max: calc(
+        100cqw / var(--component-picker-preview-mobile-min-width, 360px)
     );
     --component-picker-preview-scale-mobile-effective: min(
-        var(--component-picker-preview-scale-mobile, 0.33),
-        var(--component-picker-preview-scale-mobile-fit)
+        max(
+            var(--component-picker-preview-scale-mobile, 0.33),
+            var(--component-picker-preview-scale-mobile-fit-min)
+        ),
+        var(--component-picker-preview-scale-mobile-fit-max)
     );
     width: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
     height: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
