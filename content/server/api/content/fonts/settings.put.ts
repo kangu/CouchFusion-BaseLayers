@@ -4,7 +4,13 @@ import { saveContentFontSettings } from "../../../utils/content-fonts";
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdminSession(event);
-  const body = await readBody<{ sansFamily?: unknown; displayFamily?: unknown }>(event);
+  const body = await readBody<{
+    sansFamily?: unknown;
+    displayFamily?: unknown;
+    styles?: unknown;
+    weights?: unknown;
+    widths?: unknown;
+  }>(event);
 
   if (!body || typeof body !== "object") {
     throw createError({
@@ -16,6 +22,9 @@ export default defineEventHandler(async (event) => {
   const { runtimeConfig, settings } = await saveContentFontSettings({
     sansFamily: body.sansFamily,
     displayFamily: body.displayFamily,
+    styles: body.styles,
+    weights: body.weights,
+    widths: body.widths,
     updatedBy: session?.userCtx?.name ?? null,
   });
 

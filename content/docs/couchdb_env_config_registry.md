@@ -26,3 +26,24 @@ Used by: `layers/content/server/utils/llm-translations-config.ts`
 
 - Font allowlist fallback: `inter,lato,playfair-display` when `content_fonts_allowlist` is unset/empty.
 - Default font selection fallback resolves from allowlist when default keys are unset.
+- Per-project typography profile values chosen in the UI are not stored in `_config`; they are persisted in the main application `settings` document under `contentFonts`.
+
+## Main Settings Document
+
+Used by: `layers/content/server/utils/content-fonts.ts`
+
+- Database:
+  - defaults to `${dbLoginPrefix}-orders`
+  - can be overridden via `runtimeConfig.content.settingsDatabaseName`
+- Document id:
+  - defaults to `settings`
+  - can be overridden via `runtimeConfig.content.settingsDocumentId`
+- Stored key:
+  - `contentFonts`
+- Stored fields:
+  - `sansFamily`
+  - `displayFamily`
+  - `styles`
+  - `weights`
+  - `widths`
+  - apply/runtime metadata (`status`, timestamps, runtime css version/path)

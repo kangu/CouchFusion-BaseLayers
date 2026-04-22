@@ -2092,9 +2092,35 @@ onBeforeUnmount(() => {
 
 const sansFamilyDraft = ref("");
 const displayFamilyDraft = ref("");
+const styleDraft = ref<Array<"normal" | "italic">>([]);
+const weightDraft = ref<number[]>([]);
+const widthDraft = ref<string[]>([]);
 const typographyNotice = ref<string | null>(null);
 const isTypographyApplying = ref(false);
 const isTypographyPanelExpanded = ref(false);
+const TYPOGRAPHY_STYLE_OPTIONS = [
+    { label: "Normal", value: "normal" as const },
+    { label: "Italic", value: "italic" as const },
+];
+const TYPOGRAPHY_WEIGHT_OPTIONS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+const TYPOGRAPHY_WIDTH_OPTIONS = [
+    { label: "Ultra Condensed", value: "50%" },
+    { label: "Extra Condensed", value: "62.5%" },
+    { label: "Condensed", value: "75%" },
+    { label: "Semi Condensed", value: "87.5%" },
+    { label: "Normal", value: "100%" },
+    { label: "Semi Expanded", value: "112.5%" },
+    { label: "Expanded", value: "125%" },
+    { label: "Extra Expanded", value: "150%" },
+    { label: "Ultra Expanded", value: "200%" },
+];
+
+const sortNumbers = (values: number[]) => [...values].sort((left, right) => left - right);
+const sortStrings = (values: string[]) => [...values].sort((left, right) => left.localeCompare(right));
+const hasSameNumbers = (left: number[], right: number[]) =>
+    left.length === right.length && left.every((value, index) => value === right[index]);
+const hasSameStrings = (left: string[], right: string[]) =>
+    left.length === right.length && left.every((value, index) => value === right[index]);
 
 const typographyOptions = computed(() => contentFontSettings.options.value ?? []);
 const typographyErrorMessage = computed(() => contentFontSettings.error.value);
@@ -2109,7 +2135,10 @@ const hasTypographyDraftChanges = computed(() => {
     }
     return (
         settings.sansFamily !== sansFamilyDraft.value ||
-        settings.displayFamily !== displayFamilyDraft.value
+        settings.displayFamily !== displayFamilyDraft.value ||
+        !hasSameStrings(sortStrings(settings.styles), sortStrings(styleDraft.value)) ||
+        !hasSameNumbers(sortNumbers(settings.weights), sortNumbers(weightDraft.value)) ||
+        !hasSameStrings(sortStrings(settings.widths), sortStrings(widthDraft.value))
     );
 });
 
@@ -2140,8 +2169,37 @@ const typographyFamilyWithFallback = (value: string, fallback: string) => {
     return trimmed.length > 0 ? trimmed : fallback;
 };
 
-const buildBunnyPreviewCssHref = (familySlug: string) => {
-    const variants = "300,300i,400,400i,700,700i";
+const previewStyles = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    return styleDraft.value.length > 0
+        ? styleDraft.value
+        : (settings?.styles ?? ["normal"]);
+});
+
+const previewWeights = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    return weightDraft.value.length > 0
+        ? weightDraft.value
+        : (settings?.weights ?? [300, 400, 700]);
+});
+
+const buildBunnyPreviewCssHref = (familySlug: string, styles: Array<"normal" | "italic">, weights: number[]) => {
+    const styleSet = new Set(styles);
+    const variants: string[] = [];
+
+    for (const weight of weights) {
+        if (styleSet.has("normal")) {
+            variants.push(String(weight));
+        }
+        if (styleSet.has("italic")) {
+            variants.push(`${weight}i`);
+        }
+    }
+
+    if (variants.length === 0) {
+        variants.push("400");
+    }
+
     return `https://fonts.bunny.net/css?family=${encodeURIComponent(`${familySlug}:${variants}`)}`;
 };
 
@@ -2190,7 +2248,11 @@ const previewFontCssLinks = computed(() => {
         links.push({
             id: `builder-preview-font-${familySlug}`,
             rel: "stylesheet",
-            href: buildBunnyPreviewCssHref(familySlug),
+            href: buildBunnyPreviewCssHref(
+                familySlug,
+                previewStyles.value,
+                previewWeights.value,
+            ),
         });
     }
 
@@ -2222,13 +2284,24 @@ const waitForPreviewFonts = async () => {
     isPreviewFontLoading.value = true;
 
     const loadJobs: Array<Promise<FontFace[]>> = [];
+    const selectedStyles = previewStyles.value.length > 0 ? previewStyles.value : ["normal"];
+    const selectedWeights = previewWeights.value.length > 0 ? previewWeights.value : [400];
+    const buildFontLoadValue = (style: "normal" | "italic", weight: number, label: string) =>
+        `${style} ${weight} 1rem "${label}"`;
+
     if (sansSlug) {
-        loadJobs.push(document.fonts.load(`400 1rem "${sansLabel}"`));
-        loadJobs.push(document.fonts.load(`700 1rem "${sansLabel}"`));
+        for (const style of selectedStyles) {
+            for (const weight of selectedWeights) {
+                loadJobs.push(document.fonts.load(buildFontLoadValue(style, weight, sansLabel)));
+            }
+        }
     }
     if (displaySlug) {
-        loadJobs.push(document.fonts.load(`400 1rem "${displayLabel}"`));
-        loadJobs.push(document.fonts.load(`700 1rem "${displayLabel}"`));
+        for (const style of selectedStyles) {
+            for (const weight of selectedWeights) {
+                loadJobs.push(document.fonts.load(buildFontLoadValue(style, weight, displayLabel)));
+            }
+        }
     }
 
     try {
@@ -2243,7 +2316,12 @@ const waitForPreviewFonts = async () => {
 };
 
 watch(
-    () => [previewSansFamilySlug.value, previewDisplayFamilySlug.value],
+    () => [
+        previewSansFamilySlug.value,
+        previewDisplayFamilySlug.value,
+        previewStyles.value.join(","),
+        previewWeights.value.join(","),
+    ],
     () => {
         void waitForPreviewFonts();
         emit("font-preview-change", {
@@ -2266,6 +2344,9 @@ const syncTypographyDraft = () => {
     }
     sansFamilyDraft.value = settings.sansFamily;
     displayFamilyDraft.value = settings.displayFamily;
+    styleDraft.value = [...settings.styles];
+    weightDraft.value = [...settings.weights];
+    widthDraft.value = [...settings.widths];
 };
 
 const resetTypographyDraft = () => {
@@ -2274,7 +2355,13 @@ const resetTypographyDraft = () => {
 };
 
 const applyTypographySelection = async () => {
-    if (!sansFamilyDraft.value || !displayFamilyDraft.value) {
+    if (
+        !sansFamilyDraft.value ||
+        !displayFamilyDraft.value ||
+        styleDraft.value.length === 0 ||
+        weightDraft.value.length === 0 ||
+        widthDraft.value.length === 0
+    ) {
         return;
     }
 
@@ -2284,6 +2371,9 @@ const applyTypographySelection = async () => {
         await contentFontSettings.saveAdmin({
             sansFamily: sansFamilyDraft.value,
             displayFamily: displayFamilyDraft.value,
+            styles: [...styleDraft.value],
+            weights: [...weightDraft.value],
+            widths: [...widthDraft.value],
         });
         await contentFontSettings.applyAdmin();
         contentFontSettings.bumpRuntimeStylesheet();
@@ -2434,6 +2524,59 @@ const handleSaveDebugClick = () => {
                         </select>
                     </label>
                 </div>
+                <div class="builder-typography-card__profiles">
+                    <fieldset class="builder-typography-card__fieldset">
+                        <legend>Styles</legend>
+                        <label
+                            v-for="option in TYPOGRAPHY_STYLE_OPTIONS"
+                            :key="`style-${option.value}`"
+                            class="builder-typography-card__choice"
+                        >
+                            <input
+                                v-model="styleDraft"
+                                type="checkbox"
+                                :value="option.value"
+                                :disabled="isTypographyPending"
+                            />
+                            <span>{{ option.label }}</span>
+                        </label>
+                    </fieldset>
+                    <fieldset class="builder-typography-card__fieldset">
+                        <legend>Weights</legend>
+                        <label
+                            v-for="weight in TYPOGRAPHY_WEIGHT_OPTIONS"
+                            :key="`weight-${weight}`"
+                            class="builder-typography-card__choice"
+                        >
+                            <input
+                                v-model="weightDraft"
+                                type="checkbox"
+                                :value="weight"
+                                :disabled="isTypographyPending"
+                            />
+                            <span>{{ weight }}</span>
+                        </label>
+                    </fieldset>
+                    <fieldset class="builder-typography-card__fieldset">
+                        <legend>Widths</legend>
+                        <label
+                            v-for="option in TYPOGRAPHY_WIDTH_OPTIONS"
+                            :key="`width-${option.value}`"
+                            class="builder-typography-card__choice"
+                        >
+                            <input
+                                v-model="widthDraft"
+                                type="checkbox"
+                                :value="option.value"
+                                :disabled="isTypographyPending"
+                            />
+                            <span>{{ option.label }}</span>
+                        </label>
+                        <p class="builder-typography-card__hint">
+                            Only widths exposed by Bunny for the selected family will be materialized.
+                        </p>
+                    </fieldset>
+                </div>
                 <p v-if="typographyErrorMessage" class="builder-typography-card__error">
                     {{ typographyErrorMessage }}
                 </p>
@@ -2452,7 +2595,7 @@ const handleSaveDebugClick = () => {
                     <button
                         type="button"
                         class="builder-typography-card__apply"
-                        :disabled="isTypographyPending || !sansFamilyDraft || !displayFamilyDraft"
+                        :disabled="isTypographyPending || !sansFamilyDraft || !displayFamilyDraft || styleDraft.length === 0 || weightDraft.length === 0 || widthDraft.length === 0"
                         @click="applyTypographySelection"
                     >
                         {{
@@ -2954,6 +3097,45 @@ const handleSaveDebugClick = () => {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+.builder-typography-card__profiles {
+    display: grid;
+    gap: 12px;
+}
+
+.builder-typography-card__fieldset {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px 12px;
+    border: 1px solid #dbe2ea;
+    border-radius: 10px;
+    margin: 0;
+}
+
+.builder-typography-card__fieldset legend {
+    padding: 0 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.builder-typography-card__choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #1e293b;
+}
+
+.builder-typography-card__choice input {
+    margin: 0;
+}
+
+.builder-typography-card__hint {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #64748b;
 }
 
 .builder-typography-card__cancel,

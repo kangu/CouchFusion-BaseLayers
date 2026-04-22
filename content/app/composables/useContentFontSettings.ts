@@ -12,6 +12,7 @@ export interface ContentFontSettingsDocument {
   profile: "minimal";
   styles: Array<"normal" | "italic">;
   weights: number[];
+  widths: string[];
   status: "idle" | "applied" | "failed";
   lastApplyError: string | null;
   lastAppliedAt: string | null;
@@ -41,7 +42,8 @@ const toSettings = (value: unknown): ContentFontSettingsDocument | null => {
     typeof source.sansFamily !== "string" ||
     typeof source.displayFamily !== "string" ||
     !Array.isArray(source.styles) ||
-    !Array.isArray(source.weights)
+    !Array.isArray(source.weights) ||
+    !Array.isArray(source.widths)
   ) {
     return null;
   }
@@ -112,6 +114,9 @@ export const useContentFontSettings = () => {
   const saveAdmin = async (payload: {
     sansFamily: string;
     displayFamily: string;
+    styles: Array<"normal" | "italic">;
+    weights: number[];
+    widths: string[];
   }) => {
     loading.value = true;
     error.value = null;

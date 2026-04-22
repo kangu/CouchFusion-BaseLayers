@@ -8,7 +8,11 @@ import {
   readCouchConfigValues,
 } from "#database/utils/couch-config";
 import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
-import { getContentDatabaseName } from "./database";
+import {
+  getContentDatabaseName,
+  getMainDatabaseName,
+  getMainSettingsDocumentId,
+} from "./database";
 
 export const CONTENT_FONT_SETTINGS_DOC_ID = "content-settings:fonts";
 
@@ -24,9 +28,22 @@ const DEFAULT_DISPLAY_CONFIG_KEY = "content_fonts_default_display";
 const DEFAULT_ALLOWLIST = ["inter", "lato", "playfair-display"];
 const DEFAULT_PROFILE_WEIGHTS = [300, 400, 700] as const;
 const DEFAULT_PROFILE_STYLES = ["normal", "italic"] as const;
+const DEFAULT_PROFILE_WIDTHS = ["100%"] as const;
 
 const FONT_STYLE_VALUES = ["normal", "italic"] as const;
+const FONT_STRETCH_PRESET_VALUES = [
+  "50%",
+  "62.5%",
+  "75%",
+  "87.5%",
+  "100%",
+  "112.5%",
+  "125%",
+  "150%",
+  "200%",
+] as const;
 export type ContentFontStyle = (typeof FONT_STYLE_VALUES)[number];
+export type ContentFontWidth = string;
 
 export interface ContentFontFamilyOption {
   slug: string;
@@ -38,6 +55,7 @@ export interface ParsedBunnyFontFace {
   subset: string | null;
   style: ContentFontStyle;
   weight: number;
+  stretch: ContentFontWidth;
   unicodeRange: string | null;
   remoteUrl: string;
 }
@@ -50,6 +68,7 @@ export interface ContentFontSettingsDocument extends CouchDBDocument {
   profile: "minimal";
   styles: ContentFontStyle[];
   weights: number[];
+  widths: ContentFontWidth[];
   status: "idle" | "applied" | "failed";
   lastApplyError: string | null;
   lastAppliedAt: string | null;
@@ -66,6 +85,12 @@ export interface ContentFontRuntimeConfig {
   allowlist: ContentFontFamilyOption[];
   defaultSans: string;
   defaultDisplay: string;
+}
+
+interface MainSettingsDocument extends CouchDBDocument {
+  _id: string;
+  contentFonts?: Partial<ContentFontSettingsDocument>;
+  [key: string]: unknown;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -174,6 +199,57 @@ const normalizeWeights = (value: unknown): number[] => {
   return Array.from(new Set(normalized)).sort((a, b) => a - b);
 };
 
+const parseWidthNumber = (value: string): number | null => {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const compareWidths = (left: string, right: string) => {
+  const leftValue = parseWidthNumber(left);
+  const rightValue = parseWidthNumber(right);
+
+  if (leftValue !== null && rightValue !== null) {
+    return leftValue - rightValue;
+  }
+
+  return left.localeCompare(right);
+};
+
+const normalizeWidthValue = (value: unknown): ContentFontWidth | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `${value}%`;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.endsWith("%")) {
+    const numeric = parseWidthNumber(trimmed.slice(0, -1));
+    return numeric !== null ? `${numeric}%` : null;
+  }
+
+  const numeric = parseWidthNumber(trimmed);
+  if (numeric !== null) {
+    return `${numeric}%`;
+  }
+
+  return null;
+};
+
+const normalizeWidths = (value: unknown): ContentFontWidth[] => {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = source
+    .map((entry) => normalizeWidthValue(entry))
+    .filter((entry): entry is ContentFontWidth => Boolean(entry));
+  return Array.from(new Set(normalized)).sort(compareWidths);
+};
+
 const defaultSettingsDocument = (
   runtimeConfig: ContentFontRuntimeConfig,
 ): ContentFontSettingsDocument => {
@@ -186,6 +262,7 @@ const defaultSettingsDocument = (
     profile: "minimal",
     styles: [...DEFAULT_PROFILE_STYLES],
     weights: [...DEFAULT_PROFILE_WEIGHTS],
+    widths: [...DEFAULT_PROFILE_WIDTHS],
     status: "idle",
     lastApplyError: null,
     lastAppliedAt: null,
@@ -217,6 +294,7 @@ const normalizeSettingsDocument = (
   const source = value as Record<string, any>;
   const styles = normalizeStyles(source.styles);
   const weights = normalizeWeights(source.weights);
+  const widths = normalizeWidths(source.widths);
 
   return {
     ...defaults,
@@ -234,6 +312,7 @@ const normalizeSettingsDocument = (
     profile: "minimal",
     styles: styles.length > 0 ? styles : defaults.styles,
     weights: weights.length > 0 ? weights : defaults.weights,
+    widths: widths.length > 0 ? widths : defaults.widths,
     status:
       source.status === "applied" || source.status === "failed" || source.status === "idle"
         ? source.status
@@ -269,13 +348,85 @@ const normalizeSettingsDocument = (
   };
 };
 
+const getContentFontSettingsFromMainSettings = (
+  value: unknown,
+): Partial<ContentFontSettingsDocument> | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const source = value as Record<string, any>;
+  if (!source.contentFonts || typeof source.contentFonts !== "object") {
+    return null;
+  }
+
+  return source.contentFonts as Partial<ContentFontSettingsDocument>;
+};
+
+const toPersistedContentFontSettings = (
+  settings: ContentFontSettingsDocument,
+): Partial<ContentFontSettingsDocument> => ({
+  sansFamily: settings.sansFamily,
+  displayFamily: settings.displayFamily,
+  profile: settings.profile,
+  styles: [...settings.styles],
+  weights: [...settings.weights],
+  widths: [...settings.widths],
+  status: settings.status,
+  lastApplyError: settings.lastApplyError,
+  lastAppliedAt: settings.lastAppliedAt,
+  lastAppliedBy: settings.lastAppliedBy,
+  runtimeCssVersion: settings.runtimeCssVersion,
+  runtimeCssPath: settings.runtimeCssPath,
+  updatedAt: settings.updatedAt,
+  updatedBy: settings.updatedBy,
+});
+
+export const mergeContentFontSettingsIntoMainSettings = (
+  value: unknown,
+  settings: Omit<ContentFontSettingsDocument, "_id" | "_rev" | "type" | "profile"> &
+    Partial<Pick<ContentFontSettingsDocument, "profile">>,
+): MainSettingsDocument => {
+  const source = value && typeof value === "object"
+    ? value as MainSettingsDocument
+    : { _id: "settings" };
+
+  return {
+    ...source,
+    _id: typeof source._id === "string" && source._id.trim() ? source._id : "settings",
+    contentFonts: {
+      ...toPersistedContentFontSettings({
+        _id: CONTENT_FONT_SETTINGS_DOC_ID,
+        type: "content-font-settings",
+        profile: settings.profile ?? "minimal",
+        _rev: undefined,
+        ...settings,
+      }),
+    },
+  };
+};
+
 export const getContentFontSettings = async (): Promise<{
   runtimeConfig: ContentFontRuntimeConfig;
   settings: ContentFontSettingsDocument;
 }> => {
   const runtimeConfig = await getContentFontRuntimeConfig();
-  const databaseName = getContentDatabaseName();
-  const existing = await getDocument(databaseName, CONTENT_FONT_SETTINGS_DOC_ID);
+  const mainDatabaseName = getMainDatabaseName();
+  const mainSettingsDocumentId = getMainSettingsDocumentId();
+  const contentDatabaseName = getContentDatabaseName();
+
+  const [mainSettingsDocument, legacySettingsDocument] = await Promise.all([
+    getDocument<MainSettingsDocument>(mainDatabaseName, mainSettingsDocumentId),
+    getDocument(contentDatabaseName, CONTENT_FONT_SETTINGS_DOC_ID),
+  ]);
+
+  const storedMainSettings = getContentFontSettingsFromMainSettings(mainSettingsDocument);
+  const existing = storedMainSettings
+    ? {
+        ...storedMainSettings,
+        _rev: mainSettingsDocument?._rev,
+      }
+    : legacySettingsDocument;
 
   return {
     runtimeConfig,
@@ -286,6 +437,9 @@ export const getContentFontSettings = async (): Promise<{
 export const saveContentFontSettings = async (payload: {
   sansFamily?: unknown;
   displayFamily?: unknown;
+  styles?: unknown;
+  weights?: unknown;
+  widths?: unknown;
   updatedBy?: string | null;
 }): Promise<{ runtimeConfig: ContentFontRuntimeConfig; settings: ContentFontSettingsDocument }> => {
   const { runtimeConfig, settings } = await getContentFontSettings();
@@ -324,12 +478,30 @@ export const saveContentFontSettings = async (payload: {
     ...settings,
     sansFamily: nextSans,
     displayFamily: nextDisplay,
+    styles: normalizeStyles(payload.styles).length > 0
+      ? normalizeStyles(payload.styles)
+      : settings.styles,
+    weights: normalizeWeights(payload.weights).length > 0
+      ? normalizeWeights(payload.weights)
+      : settings.weights,
+    widths: normalizeWidths(payload.widths).length > 0
+      ? normalizeWidths(payload.widths)
+      : settings.widths,
     updatedAt: nowIso(),
     updatedBy: payload.updatedBy ?? null,
   };
 
-  const databaseName = getContentDatabaseName();
-  const putResponse = await putDocument(databaseName, nextDoc);
+  const databaseName = getMainDatabaseName();
+  const settingsDocumentId = getMainSettingsDocumentId();
+  const existingMainSettings = await getDocument<MainSettingsDocument>(
+    databaseName,
+    settingsDocumentId,
+  );
+  const nextMainSettings = mergeContentFontSettingsIntoMainSettings(
+    existingMainSettings ?? { _id: settingsDocumentId },
+    nextDoc,
+  );
+  const putResponse = await putDocument(databaseName, nextMainSettings);
   if (putResponse.rev) {
     nextDoc._rev = putResponse.rev;
   }
@@ -352,6 +524,7 @@ export const parseBunnyFontFaces = (cssText: string): ParsedBunnyFontFace[] => {
     const familyMatch = /font-family:\s*['"]([^'"]+)['"]\s*;/i.exec(body);
     const styleMatch = /font-style:\s*(normal|italic)\s*;/i.exec(body);
     const weightMatch = /font-weight:\s*(\d+)\s*;/i.exec(body);
+    const stretchMatch = /font-stretch:\s*([^;]+)\s*;/i.exec(body);
     const unicodeRangeMatch = /unicode-range:\s*([^;]+)\s*;/i.exec(body);
     const sourceMatch = /src:\s*([^;]+)\s*;/i.exec(body);
     const remoteUrlMatch = sourceMatch?.[1]
@@ -373,6 +546,7 @@ export const parseBunnyFontFaces = (cssText: string): ParsedBunnyFontFace[] => {
         subset,
         style,
         weight,
+        stretch: normalizeWidthValue(stretchMatch?.[1]) ?? "100%",
         unicodeRange: unicodeRangeMatch?.[1]?.trim() ?? null,
         remoteUrl: remoteUrlMatch[1].trim(),
       });
@@ -386,17 +560,22 @@ export const parseBunnyFontFaces = (cssText: string): ParsedBunnyFontFace[] => {
 
 export const filterBunnyFontFaces = (
   faces: ParsedBunnyFontFace[],
-  profile: { styles: ContentFontStyle[]; weights: number[] },
+  profile: { styles: ContentFontStyle[]; weights: number[]; widths: ContentFontWidth[] },
 ): ParsedBunnyFontFace[] => {
   const requestedStyles = new Set(profile.styles);
   const requestedWeights = new Set(profile.weights);
+  const requestedWidths = new Set(profile.widths);
   const byCombo = new Map<string, ParsedBunnyFontFace[]>();
 
   for (const face of faces) {
-    if (!requestedStyles.has(face.style) || !requestedWeights.has(face.weight)) {
+    if (
+      !requestedStyles.has(face.style) ||
+      !requestedWeights.has(face.weight) ||
+      !requestedWidths.has(face.stretch)
+    ) {
       continue;
     }
-    const combo = `${face.style}:${face.weight}`;
+    const combo = `${face.style}:${face.weight}:${face.stretch}`;
     const entries = byCombo.get(combo) ?? [];
     entries.push(face);
     byCombo.set(combo, entries);
@@ -405,14 +584,16 @@ export const filterBunnyFontFaces = (
   const selected: ParsedBunnyFontFace[] = [];
   for (const style of profile.styles) {
     for (const weight of profile.weights) {
-      const combo = `${style}:${weight}`;
-      const options = byCombo.get(combo) ?? [];
-      if (options.length === 0) {
-        continue;
-      }
+      for (const width of profile.widths) {
+        const combo = `${style}:${weight}:${width}`;
+        const options = byCombo.get(combo) ?? [];
+        if (options.length === 0) {
+          continue;
+        }
 
-      const latinOnly = options.filter((entry) => entry.subset === "latin");
-      selected.push(...(latinOnly.length > 0 ? latinOnly : options));
+        const latinOnly = options.filter((entry) => entry.subset === "latin");
+        selected.push(...(latinOnly.length > 0 ? latinOnly : options));
+      }
     }
   }
 
@@ -460,6 +641,7 @@ const materializeFamilyFaces = async (
   familySlug: string,
   styles: ContentFontStyle[],
   weights: number[],
+  widths: ContentFontWidth[],
   downloadRoot: string,
 ): Promise<ParsedBunnyFontFace[]> => {
   const cssUrl = buildBunnyCssUrl(familySlug, styles, weights);
@@ -470,7 +652,7 @@ const materializeFamilyFaces = async (
 
   const cssText = await response.text();
   const parsedFaces = parseBunnyFontFaces(cssText);
-  const selectedFaces = filterBunnyFontFaces(parsedFaces, { styles, weights });
+  const selectedFaces = filterBunnyFontFaces(parsedFaces, { styles, weights, widths });
 
   if (selectedFaces.length === 0) {
     throw new Error(`No matching Bunny font faces found for ${familySlug}`);
@@ -507,6 +689,7 @@ const renderRuntimeCss = (payload: {
       chunks.push(`  font-family: '${family}';`);
       chunks.push(`  font-style: ${face.style};`);
       chunks.push(`  font-weight: ${face.weight};`);
+      chunks.push(`  font-stretch: ${face.stretch};`);
       chunks.push("  font-display: swap;");
       chunks.push(`  src: url('${face.remoteUrl}') format('woff2');`);
       if (face.unicodeRange) {
@@ -622,6 +805,7 @@ export const applyContentFonts = async (payload: {
         familySlug,
         settings.styles,
         settings.weights,
+        settings.widths,
         stagingRoot,
       );
     }
@@ -663,8 +847,17 @@ export const applyContentFonts = async (payload: {
       runtimeCssPath: `/${MANAGED_FONTS_DIR}/${RUNTIME_FONTS_FILE_NAME}`,
     };
 
-    const databaseName = getContentDatabaseName();
-    const putResponse = await putDocument(databaseName, nextDoc);
+    const databaseName = getMainDatabaseName();
+    const settingsDocumentId = getMainSettingsDocumentId();
+    const existingMainSettings = await getDocument<MainSettingsDocument>(
+      databaseName,
+      settingsDocumentId,
+    );
+    const nextMainSettings = mergeContentFontSettingsIntoMainSettings(
+      existingMainSettings ?? { _id: settingsDocumentId },
+      nextDoc,
+    );
+    const putResponse = await putDocument(databaseName, nextMainSettings);
     if (putResponse.rev) {
       nextDoc._rev = putResponse.rev;
     }
@@ -682,13 +875,22 @@ export const applyContentFonts = async (payload: {
       }
     }
 
-    const databaseName = getContentDatabaseName();
+    const databaseName = getMainDatabaseName();
+    const settingsDocumentId = getMainSettingsDocumentId();
     const failedDoc: ContentFontSettingsDocument = {
       ...nextStatusBase,
       status: "failed",
       lastApplyError: error?.message ? String(error.message) : "Unknown apply error",
     };
-    const putResponse = await putDocument(databaseName, failedDoc);
+    const existingMainSettings = await getDocument<MainSettingsDocument>(
+      databaseName,
+      settingsDocumentId,
+    );
+    const failedMainSettings = mergeContentFontSettingsIntoMainSettings(
+      existingMainSettings ?? { _id: settingsDocumentId },
+      failedDoc,
+    );
+    const putResponse = await putDocument(databaseName, failedMainSettings);
     if (putResponse.rev) {
       failedDoc._rev = putResponse.rev;
     }
