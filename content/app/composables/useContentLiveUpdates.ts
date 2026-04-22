@@ -38,6 +38,17 @@ interface BuilderFocusMessage {
   payload?: BuilderFocusPayload
 }
 
+interface BuilderFontPreviewPayload {
+  sansFamily: string
+  displayFamily: string
+  cssHrefs: string[]
+}
+
+interface BuilderFontPreviewMessage {
+  type: 'builder_font_preview'
+  payload?: BuilderFontPreviewPayload
+}
+
 /**
  * Payload emitted from inline preview when a prop-annotated element is clicked.
  */
@@ -95,6 +106,24 @@ const isBuilderFocusMessage = (value: unknown): value is BuilderFocusMessage => 
     return false
   }
   return typeof candidate.payload.uid === 'string' && typeof candidate.payload.path === 'string'
+}
+
+const isBuilderFontPreviewMessage = (value: unknown): value is BuilderFontPreviewMessage => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as Record<string, any>
+  if (candidate.type !== 'builder_font_preview') {
+    return false
+  }
+  if (!candidate.payload || typeof candidate.payload !== 'object') {
+    return false
+  }
+  return (
+    typeof candidate.payload.sansFamily === 'string' &&
+    typeof candidate.payload.displayFamily === 'string' &&
+    Array.isArray(candidate.payload.cssHrefs)
+  )
 }
 
 /**
@@ -500,6 +529,69 @@ export const useContentLiveUpdates = (): void => {
   let pendingScroll: { x: number; y: number } | null = null
   let focusRequestId = 0
 
+  const ensureInlinePreviewFontLinks = (hrefs: string[]) => {
+    const head = document.head || document.documentElement
+    const normalizedHrefs = Array.from(
+      new Set(
+        hrefs
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter((entry) => entry.length > 0)
+      )
+    )
+
+    const existingLinks = Array.from(
+      document.querySelectorAll<HTMLLinkElement>('link[data-inline-preview-font="1"]')
+    )
+
+    for (const link of existingLinks) {
+      if (!normalizedHrefs.includes(link.href)) {
+        link.remove()
+      }
+    }
+
+    for (const href of normalizedHrefs) {
+      const alreadyPresent = existingLinks.some((link) => link.href === href)
+      if (alreadyPresent) {
+        continue
+      }
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = href
+      link.setAttribute('data-inline-preview-font', '1')
+      head.appendChild(link)
+    }
+  }
+
+  const applyInlinePreviewFontOverrides = (payload: BuilderFontPreviewPayload) => {
+    const head = document.head || document.documentElement
+    ensureInlinePreviewFontLinks(payload.cssHrefs ?? [])
+
+    const escapeCss = (value: string) =>
+      value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+
+    const sansFamily = escapeCss(payload.sansFamily.trim() || 'sans-serif')
+    const displayFamily = escapeCss(payload.displayFamily.trim() || 'serif')
+
+    const styleId = 'content-inline-preview-font-overrides'
+    let styleTag = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!styleTag) {
+      styleTag = document.createElement('style')
+      styleTag.id = styleId
+      head.appendChild(styleTag)
+    }
+
+    styleTag.textContent = [
+      ':root {',
+      `  --font-sans: '${sansFamily}', sans-serif !important;`,
+      `  --font-display: '${displayFamily}', serif !important;`,
+      '}',
+      'html, body {',
+      '  font-family: var(--font-sans) !important;',
+      '}',
+      '',
+    ].join('\n')
+  }
+
   /**
    * Live content replacement can nudge scroll unexpectedly.
    * Retry restoration for a few frames to survive async layout shifts.
@@ -592,6 +684,15 @@ export const useContentLiveUpdates = (): void => {
         }
       } catch (error) {
         console.error('Failed to apply live content update:', error)
+      }
+      return
+    }
+
+    if (isBuilderFontPreviewMessage(data) && isInlinePreview()) {
+      try {
+        applyInlinePreviewFontOverrides(data.payload!)
+      } catch (error) {
+        console.error('Failed to apply inline font preview override:', error)
       }
       return
     }

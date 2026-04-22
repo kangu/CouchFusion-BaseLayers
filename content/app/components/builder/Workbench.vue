@@ -198,6 +198,14 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
+    (
+        e: "font-preview-change",
+        payload: {
+            sansFamily: string;
+            displayFamily: string;
+            cssHrefs: string[];
+        },
+    ): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
     (
         e: "translate-scope",
@@ -2127,6 +2135,16 @@ const typographyFamilyLabel = (slug: string) => {
     return match?.label ?? slug;
 };
 
+const typographyFamilyWithFallback = (value: string, fallback: string) => {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+};
+
+const buildBunnyPreviewCssHref = (familySlug: string) => {
+    const variants = "300,300i,400,400i,700,700i";
+    return `https://fonts.bunny.net/css?family=${encodeURIComponent(`${familySlug}:${variants}`)}`;
+};
+
 const typographySummaryLabel = computed(() => {
     const settings = contentFontSettings.settings.value;
     if (!settings) {
@@ -2134,6 +2152,108 @@ const typographySummaryLabel = computed(() => {
     }
     return `Sans: ${typographyFamilyLabel(settings.sansFamily)} · Display: ${typographyFamilyLabel(settings.displayFamily)}`;
 });
+
+const previewSansFamilySlug = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    const fallback = settings?.sansFamily ?? "";
+    return typographyFamilyWithFallback(sansFamilyDraft.value, fallback);
+});
+
+const previewDisplayFamilySlug = computed(() => {
+    const settings = contentFontSettings.settings.value;
+    const fallback = settings?.displayFamily ?? "";
+    return typographyFamilyWithFallback(displayFamilyDraft.value, fallback);
+});
+
+const previewTypographyStyle = computed(() => {
+    const sansLabel = typographyFamilyLabel(previewSansFamilySlug.value);
+    const displayLabel = typographyFamilyLabel(previewDisplayFamilySlug.value);
+
+    return {
+        "--font-sans": `'${sansLabel}', sans-serif`,
+        "--font-display": `'${displayLabel}', serif`,
+        fontFamily: "var(--font-sans)",
+    } as Record<string, string>;
+});
+
+const previewFontCssLinks = computed(() => {
+    const uniqueFamilies = new Set([
+        previewSansFamilySlug.value,
+        previewDisplayFamilySlug.value,
+    ]);
+    const links: Array<{ id: string; rel: "stylesheet"; href: string }> = [];
+
+    for (const familySlug of uniqueFamilies) {
+        if (!familySlug) {
+            continue;
+        }
+        links.push({
+            id: `builder-preview-font-${familySlug}`,
+            rel: "stylesheet",
+            href: buildBunnyPreviewCssHref(familySlug),
+        });
+    }
+
+    return links;
+});
+
+useHead(() => ({
+    link: previewFontCssLinks.value,
+}));
+
+const isPreviewFontLoading = ref(false);
+let previewFontLoadToken = 0;
+
+const waitForPreviewFonts = async () => {
+    if (!import.meta.client) {
+        return;
+    }
+
+    const sansSlug = previewSansFamilySlug.value;
+    const displaySlug = previewDisplayFamilySlug.value;
+    if (!sansSlug && !displaySlug) {
+        isPreviewFontLoading.value = false;
+        return;
+    }
+
+    const sansLabel = typographyFamilyLabel(sansSlug);
+    const displayLabel = typographyFamilyLabel(displaySlug);
+    const token = ++previewFontLoadToken;
+    isPreviewFontLoading.value = true;
+
+    const loadJobs: Array<Promise<FontFace[]>> = [];
+    if (sansSlug) {
+        loadJobs.push(document.fonts.load(`400 1rem "${sansLabel}"`));
+        loadJobs.push(document.fonts.load(`700 1rem "${sansLabel}"`));
+    }
+    if (displaySlug) {
+        loadJobs.push(document.fonts.load(`400 1rem "${displayLabel}"`));
+        loadJobs.push(document.fonts.load(`700 1rem "${displayLabel}"`));
+    }
+
+    try {
+        await Promise.all(loadJobs);
+        await document.fonts.ready;
+    } catch {
+    } finally {
+        if (token === previewFontLoadToken) {
+            isPreviewFontLoading.value = false;
+        }
+    }
+};
+
+watch(
+    () => [previewSansFamilySlug.value, previewDisplayFamilySlug.value],
+    () => {
+        void waitForPreviewFonts();
+        emit("font-preview-change", {
+            sansFamily: typographyFamilyLabel(previewSansFamilySlug.value),
+            displayFamily: typographyFamilyLabel(previewDisplayFamilySlug.value),
+            cssHrefs: previewFontCssLinks.value.map((entry) => entry.href),
+        });
+    },
+    { immediate: true },
+);
 
 const toggleTypographyPanel = () => {
     isTypographyPanelExpanded.value = !isTypographyPanelExpanded.value;
@@ -2714,11 +2834,25 @@ const handleSaveDebugClick = () => {
 
         <section class="builder-preview" v-if="!hidePreview">
             <h2>Preview</h2>
-            <div :class="['builder-preview__content', previewSpacingClass]">
-                <Content
-                    :value="serializedDocument"
-                    :global-components="globalComponentsRegistry.components"
-                />
+            <div class="builder-preview__surface">
+                <div
+                    :class="['builder-preview__content', previewSpacingClass]"
+                    :style="previewTypographyStyle"
+                >
+                    <Content
+                        :value="serializedDocument"
+                        :global-components="globalComponentsRegistry.components"
+                    />
+                </div>
+                <div
+                    v-if="isPreviewFontLoading"
+                    class="builder-preview__loading"
+                    aria-live="polite"
+                    aria-busy="true"
+                >
+                    <span class="builder-preview__spinner" aria-hidden="true" />
+                    <span>Loading preview fonts…</span>
+                </div>
             </div>
         </section>
     </div>
@@ -3407,6 +3541,44 @@ const handleSaveDebugClick = () => {
 .builder-preview__content {
     display: flex;
     flex-direction: column;
+}
+
+.builder-preview__surface {
+    position: relative;
+}
+
+.builder-preview__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(248, 250, 252, 0.82);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #1e293b;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.builder-preview__spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 999px;
+    animation: builderPreviewSpin 0.8s linear infinite;
+}
+
+@keyframes builderPreviewSpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .builder-preview__content.space-tight > :deep(* + *) {

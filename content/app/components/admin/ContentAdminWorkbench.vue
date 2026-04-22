@@ -107,6 +107,14 @@ const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
     (e: "document-preview-change", document: MinimalContentDocument): void;
     (
+        e: "font-preview-change",
+        payload: {
+            sansFamily: string;
+            displayFamily: string;
+            cssHrefs: string[];
+        },
+    ): void;
+    (
         e: "preview-motion-change",
         payload: {
             forceMotion: boolean;
@@ -1417,6 +1425,14 @@ function handleDocumentChange(document: MinimalContentDocument): void {
 
 function handleDocumentPreviewChange(document: MinimalContentDocument): void {
     emit("document-preview-change", document);
+}
+
+function handleFontPreviewChange(payload: {
+    sansFamily: string;
+    displayFamily: string;
+    cssHrefs: string[];
+}): void {
+    emit("font-preview-change", payload);
 }
 
 function handleNodeFocus(
@@ -3060,6 +3076,7 @@ defineExpose({
                                 @document-preview-change="
                                     handleDocumentPreviewChange
                                 "
+                                @font-preview-change="handleFontPreviewChange"
                                 @translate-scope="handleTranslateScope"
                                 @update:selected-translation-pointers="
                                     handleSelectedTranslationPointersUpdate
