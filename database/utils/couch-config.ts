@@ -1,4 +1,5 @@
 import { couchDBRequest } from "./couchdb";
+import { basename } from "node:path";
 
 const DEFAULT_COUCHDB_URL = "http://localhost:5984";
 
@@ -36,6 +37,18 @@ export const buildCouchEnvSection = (slug: string): string => {
     return "";
   }
   return `cf_env_${normalized}`;
+};
+
+export const resolveRuntimeAppSlug = (
+  runtimeConfig: Record<string, any> | null | undefined,
+  fallback = basename(process.cwd()),
+): string => {
+  const explicit = runtimeConfig?.public?.appSlug;
+  if (typeof explicit === "string" && explicit.trim().length > 0) {
+    return explicit.trim();
+  }
+
+  return normalizeCouchEnvSlug(String(fallback || "").trim());
 };
 
 export const readCouchConfigValue = async (

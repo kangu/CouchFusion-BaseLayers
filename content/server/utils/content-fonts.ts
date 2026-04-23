@@ -1,13 +1,20 @@
 import { promises as fs } from "node:fs";
-import { basename, join } from "node:path";
-import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { createError } from "h3";
 import {
   buildCouchEnvSection,
   normalizeCouchEnvSlug,
   readCouchConfigValues,
 } from "#database/utils/couch-config";
-import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+import {
+  deleteAttachment,
+  getDocument,
+  getDocumentWithAttachments,
+  putAttachment,
+  putDocument,
+  type CouchDBDocument,
+  type CouchDBDocumentWithAttachments,
+} from "#database/utils/couchdb";
 import {
   getContentDatabaseName,
   getMainDatabaseName,
@@ -15,11 +22,15 @@ import {
 } from "./database";
 
 export const CONTENT_FONT_SETTINGS_DOC_ID = "content-settings:fonts";
+export const CONTENT_FONT_ASSETS_DOC_ID = "content-settings:font-assets";
 
 const MANAGED_FONTS_DIR = "fonts/managed";
 const RUNTIME_FONTS_FILE_NAME = "runtime-fonts.css";
+const RUNTIME_CSS_PUBLIC_PATH = "/api/content/fonts/runtime.css";
 const MANAGED_ASSETS_START = "/* content-fonts:managed:start */";
 const MANAGED_ASSETS_END = "/* content-fonts:managed:end */";
+const FONT_ASSET_CONTENT_TYPE = "font/woff2";
+const FONT_ASSET_API_PREFIX = "/api/content/fonts/asset/";
 
 const ALLOWLIST_CONFIG_KEY = "content_fonts_allowlist";
 const DEFAULT_SANS_CONFIG_KEY = "content_fonts_default_sans";
@@ -31,17 +42,6 @@ const DEFAULT_PROFILE_STYLES = ["normal", "italic"] as const;
 const DEFAULT_PROFILE_WIDTHS = ["100%"] as const;
 
 const FONT_STYLE_VALUES = ["normal", "italic"] as const;
-const FONT_STRETCH_PRESET_VALUES = [
-  "50%",
-  "62.5%",
-  "75%",
-  "87.5%",
-  "100%",
-  "112.5%",
-  "125%",
-  "150%",
-  "200%",
-] as const;
 export type ContentFontStyle = (typeof FONT_STYLE_VALUES)[number];
 export type ContentFontWidth = string;
 
@@ -60,6 +60,21 @@ export interface ParsedBunnyFontFace {
   remoteUrl: string;
 }
 
+export interface ParsedRuntimeFontFace {
+  family: string;
+  style: ContentFontStyle;
+  weight: number;
+  stretch: ContentFontWidth;
+  publicUrl: string;
+}
+
+export interface RuntimeFontVariables {
+  sansLabel: string | null;
+  displayLabel: string | null;
+  sansSlug: string | null;
+  displaySlug: string | null;
+}
+
 export interface ContentFontSettingsDocument extends CouchDBDocument {
   _id: typeof CONTENT_FONT_SETTINGS_DOC_ID;
   type: "content-font-settings";
@@ -75,6 +90,16 @@ export interface ContentFontSettingsDocument extends CouchDBDocument {
   lastAppliedBy: string | null;
   runtimeCssVersion: number;
   runtimeCssPath: string;
+  runtimeCssText: string | null;
+  runtimeAssetMode: "local" | "remote" | "attachment";
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+interface ContentFontAssetsDocument extends CouchDBDocumentWithAttachments {
+  _id: typeof CONTENT_FONT_ASSETS_DOC_ID;
+  type: "content-font-assets";
+  activeAttachmentNames: string[];
   updatedAt: string;
   updatedBy: string | null;
 }
@@ -109,6 +134,18 @@ export const toFontFamilyLabel = (slug: string): string =>
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+
+export const resolveContentFontRuntimeSlug = (
+  runtimeConfig: Record<string, any> | null | undefined,
+  fallbackCwdName = process.cwd().split("/").filter(Boolean).pop() ?? "app",
+): string => {
+  const explicit = runtimeConfig?.public?.appSlug;
+  if (typeof explicit === "string" && explicit.trim().length > 0) {
+    return normalizeCouchEnvSlug(explicit) || "app";
+  }
+
+  return normalizeCouchEnvSlug(fallbackCwdName) || "app";
+};
 
 const parseAllowlist = (value: string | null): string[] => {
   if (!value || !value.trim()) {
@@ -150,8 +187,9 @@ const resolveConfiguredDefaults = (
 };
 
 export const getContentFontRuntimeConfig = async (): Promise<ContentFontRuntimeConfig> => {
+  const runtimeConfig = useRuntimeConfig();
   const cwdName = process.cwd().split("/").filter(Boolean).pop() ?? "app";
-  const slug = normalizeCouchEnvSlug(cwdName) || "app";
+  const slug = resolveContentFontRuntimeSlug(runtimeConfig, cwdName);
   const section = buildCouchEnvSection(slug);
 
   const configValues = await readCouchConfigValues(section, [
@@ -242,6 +280,42 @@ const normalizeWidthValue = (value: unknown): ContentFontWidth | null => {
   return null;
 };
 
+const parseRuntimeRootFontLabel = (
+  cssText: string,
+  variableName: "font-sans" | "font-display",
+): string | null => {
+  const variableRegex = new RegExp(`--${variableName}\\s*:\\s*([^;]+);`, "i");
+  const match = variableRegex.exec(cssText);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const rawValue = match[1].trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const firstToken = rawValue.split(",")[0]?.trim() ?? "";
+  if (!firstToken) {
+    return null;
+  }
+
+  const label = firstToken.replace(/^['"]|['"]$/g, "").trim();
+  return label.length > 0 ? label : null;
+};
+
+export const parseRuntimeFontVariables = (cssText: string): RuntimeFontVariables => {
+  const sansLabel = parseRuntimeRootFontLabel(cssText, "font-sans");
+  const displayLabel = parseRuntimeRootFontLabel(cssText, "font-display");
+
+  return {
+    sansLabel,
+    displayLabel,
+    sansSlug: normalizeSlug(sansLabel),
+    displaySlug: normalizeSlug(displayLabel),
+  };
+};
+
 const normalizeWidths = (value: unknown): ContentFontWidth[] => {
   const source = Array.isArray(value) ? value : [];
   const normalized = source
@@ -268,7 +342,9 @@ const defaultSettingsDocument = (
     lastAppliedAt: null,
     lastAppliedBy: null,
     runtimeCssVersion: Date.now(),
-    runtimeCssPath: `/${MANAGED_FONTS_DIR}/${RUNTIME_FONTS_FILE_NAME}`,
+    runtimeCssPath: RUNTIME_CSS_PUBLIC_PATH,
+    runtimeCssText: null,
+    runtimeAssetMode: "attachment",
     updatedAt: timestamp,
     updatedBy: null,
   };
@@ -337,6 +413,16 @@ const normalizeSettingsDocument = (
       typeof source.runtimeCssPath === "string" && source.runtimeCssPath.trim()
         ? source.runtimeCssPath
         : defaults.runtimeCssPath,
+    runtimeCssText:
+      typeof source.runtimeCssText === "string" && source.runtimeCssText.trim()
+        ? source.runtimeCssText
+        : null,
+    runtimeAssetMode:
+      source.runtimeAssetMode === "remote" ||
+      source.runtimeAssetMode === "local" ||
+      source.runtimeAssetMode === "attachment"
+        ? source.runtimeAssetMode
+        : defaults.runtimeAssetMode,
     updatedAt:
       typeof source.updatedAt === "string" && source.updatedAt.trim()
         ? source.updatedAt
@@ -363,47 +449,70 @@ const getContentFontSettingsFromMainSettings = (
   return source.contentFonts as Partial<ContentFontSettingsDocument>;
 };
 
-const toPersistedContentFontSettings = (
-  settings: ContentFontSettingsDocument,
-): Partial<ContentFontSettingsDocument> => ({
-  sansFamily: settings.sansFamily,
-  displayFamily: settings.displayFamily,
-  profile: settings.profile,
-  styles: [...settings.styles],
-  weights: [...settings.weights],
-  widths: [...settings.widths],
-  status: settings.status,
-  lastApplyError: settings.lastApplyError,
-  lastAppliedAt: settings.lastAppliedAt,
-  lastAppliedBy: settings.lastAppliedBy,
-  runtimeCssVersion: settings.runtimeCssVersion,
-  runtimeCssPath: settings.runtimeCssPath,
-  updatedAt: settings.updatedAt,
-  updatedBy: settings.updatedBy,
-});
+const mergeRuntimeConfigWithRuntimeCss = (
+  runtimeConfig: ContentFontRuntimeConfig,
+  runtimeCss: string,
+): ContentFontRuntimeConfig => {
+  const mergedAllowlist = new Map<string, ContentFontFamilyOption>();
+  for (const entry of runtimeConfig.allowlist) {
+    mergedAllowlist.set(entry.slug, entry);
+  }
 
-export const mergeContentFontSettingsIntoMainSettings = (
-  value: unknown,
-  settings: Omit<ContentFontSettingsDocument, "_id" | "_rev" | "type" | "profile"> &
-    Partial<Pick<ContentFontSettingsDocument, "profile">>,
-): MainSettingsDocument => {
-  const source = value && typeof value === "object"
-    ? value as MainSettingsDocument
-    : { _id: "settings" };
+  const addFamilyOption = (label: string | null) => {
+    const slug = normalizeSlug(label);
+    if (!slug || mergedAllowlist.has(slug)) {
+      return;
+    }
+    mergedAllowlist.set(slug, {
+      slug,
+      label: label?.trim() || toFontFamilyLabel(slug),
+    });
+  };
+
+  const runtimeVariables = parseRuntimeFontVariables(runtimeCss);
+  addFamilyOption(runtimeVariables.sansLabel);
+  addFamilyOption(runtimeVariables.displayLabel);
+
+  const runtimeFaces = parseRuntimeFontFaces(runtimeCss);
+  for (const face of runtimeFaces) {
+    addFamilyOption(face.family);
+  }
+
+  const defaultSans =
+    runtimeVariables.sansSlug && mergedAllowlist.has(runtimeVariables.sansSlug)
+      ? runtimeVariables.sansSlug
+      : runtimeConfig.defaultSans;
+  const defaultDisplay =
+    runtimeVariables.displaySlug && mergedAllowlist.has(runtimeVariables.displaySlug)
+      ? runtimeVariables.displaySlug
+      : runtimeConfig.defaultDisplay;
 
   return {
-    ...source,
-    _id: typeof source._id === "string" && source._id.trim() ? source._id : "settings",
-    contentFonts: {
-      ...toPersistedContentFontSettings({
-        _id: CONTENT_FONT_SETTINGS_DOC_ID,
-        type: "content-font-settings",
-        profile: settings.profile ?? "minimal",
-        _rev: undefined,
-        ...settings,
-      }),
-    },
+    ...runtimeConfig,
+    allowlist: Array.from(mergedAllowlist.values()),
+    defaultSans,
+    defaultDisplay,
   };
+};
+
+const getRuntimeCssDiskPath = () =>
+  join(process.cwd(), "public", MANAGED_FONTS_DIR, RUNTIME_FONTS_FILE_NAME);
+
+const readRuntimeFontCssFromDisk = async (): Promise<string | null> => {
+  try {
+    return await fs.readFile(getRuntimeCssDiskPath(), "utf8");
+  } catch {
+    return null;
+  }
+};
+
+const hasStoredFamilySelection = (value: unknown): boolean => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const source = value as Record<string, unknown>;
+  return Boolean(normalizeSlug(source.sansFamily) && normalizeSlug(source.displayFamily));
 };
 
 export const getContentFontSettings = async (): Promise<{
@@ -411,27 +520,88 @@ export const getContentFontSettings = async (): Promise<{
   settings: ContentFontSettingsDocument;
 }> => {
   const runtimeConfig = await getContentFontRuntimeConfig();
+  const contentDatabaseName = getContentDatabaseName();
   const mainDatabaseName = getMainDatabaseName();
   const mainSettingsDocumentId = getMainSettingsDocumentId();
-  const contentDatabaseName = getContentDatabaseName();
 
-  const [mainSettingsDocument, legacySettingsDocument] = await Promise.all([
+  const [contentSettingsDocument, mainSettingsDocument] = await Promise.all([
+    getDocument<ContentFontSettingsDocument>(contentDatabaseName, CONTENT_FONT_SETTINGS_DOC_ID),
     getDocument<MainSettingsDocument>(mainDatabaseName, mainSettingsDocumentId),
-    getDocument(contentDatabaseName, CONTENT_FONT_SETTINGS_DOC_ID),
   ]);
 
   const storedMainSettings = getContentFontSettingsFromMainSettings(mainSettingsDocument);
-  const existing = storedMainSettings
-    ? {
-        ...storedMainSettings,
-        _rev: mainSettingsDocument?._rev,
-      }
-    : legacySettingsDocument;
+  const existing = contentSettingsDocument ?? storedMainSettings ?? null;
+
+  const hasPersistedFamilySelection = hasStoredFamilySelection(existing);
+  const initialSettings = normalizeSettingsDocument(existing, runtimeConfig);
+  const runtimeCssFromDisk = await readRuntimeFontCssFromDisk();
+  const runtimeCssForSync =
+    initialSettings.runtimeCssText && initialSettings.runtimeCssText.trim().length > 0
+      ? initialSettings.runtimeCssText
+      : runtimeCssFromDisk;
+
+  const effectiveRuntimeConfig = runtimeCssForSync
+    ? mergeRuntimeConfigWithRuntimeCss(runtimeConfig, runtimeCssForSync)
+    : runtimeConfig;
+
+  let normalizedSettings = normalizeSettingsDocument(
+    existing ?? initialSettings,
+    effectiveRuntimeConfig,
+  );
+
+  if (runtimeCssForSync && !hasPersistedFamilySelection) {
+    const runtimeVariables = parseRuntimeFontVariables(runtimeCssForSync);
+    const allowlist = new Set(
+      effectiveRuntimeConfig.allowlist.map((entry) => entry.slug),
+    );
+
+    if (runtimeVariables.sansSlug && allowlist.has(runtimeVariables.sansSlug)) {
+      normalizedSettings = {
+        ...normalizedSettings,
+        sansFamily: runtimeVariables.sansSlug,
+      };
+    }
+
+    if (runtimeVariables.displaySlug && allowlist.has(runtimeVariables.displaySlug)) {
+      normalizedSettings = {
+        ...normalizedSettings,
+        displayFamily: runtimeVariables.displaySlug,
+      };
+    }
+  }
 
   return {
-    runtimeConfig,
-    settings: normalizeSettingsDocument(existing, runtimeConfig),
+    runtimeConfig: effectiveRuntimeConfig,
+    settings: normalizedSettings,
   };
+};
+
+const persistContentFontSettingsDocument = async (
+  settings: ContentFontSettingsDocument,
+): Promise<ContentFontSettingsDocument> => {
+  const databaseName = getContentDatabaseName();
+  const existing = await getDocument<ContentFontSettingsDocument>(
+    databaseName,
+    CONTENT_FONT_SETTINGS_DOC_ID,
+  );
+
+  const nextDocument: ContentFontSettingsDocument = {
+    ...settings,
+    _id: CONTENT_FONT_SETTINGS_DOC_ID,
+    type: "content-font-settings",
+    _rev: existing?._rev,
+  };
+
+  if (!nextDocument._rev) {
+    delete nextDocument._rev;
+  }
+
+  const putResponse = await putDocument(databaseName, nextDocument);
+  if (putResponse.rev) {
+    nextDocument._rev = putResponse.rev;
+  }
+
+  return nextDocument;
 };
 
 export const saveContentFontSettings = async (payload: {
@@ -490,25 +660,11 @@ export const saveContentFontSettings = async (payload: {
     updatedAt: nowIso(),
     updatedBy: payload.updatedBy ?? null,
   };
-
-  const databaseName = getMainDatabaseName();
-  const settingsDocumentId = getMainSettingsDocumentId();
-  const existingMainSettings = await getDocument<MainSettingsDocument>(
-    databaseName,
-    settingsDocumentId,
-  );
-  const nextMainSettings = mergeContentFontSettingsIntoMainSettings(
-    existingMainSettings ?? { _id: settingsDocumentId },
-    nextDoc,
-  );
-  const putResponse = await putDocument(databaseName, nextMainSettings);
-  if (putResponse.rev) {
-    nextDoc._rev = putResponse.rev;
-  }
+  const persistedDoc = await persistContentFontSettingsDocument(nextDoc);
 
   return {
     runtimeConfig,
-    settings: nextDoc,
+    settings: persistedDoc,
   };
 };
 
@@ -556,6 +712,84 @@ export const parseBunnyFontFaces = (cssText: string): ParsedBunnyFontFace[] => {
   }
 
   return faces;
+};
+
+export const parseRuntimeFontFaces = (cssText: string): ParsedRuntimeFontFace[] => {
+  const faces: ParsedRuntimeFontFace[] = [];
+  const regex = /@font-face\s*\{([\s\S]*?)\}/g;
+  let match: RegExpExecArray | null = regex.exec(cssText);
+
+  while (match) {
+    const body = match[1] ?? "";
+    const familyMatch = /font-family:\s*['"]([^'"]+)['"]\s*;/i.exec(body);
+    const styleMatch = /font-style:\s*(normal|italic)\s*;/i.exec(body);
+    const weightMatch = /font-weight:\s*(\d+)\s*;/i.exec(body);
+    const stretchMatch = /font-stretch:\s*([^;]+)\s*;/i.exec(body);
+    const srcMatch = /src:\s*([^;]+)\s*;/i.exec(body);
+    const fontUrlMatch = srcMatch?.[1]
+      ? /url\((['"]?)([^'")]+\.woff2)\1\)/i.exec(srcMatch[1])
+      : null;
+
+    const style = styleMatch?.[1]?.toLowerCase() as ContentFontStyle | undefined;
+    const weight = weightMatch ? Number(weightMatch[1]) : NaN;
+    const stretch = normalizeWidthValue(stretchMatch?.[1]) ?? "100%";
+
+    if (
+      familyMatch?.[1] &&
+      style &&
+      FONT_STYLE_VALUES.includes(style) &&
+      Number.isFinite(weight) &&
+      fontUrlMatch?.[2]
+    ) {
+      faces.push({
+        family: familyMatch[1].trim(),
+        style,
+        weight,
+        stretch,
+        publicUrl: fontUrlMatch[2].trim(),
+      });
+    }
+
+    match = regex.exec(cssText);
+  }
+
+  return faces;
+};
+
+export const findRuntimeFontFace = (
+  faces: ParsedRuntimeFontFace[],
+  payload: {
+    family: string;
+    style: ContentFontStyle;
+    weight: number;
+    stretch?: ContentFontWidth;
+  },
+): ParsedRuntimeFontFace | null => {
+  const family = payload.family.trim().toLowerCase();
+  const preferredStretch = normalizeWidthValue(payload.stretch) ?? "100%";
+
+  const candidates = faces.filter(
+    (face) =>
+      face.family.trim().toLowerCase() === family &&
+      face.style === payload.style &&
+      face.weight === payload.weight,
+  );
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const exactStretch = candidates.find((face) => face.stretch === preferredStretch);
+  if (exactStretch) {
+    return exactStretch;
+  }
+
+  const defaultStretch = candidates.find((face) => face.stretch === "100%");
+  if (defaultStretch) {
+    return defaultStretch;
+  }
+
+  return [...candidates].sort((left, right) => compareWidths(left.stretch, right.stretch))[0] ?? null;
 };
 
 export const filterBunnyFontFaces = (
@@ -625,24 +859,11 @@ const ensureManagedFontsDirectory = async () => {
   return rootDir;
 };
 
-const toPublicFontUrl = (relativePath: string) =>
-  `/${MANAGED_FONTS_DIR}/${relativePath.replace(/\\/g, "/").replace(/^\/+/, "")}`;
-
-const downloadRemoteFont = async (remoteUrl: string, targetPath: string) => {
-  const response = await fetch(remoteUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch font file: ${remoteUrl}`);
-  }
-  const data = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(targetPath, data);
-};
-
-const materializeFamilyFaces = async (
+const resolveRemoteFamilyFaces = async (
   familySlug: string,
   styles: ContentFontStyle[],
   weights: number[],
   widths: ContentFontWidth[],
-  downloadRoot: string,
 ): Promise<ParsedBunnyFontFace[]> => {
   const cssUrl = buildBunnyCssUrl(familySlug, styles, weights);
   const response = await fetch(cssUrl);
@@ -653,24 +874,194 @@ const materializeFamilyFaces = async (
   const cssText = await response.text();
   const parsedFaces = parseBunnyFontFaces(cssText);
   const selectedFaces = filterBunnyFontFaces(parsedFaces, { styles, weights, widths });
-
   if (selectedFaces.length === 0) {
     throw new Error(`No matching Bunny font faces found for ${familySlug}`);
   }
 
-  const familyDir = join(downloadRoot, familySlug);
-  await fs.mkdir(familyDir, { recursive: true });
+  return selectedFaces;
+};
 
-  for (const face of selectedFaces) {
-    const remoteName = basename(new URL(face.remoteUrl).pathname);
-    const suffix = createHash("sha1").update(face.remoteUrl).digest("hex").slice(0, 10);
-    const localName = `${remoteName.replace(/\.woff2$/i, "")}-${suffix}.woff2`;
-    const targetPath = join(familyDir, localName);
-    await downloadRemoteFont(face.remoteUrl, targetPath);
-    face.remoteUrl = toPublicFontUrl(`${familySlug}/${localName}`);
+const ensureFontAssetsDocument = async (payload: {
+  databaseName: string;
+  updatedBy?: string | null;
+}): Promise<ContentFontAssetsDocument> => {
+  const existing = await getDocumentWithAttachments<ContentFontAssetsDocument>(
+    payload.databaseName,
+    CONTENT_FONT_ASSETS_DOC_ID,
+    false,
+  );
+
+  if (existing && existing.type === "content-font-assets") {
+    return {
+      ...existing,
+      _id: CONTENT_FONT_ASSETS_DOC_ID,
+      type: "content-font-assets",
+      activeAttachmentNames: Array.isArray(existing.activeAttachmentNames)
+        ? existing.activeAttachmentNames
+        : [],
+      updatedAt:
+        typeof existing.updatedAt === "string" && existing.updatedAt.trim()
+          ? existing.updatedAt
+          : nowIso(),
+      updatedBy:
+        typeof existing.updatedBy === "string" && existing.updatedBy.trim()
+          ? existing.updatedBy
+          : null,
+    };
   }
 
-  return selectedFaces;
+  const nextDoc: ContentFontAssetsDocument = {
+    _id: CONTENT_FONT_ASSETS_DOC_ID,
+    type: "content-font-assets",
+    activeAttachmentNames: [],
+    updatedAt: nowIso(),
+    updatedBy: payload.updatedBy ?? null,
+  };
+  const putResponse = await putDocument(payload.databaseName, nextDoc);
+  if (putResponse.rev) {
+    nextDoc._rev = putResponse.rev;
+  }
+
+  return nextDoc;
+};
+
+const toFontStretchToken = (stretch: string) => {
+  const normalized = normalizeWidthValue(stretch) ?? "100%";
+  return normalized.replace(/%/g, "p").replace(/\./g, "_");
+};
+
+const buildFontAttachmentName = (
+  familySlug: string,
+  face: ParsedBunnyFontFace,
+): string => {
+  const widthToken = toFontStretchToken(face.stretch);
+  const subsetToken = normalizeSlug(face.subset ?? "subset") ?? "subset";
+  return `${familySlug}-${face.weight}-${face.style}-${widthToken}-${subsetToken}.woff2`;
+};
+
+const downloadRemoteFontBuffer = async (remoteUrl: string): Promise<Buffer> => {
+  const response = await fetch(remoteUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch font file: ${remoteUrl}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+};
+
+const isKnownFontAttachmentUrl = (url: string): boolean => {
+  const normalized = url.trim();
+  return normalized.startsWith(FONT_ASSET_API_PREFIX) && normalized.endsWith(".woff2");
+};
+
+const isMissingAttachmentDeleteError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  const normalized = message.toLowerCase();
+  return normalized.includes("document is missing attachment") || normalized.includes("not_found");
+};
+
+const syncFontAssetAttachments = async (payload: {
+  databaseName: string;
+  assetsDocument: ContentFontAssetsDocument;
+  facesByFamilySlug: Record<string, ParsedBunnyFontFace[]>;
+  updatedBy?: string | null;
+}): Promise<void> => {
+  const existingAttachmentNames = Object.keys(payload.assetsDocument._attachments ?? {});
+  const fallbackAttachmentNames = Array.isArray(payload.assetsDocument.activeAttachmentNames)
+    ? payload.assetsDocument.activeAttachmentNames
+    : [];
+  const existingAttachments = new Set<string>([
+    ...existingAttachmentNames,
+    ...fallbackAttachmentNames,
+  ]);
+  const activeAttachments = new Set<string>();
+  let currentRev = payload.assetsDocument._rev;
+
+  if (!currentRev) {
+    throw new Error("Font assets document revision is missing.");
+  }
+
+  for (const [familySlug, faces] of Object.entries(payload.facesByFamilySlug)) {
+    for (const face of faces) {
+      if (isKnownFontAttachmentUrl(face.remoteUrl)) {
+        const attachmentName = face.remoteUrl.slice(FONT_ASSET_API_PREFIX.length);
+        if (attachmentName) {
+          activeAttachments.add(attachmentName);
+        }
+        continue;
+      }
+
+      const attachmentName = buildFontAttachmentName(familySlug, face);
+      activeAttachments.add(attachmentName);
+
+      const buffer = await downloadRemoteFontBuffer(face.remoteUrl);
+      const putResponse = await putAttachment(
+        payload.databaseName,
+        CONTENT_FONT_ASSETS_DOC_ID,
+        attachmentName,
+        buffer,
+        FONT_ASSET_CONTENT_TYPE,
+        currentRev,
+      );
+      if (putResponse.rev) {
+        currentRev = putResponse.rev;
+      }
+      if (!existingAttachments.has(attachmentName)) {
+        existingAttachments.add(attachmentName);
+      }
+
+      face.remoteUrl = `${FONT_ASSET_API_PREFIX}${attachmentName}`;
+    }
+  }
+
+  for (const attachmentName of Array.from(existingAttachments.values())) {
+    if (activeAttachments.has(attachmentName)) {
+      continue;
+    }
+
+    try {
+      const deleteResponse = await deleteAttachment(
+        payload.databaseName,
+        CONTENT_FONT_ASSETS_DOC_ID,
+        attachmentName,
+        currentRev,
+      );
+      if (deleteResponse.rev) {
+        currentRev = deleteResponse.rev;
+      }
+    } catch (error) {
+      if (!isMissingAttachmentDeleteError(error)) {
+        throw error;
+      }
+    }
+    existingAttachments.delete(attachmentName);
+  }
+
+  const nextDoc: ContentFontAssetsDocument = {
+    ...(await (async () => {
+      const latest = await getDocumentWithAttachments<ContentFontAssetsDocument>(
+        payload.databaseName,
+        CONTENT_FONT_ASSETS_DOC_ID,
+        false,
+      );
+      if (!latest || typeof latest._rev !== "string" || !latest._rev.trim()) {
+        throw new Error("Unable to reload font assets document after attachment sync.");
+      }
+      return latest;
+    })()),
+    _id: CONTENT_FONT_ASSETS_DOC_ID,
+    type: "content-font-assets",
+    activeAttachmentNames: Array.from(activeAttachments.values()).sort(),
+    updatedAt: nowIso(),
+    updatedBy: payload.updatedBy ?? null,
+  } as ContentFontAssetsDocument;
+  const putResponse = await putDocument(payload.databaseName, nextDoc);
+  if (putResponse.rev) {
+    nextDoc._rev = putResponse.rev;
+  }
 };
 
 const renderRuntimeCss = (payload: {
@@ -690,7 +1081,7 @@ const renderRuntimeCss = (payload: {
       chunks.push(`  font-style: ${face.style};`);
       chunks.push(`  font-weight: ${face.weight};`);
       chunks.push(`  font-stretch: ${face.stretch};`);
-      chunks.push("  font-display: swap;");
+      chunks.push("  font-display: fallback;");
       chunks.push(`  src: url('${face.remoteUrl}') format('woff2');`);
       if (face.unicodeRange) {
         chunks.push(`  unicode-range: ${face.unicodeRange};`);
@@ -715,31 +1106,14 @@ const writeRuntimeCss = async (cssText: string) => {
   return runtimeCssPath;
 };
 
-const pruneManagedFontsDirectory = async (
-  managedRoot: string,
-  activeFamilies: string[],
-) => {
-  const activeFamilySet = new Set(activeFamilies);
-  const entries = await fs.readdir(managedRoot, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const entryPath = join(managedRoot, entry.name);
-
-    if (entry.isDirectory()) {
-      if (entry.name.startsWith(".tmp-")) {
-        await fs.rm(entryPath, { recursive: true, force: true });
-        continue;
-      }
-      if (!activeFamilySet.has(entry.name)) {
-        await fs.rm(entryPath, { recursive: true, force: true });
-      }
-      continue;
-    }
-
-    if (entry.isFile() && entry.name !== RUNTIME_FONTS_FILE_NAME) {
-      await fs.rm(entryPath, { force: true });
-    }
+const toErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && typeof error.message === "string" && error.message.trim()) {
+    return error.message.trim();
   }
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  return "Unknown error";
 };
 
 const upsertManagedAssetsCss = async (cssText: string) => {
@@ -790,52 +1164,54 @@ export const applyContentFonts = async (payload: {
     updatedAt: nowIso(),
     updatedBy: payload.updatedBy ?? null,
   };
+  const familiesToMaterialize = Array.from(
+    new Set([settings.sansFamily, settings.displayFamily]),
+  );
+  const familyLabels = Object.fromEntries(
+    familiesToMaterialize.map((entry) => [entry, toFontFamilyLabel(entry)]),
+  );
+  const databaseName = getContentDatabaseName();
 
   try {
-    const managedRoot = await ensureManagedFontsDirectory();
-    const stagingRoot = join(managedRoot, `.tmp-${Date.now()}`);
-    await fs.mkdir(stagingRoot, { recursive: true });
-
-    const familiesToMaterialize = Array.from(
-      new Set([settings.sansFamily, settings.displayFamily]),
-    );
     const facesByFamilySlug: Record<string, ParsedBunnyFontFace[]> = {};
     for (const familySlug of familiesToMaterialize) {
-      facesByFamilySlug[familySlug] = await materializeFamilyFaces(
+      facesByFamilySlug[familySlug] = await resolveRemoteFamilyFaces(
         familySlug,
         settings.styles,
         settings.weights,
         settings.widths,
-        stagingRoot,
       );
     }
 
-    for (const familySlug of familiesToMaterialize) {
-      const finalDir = join(managedRoot, familySlug);
-      const stagedDir = join(stagingRoot, familySlug);
-      await fs.rm(finalDir, { recursive: true, force: true });
-      await fs.rename(stagedDir, finalDir);
-    }
-    await fs.rm(stagingRoot, { recursive: true, force: true });
-    await pruneManagedFontsDirectory(managedRoot, familiesToMaterialize);
+    const assetsDocument = await ensureFontAssetsDocument({
+      databaseName,
+      updatedBy: payload.updatedBy,
+    });
+    await syncFontAssetAttachments({
+      databaseName,
+      assetsDocument,
+      facesByFamilySlug,
+      updatedBy: payload.updatedBy,
+    });
 
-    const familyLabels = Object.fromEntries(
-      familiesToMaterialize.map((entry) => [entry, toFontFamilyLabel(entry)]),
-    );
     const facesByLabel: Record<string, ParsedBunnyFontFace[]> = {};
     for (const familySlug of familiesToMaterialize) {
-      const label = familyLabels[familySlug];
+      const label = familyLabels[familySlug] ?? toFontFamilyLabel(familySlug);
       facesByLabel[label] = facesByFamilySlug[familySlug] ?? [];
     }
 
     const runtimeCss = renderRuntimeCss({
       sansLabel: familyLabels[settings.sansFamily] ?? toFontFamilyLabel(settings.sansFamily),
-      displayLabel:
-        familyLabels[settings.displayFamily] ?? toFontFamilyLabel(settings.displayFamily),
+      displayLabel: familyLabels[settings.displayFamily] ?? toFontFamilyLabel(settings.displayFamily),
       facesByFamily: facesByLabel,
     });
-    await writeRuntimeCss(runtimeCss);
-    await upsertManagedAssetsCss(runtimeCss);
+
+    try {
+      await writeRuntimeCss(runtimeCss);
+    } catch {}
+    try {
+      await upsertManagedAssetsCss(runtimeCss);
+    } catch {}
 
     const nextDoc: ContentFontSettingsDocument = {
       ...nextStatusBase,
@@ -844,77 +1220,147 @@ export const applyContentFonts = async (payload: {
       lastAppliedAt: nowIso(),
       lastAppliedBy: payload.updatedBy ?? null,
       runtimeCssVersion: Date.now(),
-      runtimeCssPath: `/${MANAGED_FONTS_DIR}/${RUNTIME_FONTS_FILE_NAME}`,
+      runtimeCssPath: RUNTIME_CSS_PUBLIC_PATH,
+      runtimeCssText: runtimeCss,
+      runtimeAssetMode: "attachment",
     };
-
-    const databaseName = getMainDatabaseName();
-    const settingsDocumentId = getMainSettingsDocumentId();
-    const existingMainSettings = await getDocument<MainSettingsDocument>(
-      databaseName,
-      settingsDocumentId,
-    );
-    const nextMainSettings = mergeContentFontSettingsIntoMainSettings(
-      existingMainSettings ?? { _id: settingsDocumentId },
-      nextDoc,
-    );
-    const putResponse = await putDocument(databaseName, nextMainSettings);
-    if (putResponse.rev) {
-      nextDoc._rev = putResponse.rev;
-    }
+    const persistedDoc = await persistContentFontSettingsDocument(nextDoc);
 
     return {
       runtimeConfig,
-      settings: nextDoc,
+      settings: persistedDoc,
     };
-  } catch (error: any) {
-    const managedRoot = await ensureManagedFontsDirectory();
-    const entries = await fs.readdir(managedRoot, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith(".tmp-")) {
-        await fs.rm(join(managedRoot, entry.name), { recursive: true, force: true });
-      }
-    }
-
-    const databaseName = getMainDatabaseName();
-    const settingsDocumentId = getMainSettingsDocumentId();
+  } catch (error: unknown) {
     const failedDoc: ContentFontSettingsDocument = {
       ...nextStatusBase,
       status: "failed",
-      lastApplyError: error?.message ? String(error.message) : "Unknown apply error",
+      lastApplyError: toErrorMessage(error),
     };
-    const existingMainSettings = await getDocument<MainSettingsDocument>(
-      databaseName,
-      settingsDocumentId,
-    );
-    const failedMainSettings = mergeContentFontSettingsIntoMainSettings(
-      existingMainSettings ?? { _id: settingsDocumentId },
-      failedDoc,
-    );
-    const putResponse = await putDocument(databaseName, failedMainSettings);
-    if (putResponse.rev) {
-      failedDoc._rev = putResponse.rev;
-    }
+    const persistedFailedDoc = await persistContentFontSettingsDocument(failedDoc);
 
     throw createError({
       statusCode: 500,
-      statusMessage: failedDoc.lastApplyError ?? "Failed to apply fonts.",
+      statusMessage: persistedFailedDoc.lastApplyError ?? "Failed to apply fonts.",
     });
   }
 };
 
 export const getRuntimeFontCss = async (): Promise<string> => {
-  const runtimeCssPath = join(process.cwd(), "public", MANAGED_FONTS_DIR, RUNTIME_FONTS_FILE_NAME);
-  try {
-    return await fs.readFile(runtimeCssPath, "utf8");
-  } catch {
-    const { settings } = await getContentFontSettings();
-    return [
-      "/* Fallback runtime font variables */",
-      ":root {",
-      `  --font-sans: '${toFontFamilyLabel(settings.sansFamily)}', sans-serif;`,
-      `  --font-display: '${toFontFamilyLabel(settings.displayFamily)}', serif;`,
-      "}",
-      "",
-    ].join("\n");
+  const { settings } = await getContentFontSettings();
+  if (settings.runtimeCssText && settings.runtimeCssText.trim().length > 0) {
+    return settings.runtimeCssText;
   }
+
+  const runtimeCssFromDisk = await readRuntimeFontCssFromDisk();
+  if (runtimeCssFromDisk) {
+    return runtimeCssFromDisk;
+  }
+
+  return [
+    "/* Fallback runtime font variables */",
+    ":root {",
+    `  --font-sans: '${toFontFamilyLabel(settings.sansFamily)}', sans-serif;`,
+    `  --font-display: '${toFontFamilyLabel(settings.displayFamily)}', serif;`,
+    "}",
+    "",
+  ].join("\n");
+};
+
+export const resolveActiveRuntimeFontAsset = async (payload: {
+  role: "sans" | "display";
+  weight: number;
+  style?: ContentFontStyle;
+  stretch?: ContentFontWidth;
+}): Promise<{ publicUrl: string; runtimeCssVersion: number }> => {
+  const { settings } = await getContentFontSettings();
+  const runtimeCss = await getRuntimeFontCss();
+  const runtimeVariables = parseRuntimeFontVariables(runtimeCss);
+  const faces = parseRuntimeFontFaces(runtimeCss);
+  const fallbackFamilySlug =
+    payload.role === "sans" ? settings.sansFamily : settings.displayFamily;
+  const familyCandidates = [
+    payload.role === "sans" ? runtimeVariables.sansLabel : runtimeVariables.displayLabel,
+    toFontFamilyLabel(fallbackFamilySlug),
+    ...Array.from(new Set(faces.map((face) => face.family))),
+  ].filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+
+  const resolveFaceForFamily = (family: string): ParsedRuntimeFontFace | null => {
+    const exactFace = findRuntimeFontFace(faces, {
+      family,
+      style: payload.style ?? "normal",
+      weight: payload.weight,
+      stretch: payload.stretch,
+    });
+    if (exactFace) {
+      return exactFace;
+    }
+
+    const normalizedFamily = family.trim().toLowerCase();
+    const style = payload.style ?? "normal";
+    const stretch = normalizeWidthValue(payload.stretch) ?? "100%";
+    const familyStyleFaces = faces.filter(
+      (entry) =>
+        entry.family.trim().toLowerCase() === normalizedFamily && entry.style === style,
+    );
+    if (familyStyleFaces.length === 0) {
+      return null;
+    }
+
+    const weightCandidates = Array.from(
+      new Set(familyStyleFaces.map((entry) => entry.weight)),
+    ).sort(
+      (left, right) => Math.abs(left - payload.weight) - Math.abs(right - payload.weight) || left - right,
+    );
+    const closestWeight = weightCandidates[0];
+    if (typeof closestWeight !== "number") {
+      return null;
+    }
+
+    const closestFaces = familyStyleFaces.filter((entry) => entry.weight === closestWeight);
+    const exactStretch = closestFaces.find((entry) => entry.stretch === stretch);
+    if (exactStretch) {
+      return exactStretch;
+    }
+
+    const defaultStretch = closestFaces.find((entry) => entry.stretch === "100%");
+    if (defaultStretch) {
+      return defaultStretch;
+    }
+
+    return [...closestFaces].sort((left, right) => compareWidths(left.stretch, right.stretch))[0] ?? null;
+  };
+
+  let resolvedFace: ParsedRuntimeFontFace | null = null;
+  for (const family of familyCandidates) {
+    resolvedFace = resolveFaceForFamily(family);
+    if (resolvedFace) {
+      break;
+    }
+  }
+
+  if (!resolvedFace) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: `No active font face found for ${payload.role}-${payload.weight}-${payload.style ?? "normal"}.`,
+    });
+  }
+
+  const resolvedUrl = resolvedFace.publicUrl.trim();
+  const isManagedLocal = resolvedUrl.startsWith(`/${MANAGED_FONTS_DIR}/`);
+  const isManagedAttachment = resolvedUrl.startsWith(FONT_ASSET_API_PREFIX);
+  const isTrustedRemote = /^https:\/\/fonts\.bunny\.net\/[^"'()\s]+\.woff2(?:\?[^"'()\s]*)?$/i.test(
+    resolvedUrl,
+  );
+
+  if (!isManagedLocal && !isManagedAttachment && !isTrustedRemote) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Resolved active font asset path is invalid.",
+    });
+  }
+
+  return {
+    publicUrl: resolvedUrl,
+    runtimeCssVersion: settings.runtimeCssVersion,
+  };
 };

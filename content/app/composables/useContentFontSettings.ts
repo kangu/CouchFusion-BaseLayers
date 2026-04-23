@@ -19,6 +19,8 @@ export interface ContentFontSettingsDocument {
   lastAppliedBy: string | null;
   runtimeCssVersion: number;
   runtimeCssPath: string;
+  runtimeCssText?: string | null;
+  runtimeAssetMode?: "local" | "remote" | "attachment";
   updatedAt: string;
   updatedBy: string | null;
 }
