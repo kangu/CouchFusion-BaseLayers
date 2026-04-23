@@ -12,6 +12,13 @@ import { getContentDatabaseName, getMainDatabaseName } from "../../../../utils/d
 
 const FONT_ATTACHMENT_NAME_PATTERN = /^[a-z0-9._-]+\.woff2$/i;
 
+/**
+ * Public binary asset endpoint backed by CouchDB attachment storage.
+ *
+ * @remarks
+ * Reads from content DB first (canonical location) and falls back to main DB only to
+ * support legacy rollout states. Responses are long-cache immutable by deterministic name.
+ */
 export default defineEventHandler(async (event) => {
   const attachmentName = getRouterParam(event, "name");
   if (!attachmentName) {

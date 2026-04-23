@@ -1,8 +1,15 @@
+/** Builder option for a font family allowlist entry. */
 export interface ContentFontFamilyOption {
   slug: string;
   label: string;
 }
 
+/**
+ * Client-side shape of the canonical `content-settings:fonts` document.
+ *
+ * @remarks
+ * Mirrors server model but keeps optional fields tolerant during rollout.
+ */
 export interface ContentFontSettingsDocument {
   _id: "content-settings:fonts";
   _rev?: string;
@@ -25,6 +32,7 @@ export interface ContentFontSettingsDocument {
   updatedBy: string | null;
 }
 
+/** API envelope returned by font settings/apply endpoints. */
 type ContentFontSettingsResponse = {
   success?: boolean;
   allowlist?: ContentFontFamilyOption[];
@@ -32,6 +40,7 @@ type ContentFontSettingsResponse = {
   settings?: ContentFontSettingsDocument;
 };
 
+/** Runtime guard that validates incoming settings payload shape before state sync. */
 const toSettings = (value: unknown): ContentFontSettingsDocument | null => {
   if (!value || typeof value !== "object") {
     return null;
@@ -53,6 +62,15 @@ const toSettings = (value: unknown): ContentFontSettingsDocument | null => {
   return source as ContentFontSettingsDocument;
 };
 
+/**
+ * Admin composable for content-layer font configuration.
+ *
+ * @remarks
+ * Keeps all builder-facing state in one place:
+ * - settings/allowlist metadata,
+ * - loading/applying/error flags,
+ * - reactive runtimeCssVersion used by runtime head plugin for cache-busting.
+ */
 export const useContentFontSettings = () => {
   const settings = useState<ContentFontSettingsDocument | null>(
     "content-font-settings-doc",
@@ -71,6 +89,7 @@ export const useContentFontSettings = () => {
     () => Date.now(),
   );
 
+  /** Normalize successful API response into local reactive state buckets. */
   const syncFromResponse = (response: ContentFontSettingsResponse | null | undefined) => {
     if (!response || response.success !== true) {
       return;
@@ -92,6 +111,7 @@ export const useContentFontSettings = () => {
         : null;
   };
 
+  /** Fetch current settings for admin UI initialization. */
   const fetchAdmin = async () => {
     loading.value = true;
     error.value = null;
@@ -113,6 +133,7 @@ export const useContentFontSettings = () => {
     }
   };
 
+  /** Persist staged profile edits (without triggering binary apply). */
   const saveAdmin = async (payload: {
     sansFamily: string;
     displayFamily: string;
@@ -144,6 +165,7 @@ export const useContentFontSettings = () => {
     }
   };
 
+  /** Execute apply pipeline and refresh local version marker for runtime stylesheet invalidation. */
   const applyAdmin = async () => {
     applying.value = true;
     error.value = null;
@@ -166,6 +188,7 @@ export const useContentFontSettings = () => {
     }
   };
 
+  /** Manual stylesheet version bump helper used by builder workflows. */
   const bumpRuntimeStylesheet = () => {
     runtimeCssVersion.value = Date.now();
   };

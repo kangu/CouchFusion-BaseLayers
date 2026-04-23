@@ -1,6 +1,13 @@
 import { defineEventHandler, setHeader } from "h3";
 import { resolveActiveRuntimeFontAsset } from "../../../utils/content-fonts";
 
+/**
+ * Public helper endpoint returning direct preload URLs for critical sans faces.
+ *
+ * @remarks
+ * Returns concrete attachment URLs (not redirect endpoints) so browser preload requests
+ * can dedupe against `@font-face` requests from runtime CSS.
+ */
 export default defineEventHandler(async (event) => {
   const [sans400, sans700] = await Promise.all([
     resolveActiveRuntimeFontAsset({

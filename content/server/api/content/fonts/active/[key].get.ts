@@ -10,6 +10,13 @@ import { resolveActiveRuntimeFontAsset } from "../../../../utils/content-fonts";
 const ACTIVE_FONT_KEY_PATTERN =
   /^(sans|display)-(\d+)-(normal|italic)(?:-([\d.]+%))?\.woff2$/i;
 
+/**
+ * Public compatibility endpoint resolving semantic font keys to active asset URL.
+ *
+ * @remarks
+ * Kept mainly for backward compatibility and ergonomic semantic links.
+ * New preload flow prefers `/api/content/fonts/preload` for direct asset URLs.
+ */
 export default defineEventHandler(async (event) => {
   const key = getRouterParam(event, "key");
   if (!key) {

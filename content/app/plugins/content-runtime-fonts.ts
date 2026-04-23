@@ -1,14 +1,31 @@
+/**
+ * Direct preload descriptor returned by `/api/content/fonts/preload`.
+ */
 type RuntimeFontPreloadDescriptor = {
   id: string;
   href: string;
 };
 
+/** Minimal server response contract for runtime preload bootstrap. */
 type RuntimeFontPreloadResponse = {
   success?: boolean;
   runtimeCssVersion?: number;
   preloads?: RuntimeFontPreloadDescriptor[];
 };
 
+/**
+ * Runtime font head-injection plugin.
+ *
+ * @remarks
+ * Responsibilities:
+ * - fetch direct attachment URLs for critical preloads (sans 400/700),
+ * - inject preload links and runtime stylesheet tag,
+ * - keep stylesheet query param tied to reactive runtimeCssVersion state.
+ *
+ * API rationale:
+ * - direct preload URLs avoid duplicate network fetches caused by preload redirects,
+ * - stylesheet URL remains versioned so newly applied profiles can be forced immediately.
+ */
 export default defineNuxtPlugin(async () => {
   const runtimeCssVersion = useState<number>(
     "content-font-runtime-css-version",
@@ -30,6 +47,7 @@ export default defineNuxtPlugin(async () => {
   );
 
   try {
+    // Use request-bound fetch on server so cookies/session context propagate consistently.
     const requestFetch = import.meta.server ? useRequestFetch() : $fetch;
     const response = await requestFetch<RuntimeFontPreloadResponse>(
       "/api/content/fonts/preload",
@@ -55,6 +73,7 @@ export default defineNuxtPlugin(async () => {
     }
   } catch {}
 
+  // Inject links once per app bootstrap; runtimeCssVersion updates stylesheet URL reactively.
   useHead({
     link: [
       ...preloadDescriptors.value.map((entry) => ({

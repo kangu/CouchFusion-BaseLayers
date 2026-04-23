@@ -19,11 +19,30 @@ import {
   getMainSettingsDocumentId,
 } from "./database";
 
+/**
+ * Content-layer runtime font manager.
+ *
+ * @remarks
+ * This module centralizes the font lifecycle used by runtime pages and the admin builder:
+ * - reads tenant-level allowlist/defaults from CouchDB `_config`,
+ * - persists selected font profile in `content-settings:fonts`,
+ * - stores binary `.woff2` assets as CouchDB attachments in `content-settings:font-assets`,
+ * - renders deterministic runtime CSS consumed by `/api/content/fonts/runtime.css`,
+ * - resolves stable, attachment-backed asset URLs for preload/active endpoints.
+ *
+ * Design intent:
+ * - keep runtime behavior consistent across dev/prod without filesystem coupling,
+ * - keep one canonical source of truth in CouchDB,
+ * - allow cautious migration by still reading legacy main-settings font payloads.
+ */
 export const CONTENT_FONT_SETTINGS_DOC_ID = "content-settings:fonts";
 export const CONTENT_FONT_ASSETS_DOC_ID = "content-settings:font-assets";
 
+/** Public URL serving the generated runtime CSS payload. */
 const RUNTIME_CSS_PUBLIC_PATH = "/api/content/fonts/runtime.css";
+/** MIME type used for persisted font attachments. */
 const FONT_ASSET_CONTENT_TYPE = "font/woff2";
+/** Public URL prefix used by attachment-backed font asset routes. */
 const FONT_ASSET_API_PREFIX = "/api/content/fonts/asset/";
 
 const ALLOWLIST_CONFIG_KEY = "content_fonts_allowlist";
@@ -39,11 +58,19 @@ const FONT_STYLE_VALUES = ["normal", "italic"] as const;
 export type ContentFontStyle = (typeof FONT_STYLE_VALUES)[number];
 export type ContentFontWidth = string;
 
+/** A selectable family exposed to builder UI clients. */
 export interface ContentFontFamilyOption {
   slug: string;
   label: string;
 }
 
+/**
+ * `@font-face` variant parsed from BunnyCSS response.
+ *
+ * @remarks
+ * `remoteUrl` initially points to Bunny-hosted files, then is rewritten to local
+ * attachment-backed URLs during apply/sync.
+ */
 export interface ParsedBunnyFontFace {
   family: string;
   subset: string | null;
@@ -54,6 +81,7 @@ export interface ParsedBunnyFontFace {
   remoteUrl: string;
 }
 
+/** `@font-face` variant parsed from the generated runtime CSS. */
 export interface ParsedRuntimeFontFace {
   family: string;
   style: ContentFontStyle;
@@ -62,6 +90,7 @@ export interface ParsedRuntimeFontFace {
   publicUrl: string;
 }
 
+/** Parsed `:root` runtime variables used to infer active sans/display families. */
 export interface RuntimeFontVariables {
   sansLabel: string | null;
   displayLabel: string | null;
@@ -69,6 +98,14 @@ export interface RuntimeFontVariables {
   displaySlug: string | null;
 }
 
+/**
+ * Canonical settings document for content-layer fonts.
+ *
+ * @remarks
+ * Stored in the content database under `content-settings:fonts`.
+ * `runtimeCssText` is intentionally persisted so runtime rendering does not depend
+ * on local disk artifacts or build-time assets.
+ */
 export interface ContentFontSettingsDocument extends CouchDBDocument {
   _id: typeof CONTENT_FONT_SETTINGS_DOC_ID;
   type: "content-font-settings";
@@ -90,6 +127,7 @@ export interface ContentFontSettingsDocument extends CouchDBDocument {
   updatedBy: string | null;
 }
 
+/** Attachment container document for binary runtime font files. */
 interface ContentFontAssetsDocument extends CouchDBDocumentWithAttachments {
   _id: typeof CONTENT_FONT_ASSETS_DOC_ID;
   type: "content-font-assets";
@@ -98,6 +136,13 @@ interface ContentFontAssetsDocument extends CouchDBDocumentWithAttachments {
   updatedBy: string | null;
 }
 
+/**
+ * Runtime config resolved from CouchDB `_config`.
+ *
+ * @remarks
+ * This is tenant-aware via `cf_env_<appSlug>` and governs what families users are
+ * allowed to pick in admin.
+ */
 export interface ContentFontRuntimeConfig {
   slug: string;
   section: string;
@@ -106,14 +151,17 @@ export interface ContentFontRuntimeConfig {
   defaultDisplay: string;
 }
 
+/** Legacy host-app main settings shape used only as migration fallback read. */
 interface MainSettingsDocument extends CouchDBDocument {
   _id: string;
   contentFonts?: Partial<ContentFontSettingsDocument>;
   [key: string]: unknown;
 }
 
+/** Timestamp helper for persisted audit fields. */
 const nowIso = () => new Date().toISOString();
 
+/** Normalize arbitrary labels/slugs to a strict lowercase kebab-case identifier. */
 const normalizeSlug = (value: unknown): string | null => {
   if (typeof value !== "string") {
     return null;
@@ -123,12 +171,20 @@ const normalizeSlug = (value: unknown): string | null => {
   return cleaned.length > 0 ? cleaned : null;
 };
 
+/** Convert a slug (`playfair-display`) to human label (`Playfair Display`). */
 export const toFontFamilyLabel = (slug: string): string =>
   slug
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+/**
+ * Resolve app slug used to address tenant CouchDB `_config` values.
+ *
+ * @remarks
+ * Prefers `runtimeConfig.public.appSlug` so server/runtime environments stay stable,
+ * with cwd fallback only as a defensive default.
+ */
 export const resolveContentFontRuntimeSlug = (
   runtimeConfig: Record<string, any> | null | undefined,
   fallbackCwdName = process.cwd().split("/").filter(Boolean).pop() ?? "app",
@@ -155,6 +211,7 @@ const parseAllowlist = (value: string | null): string[] => {
   return Array.from(unique.values());
 };
 
+/** Resolve effective default sans/display slugs from config + allowlist with safe fallbacks. */
 const resolveConfiguredDefaults = (
   allowlist: string[],
   configuredSans: string | null,
@@ -180,6 +237,12 @@ const resolveConfiguredDefaults = (
   };
 };
 
+/**
+ * Read runtime allowlist/defaults from CouchDB `_config`.
+ *
+ * @remarks
+ * API handlers call this on demand so admin and runtime views share the same source.
+ */
 export const getContentFontRuntimeConfig = async (): Promise<ContentFontRuntimeConfig> => {
   const runtimeConfig = useRuntimeConfig();
   const cwdName = process.cwd().split("/").filter(Boolean).pop() ?? "app";
@@ -212,6 +275,7 @@ export const getContentFontRuntimeConfig = async (): Promise<ContentFontRuntimeC
   };
 };
 
+/** Normalize user-provided style list into unique allowed enum values. */
 const normalizeStyles = (value: unknown): ContentFontStyle[] => {
   const source = Array.isArray(value) ? value : [];
   const normalized = source
@@ -222,6 +286,7 @@ const normalizeStyles = (value: unknown): ContentFontStyle[] => {
   return Array.from(new Set(normalized));
 };
 
+/** Normalize and clamp user-provided weight list to CSS 100..900 steps. */
 const normalizeWeights = (value: unknown): number[] => {
   const source = Array.isArray(value) ? value : [];
   const normalized = source
@@ -231,11 +296,13 @@ const normalizeWeights = (value: unknown): number[] => {
   return Array.from(new Set(normalized)).sort((a, b) => a - b);
 };
 
+/** Parse numeric width component from a width token (for example `"125%"`). */
 const parseWidthNumber = (value: string): number | null => {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+/** Comparator for width tokens, numeric-aware when possible. */
 const compareWidths = (left: string, right: string) => {
   const leftValue = parseWidthNumber(left);
   const rightValue = parseWidthNumber(right);
@@ -247,6 +314,7 @@ const compareWidths = (left: string, right: string) => {
   return left.localeCompare(right);
 };
 
+/** Normalize width input into percentage-form token expected by CSS (`"100%"`). */
 const normalizeWidthValue = (value: unknown): ContentFontWidth | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return `${value}%`;
@@ -274,6 +342,7 @@ const normalizeWidthValue = (value: unknown): ContentFontWidth | null => {
   return null;
 };
 
+/** Parse a `--font-*` variable from runtime CSS and return its first declared family label. */
 const parseRuntimeRootFontLabel = (
   cssText: string,
   variableName: "font-sans" | "font-display",
@@ -298,6 +367,7 @@ const parseRuntimeRootFontLabel = (
   return label.length > 0 ? label : null;
 };
 
+/** Parse `--font-sans` and `--font-display` variables and normalized slugs from runtime CSS. */
 export const parseRuntimeFontVariables = (cssText: string): RuntimeFontVariables => {
   const sansLabel = parseRuntimeRootFontLabel(cssText, "font-sans");
   const displayLabel = parseRuntimeRootFontLabel(cssText, "font-display");
@@ -310,6 +380,7 @@ export const parseRuntimeFontVariables = (cssText: string): RuntimeFontVariables
   };
 };
 
+/** Normalize user-provided width list into sorted unique CSS width tokens. */
 const normalizeWidths = (value: unknown): ContentFontWidth[] => {
   const source = Array.isArray(value) ? value : [];
   const normalized = source
@@ -318,6 +389,7 @@ const normalizeWidths = (value: unknown): ContentFontWidth[] => {
   return Array.from(new Set(normalized)).sort(compareWidths);
 };
 
+/** Build default settings document from runtime config defaults. */
 const defaultSettingsDocument = (
   runtimeConfig: ContentFontRuntimeConfig,
 ): ContentFontSettingsDocument => {
@@ -344,6 +416,7 @@ const defaultSettingsDocument = (
   };
 };
 
+/** Ensure selected family is allowlisted; otherwise return fallback slug. */
 const ensureAllowedFamily = (candidate: unknown, allowlist: string[], fallback: string) => {
   const normalized = normalizeSlug(candidate);
   if (!normalized) {
@@ -352,6 +425,7 @@ const ensureAllowedFamily = (candidate: unknown, allowlist: string[], fallback: 
   return allowlist.includes(normalized) ? normalized : fallback;
 };
 
+/** Normalize arbitrary persisted payload into strict `ContentFontSettingsDocument` shape. */
 const normalizeSettingsDocument = (
   value: unknown,
   runtimeConfig: ContentFontRuntimeConfig,
@@ -423,6 +497,7 @@ const normalizeSettingsDocument = (
   };
 };
 
+/** Read legacy `contentFonts` payload from host main settings doc when present. */
 const getContentFontSettingsFromMainSettings = (
   value: unknown,
 ): Partial<ContentFontSettingsDocument> | null => {
@@ -438,6 +513,13 @@ const getContentFontSettingsFromMainSettings = (
   return source.contentFonts as Partial<ContentFontSettingsDocument>;
 };
 
+/**
+ * Merge runtime config with families discovered from runtime CSS.
+ *
+ * @remarks
+ * This keeps admin selectors compatible with already-applied fonts that may no longer
+ * exist in current `_config` allowlist, avoiding abrupt UI resets.
+ */
 const mergeRuntimeConfigWithRuntimeCss = (
   runtimeConfig: ContentFontRuntimeConfig,
   runtimeCss: string,
@@ -484,6 +566,7 @@ const mergeRuntimeConfigWithRuntimeCss = (
   };
 };
 
+/** Detect whether a persisted payload explicitly stores family selections. */
 const hasStoredFamilySelection = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
     return false;
@@ -493,6 +576,15 @@ const hasStoredFamilySelection = (value: unknown): boolean => {
   return Boolean(normalizeSlug(source.sansFamily) && normalizeSlug(source.displayFamily));
 };
 
+/**
+ * Retrieve effective font settings and runtime config for current tenant.
+ *
+ * @remarks
+ * Read order:
+ * 1) canonical content DB settings doc,
+ * 2) legacy host main-settings payload (migration fallback),
+ * then normalized against current runtime config.
+ */
 export const getContentFontSettings = async (): Promise<{
   runtimeConfig: ContentFontRuntimeConfig;
   settings: ContentFontSettingsDocument;
@@ -553,6 +645,7 @@ export const getContentFontSettings = async (): Promise<{
   };
 };
 
+/** Persist canonical font settings document to content DB with optimistic revision update. */
 const persistContentFontSettingsDocument = async (
   settings: ContentFontSettingsDocument,
 ): Promise<ContentFontSettingsDocument> => {
@@ -581,6 +674,13 @@ const persistContentFontSettingsDocument = async (
   return nextDocument;
 };
 
+/**
+ * Save admin-selected font profile (does not download/apply binary assets).
+ *
+ * @remarks
+ * This endpoint validates allowlist constraints and updates selection metadata only.
+ * Binary download and CSS generation happen in `applyContentFonts`.
+ */
 export const saveContentFontSettings = async (payload: {
   sansFamily?: unknown;
   displayFamily?: unknown;
@@ -691,6 +791,7 @@ export const parseBunnyFontFaces = (cssText: string): ParsedBunnyFontFace[] => {
   return faces;
 };
 
+/** Parse runtime CSS into local `@font-face` variants (attachment-backed URLs). */
 export const parseRuntimeFontFaces = (cssText: string): ParsedRuntimeFontFace[] => {
   const faces: ParsedRuntimeFontFace[] = [];
   const regex = /@font-face\s*\{([\s\S]*?)\}/g;
@@ -733,6 +834,7 @@ export const parseRuntimeFontFaces = (cssText: string): ParsedRuntimeFontFace[] 
   return faces;
 };
 
+/** Find exact runtime face match by family/style/weight (+ optional preferred stretch). */
 export const findRuntimeFontFace = (
   faces: ParsedRuntimeFontFace[],
   payload: {
@@ -769,6 +871,12 @@ export const findRuntimeFontFace = (
   return [...candidates].sort((left, right) => compareWidths(left.stretch, right.stretch))[0] ?? null;
 };
 
+/**
+ * Filter Bunny faces to only the requested style/weight/width profile.
+ *
+ * @remarks
+ * Prefers latin subset when available for each requested combination, reducing payload.
+ */
 export const filterBunnyFontFaces = (
   faces: ParsedBunnyFontFace[],
   profile: { styles: ContentFontStyle[]; weights: number[]; widths: ContentFontWidth[] },
@@ -815,6 +923,7 @@ export const filterBunnyFontFaces = (
   return Array.from(dedup.values());
 };
 
+/** Build BunnyCSS API URL for selected family and style/weight combinations. */
 const buildBunnyCssUrl = (familySlug: string, styles: ContentFontStyle[], weights: number[]) => {
   const styleSet = new Set(styles);
   const variants: string[] = [];
@@ -830,6 +939,7 @@ const buildBunnyCssUrl = (familySlug: string, styles: ContentFontStyle[], weight
   return `https://fonts.bunny.net/css?family=${encodeURIComponent(familySlug)}:${query}`;
 };
 
+/** Resolve filtered Bunny faces for a specific family/profile request. */
 const resolveRemoteFamilyFaces = async (
   familySlug: string,
   styles: ContentFontStyle[],
@@ -852,6 +962,7 @@ const resolveRemoteFamilyFaces = async (
   return selectedFaces;
 };
 
+/** Ensure attachment container document exists before asset sync starts. */
 const ensureFontAssetsDocument = async (payload: {
   databaseName: string;
   updatedBy?: string | null;
@@ -896,11 +1007,13 @@ const ensureFontAssetsDocument = async (payload: {
   return nextDoc;
 };
 
+/** Convert width token to filesystem/attachment-safe deterministic name segment. */
 const toFontStretchToken = (stretch: string) => {
   const normalized = normalizeWidthValue(stretch) ?? "100%";
   return normalized.replace(/%/g, "p").replace(/\./g, "_");
 };
 
+/** Build deterministic attachment file name for one face variant. */
 const buildFontAttachmentName = (
   familySlug: string,
   face: ParsedBunnyFontFace,
@@ -910,6 +1023,7 @@ const buildFontAttachmentName = (
   return `${familySlug}-${face.weight}-${face.style}-${widthToken}-${subsetToken}.woff2`;
 };
 
+/** Download Bunny-hosted font binary into memory buffer. */
 const downloadRemoteFontBuffer = async (remoteUrl: string): Promise<Buffer> => {
   const response = await fetch(remoteUrl);
   if (!response.ok) {
@@ -918,11 +1032,13 @@ const downloadRemoteFontBuffer = async (remoteUrl: string): Promise<Buffer> => {
   return Buffer.from(await response.arrayBuffer());
 };
 
+/** Identify URLs already pointing to local attachment asset route. */
 const isKnownFontAttachmentUrl = (url: string): boolean => {
   const normalized = url.trim();
   return normalized.startsWith(FONT_ASSET_API_PREFIX) && normalized.endsWith(".woff2");
 };
 
+/** Detect benign delete errors when attachment is already absent. */
 const isMissingAttachmentDeleteError = (error: unknown): boolean => {
   const message =
     error instanceof Error
@@ -934,6 +1050,14 @@ const isMissingAttachmentDeleteError = (error: unknown): boolean => {
   return normalized.includes("document is missing attachment") || normalized.includes("not_found");
 };
 
+/**
+ * Synchronize selected face binaries into the attachment document.
+ *
+ * @remarks
+ * - uploads/overwrites active face binaries under deterministic names,
+ * - rewrites face URLs to local attachment route,
+ * - removes stale attachments not present in current active profile.
+ */
 const syncFontAssetAttachments = async (payload: {
   databaseName: string;
   assetsDocument: ContentFontAssetsDocument;
@@ -1035,6 +1159,7 @@ const syncFontAssetAttachments = async (payload: {
   }
 };
 
+/** Render deterministic runtime CSS (`@font-face` + `:root` variables) from resolved faces. */
 const renderRuntimeCss = (payload: {
   sansLabel: string;
   displayLabel: string;
@@ -1070,6 +1195,7 @@ const renderRuntimeCss = (payload: {
   return chunks.join("\n");
 };
 
+/** Normalize unknown thrown value into user-facing error string. */
 const toErrorMessage = (error: unknown): string => {
   if (error instanceof Error && typeof error.message === "string" && error.message.trim()) {
     return error.message.trim();
@@ -1080,6 +1206,17 @@ const toErrorMessage = (error: unknown): string => {
   return "Unknown error";
 };
 
+/**
+ * Apply selected font profile end-to-end.
+ *
+ * @remarks
+ * This is the expensive operation:
+ * - validates selected families,
+ * - ensures attachment doc exists,
+ * - fetches remote faces,
+ * - syncs binaries into CouchDB attachments,
+ * - renders/persists runtime CSS and status metadata.
+ */
 export const applyContentFonts = async (payload: {
   updatedBy?: string | null;
 }): Promise<{ runtimeConfig: ContentFontRuntimeConfig; settings: ContentFontSettingsDocument }> => {
@@ -1173,6 +1310,12 @@ export const applyContentFonts = async (payload: {
   }
 };
 
+/**
+ * Return runtime CSS served by `/api/content/fonts/runtime.css`.
+ *
+ * @remarks
+ * Primary source is persisted `runtimeCssText`; if missing, returns variable-only fallback.
+ */
 export const getRuntimeFontCss = async (): Promise<string> => {
   const { settings } = await getContentFontSettings();
   if (settings.runtimeCssText && settings.runtimeCssText.trim().length > 0) {
@@ -1189,6 +1332,13 @@ export const getRuntimeFontCss = async (): Promise<string> => {
   ].join("\n");
 };
 
+/**
+ * Resolve currently active face asset URL for preload/redirect endpoints.
+ *
+ * @remarks
+ * Uses runtime CSS as the canonical applied snapshot and returns attachment-backed URLs only.
+ * Falls back to nearest available weight/stretch if exact profile is unavailable.
+ */
 export const resolveActiveRuntimeFontAsset = async (payload: {
   role: "sans" | "display";
   weight: number;
