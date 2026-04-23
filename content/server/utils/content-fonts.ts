@@ -1,5 +1,3 @@
-import { promises as fs } from "node:fs";
-import { join } from "node:path";
 import { createError } from "h3";
 import {
   buildCouchEnvSection,
@@ -24,11 +22,7 @@ import {
 export const CONTENT_FONT_SETTINGS_DOC_ID = "content-settings:fonts";
 export const CONTENT_FONT_ASSETS_DOC_ID = "content-settings:font-assets";
 
-const MANAGED_FONTS_DIR = "fonts/managed";
-const RUNTIME_FONTS_FILE_NAME = "runtime-fonts.css";
 const RUNTIME_CSS_PUBLIC_PATH = "/api/content/fonts/runtime.css";
-const MANAGED_ASSETS_START = "/* content-fonts:managed:start */";
-const MANAGED_ASSETS_END = "/* content-fonts:managed:end */";
 const FONT_ASSET_CONTENT_TYPE = "font/woff2";
 const FONT_ASSET_API_PREFIX = "/api/content/fonts/asset/";
 
@@ -91,7 +85,7 @@ export interface ContentFontSettingsDocument extends CouchDBDocument {
   runtimeCssVersion: number;
   runtimeCssPath: string;
   runtimeCssText: string | null;
-  runtimeAssetMode: "local" | "remote" | "attachment";
+  runtimeAssetMode: "attachment";
   updatedAt: string;
   updatedBy: string | null;
 }
@@ -417,12 +411,7 @@ const normalizeSettingsDocument = (
       typeof source.runtimeCssText === "string" && source.runtimeCssText.trim()
         ? source.runtimeCssText
         : null,
-    runtimeAssetMode:
-      source.runtimeAssetMode === "remote" ||
-      source.runtimeAssetMode === "local" ||
-      source.runtimeAssetMode === "attachment"
-        ? source.runtimeAssetMode
-        : defaults.runtimeAssetMode,
+    runtimeAssetMode: "attachment",
     updatedAt:
       typeof source.updatedAt === "string" && source.updatedAt.trim()
         ? source.updatedAt
@@ -495,17 +484,6 @@ const mergeRuntimeConfigWithRuntimeCss = (
   };
 };
 
-const getRuntimeCssDiskPath = () =>
-  join(process.cwd(), "public", MANAGED_FONTS_DIR, RUNTIME_FONTS_FILE_NAME);
-
-const readRuntimeFontCssFromDisk = async (): Promise<string | null> => {
-  try {
-    return await fs.readFile(getRuntimeCssDiskPath(), "utf8");
-  } catch {
-    return null;
-  }
-};
-
 const hasStoredFamilySelection = (value: unknown): boolean => {
   if (!value || typeof value !== "object") {
     return false;
@@ -534,11 +512,10 @@ export const getContentFontSettings = async (): Promise<{
 
   const hasPersistedFamilySelection = hasStoredFamilySelection(existing);
   const initialSettings = normalizeSettingsDocument(existing, runtimeConfig);
-  const runtimeCssFromDisk = await readRuntimeFontCssFromDisk();
   const runtimeCssForSync =
     initialSettings.runtimeCssText && initialSettings.runtimeCssText.trim().length > 0
       ? initialSettings.runtimeCssText
-      : runtimeCssFromDisk;
+      : null;
 
   const effectiveRuntimeConfig = runtimeCssForSync
     ? mergeRuntimeConfigWithRuntimeCss(runtimeConfig, runtimeCssForSync)
@@ -853,12 +830,6 @@ const buildBunnyCssUrl = (familySlug: string, styles: ContentFontStyle[], weight
   return `https://fonts.bunny.net/css?family=${encodeURIComponent(familySlug)}:${query}`;
 };
 
-const ensureManagedFontsDirectory = async () => {
-  const rootDir = join(process.cwd(), "public", MANAGED_FONTS_DIR);
-  await fs.mkdir(rootDir, { recursive: true });
-  return rootDir;
-};
-
 const resolveRemoteFamilyFaces = async (
   familySlug: string,
   styles: ContentFontStyle[],
@@ -1099,13 +1070,6 @@ const renderRuntimeCss = (payload: {
   return chunks.join("\n");
 };
 
-const writeRuntimeCss = async (cssText: string) => {
-  const managedRoot = await ensureManagedFontsDirectory();
-  const runtimeCssPath = join(managedRoot, RUNTIME_FONTS_FILE_NAME);
-  await fs.writeFile(runtimeCssPath, cssText, "utf8");
-  return runtimeCssPath;
-};
-
 const toErrorMessage = (error: unknown): string => {
   if (error instanceof Error && typeof error.message === "string" && error.message.trim()) {
     return error.message.trim();
@@ -1114,36 +1078,6 @@ const toErrorMessage = (error: unknown): string => {
     return error.trim();
   }
   return "Unknown error";
-};
-
-const upsertManagedAssetsCss = async (cssText: string) => {
-  const assetsFontsPath = join(process.cwd(), "app", "assets", "css", "fonts.css");
-  const managedBlock = `${MANAGED_ASSETS_START}\n${cssText.trim()}\n${MANAGED_ASSETS_END}\n`;
-
-  let existing = "";
-  try {
-    existing = await fs.readFile(assetsFontsPath, "utf8");
-  } catch {
-    await fs.mkdir(join(process.cwd(), "app", "assets", "css"), { recursive: true });
-  }
-
-  if (!existing.trim()) {
-    await fs.writeFile(assetsFontsPath, `${managedBlock}`, "utf8");
-    return;
-  }
-
-  const startIndex = existing.indexOf(MANAGED_ASSETS_START);
-  const endIndex = existing.indexOf(MANAGED_ASSETS_END);
-  if (startIndex >= 0 && endIndex > startIndex) {
-    const before = existing.slice(0, startIndex).trimEnd();
-    const after = existing.slice(endIndex + MANAGED_ASSETS_END.length).trimStart();
-    const next = `${before}\n\n${managedBlock}\n${after}`.trim() + "\n";
-    await fs.writeFile(assetsFontsPath, next, "utf8");
-    return;
-  }
-
-  const next = `${existing.trimEnd()}\n\n${managedBlock}`;
-  await fs.writeFile(assetsFontsPath, next, "utf8");
 };
 
 export const applyContentFonts = async (payload: {
@@ -1173,6 +1107,11 @@ export const applyContentFonts = async (payload: {
   const databaseName = getContentDatabaseName();
 
   try {
+    const assetsDocument = await ensureFontAssetsDocument({
+      databaseName,
+      updatedBy: payload.updatedBy,
+    });
+
     const facesByFamilySlug: Record<string, ParsedBunnyFontFace[]> = {};
     for (const familySlug of familiesToMaterialize) {
       facesByFamilySlug[familySlug] = await resolveRemoteFamilyFaces(
@@ -1183,10 +1122,6 @@ export const applyContentFonts = async (payload: {
       );
     }
 
-    const assetsDocument = await ensureFontAssetsDocument({
-      databaseName,
-      updatedBy: payload.updatedBy,
-    });
     await syncFontAssetAttachments({
       databaseName,
       assetsDocument,
@@ -1205,13 +1140,6 @@ export const applyContentFonts = async (payload: {
       displayLabel: familyLabels[settings.displayFamily] ?? toFontFamilyLabel(settings.displayFamily),
       facesByFamily: facesByLabel,
     });
-
-    try {
-      await writeRuntimeCss(runtimeCss);
-    } catch {}
-    try {
-      await upsertManagedAssetsCss(runtimeCss);
-    } catch {}
 
     const nextDoc: ContentFontSettingsDocument = {
       ...nextStatusBase,
@@ -1249,11 +1177,6 @@ export const getRuntimeFontCss = async (): Promise<string> => {
   const { settings } = await getContentFontSettings();
   if (settings.runtimeCssText && settings.runtimeCssText.trim().length > 0) {
     return settings.runtimeCssText;
-  }
-
-  const runtimeCssFromDisk = await readRuntimeFontCssFromDisk();
-  if (runtimeCssFromDisk) {
-    return runtimeCssFromDisk;
   }
 
   return [
@@ -1346,16 +1269,12 @@ export const resolveActiveRuntimeFontAsset = async (payload: {
   }
 
   const resolvedUrl = resolvedFace.publicUrl.trim();
-  const isManagedLocal = resolvedUrl.startsWith(`/${MANAGED_FONTS_DIR}/`);
   const isManagedAttachment = resolvedUrl.startsWith(FONT_ASSET_API_PREFIX);
-  const isTrustedRemote = /^https:\/\/fonts\.bunny\.net\/[^"'()\s]+\.woff2(?:\?[^"'()\s]*)?$/i.test(
-    resolvedUrl,
-  );
 
-  if (!isManagedLocal && !isManagedAttachment && !isTrustedRemote) {
+  if (!isManagedAttachment) {
     throw createError({
       statusCode: 500,
-      statusMessage: "Resolved active font asset path is invalid.",
+      statusMessage: "Resolved active font asset path must be attachment-backed.",
     });
   }
 

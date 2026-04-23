@@ -20,7 +20,7 @@ export interface ContentFontSettingsDocument {
   runtimeCssVersion: number;
   runtimeCssPath: string;
   runtimeCssText?: string | null;
-  runtimeAssetMode?: "local" | "remote" | "attachment";
+  runtimeAssetMode?: "attachment";
   updatedAt: string;
   updatedBy: string | null;
 }
