@@ -352,6 +352,13 @@
                                 "
                             >
                                 <label
+                                    :data-content-prop-path="
+                                        toPropPathAttr([
+                                            ...pathPrefix,
+                                            field.key,
+                                            nestedEntry.index,
+                                        ])
+                                    "
                                     :class="[
                                         'node-panel__field',
                                         'node-panel__field--nested',
@@ -1910,7 +1917,9 @@
             v-show="!collapsedArrays[prop.key]"
         >
             <label
-                :data-content-prop-path="toPropPathAttr(pathPrefix)"
+                :data-content-prop-path="
+                    toPropPathAttr([...pathPrefix, stringEntry.index])
+                "
                 :class="[
                     'node-panel__field',
                     {

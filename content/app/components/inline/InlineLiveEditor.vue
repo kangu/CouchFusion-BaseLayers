@@ -145,6 +145,7 @@ const pendingFocusTarget = ref<{
     uid: string;
     path: string;
     mode?: "flash" | "lock" | "clear";
+    propPath?: string;
 } | null>(null);
 const pendingLiveUpdate = ref(false);
 const pendingFontPreview = ref(false);
@@ -407,6 +408,7 @@ const postFocusMessage = (
     uid: string,
     path: string,
     mode: "flash" | "lock" | "clear" = "flash",
+    propPath = "",
 ) => {
     if (!iframeRef.value?.contentWindow) {
         return;
@@ -419,6 +421,7 @@ const postFocusMessage = (
                 path,
                 uid,
                 mode,
+                propPath,
             },
         },
         previewOrigin.value,
@@ -459,6 +462,7 @@ const flushPendingPreviewMessages = () => {
             target.uid,
             normalizePagePath(target.path || activePath.value),
             target.mode ?? "flash",
+            target.propPath ?? "",
         );
     }
 
@@ -529,14 +533,15 @@ const sendFocusMessage = (
     uid: string,
     path: string,
     mode: "flash" | "lock" | "clear" = "flash",
+    propPath = "",
 ) => {
     if (!canPostToPreview()) {
-        pendingFocusTarget.value = { uid, path, mode };
+        pendingFocusTarget.value = { uid, path, mode, propPath };
         return;
     }
 
     pendingFocusTarget.value = null;
-    postFocusMessage(uid, path, mode);
+    postFocusMessage(uid, path, mode, propPath);
 };
 
 const handlePageSelected = (summary: ContentPageSummary | null) => {
@@ -594,6 +599,7 @@ const handleNodeFocus = (payload: {
     uid?: string;
     path?: string;
     mode?: "flash" | "lock" | "clear";
+    propPath?: string;
     propKey?: string;
 } | Event) => {
     if (!payload || typeof payload !== "object" || payload instanceof Event) {
@@ -616,7 +622,7 @@ const handleNodeFocus = (payload: {
         payload.uid,
         normalizedPath,
         payload.mode ?? "flash",
-        payload.propKey,
+        payload.propPath ?? payload.propKey ?? "",
     );
 };
 
@@ -767,7 +773,7 @@ const handlePreviewPropClick = (payload: InlinePreviewPropClickPayload) => {
         activePath.value = normalizedPath;
     }
 
-    sendFocusMessage(payload.uid, normalizedPath, "lock");
+    sendFocusMessage(payload.uid, normalizedPath, "lock", payload.propPath);
     const workbench = workbenchRef.value as WorkbenchComponentInstance | null;
     const directMethod = workbench?.focusPropFromPreview;
     if (typeof directMethod === "function") {
@@ -1061,6 +1067,7 @@ onBeforeRouteLeave(() => {
 
 .inline-live-editor__sidebar {
     overflow: auto;
+    box-sizing: border-box;
     border-right: 1px solid #e5e7eb;
     background-color: #f8fafc;
 }

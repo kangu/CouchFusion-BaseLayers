@@ -28,6 +28,7 @@ interface BuilderFocusPayload {
   path: string
   uid: string
   mode?: 'flash' | 'lock' | 'clear'
+  propPath?: string
 }
 
 /**
@@ -377,6 +378,50 @@ const shouldScrollTargetIntoView = (target: HTMLElement): boolean => {
   const outOfViewRatio = 1 - visibleRatio
 
   return outOfViewRatio > MAX_OUT_OF_VIEW_RATIO_BEFORE_SCROLL
+}
+
+const findFocusVisibilityTarget = (
+  componentTarget: HTMLElement,
+  propPath: string | null | undefined
+): HTMLElement => {
+  const normalizedPropPath = typeof propPath === 'string' ? propPath.trim() : ''
+  if (!normalizedPropPath) {
+    return componentTarget
+  }
+
+  const propTargets = Array.from(
+    componentTarget.querySelectorAll<HTMLElement>('[data-prop-id]')
+  )
+  const exactTarget = propTargets.find((element) => {
+    return element.getAttribute('data-prop-id')?.trim() === normalizedPropPath
+  })
+
+  return exactTarget ?? componentTarget
+}
+
+const shouldScrollFocusTargetIntoView = (
+  componentTarget: HTMLElement,
+  propPath: string | null | undefined
+): boolean => {
+  const visibilityTarget = findFocusVisibilityTarget(componentTarget, propPath)
+  if (!shouldScrollTargetIntoView(visibilityTarget)) {
+    return false
+  }
+
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+  const componentRect = componentTarget.getBoundingClientRect()
+  const componentIsOversized = viewportHeight > 0 && componentRect.height > viewportHeight * 0.85
+  if (!componentIsOversized) {
+    return true
+  }
+
+  const visibleTop = Math.max(componentRect.top, 0)
+  const visibleBottom = Math.min(componentRect.bottom, viewportHeight)
+  const visibleHeight = Math.max(0, visibleBottom - visibleTop)
+
+  // Oversized sections can be actively edited while only part of the component is visible.
+  // Avoid jumping the preview unless less than a useful viewport slice is visible.
+  return visibleHeight < Math.min(240, viewportHeight * 0.35)
 }
 
 /**
@@ -790,7 +835,8 @@ export const useContentLiveUpdates = (): void => {
           return
         }
 
-        const didTriggerScroll = shouldScrollTargetIntoView(target)
+        const propPath = data.payload!.propPath ?? ''
+        const didTriggerScroll = shouldScrollFocusTargetIntoView(target, propPath)
 
         if (didTriggerScroll) {
           target.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -807,7 +853,7 @@ export const useContentLiveUpdates = (): void => {
           return
         }
 
-        if (shouldScrollTargetIntoView(target)) {
+        if (shouldScrollFocusTargetIntoView(target, propPath)) {
           // Fallback for any late layout shifts that still require visibility alignment.
           target.scrollIntoView({ block: 'center', behavior: 'smooth' })
         }
