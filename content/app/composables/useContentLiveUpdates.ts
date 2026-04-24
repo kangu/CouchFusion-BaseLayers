@@ -49,6 +49,15 @@ interface BuilderFontPreviewMessage {
   payload?: BuilderFontPreviewPayload
 }
 
+interface BuilderThemePreviewPayload {
+  tokens: Record<string, string>
+}
+
+interface BuilderThemePreviewMessage {
+  type: 'builder_theme_preview'
+  payload?: BuilderThemePreviewPayload
+}
+
 /**
  * Payload emitted from inline preview when a prop-annotated element is clicked.
  */
@@ -124,6 +133,20 @@ const isBuilderFontPreviewMessage = (value: unknown): value is BuilderFontPrevie
     typeof candidate.payload.displayFamily === 'string' &&
     Array.isArray(candidate.payload.cssHrefs)
   )
+}
+
+const isBuilderThemePreviewMessage = (value: unknown): value is BuilderThemePreviewMessage => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as Record<string, any>
+  if (candidate.type !== 'builder_theme_preview') {
+    return false
+  }
+  if (!candidate.payload || typeof candidate.payload !== 'object') {
+    return false
+  }
+  return candidate.payload.tokens && typeof candidate.payload.tokens === 'object'
 }
 
 /**
@@ -592,6 +615,45 @@ export const useContentLiveUpdates = (): void => {
     ].join('\n')
   }
 
+  const applyInlinePreviewThemeOverrides = (payload: BuilderThemePreviewPayload) => {
+    const head = document.head || document.documentElement
+    const styleId = 'content-inline-preview-theme-overrides'
+    let styleTag = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!styleTag) {
+      styleTag = document.createElement('style')
+      styleTag.id = styleId
+      head.appendChild(styleTag)
+    }
+
+    const entries = Object.entries(payload.tokens ?? {})
+      .map(([key, value]) => {
+        if (typeof key !== 'string' || !/^--[a-z0-9-]+$/i.test(key)) {
+          return null
+        }
+        const normalizedValue =
+          typeof value === 'string' ? value.trim() : String(value ?? '').trim()
+        if (!normalizedValue) {
+          return null
+        }
+
+        const sanitizedValue = normalizedValue.replace(/[\r\n{}]/g, ' ')
+        return `  ${key}: ${sanitizedValue} !important;`
+      })
+      .filter((entry): entry is string => Boolean(entry))
+
+    if (entries.length === 0) {
+      styleTag.textContent = ''
+      return
+    }
+
+    styleTag.textContent = [
+      ':root {',
+      ...entries,
+      '}',
+      '',
+    ].join('\n')
+  }
+
   /**
    * Live content replacement can nudge scroll unexpectedly.
    * Retry restoration for a few frames to survive async layout shifts.
@@ -693,6 +755,15 @@ export const useContentLiveUpdates = (): void => {
         applyInlinePreviewFontOverrides(data.payload!)
       } catch (error) {
         console.error('Failed to apply inline font preview override:', error)
+      }
+      return
+    }
+
+    if (isBuilderThemePreviewMessage(data) && isInlinePreview()) {
+      try {
+        applyInlinePreviewThemeOverrides(data.payload!)
+      } catch (error) {
+        console.error('Failed to apply inline theme preview override:', error)
       }
       return
     }

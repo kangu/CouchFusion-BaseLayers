@@ -27,6 +27,9 @@ export default defineNuxtConfig({
       new URL("./app/plugins/content-runtime-fonts", import.meta.url),
     ),
     fileURLToPath(
+      new URL("./app/plugins/content-runtime-theme", import.meta.url),
+    ),
+    fileURLToPath(
       new URL("./app/plugins/content-locale-html-lang", import.meta.url),
     ),
     fileURLToPath(
@@ -42,6 +45,15 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     content: {
+      runtimeStyling: {
+        enabled: true,
+        fonts: {
+          enabled: true,
+        },
+        theme: {
+          enabled: true,
+        },
+      },
       i18n: {
         defaultLocale: "en",
         locales: ["en"] as string[],
@@ -49,6 +61,15 @@ export default defineNuxtConfig({
     },
     public: {
       content: {
+        runtimeStyling: {
+          enabled: true,
+          fonts: {
+            enabled: true,
+          },
+          theme: {
+            enabled: true,
+          },
+        },
         i18n: {
           defaultLocale: "en",
           locales: ["en"] as string[],

@@ -11,7 +11,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["content/tests/server/font-assets.spec.ts"],
+    include: [
+      "content/tests/server/font-assets.spec.ts",
+      "content/tests/server/theme-settings.spec.ts",
+    ],
   },
   resolve: {
     alias: [

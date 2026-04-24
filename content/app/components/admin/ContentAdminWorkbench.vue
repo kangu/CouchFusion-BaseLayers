@@ -115,6 +115,12 @@ const emit = defineEmits<{
         },
     ): void;
     (
+        e: "theme-preview-change",
+        payload: {
+            tokens: Record<string, string>;
+        },
+    ): void;
+    (
         e: "preview-motion-change",
         payload: {
             forceMotion: boolean;
@@ -1433,6 +1439,12 @@ function handleFontPreviewChange(payload: {
     cssHrefs: string[];
 }): void {
     emit("font-preview-change", payload);
+}
+
+function handleThemePreviewChange(payload: {
+    tokens: Record<string, string>;
+}): void {
+    emit("theme-preview-change", payload);
 }
 
 function handleNodeFocus(
@@ -3077,6 +3089,7 @@ defineExpose({
                                     handleDocumentPreviewChange
                                 "
                                 @font-preview-change="handleFontPreviewChange"
+                                @theme-preview-change="handleThemePreviewChange"
                                 @translate-scope="handleTranslateScope"
                                 @update:selected-translation-pointers="
                                     handleSelectedTranslationPointersUpdate

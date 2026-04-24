@@ -8,6 +8,7 @@ import { getAttachment } from "#database/utils/couchdb";
 import {
   CONTENT_FONT_ASSETS_DOC_ID,
 } from "../../../../utils/content-fonts";
+import { assertContentRuntimeFontsEnabled } from "../../../../utils/content-runtime-styling";
 import { getContentDatabaseName, getMainDatabaseName } from "../../../../utils/database";
 
 const FONT_ATTACHMENT_NAME_PATTERN = /^[a-z0-9._-]+\.woff2$/i;
@@ -20,6 +21,7 @@ const FONT_ATTACHMENT_NAME_PATTERN = /^[a-z0-9._-]+\.woff2$/i;
  * support legacy rollout states. Responses are long-cache immutable by deterministic name.
  */
 export default defineEventHandler(async (event) => {
+  assertContentRuntimeFontsEnabled();
   const attachmentName = getRouterParam(event, "name");
   if (!attachmentName) {
     throw createError({

@@ -46,6 +46,9 @@ type InlineFontPreviewPayload = {
     displayFamily: string;
     cssHrefs: string[];
 };
+type InlineThemePreviewPayload = {
+    tokens: Record<string, string>;
+};
 
 const normalizeFontPreviewPayload = (
     payload: InlineFontPreviewPayload | null | undefined,
@@ -68,6 +71,37 @@ const normalizeFontPreviewPayload = (
         sansFamily,
         displayFamily,
         cssHrefs: [...cssHrefs],
+    };
+};
+
+const normalizeThemePreviewPayload = (
+    payload: InlineThemePreviewPayload | null | undefined,
+): InlineThemePreviewPayload | null => {
+    if (!payload || typeof payload !== "object") {
+        return null;
+    }
+
+    if (!payload.tokens || typeof payload.tokens !== "object") {
+        return {
+            tokens: {},
+        };
+    }
+
+    const normalizedTokens: Record<string, string> = {};
+    for (const [key, value] of Object.entries(payload.tokens)) {
+        if (typeof key !== "string" || !key.startsWith("--")) {
+            continue;
+        }
+        const normalizedValue =
+            typeof value === "string" ? value.trim() : String(value ?? "").trim();
+        if (!normalizedValue) {
+            continue;
+        }
+        normalizedTokens[key] = normalizedValue;
+    }
+
+    return {
+        tokens: normalizedTokens,
     };
 };
 
@@ -115,6 +149,8 @@ const pendingFocusTarget = ref<{
 const pendingLiveUpdate = ref(false);
 const pendingFontPreview = ref(false);
 const latestFontPreview = ref<InlineFontPreviewPayload | null>(null);
+const pendingThemePreview = ref(false);
+const latestThemePreview = ref<InlineThemePreviewPayload | null>(null);
 const dividerRef = ref<HTMLDivElement | null>(null);
 const isDraggingDivider = ref(false);
 const pendingDividerDrag = ref(false);
@@ -348,6 +384,25 @@ const postFontPreview = (payload: InlineFontPreviewPayload) => {
     );
 };
 
+const postThemePreview = (payload: InlineThemePreviewPayload) => {
+    if (!iframeRef.value?.contentWindow) {
+        return;
+    }
+
+    const normalizedPayload = normalizeThemePreviewPayload(payload);
+    if (!normalizedPayload) {
+        return;
+    }
+
+    iframeRef.value.contentWindow.postMessage(
+        {
+            type: "builder_theme_preview",
+            payload: normalizedPayload,
+        },
+        previewOrigin.value,
+    );
+};
+
 const postFocusMessage = (
     uid: string,
     path: string,
@@ -387,6 +442,13 @@ const flushPendingPreviewMessages = () => {
         pendingFontPreview.value = false;
         if (latestFontPreview.value) {
             postFontPreview(latestFontPreview.value);
+        }
+    }
+
+    if (pendingThemePreview.value) {
+        pendingThemePreview.value = false;
+        if (latestThemePreview.value) {
+            postThemePreview(latestThemePreview.value);
         }
     }
 
@@ -448,6 +510,21 @@ const sendFontPreview = (payload?: InlineFontPreviewPayload | null) => {
     postFontPreview(source);
 };
 
+const sendThemePreview = (payload?: InlineThemePreviewPayload | null) => {
+    const source = normalizeThemePreviewPayload(payload ?? latestThemePreview.value);
+    if (!source) {
+        return;
+    }
+
+    if (!canPostToPreview()) {
+        pendingThemePreview.value = true;
+        return;
+    }
+
+    pendingThemePreview.value = false;
+    postThemePreview(source);
+};
+
 const sendFocusMessage = (
     uid: string,
     path: string,
@@ -506,6 +583,11 @@ const handlePreviewDocumentChange = (document: MinimalContentDocument) => {
 const handleFontPreviewChange = (payload: InlineFontPreviewPayload) => {
     latestFontPreview.value = normalizeFontPreviewPayload(payload);
     sendFontPreview();
+};
+
+const handleThemePreviewChange = (payload: InlineThemePreviewPayload) => {
+    latestThemePreview.value = normalizeThemePreviewPayload(payload);
+    sendThemePreview();
 };
 
 const handleNodeFocus = (payload: {
@@ -641,6 +723,9 @@ const handleIframeLoad = () => {
     if (latestFontPreview.value) {
         pendingFontPreview.value = true;
     }
+    if (latestThemePreview.value) {
+        pendingThemePreview.value = true;
+    }
 };
 
 const isInlinePreviewPropClickMessage = (
@@ -729,6 +814,9 @@ const handlePreviewMessage = (event: MessageEvent) => {
         pendingLiveUpdate.value = true;
         if (latestFontPreview.value) {
             pendingFontPreview.value = true;
+        }
+        if (latestThemePreview.value) {
+            pendingThemePreview.value = true;
         }
         nextTick(() => {
             flushPendingPreviewMessages();
@@ -840,6 +928,7 @@ watch(
         pendingLiveUpdate.value = false;
         pendingFocusTarget.value = null;
         pendingFontPreview.value = false;
+        pendingThemePreview.value = false;
         workbenchInstanceKey.value += 1;
         setUnsavedState(false);
     },
@@ -925,6 +1014,7 @@ onBeforeRouteLeave(() => {
                 @document-change="handleDocumentChange"
                 @document-preview-change="handlePreviewDocumentChange"
                 @font-preview-change="handleFontPreviewChange"
+                @theme-preview-change="handleThemePreviewChange"
                 @preview-motion-change="handlePreviewMotionChange"
                 @node-focus="handleNodeFocus"
                 @save-success="handleSaveSuccess"

@@ -1,3 +1,5 @@
+import { resolveContentRuntimeStylingConfig } from "#content/utils/runtime-styling";
+
 /**
  * Direct preload descriptor returned by `/api/content/fonts/preload`.
  */
@@ -27,6 +29,14 @@ type RuntimeFontPreloadResponse = {
  * - stylesheet URL remains versioned so newly applied profiles can be forced immediately.
  */
 export default defineNuxtPlugin(async () => {
+  const runtimeConfig = useRuntimeConfig();
+  const runtimeStyling = resolveContentRuntimeStylingConfig(
+    runtimeConfig.public?.content ?? runtimeConfig.content ?? {},
+  );
+  if (!runtimeStyling.fontsEnabled) {
+    return;
+  }
+
   const runtimeCssVersion = useState<number>(
     "content-font-runtime-css-version",
     () => Date.now(),

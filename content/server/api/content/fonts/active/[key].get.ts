@@ -6,6 +6,7 @@ import {
   setHeader,
 } from "h3";
 import { resolveActiveRuntimeFontAsset } from "../../../../utils/content-fonts";
+import { assertContentRuntimeFontsEnabled } from "../../../../utils/content-runtime-styling";
 
 const ACTIVE_FONT_KEY_PATTERN =
   /^(sans|display)-(\d+)-(normal|italic)(?:-([\d.]+%))?\.woff2$/i;
@@ -18,6 +19,7 @@ const ACTIVE_FONT_KEY_PATTERN =
  * New preload flow prefers `/api/content/fonts/preload` for direct asset URLs.
  */
 export default defineEventHandler(async (event) => {
+  assertContentRuntimeFontsEnabled();
   const key = getRouterParam(event, "key");
   if (!key) {
     throw createError({

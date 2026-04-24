@@ -1,5 +1,6 @@
 import { defineEventHandler, setHeader } from "h3";
 import { resolveActiveRuntimeFontAsset } from "../../../utils/content-fonts";
+import { assertContentRuntimeFontsEnabled } from "../../../utils/content-runtime-styling";
 
 /**
  * Public helper endpoint returning direct preload URLs for critical sans faces.
@@ -9,6 +10,7 @@ import { resolveActiveRuntimeFontAsset } from "../../../utils/content-fonts";
  * can dedupe against `@font-face` requests from runtime CSS.
  */
 export default defineEventHandler(async (event) => {
+  assertContentRuntimeFontsEnabled();
   const [sans400, sans700] = await Promise.all([
     resolveActiveRuntimeFontAsset({
       role: "sans",

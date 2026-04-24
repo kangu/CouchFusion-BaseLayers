@@ -1,5 +1,6 @@
 import { defineEventHandler, setHeader } from "h3";
 import { getRuntimeFontCss } from "../../../utils/content-fonts";
+import { assertContentRuntimeFontsEnabled } from "../../../utils/content-runtime-styling";
 
 /**
  * Public runtime CSS endpoint used by all rendered pages.
@@ -9,6 +10,7 @@ import { getRuntimeFontCss } from "../../../utils/content-fonts";
  * when the builder bumps `runtimeCssVersion` query params.
  */
 export default defineEventHandler(async (event) => {
+  assertContentRuntimeFontsEnabled();
   const css = await getRuntimeFontCss();
 
   setHeader(event, "content-type", "text/css; charset=utf-8");

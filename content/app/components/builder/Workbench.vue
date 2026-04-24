@@ -14,6 +14,7 @@ import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
 import { useContentFontSettings } from "#content/app/composables/useContentFontSettings";
+import { useContentThemeSettings } from "#content/app/composables/useContentThemeSettings";
 import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
 import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
 import {
@@ -48,6 +49,7 @@ import {
     inferPropPathFromPreviewHint,
     type InlinePreviewPropHint,
 } from "#content/app/utils/inline-preview-prop-path";
+import { resolveContentRuntimeStylingConfig } from "#content/utils/runtime-styling";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -206,6 +208,12 @@ const emit = defineEmits<{
             cssHrefs: string[];
         },
     ): void;
+    (
+        e: "theme-preview-change",
+        payload: {
+            tokens: Record<string, string>;
+        },
+    ): void;
     (e: "node-focus", payload: { uid: string; path: string }): void;
     (
         e: "translate-scope",
@@ -222,7 +230,19 @@ const emit = defineEmits<{
 const { registry, createNode, createTextNode } = useComponentRegistry();
 const globalComponentsRegistry = useGlobalComponentsRegistry();
 const contentFontSettings = useContentFontSettings();
+const contentThemeSettings = useContentThemeSettings();
 const runtimeConfig = useRuntimeConfig();
+const contentRuntimeStylingConfig = computed(() =>
+    resolveContentRuntimeStylingConfig(
+        runtimeConfig.content ?? runtimeConfig.public?.content,
+    ),
+);
+const isTypographyFeatureEnabled = computed(
+    () => contentRuntimeStylingConfig.value.fontsEnabled,
+);
+const isThemeFeatureEnabled = computed(
+    () => contentRuntimeStylingConfig.value.themeEnabled,
+);
 const contentI18nConfig = computed(() =>
     resolveContentI18nConfig(
         runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
@@ -2056,12 +2076,23 @@ onMounted(() => {
         })
         .catch(() => {});
 
-    contentFontSettings
-        .fetchAdmin()
-        .then(() => {
-            syncTypographyDraft();
-        })
-        .catch(() => {});
+    if (isTypographyFeatureEnabled.value) {
+        contentFontSettings
+            .fetchAdmin()
+            .then(() => {
+                syncTypographyDraft();
+            })
+            .catch(() => {});
+    }
+
+    if (isThemeFeatureEnabled.value) {
+        contentThemeSettings
+            .fetchAdmin()
+            .then(() => {
+                syncThemeDraft();
+            })
+            .catch(() => {});
+    }
 });
 
 watch(
@@ -2204,6 +2235,10 @@ const buildBunnyPreviewCssHref = (familySlug: string, styles: Array<"normal" | "
 };
 
 const typographySummaryLabel = computed(() => {
+    if (!isTypographyFeatureEnabled.value) {
+        return "Disabled";
+    }
+
     const settings = contentFontSettings.settings.value;
     if (!settings) {
         return "Sans: - · Display: -";
@@ -2235,6 +2270,10 @@ const previewTypographyStyle = computed(() => {
 });
 
 const previewFontCssLinks = computed(() => {
+    if (!isTypographyFeatureEnabled.value) {
+        return [];
+    }
+
     const uniqueFamilies = new Set([
         previewSansFamilySlug.value,
         previewDisplayFamilySlug.value,
@@ -2267,6 +2306,11 @@ const isPreviewFontLoading = ref(false);
 let previewFontLoadToken = 0;
 
 const waitForPreviewFonts = async () => {
+    if (!isTypographyFeatureEnabled.value) {
+        isPreviewFontLoading.value = false;
+        return;
+    }
+
     if (!import.meta.client) {
         return;
     }
@@ -2323,6 +2367,10 @@ watch(
         previewWeights.value.join(","),
     ],
     () => {
+        if (!isTypographyFeatureEnabled.value) {
+            return;
+        }
+
         void waitForPreviewFonts();
         emit("font-preview-change", {
             sansFamily: typographyFamilyLabel(previewSansFamilySlug.value),
@@ -2334,6 +2382,9 @@ watch(
 );
 
 const toggleTypographyPanel = () => {
+    if (!isTypographyFeatureEnabled.value) {
+        return;
+    }
     isTypographyPanelExpanded.value = !isTypographyPanelExpanded.value;
 };
 
@@ -2355,6 +2406,10 @@ const resetTypographyDraft = () => {
 };
 
 const applyTypographySelection = async () => {
+    if (!isTypographyFeatureEnabled.value) {
+        return;
+    }
+
     if (
         !sansFamilyDraft.value ||
         !displayFamilyDraft.value ||
@@ -2388,6 +2443,255 @@ watch(
     () => contentFontSettings.settings.value,
     () => {
         syncTypographyDraft();
+    },
+    { immediate: true },
+);
+
+const THEME_MODES = [
+    { label: "Simple", value: "simple" as const },
+    { label: "Full", value: "full" as const },
+];
+
+const themeModeDraft = ref<"simple" | "full">("simple");
+const isThemePanelExpanded = ref(false);
+const themeDraft = ref<Record<string, string>>({});
+const themeNotice = ref<string | null>(null);
+
+const themeSettings = computed(() => contentThemeSettings.settings.value);
+const themeSchema = computed(() => contentThemeSettings.schema.value);
+const themeErrorMessage = computed(() => contentThemeSettings.error.value);
+const isThemePending = computed(
+    () => contentThemeSettings.loading.value || contentThemeSettings.applying.value,
+);
+
+const editableThemeTokenKeys = computed(
+    () => new Set(themeSchema.value?.fullEditableTokenKeys ?? []),
+);
+const simpleThemeTokenKeys = computed(() => themeSchema.value?.simpleTokenKeys ?? []);
+const readOnlyThemeTokenKeys = computed(
+    () => new Set(themeSchema.value?.readOnlyTokenKeys ?? []),
+);
+
+const themeTokenDefinitionsByKey = computed(() => {
+    const map = new Map<
+        string,
+        {
+            key: string;
+            label: string;
+            namespace: string;
+            valueType: "color" | "length" | "number" | "string";
+            simpleEditable: boolean;
+            runtimeWritable: boolean;
+            owner: "theme" | "fonts";
+            description: string;
+        }
+    >();
+
+    for (const token of themeSchema.value?.tokens ?? []) {
+        map.set(token.key, token);
+    }
+
+    return map;
+});
+
+const getThemeTokenValue = (key: string) => {
+    if (typeof themeDraft.value[key] === "string") {
+        return themeDraft.value[key];
+    }
+    return themeSettings.value?.draftTokens?.[key] ?? "";
+};
+
+const updateThemeTokenValue = (key: string, value: string) => {
+    themeDraft.value = {
+        ...themeDraft.value,
+        [key]: value,
+    };
+    themeNotice.value = null;
+};
+
+const isThemeTokenReadOnly = (key: string) =>
+    !editableThemeTokenKeys.value.has(key) || readOnlyThemeTokenKeys.value.has(key);
+
+const themeSimpleTokenDefinitions = computed(() =>
+    simpleThemeTokenKeys.value
+        .map((key) => themeTokenDefinitionsByKey.value.get(key))
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
+);
+
+const themeNamespaceSections = computed(() => {
+    const namespaces = themeSchema.value?.namespaces ?? [];
+    const tokens = themeSchema.value?.tokens ?? [];
+
+    return namespaces.map((namespace) => ({
+        ...namespace,
+        tokens: tokens.filter((token) => token.namespace === namespace.key),
+    }));
+});
+
+const createComparableThemeTokenMap = (source: Record<string, string> | null | undefined) => {
+    const result: Record<string, string> = {};
+    const keys = Array.from(editableThemeTokenKeys.value.values()).sort((left, right) =>
+        left.localeCompare(right),
+    );
+
+    for (const key of keys) {
+        const raw = source?.[key];
+        if (typeof raw !== "string") {
+            continue;
+        }
+        const normalized = raw.trim();
+        if (!normalized) {
+            continue;
+        }
+        result[key] = normalized;
+    }
+
+    return result;
+};
+
+const hasThemeDraftChanges = computed(() => {
+    const settings = themeSettings.value;
+    if (!settings) {
+        return false;
+    }
+
+    const original = createComparableThemeTokenMap(settings.draftTokens);
+    const draft = createComparableThemeTokenMap(themeDraft.value);
+    return JSON.stringify(original) !== JSON.stringify(draft);
+});
+
+const themeStatusLabel = computed(() => {
+    const settings = themeSettings.value;
+    if (!settings) {
+        return "Not loaded";
+    }
+
+    if (settings.status === "failed") {
+        return "Last apply failed";
+    }
+
+    if (settings.lastAppliedAt) {
+        return `Applied ${new Date(settings.lastAppliedAt).toLocaleString()}`;
+    }
+
+    return "Not applied yet";
+});
+
+const themeSummaryLabel = computed(() => {
+    if (!isThemeFeatureEnabled.value) {
+        return "Disabled";
+    }
+
+    const primary = getThemeTokenValue("--color-primary") || "-";
+    const secondary = getThemeTokenValue("--color-secondary") || "-";
+    return `Primary: ${primary} · Secondary: ${secondary}`;
+});
+
+const syncThemeDraft = () => {
+    const settings = themeSettings.value;
+    if (!settings) {
+        return;
+    }
+
+    const nextDraft: Record<string, string> = {};
+    for (const key of editableThemeTokenKeys.value) {
+        const value = settings.draftTokens?.[key];
+        if (typeof value === "string" && value.trim().length > 0) {
+            nextDraft[key] = value;
+        }
+    }
+
+    themeDraft.value = nextDraft;
+};
+
+const resetThemeDraft = () => {
+    syncThemeDraft();
+    themeNotice.value = null;
+};
+
+const saveThemeDraft = async () => {
+    if (!isThemeFeatureEnabled.value) {
+        return;
+    }
+
+    if (!themeSettings.value) {
+        return;
+    }
+    themeNotice.value = null;
+
+    const payload: Record<string, string> = {};
+    for (const key of editableThemeTokenKeys.value) {
+        const raw = getThemeTokenValue(key);
+        const normalized = typeof raw === "string" ? raw.trim() : "";
+        if (!normalized) {
+            continue;
+        }
+        payload[key] = normalized;
+    }
+
+    await contentThemeSettings.saveAdmin({
+        draftTokens: payload,
+    });
+    syncThemeDraft();
+    themeNotice.value = "Theme draft saved.";
+};
+
+const applyThemeDraft = async () => {
+    if (!isThemeFeatureEnabled.value) {
+        return;
+    }
+
+    if (!themeSettings.value || hasThemeDraftChanges.value) {
+        return;
+    }
+    themeNotice.value = null;
+    await contentThemeSettings.applyAdmin();
+    contentThemeSettings.bumpRuntimeStylesheet();
+    syncThemeDraft();
+    themeNotice.value = "Theme applied.";
+};
+
+const toggleThemePanel = () => {
+    if (!isThemeFeatureEnabled.value) {
+        return;
+    }
+    isThemePanelExpanded.value = !isThemePanelExpanded.value;
+};
+
+const previewThemeTokens = computed(() => {
+    if (!isThemeFeatureEnabled.value) {
+        return {};
+    }
+
+    const tokens: Record<string, string> = {};
+    for (const key of editableThemeTokenKeys.value) {
+        const value = getThemeTokenValue(key).trim();
+        if (!value) {
+            continue;
+        }
+        tokens[key] = value;
+    }
+    return tokens;
+});
+
+watch(
+    () => previewThemeTokens.value,
+    (value) => {
+        if (!isThemeFeatureEnabled.value) {
+            return;
+        }
+
+        emit("theme-preview-change", {
+            tokens: { ...value },
+        });
+    },
+    { deep: true, immediate: true },
+);
+
+watch(
+    () => themeSettings.value,
+    () => {
+        syncThemeDraft();
     },
     { immediate: true },
 );
@@ -2475,7 +2779,7 @@ const handleSaveDebugClick = () => {
 <template>
     <div class="builder-page">
         <section class="builder-controls">
-            <div class="builder-typography-toggle">
+            <div v-if="isTypographyFeatureEnabled" class="builder-typography-toggle">
                 <button
                     type="button"
                     class="builder-typography-toggle__button"
@@ -2493,7 +2797,10 @@ const handleSaveDebugClick = () => {
                 </span>
             </div>
 
-            <div v-if="isTypographyPanelExpanded" class="builder-typography-card">
+            <div
+                v-if="isTypographyFeatureEnabled && isTypographyPanelExpanded"
+                class="builder-typography-card"
+            >
                 <div class="builder-typography-card__header">
                     <h3>Typography</h3>
                     <span>{{ typographyStatusLabel }}</span>
@@ -2603,6 +2910,155 @@ const handleSaveDebugClick = () => {
                                 ? "Applying…"
                                 : "Apply Fonts"
                         }}
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="isThemeFeatureEnabled" class="builder-theme-toggle">
+                <button
+                    type="button"
+                    class="builder-theme-toggle__button"
+                    :aria-expanded="isThemePanelExpanded"
+                    @click="toggleThemePanel"
+                >
+                    {{
+                        isThemePanelExpanded
+                            ? "Hide Theme"
+                            : "Theme"
+                    }}
+                </button>
+                <span class="builder-theme-toggle__summary">
+                    {{ themeSummaryLabel }}
+                </span>
+            </div>
+
+            <div
+                v-if="isThemeFeatureEnabled && isThemePanelExpanded"
+                class="builder-theme-card"
+            >
+                <div class="builder-theme-card__header">
+                    <h3>Theme</h3>
+                    <span>{{ themeStatusLabel }}</span>
+                </div>
+
+                <div class="builder-theme-card__mode">
+                    <button
+                        v-for="mode in THEME_MODES"
+                        :key="`theme-mode-${mode.value}`"
+                        type="button"
+                        class="builder-theme-card__mode-btn"
+                        :class="{ 'builder-theme-card__mode-btn--active': themeModeDraft === mode.value }"
+                        :disabled="isThemePending"
+                        @click="themeModeDraft = mode.value"
+                    >
+                        {{ mode.label }}
+                    </button>
+                </div>
+
+                <div v-if="themeModeDraft === 'simple'" class="builder-theme-card__simple">
+                    <label
+                        v-for="token in themeSimpleTokenDefinitions"
+                        :key="`theme-simple-${token.key}`"
+                    >
+                        <span>{{ token.label }}</span>
+                        <input
+                            type="text"
+                            :value="getThemeTokenValue(token.key)"
+                            :disabled="isThemePending || isThemeTokenReadOnly(token.key)"
+                            @input="
+                                (event: Event) =>
+                                    updateThemeTokenValue(
+                                        token.key,
+                                        (event.target as HTMLInputElement).value,
+                                    )
+                            "
+                        />
+                    </label>
+                </div>
+
+                <div v-else class="builder-theme-card__full">
+                    <section
+                        v-for="namespace in themeNamespaceSections"
+                        :key="`theme-namespace-${namespace.key}`"
+                        class="builder-theme-card__namespace"
+                    >
+                        <header class="builder-theme-card__namespace-header">
+                            <div>
+                                <h4>{{ namespace.label }}</h4>
+                                <p>{{ namespace.description }}</p>
+                            </div>
+                            <span
+                                v-if="namespace.compileTimeOnly"
+                                class="builder-theme-card__namespace-badge"
+                            >
+                                Read-only (compile-time)
+                            </span>
+                        </header>
+
+                        <p
+                            v-if="namespace.tokens.length === 0"
+                            class="builder-theme-card__namespace-empty"
+                        >
+                            No project keys configured for this namespace yet.
+                        </p>
+
+                        <div v-else class="builder-theme-card__namespace-grid">
+                            <label
+                                v-for="token in namespace.tokens"
+                                :key="`theme-token-${token.key}`"
+                            >
+                                <span>
+                                    {{ token.label }}
+                                    <em v-if="isThemeTokenReadOnly(token.key)"> · read-only</em>
+                                </span>
+                                <input
+                                    type="text"
+                                    :value="getThemeTokenValue(token.key)"
+                                    :disabled="isThemePending || isThemeTokenReadOnly(token.key)"
+                                    @input="
+                                        (event: Event) =>
+                                            updateThemeTokenValue(
+                                                token.key,
+                                                (event.target as HTMLInputElement).value,
+                                            )
+                                    "
+                                />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+
+                <p v-if="themeErrorMessage" class="builder-theme-card__error">
+                    {{ themeErrorMessage }}
+                </p>
+                <p v-else-if="themeNotice" class="builder-theme-card__notice">
+                    {{ themeNotice }}
+                </p>
+
+                <div class="builder-theme-card__actions">
+                    <button
+                        type="button"
+                        class="builder-theme-card__cancel"
+                        :disabled="isThemePending || !themeSettings || !hasThemeDraftChanges"
+                        @click="resetThemeDraft"
+                    >
+                        Reset
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-theme-card__save"
+                        :disabled="isThemePending || !themeSettings || !hasThemeDraftChanges"
+                        @click="saveThemeDraft"
+                    >
+                        Save Draft
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-theme-card__apply"
+                        :disabled="isThemePending || !themeSettings || hasThemeDraftChanges"
+                        @click="applyThemeDraft"
+                    >
+                        Apply Theme
                     </button>
                 </div>
             </div>
@@ -3171,6 +3627,218 @@ const handleSaveDebugClick = () => {
 }
 
 .builder-typography-card__notice {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #0369a1;
+}
+
+.builder-theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.builder-theme-toggle__button {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 7px 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-theme-toggle__summary {
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.builder-theme-card {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.builder-theme-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.builder-theme-card__header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.builder-theme-card__header span {
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.builder-theme-card__mode {
+    display: flex;
+    gap: 8px;
+}
+
+.builder-theme-card__mode-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-theme-card__mode-btn--active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.builder-theme-card__simple {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.builder-theme-card__simple label,
+.builder-theme-card__namespace-grid label {
+    display: grid;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: #334155;
+}
+
+.builder-theme-card__simple input,
+.builder-theme-card__namespace-grid input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.86rem;
+}
+
+.builder-theme-card__full {
+    display: grid;
+    gap: 10px;
+}
+
+.builder-theme-card__namespace {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+}
+
+.builder-theme-card__namespace-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.builder-theme-card__namespace-header h4 {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.builder-theme-card__namespace-header p {
+    margin: 3px 0 0;
+    font-size: 0.72rem;
+    color: #64748b;
+    max-width: 760px;
+}
+
+.builder-theme-card__namespace-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.builder-theme-card__namespace-empty {
+    margin: 0;
+    font-size: 0.74rem;
+    color: #64748b;
+}
+
+.builder-theme-card__namespace-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.builder-theme-card__namespace-grid em {
+    font-style: normal;
+    color: #64748b;
+    font-size: 0.72rem;
+}
+
+.builder-theme-card__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.builder-theme-card__cancel,
+.builder-theme-card__save,
+.builder-theme-card__apply {
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.builder-theme-card__cancel {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.builder-theme-card__save {
+    background: #f59e0b;
+    color: #ffffff;
+}
+
+.builder-theme-card__apply {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.builder-theme-card__cancel:disabled,
+.builder-theme-card__save:disabled,
+.builder-theme-card__apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.builder-theme-card__error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #b91c1c;
+}
+
+.builder-theme-card__notice {
     margin: 0;
     font-size: 0.78rem;
     color: #0369a1;
