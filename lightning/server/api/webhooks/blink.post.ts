@@ -1,7 +1,8 @@
 import { createError, defineEventHandler, readBody } from "h3";
-import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
 import { createLightningService } from "../../../services/lightning";
 import type { LightningConfig, WebhookEvent } from "../../../types/lightning";
+import { updateLinkedInvoiceDocuments } from "#lightning/server/utils/invoice-links.mjs";
 
 async function updateInvoiceDocument(
   databaseName: string,
@@ -10,7 +11,7 @@ async function updateInvoiceDocument(
 ) {
   const invoiceDoc = await getDocument<CouchDBDocument>(databaseName, invoiceDocId);
   if (!invoiceDoc) {
-    throw new Error(`Invoice document not found: ${invoiceDocId}`);
+    return null;
   }
 
   const updatedInvoice = {
@@ -95,14 +96,30 @@ export default defineEventHandler(async (event) => {
       invoiceDocId,
       webhookEvent,
     );
-    console.log("Blink webhook route invoice updated:", {
-      invoiceId: webhookEvent.invoiceId,
-      invoiceDocId,
-      orderId: invoiceDoc.orderId || null,
-      status: webhookEvent.status,
-    });
+    if (invoiceDoc) {
+      console.log("Blink webhook route invoice updated:", {
+        invoiceId: webhookEvent.invoiceId,
+        invoiceDocId,
+        orderId: invoiceDoc.orderId || null,
+        status: webhookEvent.status,
+      });
+    } else {
+      console.log("Blink webhook route found no legacy order invoice document:", {
+        invoiceId: webhookEvent.invoiceId,
+        invoiceDocId,
+      });
+    }
 
-    if (webhookEvent.status === "paid" && invoiceDoc.orderId) {
+    const linkedUpdates = await updateLinkedInvoiceDocuments({
+      registryDatabaseName: ordersDatabase,
+      webhookEvent,
+      getView,
+      getDocument,
+      putDocument,
+    });
+    console.log("Blink webhook route linked invoice updates:", linkedUpdates);
+
+    if (webhookEvent.status === "paid" && invoiceDoc?.orderId) {
       console.log("Blink webhook route updating order:", {
         orderId: invoiceDoc.orderId,
         status: "active",
@@ -119,7 +136,7 @@ export default defineEventHandler(async (event) => {
           status: webhookEvent.status,
         });
       }
-    } else if (webhookEvent.status === "expired" && invoiceDoc.orderId) {
+    } else if (webhookEvent.status === "expired" && invoiceDoc?.orderId) {
       console.log("Blink webhook route updating order:", {
         orderId: invoiceDoc.orderId,
         status: "expired",
@@ -141,7 +158,8 @@ export default defineEventHandler(async (event) => {
     console.log("Blink webhook route processed successfully:", {
       invoiceId: webhookEvent.invoiceId,
       status: webhookEvent.status,
-      orderId: invoiceDoc.orderId || null,
+      orderId: invoiceDoc?.orderId || null,
+      linkedUpdates: linkedUpdates.updated,
     });
 
     const responsePayload = {

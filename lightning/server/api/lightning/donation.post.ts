@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto'
 import { useLightning } from '../../composables/useLightning'
 import {defineEventHandler, readBody, createError} from 'h3'
 import {useRuntimeConfig} from '#imports'
-import {saveInvoiceToDatabase} from '../../../../../layers/lightning/utils/orders'
+import {saveInvoiceToDatabase} from '../../../utils/orders'
 import type {LightningConfig} from "../../../types/lightning";
 
 export default defineEventHandler(async (event) => {

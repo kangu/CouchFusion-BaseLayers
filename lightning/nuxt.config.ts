@@ -1,6 +1,9 @@
-import { resolve } from 'path'
+import { fileURLToPath } from 'node:url'
 
 export default defineNuxtConfig({
+    alias: {
+        '#lightning': fileURLToPath(new URL('.', import.meta.url))
+    },
 // Expose this layer's resources
     extends: ['../database'],
 

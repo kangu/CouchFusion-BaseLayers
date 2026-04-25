@@ -19,6 +19,20 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
         }
       }`
     },
+    invoice_links_by_invoice_id: {
+      map: `function(doc) {
+        if (doc.type === 'lightning_invoice_link' && doc.invoiceId) {
+          emit(doc.invoiceId, doc);
+        }
+      }`
+    },
+    invoice_links_by_purpose: {
+      map: `function(doc) {
+        if (doc.type === 'lightning_invoice_link' && doc.purpose) {
+          emit(doc.purpose, doc);
+        }
+      }`
+    },
 
     /**
      * Query invoices by status
