@@ -71,7 +71,8 @@ function resolveWatchDirs() {
   ]
 
   const candidates = major >= 4 ? nuxt4Candidates : nuxt3Candidates
-  const existing = candidates.filter((dir) => fs.existsSync(dir))
+  const configured = readConfiguredComponentDirs()
+  const existing = [...candidates, ...configured].filter((dir) => fs.existsSync(dir))
 
   if (existing.length > 0) {
     return existing
@@ -81,6 +82,23 @@ function resolveWatchDirs() {
   console.warn(`[registry] Creating missing content component directory at ${path.relative(repoRoot, fallback)}.`)
   fs.mkdirSync(fallback, { recursive: true })
   return [fallback]
+}
+
+function readConfiguredComponentDirs() {
+  const packageJsonPath = path.join(appRoot, 'package.json')
+  try {
+    const raw = fs.readFileSync(packageJsonPath, 'utf8')
+    const pkg = JSON.parse(raw)
+    const dirs = pkg?.contentRegistry?.componentDirs
+    if (!Array.isArray(dirs)) {
+      return []
+    }
+    return dirs
+      .filter((dir) => typeof dir === 'string' && dir.trim().length > 0)
+      .map((dir) => path.resolve(appRoot, dir))
+  } catch {
+    return []
+  }
 }
 
 const watchDirs = resolveWatchDirs()

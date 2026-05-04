@@ -65,6 +65,12 @@ export interface ContentThemeSettingsDocument extends CouchDBDocument {
   updatedBy: string | null;
 }
 
+interface ContentThemeAppProfile {
+  presetTokens: Record<string, string>;
+  simpleTokenKeys?: string[];
+  tokenLabelOverrides?: Record<string, string>;
+}
+
 const nowIso = (): string => new Date().toISOString();
 
 /**
@@ -525,26 +531,76 @@ const BITVOCATION_THEME_PRESET: Record<string, string> = {
   "--orange-hover": "rgb(237, 172, 91)",
 };
 
+const COUCHFUSION_THEME_PRESET: Record<string, string> = {
+  "--color-primary": "#22c55e",
+  "--color-secondary": "#f7931a",
+  "--background": "38 35% 93%",
+  "--foreground": "0 0% 8%",
+  "--radius": "1rem",
+};
+
+const COUCHFUSION_SIMPLE_TOKEN_KEYS = [
+  "--color-primary",
+  "--color-secondary",
+  "--background",
+  "--foreground",
+  "--radius",
+];
+
+const COUCHFUSION_TOKEN_LABEL_OVERRIDES: Record<string, string> = {
+  "--color-primary": "CouchFusion Green",
+  "--color-secondary": "Bitcoin Orange",
+  "--background": "Paper Background",
+  "--foreground": "Ink Foreground",
+};
+
 const DEFAULT_THEME_PRESET: Record<string, string> = {};
 
-/** Resolve app-specific preset defaults from normalized app slug. */
-export const getContentThemePresetBySlug = (slug: string): Record<string, string> => {
-  if (slug === "bitvocation") {
+const DEFAULT_THEME_PROFILE: ContentThemeAppProfile = {
+  presetTokens: DEFAULT_THEME_PRESET,
+};
+
+const normalizeThemeSlug = (slug: string): string => slug.trim().toLowerCase();
+
+const getContentThemeProfileBySlug = (slug: string): ContentThemeAppProfile => {
+  const normalizedSlug = normalizeThemeSlug(slug);
+
+  if (normalizedSlug === "bitvocation") {
     return {
-      ...BITVOCATION_THEME_PRESET,
+      presetTokens: BITVOCATION_THEME_PRESET,
     };
   }
 
+  if (
+    normalizedSlug === "cfcom" ||
+    normalizedSlug === "couchfusioncom" ||
+    normalizedSlug === "couchfusion-com"
+  ) {
+    return {
+      presetTokens: COUCHFUSION_THEME_PRESET,
+      simpleTokenKeys: COUCHFUSION_SIMPLE_TOKEN_KEYS,
+      tokenLabelOverrides: COUCHFUSION_TOKEN_LABEL_OVERRIDES,
+    };
+  }
+
+  return DEFAULT_THEME_PROFILE;
+};
+
+/** Resolve app-specific preset defaults from normalized app slug. */
+export const getContentThemePresetBySlug = (slug: string): Record<string, string> => {
   return {
-    ...DEFAULT_THEME_PRESET,
+    ...getContentThemeProfileBySlug(slug).presetTokens,
   };
 };
 
-const resolveContentThemePreset = (): Record<string, string> => {
+const resolveContentThemeSlug = (): string => {
   const runtimeConfig = useRuntimeConfig();
   const fallbackCwdName = process.cwd().split("/").filter(Boolean).pop() ?? "app";
-  const slug = resolveContentFontRuntimeSlug(runtimeConfig, fallbackCwdName);
-  return getContentThemePresetBySlug(slug);
+  return resolveContentFontRuntimeSlug(runtimeConfig, fallbackCwdName);
+};
+
+const resolveContentThemePreset = (): Record<string, string> => {
+  return getContentThemePresetBySlug(resolveContentThemeSlug());
 };
 
 const normalizeLengthToken = (value: string): string | null => {
@@ -767,11 +823,33 @@ const persistSettingsDocument = async (
   return nextDoc;
 };
 
-/** Return immutable schema contract used by admin editors. */
-export const getContentThemeSchema = (): ContentThemeSchema => {
-  const simpleTokenKeys = CONTENT_THEME_TOKEN_DEFINITIONS.filter(
+const getDefaultSimpleTokenKeys = (): string[] =>
+  CONTENT_THEME_TOKEN_DEFINITIONS.filter(
     (entry) => entry.simpleEditable && entry.runtimeWritable && entry.owner === "theme",
   ).map((entry) => entry.key);
+
+const getThemeTokenDefinitionsForProfile = (
+  profile: ContentThemeAppProfile,
+): ContentThemeTokenDefinition[] =>
+  CONTENT_THEME_TOKEN_DEFINITIONS.map((entry) => {
+    const label = profile.tokenLabelOverrides?.[entry.key];
+    return label
+      ? {
+          ...entry,
+          label,
+        }
+      : { ...entry };
+  });
+
+/** Return immutable schema contract used by admin editors. */
+export const getContentThemeSchema = (slug?: string): ContentThemeSchema => {
+  const profile = slug
+    ? getContentThemeProfileBySlug(slug)
+    : getContentThemeProfileBySlug(resolveContentThemeSlug());
+
+  const simpleTokenKeys = profile.simpleTokenKeys
+    ? [...profile.simpleTokenKeys]
+    : getDefaultSimpleTokenKeys();
 
   const fullEditableTokenKeys = CONTENT_THEME_TOKEN_DEFINITIONS.filter(
     (entry) => entry.runtimeWritable && entry.owner === "theme",
@@ -783,7 +861,7 @@ export const getContentThemeSchema = (): ContentThemeSchema => {
 
   return {
     namespaces: [...CONTENT_THEME_NAMESPACES],
-    tokens: [...CONTENT_THEME_TOKEN_DEFINITIONS],
+    tokens: getThemeTokenDefinitionsForProfile(profile),
     simpleTokenKeys,
     fullEditableTokenKeys,
     readOnlyTokenKeys,

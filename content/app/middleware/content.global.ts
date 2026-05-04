@@ -8,6 +8,7 @@ import {
   useRuntimeConfig,
 } from "#imports";
 import { useContentPagesStore } from "#content/app/stores/pages";
+import { resolveContentRoutePath } from "#content/utils/page";
 import {
   resolveAllowedPrefixes,
   resolveIgnoredPrefixes,
@@ -135,10 +136,16 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const contentI18nConfig = resolveContentI18nConfig(
     runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
   );
-  const localizedPath = resolveContentLocalePath(to.path, contentI18nConfig);
+  const serverRequestEvent = import.meta.server ? useRequestEvent() : null;
+  const routePath = resolveContentRoutePath(
+    to.path,
+    to.fullPath,
+    serverRequestEvent?.node.req.url,
+  );
+  const localizedPath = resolveContentLocalePath(routePath, contentI18nConfig);
   const contentPath = localizedPath.basePath;
 
-  if (to.path.startsWith("/api") || contentPath.startsWith("/api")) {
+  if (routePath.startsWith("/api") || contentPath.startsWith("/api")) {
     // API endpoints are reserved for Nitro server routes; return a hard 404 when a page route
     // attempts to handle them so consuming apps don't need per-page guards.
     return abortNavigation(
@@ -183,23 +190,22 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     );
 
     // Redirect only when request entered through a non-prefixed/default-locale path.
-    if (to.path === defaultPath) {
-      const requestEvent = useRequestEvent();
-      const cookieHeader = Array.isArray(requestEvent?.node.req.headers.cookie)
-        ? requestEvent?.node.req.headers.cookie[0]
-        : requestEvent?.node.req.headers.cookie;
+    if (routePath === defaultPath) {
+      const cookieHeader = Array.isArray(serverRequestEvent?.node.req.headers.cookie)
+        ? serverRequestEvent?.node.req.headers.cookie[0]
+        : serverRequestEvent?.node.req.headers.cookie;
       const localeRedirectAlreadyHandled =
         hasLocaleRedirectSessionCookie(
           typeof cookieHeader === "string" ? cookieHeader : undefined,
         );
 
       if (!localeRedirectAlreadyHandled) {
-        const acceptLanguageHeader = Array.isArray(requestEvent?.node.req.headers["accept-language"])
-          ? requestEvent?.node.req.headers["accept-language"][0]
-          : requestEvent?.node.req.headers["accept-language"];
-        const userAgentHeader = Array.isArray(requestEvent?.node.req.headers["user-agent"])
-          ? requestEvent?.node.req.headers["user-agent"][0]
-          : requestEvent?.node.req.headers["user-agent"];
+        const acceptLanguageHeader = Array.isArray(serverRequestEvent?.node.req.headers["accept-language"])
+          ? serverRequestEvent?.node.req.headers["accept-language"][0]
+          : serverRequestEvent?.node.req.headers["accept-language"];
+        const userAgentHeader = Array.isArray(serverRequestEvent?.node.req.headers["user-agent"])
+          ? serverRequestEvent?.node.req.headers["user-agent"][0]
+          : serverRequestEvent?.node.req.headers["user-agent"];
 
         if (!isCrawlerUserAgent(userAgentHeader)) {
           const preferredLocales = resolvePreferredSupportedLocales(
@@ -226,7 +232,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
                 preferredLocale,
                 contentI18nConfig,
               );
-              if (targetPath !== to.path) {
+              if (targetPath !== routePath) {
                 return navigateTo(targetPath, { redirectCode: 307 });
               }
               break;

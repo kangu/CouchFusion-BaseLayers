@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getContentThemeSchema,
   getContentThemePresetBySlug,
   normalizeContentThemeDraftTokens,
   renderRuntimeThemeCss,
@@ -15,6 +16,35 @@ describe("content theme presets", () => {
 
   it("returns empty preset for unknown slug", () => {
     expect(getContentThemePresetBySlug("unknown-app")).toEqual({});
+  });
+
+  it("returns CouchFusion preset defaults for cfcom slugs", () => {
+    const cfcomPreset = getContentThemePresetBySlug("cfcom");
+    const couchfusionPreset = getContentThemePresetBySlug("couchfusioncom");
+
+    expect(cfcomPreset["--color-primary"]).toBe("#22c55e");
+    expect(cfcomPreset["--color-secondary"]).toBe("#f7931a");
+    expect(cfcomPreset["--background"]).toBe("38 35% 93%");
+    expect(cfcomPreset["--foreground"]).toBe("0 0% 8%");
+    expect(cfcomPreset["--radius"]).toBe("1rem");
+    expect(couchfusionPreset).toEqual(cfcomPreset);
+  });
+
+  it("returns CouchFusion simple theme labels without Bitvocation artifacts", () => {
+    const schema = getContentThemeSchema("cfcom");
+    const simpleLabels = schema.simpleTokenKeys
+      .map((key) => schema.tokens.find((token) => token.key === key)?.label)
+      .filter(Boolean);
+
+    expect(simpleLabels).toEqual([
+      "CouchFusion Green",
+      "Bitcoin Orange",
+      "Paper Background",
+      "Ink Foreground",
+      "Radius",
+    ]);
+    expect(simpleLabels).not.toContain("Orange Custom");
+    expect(simpleLabels).not.toContain("Orange Custom Hover");
   });
 });
 

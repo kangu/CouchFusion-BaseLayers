@@ -16,6 +16,32 @@ export function normalizePagePath(path: string): string {
 }
 
 /**
+ * Resolve the browser-visible route path for content lookups.
+ *
+ * Nuxt's route.path may decode reserved characters during SSR. Content page ids
+ * are generated from public URLs, so preserve the encoded path from fullPath
+ * when it is available and strip query/hash before normalization.
+ */
+export function resolveContentRoutePath(path: string, fullPath?: string, requestUrl?: string): string {
+    const sourcePath =
+        typeof requestUrl === 'string' && requestUrl.trim()
+            ? requestUrl
+            : typeof fullPath === 'string' && fullPath.trim()
+                ? fullPath
+                : null
+
+    if (sourcePath) {
+        const [withoutHash] = sourcePath.split('#')
+        const [withoutQuery] = withoutHash.split('?')
+        if (withoutQuery.trim()) {
+            return normalizePagePath(withoutQuery)
+        }
+    }
+
+    return normalizePagePath(path)
+}
+
+/**
  * Convert a normalized path to the CouchDB document id convention used by the content layer.
  */
 export function pageIdFromPath(path: string): string {

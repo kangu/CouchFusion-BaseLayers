@@ -12,6 +12,10 @@ const positionalArgs = process.argv.slice(2).filter((arg) => !arg.startsWith('--
 const [appNameArg] = positionalArgs
 const appFlag = process.argv.find((arg) => arg.startsWith('--app='))
 const appFlagValue = appFlag ? appFlag.split('=')[1] : undefined
+const extraComponentDirFlags = process.argv
+  .filter((arg) => arg.startsWith('--component-dir='))
+  .map((arg) => arg.split('=').slice(1).join('='))
+  .filter(Boolean)
 
 const inferAppNameFromCwd = () => {
   let current = path.resolve(process.cwd())
@@ -51,6 +55,23 @@ const fileExists = async (targetPath) => {
     return true
   } catch {
     return false
+  }
+}
+
+const readConfiguredComponentDirs = async () => {
+  const packageJsonPath = path.join(appRoot, 'package.json')
+  try {
+    const raw = await fs.readFile(packageJsonPath, 'utf8')
+    const pkg = JSON.parse(raw)
+    const dirs = pkg?.contentRegistry?.componentDirs
+    if (!Array.isArray(dirs)) {
+      return []
+    }
+    return dirs
+      .filter((dir) => typeof dir === 'string' && dir.trim().length > 0)
+      .map((dir) => path.resolve(appRoot, dir))
+  } catch {
+    return []
   }
 }
 
@@ -123,14 +144,23 @@ const ensureAppPaths = async () => {
 
   nuxtMajorVersion = await detectNuxtMajorVersion()
   componentDirs = await resolveComponentDirectories(nuxtMajorVersion)
+  componentDirs.push(...(await readConfiguredComponentDirs()))
+  for (const extraDir of extraComponentDirFlags) {
+    componentDirs.push(path.resolve(process.cwd(), extraDir))
+  }
+  componentDirs = [...new Set(componentDirs)]
 
   for (let index = 0; index < componentDirs.length; index += 1) {
     const dir = componentDirs[index]
     if (!(await fileExists(dir))) {
       if (index === 0) {
         console.warn(`No content component directory found for ${appName}. Creating ${dir}.`)
+        await fs.mkdir(dir, { recursive: true })
+      } else {
+        console.warn(`Skipping missing content component directory for ${appName}: ${dir}`)
+        componentDirs.splice(index, 1)
+        index -= 1
       }
-      await fs.mkdir(dir, { recursive: true })
     }
   }
 

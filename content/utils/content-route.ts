@@ -5,6 +5,7 @@ export const RESERVED_CONTENT_PREFIXES = [
   "/assets",
   "/favicon",
   "/login",
+  "/admin",
   "/builder",
   "/k",
   "/__",
