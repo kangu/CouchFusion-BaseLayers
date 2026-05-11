@@ -96,6 +96,10 @@ const applyImmediateTransform = (el: HTMLImageElement) => {
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
+  if (nuxtApp.vueApp.directive('imagekit')) {
+    return
+  }
+
   const runtimeConfig = useRuntimeConfig()
   const endpoint =
     runtimeConfig.public?.imagekit?.urlEndpoint || runtimeConfig.imagekit?.urlEndpoint || undefined

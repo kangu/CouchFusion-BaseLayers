@@ -5,6 +5,10 @@ const TRANSFORM_ATTR = 'ikTransforms'
 const ENDPOINT_ATTR = 'ikEndpoint'
 
 export default defineNuxtPlugin((nuxtApp) => {
+  if (nuxtApp.vueApp.directive('lazy-bg')) {
+    return
+  }
+
   const OBSERVER_KEY = Symbol('lazyBgObserver')
   const SOURCE_KEY = Symbol('lazyBgSource')
   const isClient = typeof window !== 'undefined'

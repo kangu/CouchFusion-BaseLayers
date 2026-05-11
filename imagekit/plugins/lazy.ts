@@ -7,6 +7,10 @@ const ENDPOINT_ATTR = 'ikEndpoint'
 const IMAGEKIT_EVENT = 'imagekit:transformed'
 
 export default defineNuxtPlugin((nuxtApp) => {
+  if (nuxtApp.vueApp.directive('lazy')) {
+    return
+  }
+
   const OBSERVER_KEY = Symbol('lazyObserver')
   const SOURCE_KEY = Symbol('lazySource')
   const IMAGEKIT_HANDLER_KEY = Symbol('lazyImageKitHandler')
