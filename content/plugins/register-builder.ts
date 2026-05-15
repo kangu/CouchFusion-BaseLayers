@@ -1,14 +1,15 @@
-/*
-* This is needed for NuxtJS3 to be able to import the plugins
-* */
-
-import BuilderWorkbench from '../app/components/builder/Workbench.vue'
-import ContentAdminWorkbench from '../app/components/admin/ContentAdminWorkbench.vue'
-import ContentRichTextField from '../app/components/admin/ContentRichTextField.vue'
-// ContentRichTextField: () => import("../components/admin/ContentRichTextField.vue"),
+import { defineAsyncComponent } from 'vue'
 
 export default defineNuxtPlugin(({ vueApp }) => {
-  vueApp.component('BuilderWorkbench', BuilderWorkbench)
-  vueApp.component('ContentAdminWorkbench', ContentAdminWorkbench)
-  vueApp.component('ContentRichTextField', ContentRichTextField)
+  const components = {
+    BuilderWorkbench: () => import('../app/components/builder/Workbench.vue'),
+    ContentAdminWorkbench: () => import('../app/components/admin/ContentAdminWorkbench.vue'),
+    ContentRichTextField: () => import('../app/components/admin/ContentRichTextField.vue'),
+  }
+
+  for (const [name, loader] of Object.entries(components)) {
+    if (!vueApp.component(name)) {
+      vueApp.component(name, defineAsyncComponent(loader))
+    }
+  }
 })

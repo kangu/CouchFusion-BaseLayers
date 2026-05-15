@@ -75,16 +75,10 @@
                 </button>
             </div>
             <div
+                ref="componentGrid"
                 class="component-picker-grid"
                 :class="{ 'is-mobile-grid': previewDevice === 'mobile' }"
-                :style="{
-                    '--component-picker-columns': String(thumbnailColumns),
-                    '--component-picker-preview-scale-desktop': previewDesktopScale.toFixed(4),
-                    '--component-picker-preview-scale-mobile': previewMobileScale.toFixed(4),
-                    '--component-picker-preview-desktop-min-width': `${DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH}px`,
-                    '--component-picker-preview-mobile-min-width': `${MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH}px`,
-                    '--component-picker-preview-mobile-max-width': `${MOBILE_PREVIEW_MAX_VIEWPORT_WIDTH}px`
-                }"
+                :style="previewGridStyle"
             >
                 <div
                     v-for="comp in filteredComponents"
@@ -231,7 +225,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from "vue";
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
+import type { CSSProperties } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
 import LazyLoader from "./LazyLoader.vue";
@@ -248,6 +243,8 @@ const emit = defineEmits<{
 
 const searchQuery = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
+const componentGrid = ref<HTMLElement | null>(null);
+const componentGridInlineSize = ref(0);
 const selectedCategory = ref("default");
 const previewDevice = ref<'desktop' | 'mobile'>('desktop');
 const THUMBNAIL_COLUMNS_MIN = 2;
@@ -264,6 +261,9 @@ const MOBILE_PREVIEW_MAX_VIEWPORT_WIDTH = 480;
 // Global multiplier for thumbnail preview zoom density.
 // Increase for larger previews, decrease for smaller.
 const PREVIEW_SCALE_ADJUSTER = 1.2;
+const COMPONENT_PICKER_GRID_GAP = 20;
+const COMPONENT_PICKER_GRID_INLINE_PADDING = 48;
+const COMPONENT_PICKER_CARD_PREVIEW_INLINE_PADDING = 24;
 
 const expandedComp = ref<ComponentDefinition | null>(null);
 const expandedDevice = ref<'desktop' | 'mobile'>('desktop');
@@ -512,6 +512,64 @@ const previewMobileScale = computed(() =>
     )
 );
 
+const componentPickerPreviewInlineSize = computed(() => {
+    const columns = clampThumbnailColumns(thumbnailColumns.value);
+    const gridInlineSize = componentGridInlineSize.value;
+    if (gridInlineSize <= 0) {
+        return 0;
+    }
+
+    const totalGap = COMPONENT_PICKER_GRID_GAP * Math.max(0, columns - 1);
+    const cardInlineSize =
+        (gridInlineSize - COMPONENT_PICKER_GRID_INLINE_PADDING - totalGap) / columns;
+    return Math.max(0, cardInlineSize - COMPONENT_PICKER_CARD_PREVIEW_INLINE_PADDING);
+});
+
+/**
+ * Returns the effective desktop preview scale without relying on CSS length
+ * division, which the production CSS transformer warns about during build.
+ */
+const previewDesktopEffectiveScale = computed(() => {
+    const previewInlineSize = componentPickerPreviewInlineSize.value;
+    if (previewInlineSize <= 0) {
+        return previewDesktopScale.value;
+    }
+    const fitScale = previewInlineSize / DESKTOP_PREVIEW_MIN_VIEWPORT_WIDTH;
+    return Math.min(previewDesktopScale.value, fitScale);
+});
+
+/**
+ * Returns the effective mobile preview scale, keeping the virtual viewport
+ * between the configured minimum and maximum widths.
+ */
+const previewMobileEffectiveScale = computed(() => {
+    const previewInlineSize = componentPickerPreviewInlineSize.value;
+    if (previewInlineSize <= 0) {
+        return previewMobileScale.value;
+    }
+    const minFitScale = previewInlineSize / MOBILE_PREVIEW_MAX_VIEWPORT_WIDTH;
+    const maxFitScale = previewInlineSize / MOBILE_PREVIEW_MIN_VIEWPORT_WIDTH;
+    return Math.min(Math.max(previewMobileScale.value, minFitScale), maxFitScale);
+});
+
+const previewGridStyle = computed<CSSProperties>(() => ({
+    "--component-picker-columns": String(thumbnailColumns.value),
+    "--component-picker-preview-scale-desktop-effective":
+        previewDesktopEffectiveScale.value.toFixed(4),
+    "--component-picker-preview-scale-mobile-effective":
+        previewMobileEffectiveScale.value.toFixed(4),
+}));
+
+let componentGridResizeObserver: ResizeObserver | null = null;
+
+/**
+ * Stores the current component picker grid width so preview scale values can be
+ * derived in TypeScript instead of through build-warning-prone CSS calculations.
+ */
+const updateComponentGridInlineSize = () => {
+    componentGridInlineSize.value = componentGrid.value?.clientWidth ?? 0;
+};
+
 const loadThumbnailColumns = () => {
     if (!import.meta.client) {
         return;
@@ -544,6 +602,19 @@ const handleThumbnailColumnsInput = (event: Event) => {
 
 onMounted(() => {
     loadThumbnailColumns();
+    updateComponentGridInlineSize();
+
+    if (import.meta.client && componentGrid.value) {
+        componentGridResizeObserver = new ResizeObserver(() => {
+            updateComponentGridInlineSize();
+        });
+        componentGridResizeObserver.observe(componentGrid.value);
+    }
+});
+
+onBeforeUnmount(() => {
+    componentGridResizeObserver?.disconnect();
+    componentGridResizeObserver = null;
 });
 
 watch(
@@ -995,32 +1066,12 @@ watch(
 }
 
 .preview-scaler.is-desktop {
-    --component-picker-preview-scale-desktop-fit: calc(
-        100cqw / var(--component-picker-preview-desktop-min-width, 1280px)
-    );
-    --component-picker-preview-scale-desktop-effective: min(
-        var(--component-picker-preview-scale-desktop, 0.25),
-        var(--component-picker-preview-scale-desktop-fit)
-    );
     width: calc(100% / var(--component-picker-preview-scale-desktop-effective, 0.25));
     height: calc(100% / var(--component-picker-preview-scale-desktop-effective, 0.25));
     transform: scale(var(--component-picker-preview-scale-desktop-effective, 0.25));
 }
 
 .preview-scaler.is-mobile {
-    --component-picker-preview-scale-mobile-fit-min: calc(
-        100cqw / var(--component-picker-preview-mobile-max-width, 480px)
-    );
-    --component-picker-preview-scale-mobile-fit-max: calc(
-        100cqw / var(--component-picker-preview-mobile-min-width, 360px)
-    );
-    --component-picker-preview-scale-mobile-effective: min(
-        max(
-            var(--component-picker-preview-scale-mobile, 0.33),
-            var(--component-picker-preview-scale-mobile-fit-min)
-        ),
-        var(--component-picker-preview-scale-mobile-fit-max)
-    );
     width: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
     height: calc(100% / var(--component-picker-preview-scale-mobile-effective, 0.33));
     transform: scale(var(--component-picker-preview-scale-mobile-effective, 0.33));
