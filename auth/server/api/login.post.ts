@@ -1,14 +1,30 @@
 import { defineEventHandler, readBody, createError } from "h3";
 import { getDocument, putDocument } from "#database/utils/couchdb";
+import {
+  type ProofOfWorkSolution,
+} from "#auth/server/utils/proof-of-work";
+import { assertProofOfWork } from "#auth/server/utils/proof-of-work-runtime";
+import {
+  assertInvisibleFormShield,
+  type InvisibleFormShieldPayload,
+} from "#auth/server/utils/invisible-form-shield";
+
+interface LoginRequestBody {
+  email?: string;
+  funnel?: string;
+  affiliateCode?: string;
+  proofOfWork?: ProofOfWorkSolution;
+  invisibleShield?: InvisibleFormShieldPayload;
+}
 
 // Helper function so not to import anything external
-function isValidEmail(email) {
+function isValidEmail(email: unknown): email is string {
   // simple RFC 5322-ish check — good enough for most APIs
   return typeof email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
 }
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event);
+  const body = await readBody<LoginRequestBody>(event);
 
   if (!body || !isValidEmail(body.email)) {
     throw createError({
@@ -16,6 +32,9 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Invalid input: "email" must be an email address',
     });
   }
+
+  assertInvisibleFormShield(body.invisibleShield, { purpose: "login" });
+  assertProofOfWork(body.proofOfWork, "login");
 
   const affiliateCode =
     typeof body.affiliateCode === "string" ? body.affiliateCode.trim() : "";
@@ -68,7 +87,7 @@ export default defineEventHandler(async (event) => {
   const uniqueCode = [...Array(6)]
     .map(() => String.fromCharCode((65 + Math.random() * 26) | 0))
     .join("");
-  const doc = {
+  const doc: Record<string, unknown> = {
     _id: body.email + "--" + uniqueCode,
     funnel: body.funnel,
     timestamp: timestamp.toISOString(),

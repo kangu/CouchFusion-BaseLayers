@@ -115,6 +115,7 @@ type MountNodeEditorOptions = {
     node: BuilderNodeChild;
     searchQuery?: string;
     definitions?: ComponentDefinition[];
+    globalAliasIds?: string[];
     stubs?: Record<string, any>;
 };
 
@@ -128,6 +129,7 @@ export const mountNodeEditor = (options: MountNodeEditorOptions) => {
             registry,
             componentOptions: definitions,
             searchQuery: options.searchQuery,
+            globalAliasIds: options.globalAliasIds,
             onUpdateProp: vi.fn(),
             onUpdateText: vi.fn(),
             onAddChildComponent: vi.fn(),

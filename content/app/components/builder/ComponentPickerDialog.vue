@@ -23,6 +23,15 @@
                     />
                 </div>
                 <div class="component-picker-header-controls">
+                    <button
+                        v-if="categoryManagerAvailable"
+                        type="button"
+                        class="component-picker-manage-button"
+                        :class="{ 'is-active': manageCategoriesOpen }"
+                        @click="toggleManageCategories"
+                    >
+                        {{ manageCategoriesOpen ? "Back to Picker" : "Manage Categories" }}
+                    </button>
                     <div class="component-picker-view-toggle">
                         <button
                             type="button"
@@ -74,7 +83,99 @@
                     {{ tab.label }}
                 </button>
             </div>
+            <section v-if="manageCategoriesOpen" class="component-picker-manage">
+                <aside class="component-picker-manage__sidebar">
+                    <div class="component-picker-manage__head">
+                        <h4>Categories</h4>
+                        <span v-if="categorySaving" class="component-picker-manage__status">Saving...</span>
+                    </div>
+                    <form class="component-picker-manage__add" @submit.prevent="addDraftCategory">
+                        <input
+                            v-model="newCategoryLabel"
+                            type="text"
+                            placeholder="New category"
+                        />
+                        <button type="submit">Add</button>
+                    </form>
+                    <div class="component-picker-manage__categories">
+                        <button
+                            v-for="category in draftCategories"
+                            :key="category.id"
+                            type="button"
+                            class="component-picker-manage__category"
+                            :class="{ 'is-active': selectedManageCategoryId === category.id }"
+                            @click="selectedManageCategoryId = category.id"
+                        >
+                            {{ category.label }}
+                        </button>
+                    </div>
+                </aside>
+                <div class="component-picker-manage__main">
+                    <template v-if="selectedDraftCategory">
+                        <div class="component-picker-manage__toolbar">
+                            <label class="component-picker-manage__field">
+                                <span>Label</span>
+                                <input
+                                    :value="selectedDraftCategory.label"
+                                    type="text"
+                                    @input="updateSelectedDraftCategoryLabel"
+                                />
+                            </label>
+                            <label class="component-picker-manage__field">
+                                <span>Search components</span>
+                                <input
+                                    v-model="manageSearchQuery"
+                                    type="text"
+                                    placeholder="Search by name or id"
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                class="component-picker-manage__delete"
+                                @click="deleteSelectedDraftCategory"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                        <div class="component-picker-manage__assignments">
+                            <label
+                                v-for="component in manageableComponents"
+                                :key="component.id"
+                                class="component-picker-manage__assignment"
+                            >
+                                <input
+                                    type="checkbox"
+                                    :checked="isComponentAssignedToSelectedCategory(component.id)"
+                                    @change="toggleComponentAssignment(component.id)"
+                                />
+                                <span>
+                                    <strong>{{ component.label }}</strong>
+                                    <small>{{ component.id }}</small>
+                                </span>
+                            </label>
+                        </div>
+                    </template>
+                    <div v-else class="component-picker-manage__empty">
+                        Add a category to start assigning components.
+                    </div>
+                    <p v-if="categoryError" class="component-picker-manage__error">
+                        {{ categoryError }}
+                    </p>
+                    <div class="component-picker-manage__actions">
+                        <button type="button" @click="cancelManageCategories">Cancel</button>
+                        <button
+                            type="button"
+                            class="component-picker-manage__save"
+                            :disabled="categorySaving"
+                            @click="saveManageCategories"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </section>
             <div
+                v-else
                 ref="componentGrid"
                 class="component-picker-grid"
                 :class="{ 'is-mobile-grid': previewDevice === 'mobile' }"
@@ -146,6 +247,21 @@
                         <button class="expand-preview-btn" @click.stop="expandComponent(comp)" title="Expand Preview">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                            </svg>
+                        </button>
+                        <button
+                            v-if="isGlobalComponentDefinition(comp)"
+                            class="delete-global-component-btn"
+                            type="button"
+                            title="Delete global component"
+                            @click.stop="deleteGlobalComponent(comp)"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4h8v2" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v5" />
+                                <path d="M14 11v5" />
                             </svg>
                         </button>
                     </div>
@@ -230,6 +346,15 @@ import type { CSSProperties } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
 import LazyLoader from "./LazyLoader.vue";
+import { useComponentPickerCategories } from "#content/app/composables/useComponentPickerCategories";
+import {
+    buildComponentPickerCategoryTabs,
+    filterComponentPickerDefinitions,
+    getEffectiveComponentPickerCategoryIds,
+    normalizeComponentPickerCategorySettings,
+    slugifyComponentPickerCategory,
+    type ComponentPickerCategory,
+} from "#content/app/utils/component-picker-categories";
 
 const props = defineProps<{
     isOpen: boolean;
@@ -239,6 +364,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: "close"): void;
     (e: "select", id: string): void;
+    (e: "delete-global-component", id: string): void;
 }>();
 
 const searchQuery = ref("");
@@ -246,6 +372,12 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const componentGrid = ref<HTMLElement | null>(null);
 const componentGridInlineSize = ref(0);
 const selectedCategory = ref("default");
+const manageCategoriesOpen = ref(false);
+const draftCategories = ref<ComponentPickerCategory[]>([]);
+const draftAssignments = ref<Record<string, string[]>>({});
+const selectedManageCategoryId = ref("");
+const newCategoryLabel = ref("");
+const manageSearchQuery = ref("");
 const previewDevice = ref<'desktop' | 'mobile'>('desktop');
 const THUMBNAIL_COLUMNS_MIN = 2;
 const THUMBNAIL_COLUMNS_MAX = 10;
@@ -268,6 +400,15 @@ const COMPONENT_PICKER_CARD_PREVIEW_INLINE_PADDING = 24;
 const expandedComp = ref<ComponentDefinition | null>(null);
 const expandedDevice = ref<'desktop' | 'mobile'>('desktop');
 
+const {
+    settings: categorySettings,
+    saving: categorySaving,
+    error: categoryError,
+    available: categoryManagerAvailable,
+    fetchAdmin: fetchCategorySettings,
+    saveAdmin: saveCategorySettings,
+} = useComponentPickerCategories();
+
 const expandComponent = (comp: ComponentDefinition) => {
     expandedComp.value = comp;
     expandedDevice.value = 'desktop';
@@ -275,6 +416,20 @@ const expandComponent = (comp: ComponentDefinition) => {
 
 const closeExpanded = () => {
     expandedComp.value = null;
+};
+
+const isGlobalComponentDefinition = (definition: ComponentDefinition): boolean =>
+    definition.category === "global" ||
+    typeof definition.previewComponentId === "string";
+
+const deleteGlobalComponent = (definition: ComponentDefinition) => {
+    const confirmed =
+        !import.meta.client ||
+        window.confirm(`Delete global component "${definition.id}"?`);
+    if (!confirmed) {
+        return;
+    }
+    emit("delete-global-component", definition.id);
 };
 
 const PRIMITIVE_COMPONENT_IDS = new Set(["p", "span", "strong", "template"]);
@@ -286,42 +441,10 @@ const PRIMITIVE_COMPONENT_LABELS = new Set([
     "template",
 ]);
 
-const normalizeCategory = (value?: string): string => {
-    if (typeof value !== "string") {
-        return "default";
-    }
-    const trimmed = value.trim().toLowerCase();
-    return trimmed.length > 0 ? trimmed : "default";
-};
-
-const formatCategoryLabel = (value: string): string => {
-    if (value === "all") {
-        return "All";
-    }
-    if (value === "basic-html") {
-        return "Basic HTML";
-    }
-    if (value === "default") {
-        return "Sections";
-    }
-    return value
-        .split(/[-_\s]+/)
-        .filter(Boolean)
-        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-        .join(" ");
-};
-
 const isPrimitiveComponent = (definition: ComponentDefinition): boolean => {
     const id = definition.id.trim().toLowerCase();
     const label = definition.label.trim().toLowerCase();
     return PRIMITIVE_COMPONENT_IDS.has(id) || PRIMITIVE_COMPONENT_LABELS.has(label);
-};
-
-const normalizeComponentCategory = (definition: ComponentDefinition): string => {
-    if (isPrimitiveComponent(definition)) {
-        return "basic-html";
-    }
-    return normalizeCategory(definition.category);
 };
 
 const getPrimitivePreviewKind = (
@@ -343,44 +466,19 @@ const getPrimitivePreviewKind = (
 };
 
 const categoryTabs = computed(() => {
-    const discovered = new Set<string>();
-    for (const definition of props.componentOptions) {
-        discovered.add(normalizeComponentCategory(definition));
-    }
-
-    const ordered = Array.from(discovered.values()).sort((left, right) =>
-        left.localeCompare(right)
+    return buildComponentPickerCategoryTabs(
+        props.componentOptions,
+        categorySettings.value,
     );
-    const prioritized = [
-        ...ordered.filter((value) => value === "default"),
-        ...ordered.filter((value) => value === "global"),
-        ...ordered.filter((value) => value === "basic-html"),
-        ...ordered.filter(
-            (value) =>
-                value !== "default" &&
-                value !== "global" &&
-                value !== "basic-html"
-        ),
-    ];
-
-    return [
-        { id: "all", label: "All" },
-        ...prioritized.map((id) => ({
-            id,
-            label: formatCategoryLabel(id)
-        }))
-    ];
 });
 
 const filteredComponents = computed(() => {
     const selected = selectedCategory.value;
-    const byCategory =
-        selected === "all"
-            ? props.componentOptions
-            : props.componentOptions.filter(
-                  (component) =>
-                      normalizeComponentCategory(component) === selected
-              );
+    const byCategory = filterComponentPickerDefinitions(
+        props.componentOptions,
+        categorySettings.value,
+        selected,
+    );
 
     if (!searchQuery.value.trim()) return byCategory;
     const q = searchQuery.value.toLowerCase();
@@ -388,15 +486,164 @@ const filteredComponents = computed(() => {
         (c) =>
             c.label.toLowerCase().includes(q) ||
             c.id.toLowerCase().includes(q) ||
-            normalizeComponentCategory(c).includes(q)
+            getEffectiveComponentPickerCategoryIds(c, categorySettings.value).some(
+                (categoryId) => categoryId.includes(q),
+            )
     );
 });
+
+const selectedDraftCategory = computed(() =>
+    draftCategories.value.find(
+        (category) => category.id === selectedManageCategoryId.value,
+    ) ?? null,
+);
+
+const manageableComponents = computed(() => {
+    const query = manageSearchQuery.value.trim().toLowerCase();
+    const definitions = [...props.componentOptions].sort((left, right) =>
+        left.label.localeCompare(right.label),
+    );
+    if (!query) {
+        return definitions;
+    }
+    return definitions.filter(
+        (definition) =>
+            definition.label.toLowerCase().includes(query) ||
+            definition.id.toLowerCase().includes(query),
+    );
+});
+
+const cloneCategorySettingsToDraft = () => {
+    const normalized = normalizeComponentPickerCategorySettings(categorySettings.value);
+    draftCategories.value = normalized.categories.map((category) => ({ ...category }));
+    draftAssignments.value = Object.fromEntries(
+        Object.entries(normalized.assignments).map(([componentId, categoryIds]) => [
+            componentId,
+            [...categoryIds],
+        ]),
+    );
+    selectedManageCategoryId.value = draftCategories.value[0]?.id ?? "";
+    newCategoryLabel.value = "";
+    manageSearchQuery.value = "";
+};
+
+const toggleManageCategories = () => {
+    if (manageCategoriesOpen.value) {
+        cancelManageCategories();
+        return;
+    }
+    cloneCategorySettingsToDraft();
+    manageCategoriesOpen.value = true;
+};
+
+const cancelManageCategories = () => {
+    manageCategoriesOpen.value = false;
+    cloneCategorySettingsToDraft();
+};
+
+const addDraftCategory = () => {
+    const label = newCategoryLabel.value.trim();
+    const id = slugifyComponentPickerCategory(label);
+    if (!id || draftCategories.value.some((category) => category.id === id)) {
+        return;
+    }
+    draftCategories.value = [
+        ...draftCategories.value,
+        {
+            id,
+            label,
+            order: draftCategories.value.length,
+        },
+    ];
+    selectedManageCategoryId.value = id;
+    newCategoryLabel.value = "";
+};
+
+const updateSelectedDraftCategoryLabel = (event: Event) => {
+    const category = selectedDraftCategory.value;
+    if (!category) {
+        return;
+    }
+    const target = event.target as HTMLInputElement | null;
+    const label = target?.value.trim() || category.label;
+    draftCategories.value = draftCategories.value.map((entry) =>
+        entry.id === category.id ? { ...entry, label } : entry,
+    );
+};
+
+const deleteSelectedDraftCategory = () => {
+    const category = selectedDraftCategory.value;
+    if (!category) {
+        return;
+    }
+    const confirmed =
+        !import.meta.client ||
+        window.confirm(`Delete category "${category.label}" and remove its assignments?`);
+    if (!confirmed) {
+        return;
+    }
+    draftCategories.value = draftCategories.value
+        .filter((entry) => entry.id !== category.id)
+        .map((entry, index) => ({ ...entry, order: index }));
+    draftAssignments.value = Object.fromEntries(
+        Object.entries(draftAssignments.value)
+            .map(([componentId, categoryIds]) => [
+                componentId,
+                categoryIds.filter((categoryId) => categoryId !== category.id),
+            ])
+            .filter(([, categoryIds]) => categoryIds.length > 0),
+    );
+    selectedManageCategoryId.value = draftCategories.value[0]?.id ?? "";
+};
+
+const isComponentAssignedToSelectedCategory = (componentId: string): boolean => {
+    const category = selectedDraftCategory.value;
+    if (!category) {
+        return false;
+    }
+    return draftAssignments.value[componentId]?.includes(category.id) ?? false;
+};
+
+const toggleComponentAssignment = (componentId: string) => {
+    const category = selectedDraftCategory.value;
+    if (!category) {
+        return;
+    }
+    const current = draftAssignments.value[componentId] ?? [];
+    const next = current.includes(category.id)
+        ? current.filter((categoryId) => categoryId !== category.id)
+        : [...current, category.id];
+    if (next.length === 0) {
+        const { [componentId]: _removed, ...rest } = draftAssignments.value;
+        draftAssignments.value = rest;
+        return;
+    }
+    draftAssignments.value = {
+        ...draftAssignments.value,
+        [componentId]: next,
+    };
+};
+
+const saveManageCategories = async () => {
+    const normalized = normalizeComponentPickerCategorySettings({
+        _rev: categorySettings.value._rev,
+        categories: draftCategories.value.map((category, index) => ({
+            ...category,
+            order: index,
+        })),
+        assignments: draftAssignments.value,
+    });
+    await saveCategorySettings(normalized);
+    cloneCategorySettingsToDraft();
+    manageCategoriesOpen.value = false;
+};
 
 const close = () => {
     emit("close");
     searchQuery.value = "";
     selectedCategory.value = "default";
     previewDevice.value = "desktop";
+    manageCategoriesOpen.value = false;
     closeExpanded();
 };
 
@@ -619,14 +866,17 @@ onBeforeUnmount(() => {
 
 watch(
     () => props.isOpen,
-    (val) => {
+    async (val) => {
         if (val) {
+            await fetchCategorySettings();
+            cloneCategorySettingsToDraft();
              nextTick(() => {
                 searchInput.value?.focus();
             });
         } else {
             selectedCategory.value = "default";
             previewDevice.value = "desktop";
+            manageCategoriesOpen.value = false;
         }
     }
 );
@@ -656,6 +906,16 @@ watch(
         persistThumbnailColumns(normalized);
     },
     { immediate: false }
+);
+
+watch(
+    manageCategoriesOpen,
+    async (value) => {
+        if (!value) {
+            await nextTick();
+            updateComponentGridInlineSize();
+        }
+    },
 );
 </script>
 
@@ -777,6 +1037,25 @@ watch(
     gap: 12px;
 }
 
+.component-picker-manage-button {
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #374151;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.component-picker-manage-button:hover,
+.component-picker-manage-button.is-active {
+    border-color: #2563eb;
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
 .component-picker-view-toggle {
     display: inline-flex;
     align-items: center;
@@ -865,6 +1144,185 @@ watch(
     background: #2563eb;
 }
 
+.component-picker-manage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    background: #f9fafb;
+}
+
+.component-picker-manage__sidebar {
+    border-right: 1px solid #e5e7eb;
+    background: #ffffff;
+    padding: 18px;
+    overflow-y: auto;
+}
+
+.component-picker-manage__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.component-picker-manage__head h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #111827;
+}
+
+.component-picker-manage__status {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.component-picker-manage__add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.component-picker-manage__add input,
+.component-picker-manage__field input {
+    min-width: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+.component-picker-manage__add input {
+    flex: 1;
+}
+
+.component-picker-manage__add button,
+.component-picker-manage__actions button,
+.component-picker-manage__delete {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #374151;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.component-picker-manage__categories {
+    display: grid;
+    gap: 8px;
+}
+
+.component-picker-manage__category {
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    color: #374151;
+    border-radius: 6px;
+    padding: 9px 10px;
+    text-align: left;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.component-picker-manage__category.is-active {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.component-picker-manage__main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 18px;
+    gap: 14px;
+}
+
+.component-picker-manage__toolbar {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.2fr) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.component-picker-manage__field {
+    display: grid;
+    gap: 6px;
+    color: #374151;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.component-picker-manage__delete {
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.component-picker-manage__assignments {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.component-picker-manage__assignment {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 9px 10px;
+}
+
+.component-picker-manage__assignment span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.component-picker-manage__assignment strong {
+    color: #111827;
+    font-size: 0.85rem;
+}
+
+.component-picker-manage__assignment small {
+    color: #6b7280;
+    font-size: 0.74rem;
+}
+
+.component-picker-manage__empty,
+.component-picker-manage__error {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 14px;
+    color: #6b7280;
+}
+
+.component-picker-manage__error {
+    border-color: #fecaca;
+    color: #991b1b;
+}
+
+.component-picker-manage__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.component-picker-manage__save {
+    border-color: #2563eb !important;
+    background: #2563eb !important;
+    color: #ffffff !important;
+}
+
 .component-card {
     background: white;
     border: 1px solid #e5e7eb;
@@ -901,10 +1359,10 @@ watch(
     aspect-ratio: 9 / 16;
 }
 
-.expand-preview-btn {
+.expand-preview-btn,
+.delete-global-component-btn {
     position: absolute;
     top: 8px;
-    right: 8px;
     background: rgba(255, 255, 255, 0.9);
     border: 1px solid #e5e7eb;
     border-radius: 4px;
@@ -918,13 +1376,23 @@ watch(
     justify-content: center;
 }
 
-.expand-preview-btn svg {
+.expand-preview-btn {
+    right: 8px;
+}
+
+.delete-global-component-btn {
+    right: 42px;
+}
+
+.expand-preview-btn svg,
+.delete-global-component-btn svg {
     width: 16px;
     height: 16px;
     color: #4b5563;
 }
 
-.component-card:hover .expand-preview-btn {
+.component-card:hover .expand-preview-btn,
+.component-card:hover .delete-global-component-btn {
     opacity: 1;
 }
 
@@ -935,6 +1403,15 @@ watch(
 
 .expand-preview-btn:hover svg {
     color: #3b82f6;
+}
+
+.delete-global-component-btn:hover {
+    background: white;
+    border-color: #dc2626;
+}
+
+.delete-global-component-btn:hover svg {
+    color: #dc2626;
 }
 
 /* ... preview styles same ... */

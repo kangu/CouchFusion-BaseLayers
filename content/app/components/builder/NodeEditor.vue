@@ -51,6 +51,13 @@
                             <span class="node-panel__slot-suffix">(Slot)</span>
                         </strong>
                         <strong v-else>{{ node.component }}</strong>
+                        <span
+                            v-if="isGlobalAliasNode"
+                            class="node-panel__global-badge"
+                            title="This section uses a project-global component alias"
+                        >
+                            Global
+                        </span>
                         <small class="component-internal-name">{{ node.component }}</small>
                     </div>
                     <button
@@ -2846,12 +2853,8 @@ const applyTextValue = () => {
 }
 
 .node-panel--global-alias {
-    border-color: #bfdbfe;
-    background: linear-gradient(
-        180deg,
-        rgba(239, 246, 255, 0.42) 0%,
-        rgba(255, 255, 255, 1) 38%
-    );
+    border-color: #e2e8f0;
+    background: #ffffff;
 }
 
 .node-panel__header-text .component-internal-name {
@@ -2889,6 +2892,33 @@ const applyTextValue = () => {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.node-panel__global-badge {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+    padding: 3px 9px;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.node-panel__global-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 .node-panel__section-name-trigger {

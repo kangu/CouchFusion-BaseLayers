@@ -1,6 +1,10 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { requireAdminSession } from "../../../utils/auth";
-import { saveGlobalComponentsSettings } from "../../../utils/global-components-settings";
+import {
+  getGlobalComponentsSettings,
+  saveGlobalComponentsSettings,
+} from "../../../utils/global-components-settings";
+import { findGlobalComponentPageUsage } from "../../../utils/global-component-usage";
 import { normalizeGlobalComponentEntries } from "#content/utils/global-components";
 
 export default defineEventHandler(async (event) => {
@@ -41,6 +45,26 @@ export default defineEventHandler(async (event) => {
       throw createError({
         statusCode: 400,
         statusMessage: `Alias "${entry.id}" cannot target another alias ("${entry.component}").`,
+      });
+    }
+  }
+
+  const existing = await getGlobalComponentsSettings();
+  const nextAliasIds = new Set(normalizedEntries.map((entry) => entry.id));
+  const removedEntries = (existing?.entries ?? []).filter(
+    (entry) => !nextAliasIds.has(entry.id),
+  );
+
+  for (const removed of removedEntries) {
+    const pages = await findGlobalComponentPageUsage(removed.id);
+    if (pages.length > 0) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `Global component "${removed.id}" is still used on ${pages.length} page${pages.length === 1 ? "" : "s"}.`,
+        data: {
+          aliasId: removed.id,
+          pages,
+        },
       });
     }
   }

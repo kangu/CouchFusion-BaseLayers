@@ -50,6 +50,10 @@ import {
     type InlinePreviewPropHint,
 } from "#content/app/utils/inline-preview-prop-path";
 import { resolveContentRuntimeStylingConfig } from "#content/utils/runtime-styling";
+import {
+    applyGlobalAliasDefaultsToNode,
+    applyGlobalAliasDefaultsToTree,
+} from "#content/app/utils/global-alias-defaults";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -874,34 +878,7 @@ const hydrateGlobalAliasProps = () => {
         return;
     }
 
-    const visit = (nodes: BuilderNodeChild[]) => {
-        for (const node of nodes) {
-            if (node.type !== "component") {
-                continue;
-            }
-
-            const defaults = aliases[node.component];
-            if (defaults) {
-                const nextProps = { ...(node.props ?? {}) };
-                for (const [key, value] of Object.entries(defaults)) {
-                    if (
-                        nextProps[key] === undefined &&
-                        !key.startsWith("__builder") &&
-                        !key.startsWith("__content")
-                    ) {
-                        nextProps[key] = cloneNodeData(value);
-                    }
-                }
-                node.props = nextProps;
-            }
-
-            if (node.children?.length) {
-                visit(node.children);
-            }
-        }
-    };
-
-    visit(builderTree.value);
+    applyGlobalAliasDefaultsToTree(builderTree.value, aliases);
 };
 
 const resetExpandedRoots = () => {
@@ -1116,6 +1093,7 @@ const confirmRootComponentWithName = () => {
         return;
     }
     const node = createNode(componentId);
+    applyGlobalAliasDefaultsToNode(node, globalAliasDefaultsById.value);
     insertRootNode(node, pendingRootInsertIndex.value);
     saveLocalSectionName(node.uid, sectionName);
     closeAddSectionWorkflow();
@@ -1389,7 +1367,9 @@ const addChildComponent = (parentUid: string, componentId: string) => {
     if (!parent || parent.type !== "component") {
         return;
     }
-    parent.children.push(createNode(componentId));
+    const node = createNode(componentId);
+    applyGlobalAliasDefaultsToNode(node, globalAliasDefaultsById.value);
+    parent.children.push(node);
 };
 
 const addChildText = (parentUid: string) => {
@@ -1527,6 +1507,62 @@ const closeGlobalAliasModal = () => {
 };
 
 const GLOBAL_ALIAS_NAME_PATTERN = /^[A-Z][A-Za-z0-9_-]*$/;
+
+const extractGlobalAliasUsagePages = (error: any): Array<{
+    path?: string;
+    title?: string | null;
+}> => {
+    const candidates = [
+        error?.data?.data?.pages,
+        error?.data?.pages,
+        error?.response?._data?.data?.pages,
+        error?.response?._data?.pages,
+    ];
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) {
+            return candidate;
+        }
+    }
+    return [];
+};
+
+const formatGlobalAliasDeleteError = (aliasId: string, error: any): string => {
+    const pages = extractGlobalAliasUsagePages(error);
+    const message =
+        error?.data?.statusMessage ||
+        error?.response?._data?.statusMessage ||
+        error?.message ||
+        `Failed to delete global component "${aliasId}".`;
+    if (!pages.length) {
+        return message;
+    }
+    const pageList = pages
+        .map((page) => {
+            const path = typeof page?.path === "string" ? page.path : "/";
+            const title =
+                typeof page?.title === "string" && page.title.trim()
+                    ? ` (${page.title})`
+                    : "";
+            return `- ${path}${title}`;
+        })
+        .join("\n");
+    return `${message}\n\nRemove the global component from these pages first:\n${pageList}`;
+};
+
+const deleteGlobalComponent = async (aliasId: string) => {
+    try {
+        await ensureGlobalAliasAdminLoaded();
+        await globalComponentsRegistry.deleteAdmin(aliasId);
+        globalAliasPendingPatches.delete(aliasId);
+    } catch (error: any) {
+        const message = formatGlobalAliasDeleteError(aliasId, error);
+        if (typeof window !== "undefined") {
+            window.alert(message);
+        } else {
+            console.error(message);
+        }
+    }
+};
 
 const confirmCreateGlobalAlias = async () => {
     const uid = pendingGlobalAliasNodeUid.value;
@@ -3264,6 +3300,7 @@ const handleSaveDebugClick = () => {
                         :component-options="componentOptions"
                         @close="closeRootPicker"
                         @select="handleRootComponentPicked"
+                        @delete-global-component="deleteGlobalComponent"
                     />
                     <input
                         ref="importInputRef"

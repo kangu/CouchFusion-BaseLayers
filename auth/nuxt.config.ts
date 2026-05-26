@@ -59,6 +59,48 @@ export default defineNuxtConfig({
           "300",
         10,
       ) || 300,
+    proofOfWork: {
+      enabled:
+        process.env.NUXT_PROOF_OF_WORK_ENABLED ??
+        process.env.PROOF_OF_WORK_ENABLED ??
+        "true",
+      secret:
+        process.env.NUXT_PROOF_OF_WORK_SECRET ||
+        process.env.PROOF_OF_WORK_SECRET ||
+        "",
+      difficulty:
+        process.env.NUXT_PROOF_OF_WORK_DIFFICULTY ||
+        process.env.PROOF_OF_WORK_DIFFICULTY
+          ? Number.parseInt(
+              process.env.NUXT_PROOF_OF_WORK_DIFFICULTY ||
+                process.env.PROOF_OF_WORK_DIFFICULTY ||
+                "",
+              10,
+            )
+          : undefined,
+      difficultyBits:
+        process.env.NUXT_PROOF_OF_WORK_DIFFICULTY_BITS ||
+        process.env.PROOF_OF_WORK_DIFFICULTY_BITS
+          ? Number.parseInt(
+              process.env.NUXT_PROOF_OF_WORK_DIFFICULTY_BITS ||
+                process.env.PROOF_OF_WORK_DIFFICULTY_BITS ||
+                "",
+              10,
+            )
+          : (
+              process.env.NUXT_PROOF_OF_WORK_DIFFICULTY ||
+              process.env.PROOF_OF_WORK_DIFFICULTY
+                ? undefined
+                : 18
+            ),
+      ttlSeconds:
+        Number.parseInt(
+          process.env.NUXT_PROOF_OF_WORK_TTL_SECONDS ||
+            process.env.PROOF_OF_WORK_TTL_SECONDS ||
+            "600",
+          10,
+        ) || 600,
+    },
     public: {
       authLoginPath: "/login",
       authDefaultRedirectPath: "/builder",

@@ -14,6 +14,10 @@ type GlobalComponentsAdminResponse = {
   };
 };
 
+type GlobalComponentsDeleteResponse = GlobalComponentsAdminResponse & {
+  deletedId?: string;
+};
+
 const normalizeEntry = (value: unknown): ContentGlobalComponentEntry | null => {
   if (!value || typeof value !== "object") {
     return null;
@@ -158,6 +162,41 @@ export const useGlobalComponentsRegistry = () => {
     }
   };
 
+  const deleteAdmin = async (id: string) => {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await $fetch<GlobalComponentsDeleteResponse>(
+        "/api/content/global-components/admin",
+        {
+          method: "DELETE",
+          query: { id },
+        },
+      );
+      components.value = normalizeEntries(response?.settings?.entries);
+      updatedAt.value =
+        typeof response?.settings?.updatedAt === "string"
+          ? response.settings.updatedAt
+          : null;
+      updatedBy.value =
+        typeof response?.settings?.updatedBy === "string"
+          ? response.settings.updatedBy
+          : null;
+      return {
+        deletedId: response?.deletedId ?? id,
+        components: components.value,
+      };
+    } catch (err: any) {
+      error.value =
+        err?.data?.statusMessage ||
+        err?.message ||
+        "Failed to delete global component.";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     components,
     loading,
@@ -167,5 +206,6 @@ export const useGlobalComponentsRegistry = () => {
     fetchPublic,
     fetchAdmin,
     saveAdmin,
+    deleteAdmin,
   };
 };
