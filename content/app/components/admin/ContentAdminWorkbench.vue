@@ -574,6 +574,10 @@ watch(
                 openPageForEditing(match.path);
                 return;
             }
+
+            hasBootstrappedSelection.value = true;
+            openPageForEditing(target);
+            return;
         }
 
         if (!autoSelectFirst.value) {

@@ -911,68 +911,14 @@ const determineControlType = (prop) => {
   return convertTypeToControl(prop.type)
 }
 
-const IMAGE_FIELD_KEYWORDS = [
-  'image',
-  'thumbnail',
-  'thumb',
-  'avatar',
-  'logo',
-  'logos',
-  'photo',
-  'picture',
-  'cover',
-  'banner',
-  // 'icon',
-  'illustration'
-]
-
-const normalizeKey = (key) => key.replace(/[\s_-]+/g, '').toLowerCase()
-
-const looksLikeImageField = (key) => {
-  const normalized = normalizeKey(key)
-
-  return IMAGE_FIELD_KEYWORDS.some((keyword) => {
-    if (normalized === keyword) {
-      return true
-    }
-
-    if (normalized.endsWith(keyword)) {
-      return true
-    }
-
-    if (normalized.startsWith(keyword)) {
-      return true
-    }
-
-    return normalized.includes(keyword) && keyword.length >= 4
-  })
-}
-
-const applyImageFieldUi = (schema, key) => {
-  if (schema.ui) {
-    return schema
-  }
-
-  if (!looksLikeImageField(key)) {
-    return schema
-  }
-
-  if (schema.type === 'text' || schema.type === 'stringarray') {
-    schema.ui = { component: 'ContentImageField' }
-  }
-
-  return schema
-}
-
 const applySchemaUiHints = (schema, key, ui) => {
   if (ui?.widget === 'textarea' && schema.type === 'text') {
     schema.type = 'textarea'
   }
   if (ui) {
     schema.ui = ui
-    return schema
   }
-  return applyImageFieldUi(schema, key)
+  return schema
 }
 
 const buildPropSchema = (prop) => {

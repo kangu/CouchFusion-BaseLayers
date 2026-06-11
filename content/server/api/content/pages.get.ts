@@ -293,7 +293,11 @@ export default defineEventHandler(async (event) => {
                 group.updatedAtByLocale[locale] = updatedAt
             }
 
-            if (locale === contentI18nConfig.defaultLocale) {
+            const isMasterDocument =
+                locale === contentI18nConfig.defaultLocale ||
+                document._id === group.masterId
+
+            if (isMasterDocument) {
                 const existingMasterUpdatedAt =
                     group.masterDocument?.updatedAt ??
                     group.masterDocument?.updated_at ??
