@@ -12,7 +12,9 @@ export function normalizePagePath(path: string): string {
         return '/'
     }
 
-    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+    const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+
+    return normalized === '/' ? normalized : normalized.replace(/\/+$/, '')
 }
 
 /**
