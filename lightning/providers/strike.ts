@@ -24,7 +24,9 @@ function satsToBtc(sats: number): string {
 
 export function createStrikeProvider(config: StrikeConfig): LightningProvider {
   const baseUrl = config.baseUrl || "https://api.strike.me";
-  console.log("Initialize Strike with", config.apiKey);
+  console.log("Initialize Strike provider", {
+    apiKey: config.apiKey ? "configured" : "missing",
+  });
 
   const makeRequest = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${baseUrl}${endpoint}`;
@@ -334,7 +336,9 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
     }
 
     // Create new subscription
-    console.log("Creating subscription with secret", config.webhookSecret);
+    console.log("Creating Strike webhook subscription", {
+      webhookSecret: config.webhookSecret ? "configured" : "missing",
+    });
     const payload = {
       webhookUrl,
       webhookVersion: "v1",

@@ -7,6 +7,7 @@ import {putDocument, getSession, getDocument} from '#database/utils/couchdb'
 import {getHeader} from 'h3'
 import crypto from 'crypto'
 import type {InvoiceResponse} from '../types/lightning'
+import { createInvoicePaymentState } from '../server/utils/payment-state'
 
 // Type definitions
 export interface ProductInfo {
@@ -218,7 +219,7 @@ export async function saveInvoiceToDatabase(options: SaveInvoiceOptions): Promis
     const userDoc = await getDocument('_users', `org.couchdb.user:${userName}`)
 
     // Create invoice document
-    const invoiceDocument: InvoiceDocument = {
+    const invoiceDocument = createInvoicePaymentState({
         _id: invoiceDocId,
         type: 'lightning_invoice',
         timestamp: new Date().toISOString(),
@@ -228,7 +229,7 @@ export async function saveInvoiceToDatabase(options: SaveInvoiceOptions): Promis
         userName: userName,
         email: userDoc.email,
         lastEvent: 'created'
-    }
+    }) as InvoiceDocument
 
     // Save to database
     const result = await putDocument(databaseName, invoiceDocument)

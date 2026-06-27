@@ -4,12 +4,26 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 
 const getDocumentMock = vi.fn();
+const getViewMock = vi.fn();
 const putDocumentMock = vi.fn();
 const processWebhookMock = vi.fn();
+const readCouchConfigValuesMock = vi.fn();
+const updateLinkedInvoiceDocumentsMock = vi.fn();
 
 vi.mock("#database/utils/couchdb", () => ({
   getDocument: getDocumentMock,
+  getView: getViewMock,
   putDocument: putDocumentMock,
+}));
+
+vi.mock("#database/utils/couch-config", () => ({
+  buildCouchEnvSection: (slug: string) => `cf_env_${slug}`,
+  readCouchConfigValues: (...args: unknown[]) => readCouchConfigValuesMock(...args),
+  resolveRuntimeAppSlug: (runtimeConfig: any) => runtimeConfig?.public?.appSlug || "bitvocation",
+}));
+
+vi.mock("#lightning/server/utils/invoice-links.mjs", () => ({
+  updateLinkedInvoiceDocuments: updateLinkedInvoiceDocumentsMock,
 }));
 
 vi.mock("../services/lightning", () => ({
@@ -57,13 +71,24 @@ describe("blink webhook route", () => {
   beforeEach(() => {
     processWebhookMock.mockReset();
     getDocumentMock.mockReset();
+    getViewMock.mockReset();
     putDocumentMock.mockReset();
+    readCouchConfigValuesMock.mockReset();
+    updateLinkedInvoiceDocumentsMock.mockReset();
+    readCouchConfigValuesMock.mockResolvedValue({
+      lightning_default_provider: "blink",
+      blink_api_key: "blink_key",
+    });
+    updateLinkedInvoiceDocumentsMock.mockResolvedValue({ updated: 0, skipped: 0 });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     (globalThis as any).useRuntimeConfig = () => ({
       dbLoginPrefix: "cf",
+      public: {
+        appSlug: "bitvocation",
+      },
       lightning: {
         defaultProvider: "blink",
         providers: {

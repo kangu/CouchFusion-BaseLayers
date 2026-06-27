@@ -1,8 +1,9 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
 import { createLightningService } from "../../../services/lightning";
-import type { LightningConfig, WebhookEvent } from "../../../types/lightning";
+import type { WebhookEvent } from "../../../types/lightning";
 import { updateLinkedInvoiceDocuments } from "#lightning/server/utils/invoice-links.mjs";
+import { resolveLightningConfig } from "../../utils/lightning-config";
 
 async function updateInvoiceDocument(
   databaseName: string,
@@ -58,14 +59,7 @@ export default defineEventHandler(async (event) => {
     transactionStatus: body?.transaction?.status || null,
   });
 
-  if (!runtimeConfig.lightning) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "Lightning configuration not found",
-    });
-  }
-
-  const lightningConfig = runtimeConfig.lightning as LightningConfig;
+  const lightningConfig = await resolveLightningConfig(runtimeConfig);
   const lightningService = createLightningService(lightningConfig);
 
   try {

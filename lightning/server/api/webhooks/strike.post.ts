@@ -1,13 +1,30 @@
 import {defineEventHandler, readBody, readRawBody, getHeader, createError} from 'h3'
 import {createLightningService} from '../../../services/lightning'
-import type {LightningConfig} from '../../../types/lightning'
 import {getDocument, putDocument, type CouchDBDocument} from '#database/utils/couchdb'
 import type {WebhookEvent} from '../../../types/lightning'
+import { paymentEventBus } from '../../utils/payment-event-bus'
+import type { PaymentEvent, PaymentEventType } from '../../../types/payment-events'
+import { applyInvoicePaidFulfillment } from '../../utils/order-fulfillment'
+import {
+    beginPaymentEventProcessing,
+    markPaymentEventFailed,
+    markPaymentEventProcessed,
+    type PaymentEventLogDocument
+} from '../../utils/payment-event-log'
+import { applyInvoicePaymentStatus } from '../../utils/payment-state'
+import { resolveLightningConfig } from '../../utils/lightning-config'
+
+interface PaymentCompletionResult {
+    invoiceDoc: CouchDBDocument
+    orderDoc: CouchDBDocument
+    invoiceDocId: string
+    orderDocId: string
+}
 
 /**
  * Process payment completion by updating invoice and order documents
  */
-async function processPaymentCompletion(webhookEvent: WebhookEvent, runtimeConfig: any): Promise<void> {
+async function processPaymentCompletion(webhookEvent: WebhookEvent, runtimeConfig: any): Promise<PaymentCompletionResult> {
     console.log('💰 Processing payment completion for invoice:', webhookEvent.invoiceId)
 
     // Get database name
@@ -27,12 +44,23 @@ async function processPaymentCompletion(webhookEvent: WebhookEvent, runtimeConfi
 
     try {
         // Update invoice document
-        await updateInvoiceDocument(ordersDatabase, invoiceDocId, webhookEvent)
+        const invoiceDoc = await updateInvoiceDocument(ordersDatabase, invoiceDocId, webhookEvent)
 
         // Update order document
-        await updateOrderDocument(ordersDatabase, orderDocId, webhookEvent)
+        const orderDoc = await updateOrderDocument(ordersDatabase, orderDocId, webhookEvent)
+        const fulfillmentResult = await applyInvoicePaidFulfillment({
+            ordersDatabase,
+            invoiceDoc,
+            orderDoc
+        })
 
         console.log('✅ Payment processing through database docs successful')
+        return {
+            invoiceDoc: fulfillmentResult.invoiceDoc || invoiceDoc,
+            orderDoc,
+            invoiceDocId,
+            orderDocId
+        }
 
     } catch (error) {
         console.error('❌ Payment completion processing failed:', error)
@@ -43,7 +71,7 @@ async function processPaymentCompletion(webhookEvent: WebhookEvent, runtimeConfi
 /**
  * Update invoice document with payment completion
  */
-async function updateInvoiceDocument(databaseName: string, invoiceDocId: string, webhookEvent: WebhookEvent): Promise<void> {
+async function updateInvoiceDocument(databaseName: string, invoiceDocId: string, webhookEvent: WebhookEvent): Promise<CouchDBDocument> {
     console.log('📝 Updating invoice document:', invoiceDocId)
 
     try {
@@ -57,20 +85,16 @@ async function updateInvoiceDocument(databaseName: string, invoiceDocId: string,
 
         console.log('📖 Found invoice document, updating status...')
 
-        // Update invoice document fields
-        const updatedInvoice = {
-            ...invoiceDoc,
-            lastEvent: 'paid',
-            invoiceData: {
-                ...invoiceDoc.invoiceData,
-                status: 'paid'
-            },
-            timestampPaid: new Date().toISOString()
-        }
+        const updatedInvoice = applyInvoicePaymentStatus({
+            invoiceDoc,
+            status: 'paid',
+            eventTime: getWebhookTimestamp(webhookEvent)
+        })
 
         // Save updated document
         const result = await putDocument(databaseName, updatedInvoice)
         console.log('✅ Invoice document updated successfully:', result.id, 'rev:', result.rev)
+        return updatedInvoice
 
     } catch (error) {
         console.error('❌ Failed to update invoice document:', error)
@@ -81,7 +105,7 @@ async function updateInvoiceDocument(databaseName: string, invoiceDocId: string,
 /**
  * Update order document to active status
  */
-async function updateOrderDocument(databaseName: string, orderDocId: string, webhookEvent: WebhookEvent): Promise<void> {
+async function updateOrderDocument(databaseName: string, orderDocId: string, webhookEvent: WebhookEvent): Promise<CouchDBDocument> {
     console.log('📝 Updating order document:', orderDocId)
 
     try {
@@ -104,11 +128,78 @@ async function updateOrderDocument(databaseName: string, orderDocId: string, web
         // Save updated document
         const result = await putDocument(databaseName, updatedOrder)
         console.log('✅ Order document activated successfully:', result.id, 'rev:', result.rev)
+        return updatedOrder
 
     } catch (error) {
         console.error('❌ Failed to update order document:', error)
         throw new Error(`Order update failed: ${error.message}`)
     }
+}
+
+/**
+ * Resolves a stable provider event id for idempotent in-memory payment notifications.
+ */
+const getWebhookEventId = (webhookEvent: WebhookEvent) => {
+    const eventWithProviderId = webhookEvent as WebhookEvent & { eventId?: string; id?: string }
+    return eventWithProviderId.eventId || eventWithProviderId.id || webhookEvent.invoiceId
+}
+
+/**
+ * Normalizes provider webhook timestamps for payment event payloads.
+ */
+const getWebhookTimestamp = (webhookEvent: WebhookEvent) => (
+    webhookEvent.timestamp ? new Date(webhookEvent.timestamp).toISOString() : new Date().toISOString()
+)
+
+const getWebhookPaymentEventType = (webhookEvent: WebhookEvent): PaymentEventType => {
+    if (webhookEvent.status === 'paid') {
+        return 'invoice.paid'
+    }
+    if (webhookEvent.status === 'expired') {
+        return 'invoice.expired'
+    }
+    if (webhookEvent.status === 'cancelled') {
+        return 'invoice.cancelled'
+    }
+    return 'invoice.created'
+}
+
+/**
+ * Publishes scoped payment events after invoice and order persistence succeeds.
+ */
+const publishPaymentCompletionEvents = (
+    webhookEvent: WebhookEvent,
+    completionResult: PaymentCompletionResult
+) => {
+    const providerEventId = getWebhookEventId(webhookEvent)
+    const timestamp = getWebhookTimestamp(webhookEvent)
+    const userName = completionResult.orderDoc.userName || completionResult.invoiceDoc.userName
+    const orderId = completionResult.orderDoc._id || completionResult.orderDocId
+
+    const baseEvent = {
+        provider: 'strike',
+        invoiceId: webhookEvent.invoiceId,
+        orderId,
+        userName,
+        createdAt: timestamp,
+        metadata: {
+            invoiceDocId: completionResult.invoiceDocId,
+            orderDocId: completionResult.orderDocId
+        }
+    } satisfies Partial<PaymentEvent>
+
+    paymentEventBus.publish({
+        ...baseEvent,
+        id: `strike:${providerEventId}:invoice.paid`,
+        type: 'invoice.paid',
+        status: 'paid'
+    } as PaymentEvent)
+    paymentEventBus.publish({
+        ...baseEvent,
+        id: `strike:${providerEventId}:order.fulfilled`,
+        type: 'order.fulfilled',
+        status: 'fulfilled'
+    } as PaymentEvent)
 }
 
 export default defineEventHandler(async (event) => {
@@ -124,20 +215,12 @@ export default defineEventHandler(async (event) => {
 
     const runtimeConfig = useRuntimeConfig()
 
-    // Validate lightning config exists
-    if (!runtimeConfig.lightning) {
-        throw createError({
-            statusCode: 500,
-            statusMessage: 'Lightning configuration not found'
-        })
-    }
-
     console.log('Strike webhook received')
     console.log('Raw body length:', rawBody?.length || 0)
     console.log('Parsed body:', body)
     console.log('Signature header:', signature)
 
-    const lightningConfig = runtimeConfig.lightning as LightningConfig
+    const lightningConfig = await resolveLightningConfig(runtimeConfig)
     const lightningService = createLightningService(lightningConfig)
 
     // Validate webhook signature using raw body
@@ -175,14 +258,53 @@ export default defineEventHandler(async (event) => {
         if (webhookEvent.status === 'paid') {
             console.log('🎉 Payment completed for invoice:', webhookEvent.invoiceId)
 
+            const ordersDatabase = `${runtimeConfig.dbLoginPrefix}-orders`
+            const providerEventId = getWebhookEventId(webhookEvent)
+            const eventType = getWebhookPaymentEventType(webhookEvent)
+            const orderId = typeof webhookEvent.metadata?.correlationId === 'string'
+                ? webhookEvent.metadata.correlationId
+                : undefined
+            let paymentEventDoc: PaymentEventLogDocument | null = null
+
             try {
+                const processingState = await beginPaymentEventProcessing({
+                    ordersDatabase,
+                    provider: 'strike',
+                    providerEventId,
+                    eventType,
+                    invoiceId: webhookEvent.invoiceId,
+                    orderId,
+                    receivedAt: getWebhookTimestamp(webhookEvent)
+                })
+
+                paymentEventDoc = processingState.eventDoc
+                if (!processingState.shouldProcess) {
+                    console.log('📭 Duplicate Strike webhook event skipped:', providerEventId)
+                    return {
+                        success: true,
+                        processed: true,
+                        duplicate: true,
+                        invoiceId: webhookEvent.invoiceId,
+                        status: webhookEvent.status
+                    }
+                }
+
                 // Process payment completion - update invoice and order documents
-                await processPaymentCompletion(webhookEvent, runtimeConfig)
+                const completionResult = await processPaymentCompletion(webhookEvent, runtimeConfig)
+                publishPaymentCompletionEvents(webhookEvent, completionResult)
+                await markPaymentEventProcessed(ordersDatabase, {
+                    ...paymentEventDoc,
+                    orderId: completionResult.orderDocId,
+                    userName: completionResult.orderDoc.userName || completionResult.invoiceDoc.userName
+                })
 
                 console.log('✅ Payment completion processing successful')
 
             } catch (processingError) {
                 console.error('❌ Payment completion processing failed:', processingError)
+                if (paymentEventDoc) {
+                    await markPaymentEventFailed(ordersDatabase, paymentEventDoc, processingError)
+                }
 
                 // Log the error but don't fail the webhook
                 // The payment was successful, we just couldn't update our records
