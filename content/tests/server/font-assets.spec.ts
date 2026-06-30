@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   findRuntimeFontFace,
   filterBunnyFontFaces,
+  mergeRuntimeConfigWithInstalledFonts,
+  normalizeBunnyFontCatalogPayload,
   parseBunnyFontFaces,
   parseRuntimeFontFaces,
   parseRuntimeFontVariables,
@@ -190,6 +192,75 @@ describe("content-fonts bunny css parsing", () => {
     ).toBe("bitvocation");
 
     expect(resolveContentFontRuntimeSlug({}, "server")).toBe("server");
+  });
+
+  it("normalizes Bunny font catalog entries for the builder browser", () => {
+    const catalog = normalizeBunnyFontCatalogPayload({
+      "space-grotesk": {
+        variants: {
+          latin: 4,
+          "latin-ext": 2,
+        },
+        isVariable: true,
+        styles: ["normal", "italic"],
+        weights: [300, 400, 700],
+        familyName: "Space Grotesk",
+        defSubset: "latin",
+        category: "sans-serif",
+      },
+      "bad-entry": null,
+    });
+
+    expect(catalog).toEqual([
+      {
+        slug: "space-grotesk",
+        label: "Space Grotesk",
+        category: "sans-serif",
+        defSubset: "latin",
+        isVariable: true,
+        styles: ["italic", "normal"],
+        weights: [300, 400, 700],
+        variants: {
+          latin: 4,
+          "latin-ext": 2,
+        },
+      },
+    ]);
+  });
+
+  it("uses installed fonts as the primary font option source", () => {
+    const runtimeConfig = {
+      slug: "bitvocation",
+      section: "cf_env_bitvocation",
+      allowlist: [
+        { slug: "inter", label: "Inter" },
+        { slug: "lato", label: "Lato" },
+      ],
+      defaultSans: "inter",
+      defaultDisplay: "lato",
+    };
+
+    const merged = mergeRuntimeConfigWithInstalledFonts(runtimeConfig, [
+      {
+        slug: "space-grotesk",
+        label: "Space Grotesk",
+        installedAt: "2026-06-30T00:00:00.000Z",
+        installedBy: "radu",
+        styles: ["normal"],
+        weights: [400, 700],
+        widths: ["100%"],
+        attachmentNames: ["space-grotesk-400-normal-100p-latin.woff2"],
+      },
+    ]);
+
+    expect(merged.allowlist).toEqual([
+      {
+        slug: "space-grotesk",
+        label: "Space Grotesk",
+      },
+    ]);
+    expect(merged.defaultSans).toBe("space-grotesk");
+    expect(merged.defaultDisplay).toBe("space-grotesk");
   });
 
 });
