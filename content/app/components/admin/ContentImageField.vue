@@ -1425,7 +1425,7 @@ watch(isLibraryOpen, async (isOpen) => {
     background: rgba(15, 23, 42, 0.45);
     display: grid;
     place-items: center;
-    z-index: 40;
+    z-index: 10000;
     padding: 1.5rem;
 }
 
