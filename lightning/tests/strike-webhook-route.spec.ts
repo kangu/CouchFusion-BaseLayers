@@ -234,4 +234,97 @@ describe("strike webhook route", () => {
     expect(putDocumentMock).not.toHaveBeenCalled();
     expect(publishMock).not.toHaveBeenCalled();
   });
+
+  it("falls back to the stored invoice order id when Strike invoice metadata has no correlation id", async () => {
+    processWebhookMock.mockResolvedValue({
+      eventId: "evt_paid_without_correlation",
+      invoiceId: "inv_123",
+      status: "paid",
+      timestamp: "2026-06-26T20:00:00.000Z",
+      metadata: {
+        eventType: "invoice.updated",
+      },
+    });
+
+    getDocumentMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        _id: "invoice-inv_123",
+        orderId: "purchase_123",
+        userName: "alice",
+        invoiceData: {
+          invoiceId: "inv_123",
+          status: "pending",
+        },
+      })
+      .mockResolvedValueOnce({
+        _id: "purchase_123",
+        userName: "alice",
+        status: "pending_payment",
+        content: {
+          product: "pow_lab",
+          validUntil: "2026-12-26T00:00:00.000Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        _id: "org.couchdb.user:alice",
+        name: "alice",
+        pow_lab_invoice: "lnbc123",
+        pow_lab_status: "pending_payment",
+      });
+    putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
+
+    const handler = (await import("../server/api/webhooks/strike.post")).default;
+    const response = await handler(createMockEvent({
+      body: {
+        eventType: "invoice.updated",
+        id: "evt_paid_without_correlation",
+      },
+      headers: {
+        "x-webhook-signature": "valid",
+      },
+    }));
+
+    expect(response).toEqual({
+      success: true,
+      processed: true,
+      invoiceId: "inv_123",
+      status: "paid",
+    });
+    expect(putDocumentMock).toHaveBeenCalledWith("bv-orders", expect.objectContaining({
+      _id: "purchase_123",
+      status: "active",
+    }));
+    expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: "strike:evt_paid_without_correlation:invoice.paid",
+      orderId: "purchase_123",
+      userName: "alice",
+    }));
+  });
+
+  it("acknowledges invalid signatures without processing the webhook payload", async () => {
+    validateWebhookMock.mockReturnValue(false);
+
+    const handler = (await import("../server/api/webhooks/strike.post")).default;
+    const response = await handler(createMockEvent({
+      body: {
+        eventType: "invoice.updated",
+        id: "evt_invalid_signature",
+      },
+      headers: {
+        "x-webhook-signature": "invalid",
+      },
+    }));
+
+    expect(response).toEqual({
+      success: true,
+      processed: false,
+      ignored: true,
+      reason: "invalid_signature",
+    });
+    expect(processWebhookMock).not.toHaveBeenCalled();
+    expect(getDocumentMock).not.toHaveBeenCalled();
+    expect(putDocumentMock).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
 });

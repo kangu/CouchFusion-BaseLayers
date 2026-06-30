@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { createError, getHeader } from 'h3'
-import { getSession } from '#database/utils/couchdb'
+import { getDocument, getSession } from '#database/utils/couchdb'
 
 function extractAuthSessionCookie(cookieHeader: string | undefined): string | null {
     if (!cookieHeader) {
@@ -15,6 +15,29 @@ function extractAuthSessionCookie(cookieHeader: string | undefined): string | nu
     }
 
     return null
+}
+
+/**
+ * Loads current application roles from the CouchDB user document after the
+ * session identity has already been validated.
+ */
+async function getCurrentUserDocumentRoles(username: string | null | undefined): Promise<string[]> {
+    if (!username) {
+        return []
+    }
+
+    try {
+        const userDocument = await getDocument<{ roles?: unknown }>(
+            '_users',
+            `org.couchdb.user:${username}`
+        )
+
+        return Array.isArray(userDocument?.roles)
+            ? userDocument.roles.filter((role): role is string => typeof role === 'string')
+            : []
+    } catch {
+        return []
+    }
 }
 
 /**
@@ -34,7 +57,9 @@ export async function requireRoleSession(event: H3Event, roles: string | string[
     }
 
     const session = await getSession({ authSessionCookie: sessionCookie })
-    const userRoles = session?.userCtx?.roles ?? []
+    const sessionRoles = session?.userCtx?.roles ?? []
+    const documentRoles = await getCurrentUserDocumentRoles(session?.userCtx?.name)
+    const userRoles = [...new Set([...sessionRoles, ...documentRoles])]
 
     const hasRole = expectedRoles.some((role) => userRoles.includes(role))
 

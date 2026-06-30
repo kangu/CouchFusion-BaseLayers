@@ -31,6 +31,7 @@ describe("payment event log", () => {
 
     expect(result.shouldProcess).toBe(true);
     expect(result.eventDoc._id).toBe("payment-event:strike:evt_123");
+    expect(result.eventDoc._rev).toBe("2-updated");
     expect(putDocumentMock).toHaveBeenCalledWith("bv--orders", expect.objectContaining({
       _id: "payment-event:strike:evt_123",
       type: "payment_event",

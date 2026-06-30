@@ -123,6 +123,33 @@ describe("lightning config resolver", () => {
     );
   });
 
+  it("does not require Blink credentials when Strike is the selected provider", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "strike",
+      strike_api_key: "couch-strike-key",
+      strike_webhook_secret: "couch-strike-secret",
+    });
+
+    const { resolveLightningConfig } = await import("../server/utils/lightning-config");
+    const resolved = await resolveLightningConfig();
+
+    expect(resolved.defaultProvider).toBe("strike");
+    expect(resolved.providers.strike?.apiKey).toBe("couch-strike-key");
+    expect(resolved.providers.blink).toBeUndefined();
+  });
+
+  it("requires Blink API key from CouchDB when Blink is the selected provider", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "blink",
+    });
+
+    const { resolveLightningConfig } = await import("../server/utils/lightning-config");
+
+    await expect(resolveLightningConfig()).rejects.toThrow(
+      "Missing required Lightning CouchDB config values in cf_env_bitvocation: blink_api_key",
+    );
+  });
+
   it("formats source notices without leaking credential values", async () => {
     readCouchConfigValuesMock.mockResolvedValueOnce({
       lightning_default_provider: "strike",

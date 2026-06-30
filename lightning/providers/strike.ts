@@ -219,6 +219,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
         const currentInvoice = await getInvoiceById(payload.data.entityId);
 
         const webhookEvent: WebhookEvent = {
+          eventId: typeof payload.id === "string" ? payload.id : undefined,
           invoiceId: payload.data.entityId,
           status: mapStrikeStatus(currentInvoice.state),
           amount: currentInvoice.amount
@@ -245,6 +246,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
 
         // Fallback: return event with pending status (safe default)
         const fallbackEvent: WebhookEvent = {
+          eventId: typeof payload.id === "string" ? payload.id : undefined,
           invoiceId: payload.data.entityId,
           status: "pending",
           timestamp: new Date(payload.created),

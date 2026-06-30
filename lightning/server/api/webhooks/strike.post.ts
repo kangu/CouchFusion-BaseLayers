@@ -31,20 +31,26 @@ async function processPaymentCompletion(webhookEvent: WebhookEvent, runtimeConfi
     const ordersDatabase = `${runtimeConfig.dbLoginPrefix}-orders`
     console.log('🗄️ Using orders database:', ordersDatabase)
 
-    // Validate required data
-    if (!webhookEvent.metadata?.correlationId) {
-        console.error('❌ Missing correlationId in webhook metadata')
-        throw new Error('Cannot process payment: missing correlationId')
-    }
-
     const invoiceDocId = `invoice-${webhookEvent.invoiceId}`
-    const orderDocId = webhookEvent.metadata.correlationId
 
-    console.log('📄 Processing documents:', { invoiceDocId, orderDocId })
+    console.log('📄 Processing invoice document:', { invoiceDocId })
 
     try {
         // Update invoice document
         const invoiceDoc = await updateInvoiceDocument(ordersDatabase, invoiceDocId, webhookEvent)
+        const orderDocId = typeof webhookEvent.metadata?.correlationId === 'string' && webhookEvent.metadata.correlationId.trim()
+            ? webhookEvent.metadata.correlationId.trim()
+            : typeof invoiceDoc.orderId === 'string' && invoiceDoc.orderId.trim()
+                ? invoiceDoc.orderId.trim()
+                : ''
+
+        // Validate required data after loading the local invoice fallback.
+        if (!orderDocId) {
+            console.error('❌ Missing order id in webhook metadata and invoice document')
+            throw new Error('Cannot process payment: missing order id')
+        }
+
+        console.log('📄 Processing order document:', { invoiceDocId, orderDocId })
 
         // Update order document
         const orderDoc = await updateOrderDocument(ordersDatabase, orderDocId, webhookEvent)
@@ -94,7 +100,10 @@ async function updateInvoiceDocument(databaseName: string, invoiceDocId: string,
         // Save updated document
         const result = await putDocument(databaseName, updatedInvoice)
         console.log('✅ Invoice document updated successfully:', result.id, 'rev:', result.rev)
-        return updatedInvoice
+        return {
+            ...updatedInvoice,
+            _rev: result.rev
+        }
 
     } catch (error) {
         console.error('❌ Failed to update invoice document:', error)
@@ -128,7 +137,10 @@ async function updateOrderDocument(databaseName: string, orderDocId: string, web
         // Save updated document
         const result = await putDocument(databaseName, updatedOrder)
         console.log('✅ Order document activated successfully:', result.id, 'rev:', result.rev)
-        return updatedOrder
+        return {
+            ...updatedOrder,
+            _rev: result.rev
+        }
 
     } catch (error) {
         console.error('❌ Failed to update order document:', error)
@@ -225,11 +237,13 @@ export default defineEventHandler(async (event) => {
 
     // Validate webhook signature using raw body
     if (!lightningService.validateWebhook(rawBody, signature, 'strike')) {
-        console.log('Invalid signature')
-        throw createError({
-            statusCode: 401,
-            statusMessage: 'Invalid webhook signature'
-        })
+        console.warn('Invalid Strike webhook signature; acknowledging without processing')
+        return {
+            success: true,
+            processed: false,
+            ignored: true,
+            reason: 'invalid_signature'
+        }
     }
 
     try {

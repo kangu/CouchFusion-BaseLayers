@@ -40,8 +40,9 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_status: {
       map: `function(doc) {
-        if (doc.status && doc.type === 'lightning_invoice') {
-          emit(doc.status, doc);
+        var status = doc.status || (doc.payment && doc.payment.status) || (doc.invoiceData && doc.invoiceData.status);
+        if (status && doc.type === 'lightning_invoice') {
+          emit(status, doc);
         }
       }`
     },
@@ -64,8 +65,9 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_timestamp: {
       map: `function(doc) {
-        if (doc.createdAt && doc.type === 'lightning_invoice') {
-          emit(doc.createdAt, doc);
+        var createdAt = doc.createdAt || doc.timestamp || (doc.payment && doc.payment.createdAt);
+        if (createdAt && doc.type === 'lightning_invoice') {
+          emit(createdAt, doc);
         }
       }`
     },
@@ -76,8 +78,10 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_status_and_timestamp: {
       map: `function(doc) {
-        if (doc.status && doc.createdAt && doc.type === 'lightning_invoice') {
-          emit([doc.status, doc.createdAt], doc);
+        var status = doc.status || (doc.payment && doc.payment.status) || (doc.invoiceData && doc.invoiceData.status);
+        var createdAt = doc.createdAt || doc.timestamp || (doc.payment && doc.payment.createdAt);
+        if (status && createdAt && doc.type === 'lightning_invoice') {
+          emit([status, createdAt], doc);
         }
       }`
     },
@@ -147,8 +151,9 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     stats_by_status: {
       map: `function(doc) {
-        if (doc.status && doc.type === 'lightning_invoice') {
-          emit(doc.status, 1);
+        var status = doc.status || (doc.payment && doc.payment.status) || (doc.invoiceData && doc.invoiceData.status);
+        if (status && doc.type === 'lightning_invoice') {
+          emit(status, 1);
         }
       }`,
       reduce: `function(keys, values, rereduce) {

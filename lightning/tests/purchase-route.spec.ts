@@ -145,6 +145,13 @@ describe("lightning purchase route", () => {
         id: "inv_123",
       },
     });
+    expect(createOrderMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        product: "pow_lab",
+        sats: 1000,
+        valid_days: 180,
+      }),
+    }));
     expect(applyInvoiceCreatedFulfillmentMock).toHaveBeenCalledWith({
       ordersDatabase: "bv-orders",
       invoiceDoc: expect.objectContaining({ _id: "invoice-inv_123" }),

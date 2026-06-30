@@ -42,6 +42,24 @@ interface PublicFeaturedConference {
 }
 
 const normalize = (value: unknown): string => String(value ?? "").trim().toLowerCase();
+const uniqueTextOptions = (values: readonly unknown[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const label = value.trim();
+    if (!label.length) continue;
+
+    const key = label.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    result.push(label);
+  }
+
+  return result.sort((left, right) => left.localeCompare(right));
+};
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const currentUtcMonthKey = (): string => {
@@ -235,16 +253,9 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
             .filter((year): year is number => typeof year === "number"),
         ),
       ).sort((left, right) => right - left),
-      continentOptions: Array.from(
-        new Set(
-          conferences
-            .map((conference) => conference.continent)
-            .filter(
-              (continent): continent is string =>
-                typeof continent === "string" && continent.trim().length > 0,
-            ),
-        ),
-      ).sort((left, right) => left.localeCompare(right)),
+      continentOptions: uniqueTextOptions(
+        conferences.map((conference) => conference.continent),
+      ),
       countryOptions: Array.from(
         new Set(
           conferences

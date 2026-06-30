@@ -15,7 +15,20 @@ interface ConferenceProposalCreatePayload {
   city?: unknown;
   country?: unknown;
   continent?: unknown;
+  region?: unknown;
   startDateIso?: unknown;
+  recreateNextYear?: unknown;
+  discountCode?: unknown;
+  discountPercent?: unknown;
+  discountLabel?: unknown;
+  commissionPercent?: unknown;
+  commissionLabel?: unknown;
+  logoUrl?: unknown;
+  logoFileId?: unknown;
+  organizerName?: unknown;
+  contactEmail?: unknown;
+  xAccountUrl?: unknown;
+  interestedInAdvertising?: unknown;
   notes?: unknown;
 }
 
@@ -76,6 +89,32 @@ const asNullableText = (
   return trimmed;
 };
 
+const asRequiredEmail = (value: unknown): string => {
+  const email = asRequiredText(value, 320, "contactEmail");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "contactEmail must be a valid email address",
+    });
+  }
+  return email;
+};
+
+const asOptionalBoolean = (
+  value: unknown,
+  fallback: boolean,
+  fieldLabel: string,
+): boolean => {
+  if (typeof value === "undefined" || value === null) return fallback;
+  if (typeof value !== "boolean") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `${fieldLabel} must be a boolean`,
+    });
+  }
+  return value;
+};
+
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const asOptionalIsoDate = (value: unknown): string | null => {
   const normalized = asNullableText(value, 30, "startDateIso");
@@ -109,11 +148,42 @@ export default defineEventHandler(async (event) => {
 
   const name = asRequiredText(payload.name, 180, "name");
   const websiteUrl = asNullableText(payload.websiteUrl, 1200, "websiteUrl");
-  const location = asNullableText(payload.location, 280, "location");
   const city = asNullableText(payload.city, 180, "city");
   const country = asNullableText(payload.country, 180, "country");
-  const continent = asNullableText(payload.continent, 120, "continent");
+  const region =
+    asNullableText(payload.region, 120, "region") ??
+    asNullableText(payload.continent, 120, "continent");
   const startDateIso = asOptionalIsoDate(payload.startDateIso);
+  const recreateNextYear = asOptionalBoolean(
+    payload.recreateNextYear,
+    false,
+    "recreateNextYear",
+  );
+  const discountCode = asRequiredText(payload.discountCode, 120, "discountCode");
+  const discountLabel = asRequiredText(
+    typeof payload.discountLabel === "undefined"
+      ? payload.discountPercent
+      : payload.discountLabel,
+    180,
+    "discountPercent",
+  );
+  const commissionLabel = asRequiredText(
+    typeof payload.commissionLabel === "undefined"
+      ? payload.commissionPercent
+      : payload.commissionLabel,
+    180,
+    "commissionPercent",
+  );
+  const logoUrl = asNullableText(payload.logoUrl, 1200, "logoUrl");
+  const logoFileId = asNullableText(payload.logoFileId, 280, "logoFileId");
+  const organizerName = asRequiredText(payload.organizerName, 180, "organizerName");
+  const contactEmail = asRequiredEmail(payload.contactEmail);
+  const xAccountUrl = asNullableText(payload.xAccountUrl, 1200, "xAccountUrl");
+  const interestedInAdvertising = asOptionalBoolean(
+    payload.interestedInAdvertising,
+    false,
+    "interestedInAdvertising",
+  );
   const notes = asNullableText(payload.notes, 3000, "notes");
 
   const userDocumentId = userDoc?._id || `org.couchdb.user:${session.userCtx.name}`;
@@ -157,11 +227,22 @@ export default defineEventHandler(async (event) => {
     status: CONFERENCE_PROPOSAL_STATUS_PENDING,
     name,
     websiteUrl,
-    location,
+    location: null,
     city,
     country,
-    continent,
+    continent: region,
+    region,
     startDateIso,
+    recreateNextYear,
+    discountCode,
+    discountLabel,
+    commissionLabel,
+    logoUrl,
+    logoFileId,
+    organizerName,
+    contactEmail,
+    xAccountUrl,
+    interestedInAdvertising,
     notes,
     conferenceId: null,
     submittedBy: {

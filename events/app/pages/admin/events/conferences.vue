@@ -102,7 +102,18 @@ interface ConferenceProposalItem {
   city: string | null;
   country: string | null;
   continent: string | null;
+  region?: string | null;
   startDateIso: string | null;
+  recreateNextYear?: boolean;
+  discountCode?: string | null;
+  discountLabel?: string | null;
+  commissionLabel?: string | null;
+  logoUrl?: string | null;
+  logoFileId?: string | null;
+  organizerName?: string | null;
+  contactEmail?: string | null;
+  xAccountUrl?: string | null;
+  interestedInAdvertising?: boolean;
   notes: string | null;
   conferenceId: string | null;
   submittedBy: {
@@ -321,6 +332,9 @@ const createForm = reactive({
   continent: "",
   websiteUrl: "",
   xAccountUrl: "",
+  discountCode: "",
+  discountLabel: "",
+  commissionLabel: "",
   status: STATUS_TO_BE_CONTACTED,
   bitvocationParticipation: "unknown" as "yes" | "no" | "unknown",
   contactName: "",
@@ -1420,6 +1434,9 @@ const resetCreateForm = () => {
   createForm.continent = "";
   createForm.websiteUrl = "";
   createForm.xAccountUrl = "";
+  createForm.discountCode = "";
+  createForm.discountLabel = "";
+  createForm.commissionLabel = "";
   createForm.status = STATUS_TO_BE_CONTACTED;
   createForm.bitvocationParticipation = "unknown";
   createForm.contactName = "";
@@ -1449,7 +1466,14 @@ const openCreateDialogFromProposal = (proposal: ConferenceProposalItem) => {
   createForm.location = proposal.location || "";
   createForm.city = proposal.city || "";
   createForm.country = proposal.country || "";
-  createForm.continent = proposal.continent || "";
+  createForm.continent = proposal.region || proposal.continent || "";
+  createForm.xAccountUrl = proposal.xAccountUrl || "";
+  createForm.discountCode = proposal.discountCode || "";
+  createForm.discountLabel = proposal.discountLabel || "";
+  createForm.commissionLabel = proposal.commissionLabel || "";
+  createForm.contactName = proposal.organizerName || "";
+  createForm.contactChannel = proposal.contactEmail || "";
+  createForm.recreateNextYear = Boolean(proposal.recreateNextYear);
   createForm.notes = proposal.notes || "";
   createForm.startDateIso = proposal.startDateIso || "";
   if (proposal.startDateIso && DATE_ONLY_PATTERN.test(proposal.startDateIso)) {
@@ -1509,6 +1533,9 @@ const saveCreateConference = async () => {
         continent: toNullableText(createForm.continent),
         websiteUrl: toNullableText(createForm.websiteUrl),
         xAccountUrl: toNullableText(createForm.xAccountUrl),
+        discountCode: toNullableText(createForm.discountCode),
+        discountLabel: toNullableText(createForm.discountLabel),
+        commissionLabel: toNullableText(createForm.commissionLabel),
         status: toNullableText(createForm.status) ?? STATUS_TO_BE_CONTACTED,
         bitvocationParticipation: createForm.bitvocationParticipation,
         contactName: toNullableText(createForm.contactName),
@@ -2282,7 +2309,7 @@ const deleteConferenceFromEditor = async () => {
               <td class="px-3 py-2.5">
                 <p class="font-medium text-slate-900">{{ proposal.name }}</p>
                 <p class="text-xs text-slate-600">
-                  {{ proposal.location || proposal.country || "Location not provided" }}
+                  {{ proposal.city || proposal.country || proposal.region || proposal.continent || "Location not provided" }}
                 </p>
                 <p v-if="proposal.websiteUrl" class="text-xs text-slate-600">
                   {{ proposal.websiteUrl }}
@@ -2397,7 +2424,7 @@ const deleteConferenceFromEditor = async () => {
               <p class="text-slate-800">{{ formatDate(selectedProposal.startDateIso || null) }}</p>
             </div>
             <div class="space-y-1">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Location</p>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Legacy Location</p>
               <p class="text-slate-800">{{ selectedProposal.location || "—" }}</p>
             </div>
             <div class="space-y-1">
@@ -2409,8 +2436,40 @@ const deleteConferenceFromEditor = async () => {
               <p class="text-slate-800">{{ selectedProposal.country || "—" }}</p>
             </div>
             <div class="space-y-1">
-              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Continent</p>
-              <p class="text-slate-800">{{ selectedProposal.continent || "—" }}</p>
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Region</p>
+              <p class="text-slate-800">{{ selectedProposal.region || selectedProposal.continent || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Recurring</p>
+              <p class="text-slate-800">{{ selectedProposal.recreateNextYear ? "Yes" : "No" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Discount Code</p>
+              <p class="text-slate-800">{{ selectedProposal.discountCode || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Discount %</p>
+              <p class="text-slate-800">{{ selectedProposal.discountLabel || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Commission %</p>
+              <p class="text-slate-800">{{ selectedProposal.commissionLabel || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Organizer</p>
+              <p class="text-slate-800">{{ selectedProposal.organizerName || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact Email</p>
+              <p class="break-all text-slate-800">{{ selectedProposal.contactEmail || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">X Account</p>
+              <p class="break-all text-slate-800">{{ selectedProposal.xAccountUrl || "—" }}</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Advertising Interest</p>
+              <p class="text-slate-800">{{ selectedProposal.interestedInAdvertising ? "Yes" : "No" }}</p>
             </div>
             <div class="space-y-1">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Created At</p>
@@ -2419,6 +2478,18 @@ const deleteConferenceFromEditor = async () => {
             <div class="space-y-1">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Resolved At</p>
               <p class="text-slate-800">{{ selectedProposal.resolvedAt ? formatDate(selectedProposal.resolvedAt) : "—" }}</p>
+            </div>
+            <div class="space-y-1 md:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Logo</p>
+              <div v-if="selectedProposal.logoUrl" class="mt-1 flex items-center gap-3">
+                <img
+                  :src="selectedProposal.logoUrl"
+                  :alt="`${selectedProposal.name} logo`"
+                  class="h-14 w-14 rounded-md border border-slate-200 object-contain"
+                >
+                <p class="break-all text-xs text-slate-700">{{ selectedProposal.logoUrl }}</p>
+              </div>
+              <p v-else class="text-slate-800">—</p>
             </div>
             <div class="space-y-1 md:col-span-2">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</p>
@@ -2637,7 +2708,7 @@ const deleteConferenceFromEditor = async () => {
           v-model="queryState.continent"
           class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
         >
-          <option value="all">All continents</option>
+          <option value="all">All regions</option>
           <option v-for="continent in continentOptions" :key="continent" :value="continent">
             {{ continent }}
           </option>
@@ -3176,7 +3247,7 @@ const deleteConferenceFromEditor = async () => {
                   v-model="createForm.continent"
                   type="text"
                   class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
-                  placeholder="Continent"
+                  placeholder="Region"
                 >
                 <input
                   v-model="createForm.websiteUrl"
@@ -3215,6 +3286,26 @@ const deleteConferenceFromEditor = async () => {
                   type="text"
                   class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                   placeholder="Contact Channel"
+                >
+              </div>
+              <div class="mt-4 grid gap-3 md:grid-cols-3">
+                <input
+                  v-model="createForm.discountCode"
+                  type="text"
+                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                  placeholder="Discount Code"
+                >
+                <input
+                  v-model="createForm.discountLabel"
+                  type="text"
+                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                  placeholder="Discount %"
+                >
+                <input
+                  v-model="createForm.commissionLabel"
+                  type="text"
+                  class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                  placeholder="Commission %"
                 >
               </div>
               <textarea
@@ -3574,13 +3665,13 @@ const deleteConferenceFromEditor = async () => {
                   >
                 </div>
                 <div class="space-y-1">
-                  <label class="block text-sm font-medium text-slate-800">Continent</label>
+                  <label class="block text-sm font-medium text-slate-800">Region</label>
                   <select
                     :value="editorContinentMode === 'custom' ? EDITOR_ADD_NEW_CONTINENT : editorForm.continent"
                     class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     @change="onEditorContinentSelectionChange(($event.target as HTMLSelectElement).value)"
                   >
-                    <option value="">Select continent</option>
+                    <option value="">Select region</option>
                     <option v-for="continent in continentOptions" :key="continent" :value="continent">
                       {{ continent }}
                     </option>

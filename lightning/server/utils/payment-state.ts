@@ -33,6 +33,32 @@ const toLegacyLastEvent = (status: NormalizedPaymentStatus): string => {
 };
 
 /**
+ * Builds the status-specific transition timestamp fields for payment state updates.
+ */
+const buildTransitionTimestamp = (
+  status: NormalizedPaymentStatus,
+  eventTime: string,
+): Record<string, string> => {
+  if (status === "paid") {
+    return { paidAt: eventTime };
+  }
+
+  if (status === "expired") {
+    return { expiredAt: eventTime };
+  }
+
+  if (status === "cancelled") {
+    return { cancelledAt: eventTime };
+  }
+
+  if (status === "failed") {
+    return { failedAt: eventTime };
+  }
+
+  return {};
+};
+
+/**
  * Adds normalized payment state to a newly-created invoice document.
  */
 export const createInvoicePaymentState = (
@@ -43,6 +69,7 @@ export const createInvoicePaymentState = (
 
   return {
     ...invoiceDoc,
+    status,
     payment: {
       ...(invoiceDoc.payment || {}),
       status,
@@ -65,19 +92,18 @@ export const applyInvoicePaymentStatus = (
   options: ApplyInvoicePaymentStatusOptions,
 ): CouchDBDocument => {
   const eventTime = options.eventTime || getNowIso();
+  const transitionTimestamp = buildTransitionTimestamp(options.status, eventTime);
   const nextPayment = {
     ...(options.invoiceDoc.payment || {}),
     status: options.status,
     providerInvoiceId: resolveProviderInvoiceId(options.invoiceDoc),
     paymentRequest: resolvePaymentRequest(options.invoiceDoc),
+    ...transitionTimestamp,
   };
-
-  if (options.status === "paid") {
-    nextPayment.paidAt = eventTime;
-  }
 
   return {
     ...options.invoiceDoc,
+    status: options.status,
     payment: nextPayment,
     invoiceData: {
       ...(options.invoiceDoc.invoiceData || {}),
@@ -85,5 +111,8 @@ export const applyInvoicePaymentStatus = (
     },
     lastEvent: toLegacyLastEvent(options.status),
     ...(options.status === "paid" ? { timestampPaid: eventTime } : {}),
+    ...(options.status === "expired" ? { expiredAt: eventTime } : {}),
+    ...(options.status === "cancelled" ? { cancelledAt: eventTime } : {}),
+    ...(options.status === "failed" ? { failedAt: eventTime } : {}),
   };
 };

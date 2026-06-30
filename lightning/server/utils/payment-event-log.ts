@@ -84,11 +84,14 @@ export const beginPaymentEventProcessing = async (
     processingStatus: "received",
   };
 
-  await putDocument(options.ordersDatabase, eventDoc);
+  const result = await putDocument(options.ordersDatabase, eventDoc);
 
   return {
     shouldProcess: true,
-    eventDoc,
+    eventDoc: {
+      ...eventDoc,
+      _rev: result.rev,
+    },
   };
 };
 

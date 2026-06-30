@@ -73,6 +73,90 @@ const resolveProviderInvoiceId = (invoiceDoc: CouchDBDocument): string => {
   return typeof invoiceId === "string" ? invoiceId.trim() : "";
 };
 
+/**
+ * Parses a positive integer day count from product/order metadata.
+ */
+const resolveValidDays = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Resolves the date that should be used when applying a paid invoice extension.
+ */
+const resolvePaymentBaseDate = (invoiceDoc: CouchDBDocument): Date => {
+  const candidates = [
+    invoiceDoc?.payment?.paidAt,
+    invoiceDoc?.payment?.updatedAt,
+    invoiceDoc?.invoiceData?.paidAt,
+    invoiceDoc?.invoiceData?.updatedAt,
+    invoiceDoc?.timestamp,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return new Date();
+};
+
+/**
+ * Resolves the subscription validity window using the same order value consumed by
+ * the external orders monitor, with a valid_days fallback for embedded processing.
+ */
+const resolvePaidSubscriptionValidUntil = (
+  invoiceDoc: CouchDBDocument,
+  orderDoc: CouchDBDocument,
+  userDoc: CouchDBDocument,
+  config: FulfillmentProductConfig,
+): string | undefined => {
+  const orderValidUntil = orderDoc?.content?.validUntil;
+  if (typeof orderValidUntil === "string" && orderValidUntil.trim()) {
+    return orderValidUntil.trim();
+  }
+
+  if (!config.validUntilField) {
+    return undefined;
+  }
+
+  const validDays = resolveValidDays(orderDoc?.content?.valid_days ?? orderDoc?.content?.validDays);
+  if (!validDays) {
+    return undefined;
+  }
+
+  const paymentBaseDate = resolvePaymentBaseDate(invoiceDoc);
+  const existingValidUntil = userDoc?.[config.validUntilField];
+  let extensionBaseDate = paymentBaseDate;
+
+  if (typeof existingValidUntil === "string" && existingValidUntil.trim()) {
+    const existingDate = new Date(existingValidUntil);
+    if (!Number.isNaN(existingDate.getTime()) && existingDate.getTime() > paymentBaseDate.getTime()) {
+      extensionBaseDate = existingDate;
+    }
+  }
+
+  const expirationDate = new Date(extensionBaseDate.getTime());
+  expirationDate.setUTCDate(expirationDate.getUTCDate() + validDays);
+  return expirationDate.toISOString();
+};
+
 const loadUserDocument = async (
   invoiceDoc: CouchDBDocument,
   orderDoc: CouchDBDocument,
@@ -125,13 +209,16 @@ export const applyInvoiceCreatedFulfillment = async (
       updatedAt: new Date().toISOString(),
     },
   };
-  await putDocument(options.ordersDatabase, fulfilledInvoiceDoc);
+  const invoiceResult = await putDocument(options.ordersDatabase, fulfilledInvoiceDoc);
 
   return {
     applied: true,
     product,
     userName: resolveUserName(options.invoiceDoc, options.orderDoc),
-    invoiceDoc: fulfilledInvoiceDoc,
+    invoiceDoc: {
+      ...fulfilledInvoiceDoc,
+      _rev: invoiceResult.rev,
+    },
   };
 };
 
@@ -159,8 +246,13 @@ export const applyInvoicePaidFulfillment = async (
     updatedUserDoc[config.statusField] = config.paidStatus;
   }
 
-  const validUntil = options.orderDoc?.content?.validUntil;
-  if (config.validUntilField && typeof validUntil === "string" && validUntil.trim()) {
+  const validUntil = resolvePaidSubscriptionValidUntil(
+    options.invoiceDoc,
+    options.orderDoc,
+    userDoc,
+    config,
+  );
+  if (config.validUntilField && validUntil) {
     updatedUserDoc[config.validUntilField] = validUntil;
   }
 
@@ -176,12 +268,15 @@ export const applyInvoicePaidFulfillment = async (
       error: null,
     },
   };
-  await putDocument(options.ordersDatabase, fulfilledInvoiceDoc);
+  const invoiceResult = await putDocument(options.ordersDatabase, fulfilledInvoiceDoc);
 
   return {
     applied: true,
     product,
     userName: resolveUserName(options.invoiceDoc, options.orderDoc),
-    invoiceDoc: fulfilledInvoiceDoc,
+    invoiceDoc: {
+      ...fulfilledInvoiceDoc,
+      _rev: invoiceResult.rev,
+    },
   };
 };

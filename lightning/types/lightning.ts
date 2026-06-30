@@ -26,6 +26,8 @@ export interface InvoiceResponse {
 }
 
 export interface WebhookEvent {
+  eventId?: string
+  id?: string
   invoiceId: string
   status: string
   amount?: number

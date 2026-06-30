@@ -169,6 +169,9 @@ export default defineEventHandler(async (event) => {
         }
 
         const orderPayload: Record<string, unknown> = { ...body, sats: resolvedSats }
+        if (typeof valid_days === 'number' && Number.isFinite(valid_days) && valid_days > 0) {
+            orderPayload.valid_days = Math.floor(valid_days)
+        }
         if (validUntil) {
             orderPayload.validUntil = validUntil
         }
