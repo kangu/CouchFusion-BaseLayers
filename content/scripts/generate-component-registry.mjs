@@ -1495,6 +1495,7 @@ const generateDefinitions = async (vueFiles, helpers) => {
 
   for (const file of vueFiles) {
     const source = await fs.readFile(file, 'utf8')
+    const sourceStats = await fs.stat(file)
     const { descriptor } = helpers.compiler.parse(source, { filename: file })
     const componentName = path.basename(file, '.vue')
 
@@ -1515,7 +1516,8 @@ const generateDefinitions = async (vueFiles, helpers) => {
       id: toKebabCase(componentName),
       label: toTitleCase(componentName),
       category: 'default',
-      description: `Auto-generated registry entry for ${componentName}.`
+      description: `Auto-generated registry entry for ${componentName}.`,
+      lastUpdatedAt: sourceStats.mtime.toISOString()
     }
 
     if (props.length > 0) {
@@ -1704,6 +1706,9 @@ const applyBuilderComponentMeta = (definition, meta) => {
 
   if (typeof meta.category === 'string' && meta.category.trim().length > 0) {
     definition.category = meta.category.trim().toLowerCase()
+  }
+  if (typeof meta.description === 'string' && meta.description.trim().length > 0) {
+    definition.description = meta.description.trim()
   }
 }
 

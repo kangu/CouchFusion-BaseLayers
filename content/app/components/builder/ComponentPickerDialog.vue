@@ -50,6 +50,27 @@
                             Mobile
                         </button>
                     </div>
+                    <div class="component-picker-sort-control" aria-label="Sort components">
+                        <span class="component-picker-sort-control__label">Sort</span>
+                        <div class="component-picker-view-toggle">
+                            <button
+                                type="button"
+                                class="component-picker-view-toggle__button"
+                                :class="{ 'is-active': sortMode === 'updated' }"
+                                @click="sortMode = 'updated'"
+                            >
+                                Updated
+                            </button>
+                            <button
+                                type="button"
+                                class="component-picker-view-toggle__button"
+                                :class="{ 'is-active': sortMode === 'name' }"
+                                @click="sortMode = 'name'"
+                            >
+                                Name
+                            </button>
+                        </div>
+                    </div>
                     <label class="component-picker-density-control" for="component-picker-thumbnail-columns">
                         <span class="component-picker-density-control__label">Thumbnails</span>
                         <input
@@ -243,6 +264,15 @@
                                     </PreviewFrame>
                                 </LazyLoader>
                             </div>
+                            <div
+                                v-if="!isPrimitiveComponent(comp)"
+                                class="component-picker-preview-hit-layer"
+                                role="button"
+                                tabindex="-1"
+                                :aria-label="`Select ${comp.label}`"
+                                @click.stop="select(comp.id)"
+                                @wheel="handlePreviewThumbnailWheel"
+                            ></div>
                         </div>
                         <button class="expand-preview-btn" @click.stop="expandComponent(comp)" title="Expand Preview">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -267,8 +297,16 @@
                     </div>
                     <div class="component-card-footer" @click="select(comp.id)">
                         <div class="component-info">
-                            <span class="component-name">{{ comp.label }}</span>
-                            <span class="component-id">{{ comp.id }}</span>
+                            <span class="component-info__main">
+                                <span class="component-name">{{ comp.label }}</span>
+                            </span>
+                            <span
+                                v-if="formatComponentUpdatedAt(comp)"
+                                class="component-card-meta component-updated-at"
+                            >
+                                Updated {{ formatComponentUpdatedAt(comp) }}
+                            </span>
+                            <span v-else class="component-card-meta component-id">{{ comp.id }}</span>
                         </div>
                         <p v-if="comp.description" class="component-description">
                             {{ comp.description }}
@@ -372,6 +410,8 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const componentGrid = ref<HTMLElement | null>(null);
 const componentGridInlineSize = ref(0);
 const selectedCategory = ref("default");
+type ComponentPickerSortMode = "updated" | "name";
+const sortMode = ref<ComponentPickerSortMode>("updated");
 const manageCategoriesOpen = ref(false);
 const draftCategories = ref<ComponentPickerCategory[]>([]);
 const draftAssignments = ref<Record<string, string[]>>({});
@@ -447,6 +487,62 @@ const isPrimitiveComponent = (definition: ComponentDefinition): boolean => {
     return PRIMITIVE_COMPONENT_IDS.has(id) || PRIMITIVE_COMPONENT_LABELS.has(label);
 };
 
+const compareComponentNames = (
+    left: ComponentDefinition,
+    right: ComponentDefinition,
+): number => {
+    const labelComparison = left.label.localeCompare(right.label);
+    if (labelComparison !== 0) {
+        return labelComparison;
+    }
+    return left.id.localeCompare(right.id);
+};
+
+const getComponentUpdatedTime = (definition: ComponentDefinition): number | null => {
+    if (typeof definition.lastUpdatedAt !== "string") {
+        return null;
+    }
+    const timestamp = Date.parse(definition.lastUpdatedAt);
+    return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+const sortComponentDefinitions = (
+    definitions: ComponentDefinition[],
+): ComponentDefinition[] => {
+    const sorted = [...definitions];
+    if (sortMode.value === "name") {
+        return sorted.sort(compareComponentNames);
+    }
+
+    return sorted.sort((left, right) => {
+        const leftUpdated = getComponentUpdatedTime(left);
+        const rightUpdated = getComponentUpdatedTime(right);
+
+        if (leftUpdated !== null && rightUpdated !== null && leftUpdated !== rightUpdated) {
+            return rightUpdated - leftUpdated;
+        }
+        if (leftUpdated !== null && rightUpdated === null) {
+            return -1;
+        }
+        if (leftUpdated === null && rightUpdated !== null) {
+            return 1;
+        }
+        return compareComponentNames(left, right);
+    });
+};
+
+const formatComponentUpdatedAt = (definition: ComponentDefinition): string => {
+    const timestamp = getComponentUpdatedTime(definition);
+    if (timestamp === null) {
+        return "";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(new Date(timestamp));
+};
+
 const getPrimitivePreviewKind = (
     definition: ComponentDefinition,
 ): "paragraph" | "span" | "strong" | "template" => {
@@ -480,15 +576,17 @@ const filteredComponents = computed(() => {
         selected,
     );
 
-    if (!searchQuery.value.trim()) return byCategory;
+    if (!searchQuery.value.trim()) return sortComponentDefinitions(byCategory);
     const q = searchQuery.value.toLowerCase();
-    return byCategory.filter(
-        (c) =>
-            c.label.toLowerCase().includes(q) ||
-            c.id.toLowerCase().includes(q) ||
-            getEffectiveComponentPickerCategoryIds(c, categorySettings.value).some(
-                (categoryId) => categoryId.includes(q),
-            )
+    return sortComponentDefinitions(
+        byCategory.filter(
+            (c) =>
+                c.label.toLowerCase().includes(q) ||
+                c.id.toLowerCase().includes(q) ||
+                getEffectiveComponentPickerCategoryIds(c, categorySettings.value).some(
+                    (categoryId) => categoryId.includes(q),
+                )
+        ),
     );
 });
 
@@ -650,6 +748,48 @@ const close = () => {
 const select = (id: string) => {
     emit("select", id);
     close();
+};
+
+/**
+ * Scrolls the same-origin thumbnail iframe without letting clickable preview
+ * content receive mouse events. If the iframe cannot scroll further, the wheel
+ * event falls through to the component picker grid.
+ */
+const handlePreviewThumbnailWheel = (event: WheelEvent) => {
+    const layer = event.currentTarget as HTMLElement | null;
+    const iframe = layer
+        ?.closest(".preview-pane")
+        ?.querySelector("iframe") as HTMLIFrameElement | null;
+    const frameDocument =
+        iframe?.contentDocument ?? iframe?.contentWindow?.document ?? null;
+    const scrollElement = frameDocument?.scrollingElement as HTMLElement | null;
+
+    if (!scrollElement) {
+        return;
+    }
+
+    const canScrollDown =
+        event.deltaY > 0 &&
+        scrollElement.scrollTop + scrollElement.clientHeight <
+            scrollElement.scrollHeight - 1;
+    const canScrollUp = event.deltaY < 0 && scrollElement.scrollTop > 0;
+    const canScrollRight =
+        event.deltaX > 0 &&
+        scrollElement.scrollLeft + scrollElement.clientWidth <
+            scrollElement.scrollWidth - 1;
+    const canScrollLeft = event.deltaX < 0 && scrollElement.scrollLeft > 0;
+
+    if (!(canScrollDown || canScrollUp || canScrollRight || canScrollLeft)) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    scrollElement.scrollBy({
+        left: event.deltaX,
+        top: event.deltaY,
+        behavior: "auto",
+    });
 };
 
 const getDefaultProps = (def: ComponentDefinition) => {
@@ -1083,6 +1223,19 @@ watch(
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
+.component-picker-sort-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.component-picker-sort-control__label {
+    color: #374151;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .component-picker-density-control {
     display: inline-flex;
     align-items: center;
@@ -1428,6 +1581,15 @@ watch(
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
+.component-picker-preview-hit-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    cursor: pointer;
+    background: transparent;
+    touch-action: pan-y;
+}
+
 .primitive-preview {
     width: 100%;
     height: 100%;
@@ -1570,13 +1732,27 @@ watch(
     gap: 8px;
 }
 
+.component-info__main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
 .component-name {
     font-weight: 600;
     font-size: 0.95rem;
     color: #111827;
 }
 
+.component-updated-at {
+    color: #6b7280;
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
 .component-id {
+    flex-shrink: 0;
     font-size: 0.75rem;
     color: #9ca3af;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

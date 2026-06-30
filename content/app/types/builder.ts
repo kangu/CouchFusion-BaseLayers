@@ -101,6 +101,7 @@ export interface ComponentDefinition {
   label: string; // display name in UI
   category?: string;
   description?: string;
+  lastUpdatedAt?: string;
   icon?: string;
   previewComponentId?: string;
   previewProps?: Record<string, BuilderValue>;
