@@ -203,6 +203,7 @@ const props = defineProps<{
     initialDocument?: MinimalContentDocument | null;
     hidePreview?: boolean;
     searchQuery?: string;
+    showTranslateSection?: boolean;
     selectedTranslationPointers?: string[];
 }>();
 const emit = defineEmits<{
@@ -375,6 +376,9 @@ const isMultiLanguageSite = computed(
     () =>
         contentI18nConfig.value.enabled &&
         contentI18nConfig.value.locales.length > 1,
+);
+const showTranslateSection = computed(
+    () => isMultiLanguageSite.value && props.showTranslateSection !== false,
 );
 
 const getSectionNamesById = (): Record<string, string> => {
@@ -3433,7 +3437,7 @@ const handleSaveDebugClick = () => {
                     :registry="runtimeRegistry"
                     :component-options="componentOptions"
                     :global-alias-ids="globalAliasIdList"
-                    :show-translate-section="isMultiLanguageSite"
+                    :show-translate-section="showTranslateSection"
                     :focus-request="nodePropFocusRequest"
                     :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"

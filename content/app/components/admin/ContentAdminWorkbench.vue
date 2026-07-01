@@ -304,7 +304,10 @@ const headerPosition = reactive({ top: "0px", left: "0px", width: "auto" });
 const hasLoadedInitialDocument = ref(false);
 const isHistoryMenuOpen = ref(false);
 const isActionsMenuOpen = ref(false);
+const isTranslationMenuOpen = ref(false);
+const isInlineTranslationEnabled = ref(false);
 const historyMenuRef = ref<HTMLElement | null>(null);
+const translationMenuRef = ref<HTMLElement | null>(null);
 
 const headerFixedStyles = computed(() => {
     if (!isHeaderPinned.value) {
@@ -763,7 +766,11 @@ const handleIntersection: IntersectionObserverCallback = (entries) => {
 };
 
 const handleHistoryMenuOutsidePointerDown = (event: PointerEvent) => {
-    if (!isHistoryMenuOpen.value && !isActionsMenuOpen.value) {
+    if (
+        !isHistoryMenuOpen.value &&
+        !isActionsMenuOpen.value &&
+        !isTranslationMenuOpen.value
+    ) {
         return;
     }
     const target = event.target as Node | null;
@@ -771,12 +778,20 @@ const handleHistoryMenuOutsidePointerDown = (event: PointerEvent) => {
         closeHistoryMenu();
         closeActionsMenu();
     }
+    if (
+        translationMenuRef.value &&
+        target &&
+        !translationMenuRef.value.contains(target)
+    ) {
+        closeTranslationMenu();
+    }
 };
 
 const handleHistoryMenuEscape = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
         closeHistoryMenu();
         closeActionsMenu();
+        closeTranslationMenu();
     }
 };
 
@@ -2566,6 +2581,10 @@ const closeActionsMenu = () => {
     isActionsMenuOpen.value = false;
 };
 
+const closeTranslationMenu = () => {
+    isTranslationMenuOpen.value = false;
+};
+
 watch(
     () => forcePreviewMotion.value,
     (value) => {
@@ -2576,6 +2595,12 @@ watch(
     },
     { immediate: true },
 );
+
+watch(isInlineTranslationEnabled, (enabled) => {
+    if (!enabled) {
+        selectedTranslationPointers.value = [];
+    }
+});
 
 const toggleHistoryMenu = () => {
     if (!selectedSummary.value) {
@@ -2591,6 +2616,34 @@ const toggleActionsMenu = () => {
     }
     closeHistoryMenu();
     isActionsMenuOpen.value = !isActionsMenuOpen.value;
+};
+
+const toggleTranslationMenu = () => {
+    closeHistoryMenu();
+    closeActionsMenu();
+    isTranslationMenuOpen.value = !isTranslationMenuOpen.value;
+};
+
+const handleChooseNewTranslationLanguage = async (): Promise<void> => {
+    closeTranslationMenu();
+    await handleTranslatePage();
+};
+
+const handleSelectActiveLocale = (locale: string): void => {
+    if (!selectedSummary.value || !availableLocales.value.includes(locale)) {
+        return;
+    }
+
+    if (locale !== activeLocale.value) {
+        activeLocale.value = locale;
+    }
+
+    closeTranslationMenu();
+};
+
+const handleToggleInlineTranslations = (): void => {
+    isInlineTranslationEnabled.value = !isInlineTranslationEnabled.value;
+    closeTranslationMenu();
 };
 
 const handleDuplicateFromActionsMenu = () => {
@@ -2732,6 +2785,110 @@ defineExpose({
                     </div>
                 </div>
                 <div class="content-admin-workbench__header-actions">
+                    <div
+                        ref="translationMenuRef"
+                        class="content-admin-workbench__translation-menu"
+                    >
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted content-admin-workbench__translation-trigger"
+                            :class="{ 'is-active': isTranslationMenuOpen }"
+                            aria-label="Open translation tools"
+                            aria-haspopup="menu"
+                            :aria-expanded="isTranslationMenuOpen"
+                            @click="toggleTranslationMenu"
+                        >
+                            <svg
+                                class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    fill="currentColor"
+                                    d="M12.9 15.7a14 14 0 0 0 2.45-5.2H18V8.5h-6V6.5h-2v2H4v2h9.3a11.8 11.8 0 0 1-1.8 3.75A14 14 0 0 1 10 12h-2.2a16.3 16.3 0 0 0 2.35 3.85L7.6 18.4 9 19.8l2.5-2.5 1.55 1.55.9-1.9-1.05-1.25ZM17.5 13h2L23 21h-2.1l-.7-1.8h-3.4l-.7 1.8H14l3.5-8Zm-.05 4.5h2.1l-1.05-2.85-1.05 2.85Z"
+                                />
+                            </svg>
+                        </button>
+                        <div
+                            v-if="isTranslationMenuOpen"
+                            class="content-admin-workbench__translation-dropdown"
+                            role="menu"
+                        >
+                            <div
+                                class="content-admin-workbench__translation-section"
+                                role="none"
+                            >
+                                <div
+                                    class="content-admin-workbench__translation-section-label"
+                                >
+                                    Current locale
+                                </div>
+                                <div
+                                    class="content-admin-workbench__translation-locales"
+                                    role="group"
+                                    aria-label="Current locale"
+                                >
+                                    <button
+                                        v-for="locale in availableLocales"
+                                        :key="`active-locale-${locale}`"
+                                        type="button"
+                                        role="menuitemradio"
+                                        class="content-admin-workbench__translation-locale"
+                                        :class="{
+                                            'is-active':
+                                                locale === activeLocale,
+                                        }"
+                                        :aria-checked="
+                                            locale === activeLocale
+                                        "
+                                        :disabled="!selectedSummary"
+                                        @click="handleSelectActiveLocale(locale)"
+                                    >
+                                        <span
+                                            v-if="getLocaleFlagSvg(locale)"
+                                            class="content-admin-workbench__translation-locale-flag"
+                                            v-html="getLocaleFlagSvg(locale)"
+                                        />
+                                        <span
+                                            class="content-admin-workbench__translation-locale-code"
+                                        >
+                                            {{ locale }}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button
+                                v-if="translationLocaleOptions.length"
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__translation-item"
+                                :disabled="
+                                    isTranslationPending ||
+                                    !!selectedHistoryId
+                                "
+                                @click="handleChooseNewTranslationLanguage"
+                            >
+                                Translate to
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitemcheckbox"
+                                class="content-admin-workbench__translation-item content-admin-workbench__translation-item--toggle"
+                                :aria-checked="isInlineTranslationEnabled"
+                                @click="handleToggleInlineTranslations"
+                            >
+                                <span>Inline translations</span>
+                                <span
+                                    class="content-admin-workbench__translation-switch"
+                                    :class="{
+                                        'is-on': isInlineTranslationEnabled,
+                                    }"
+                                    aria-hidden="true"
+                                />
+                            </button>
+                        </div>
+                    </div>
                     <button
                         type="button"
                         class="content-admin-workbench__button content-admin-workbench__button--primary"
@@ -2988,22 +3145,6 @@ defineExpose({
                         </div>
                       </div>
                     </div>
-
-                    <label class="editor-header__locale">
-                        <span>Locale</span>
-                        <select
-                            v-model="activeLocale"
-                            :disabled="!selectedSummary"
-                        >
-                            <option
-                                v-for="locale in availableLocales"
-                                :key="locale"
-                                :value="locale"
-                            >
-                                {{ locale }}
-                            </option>
-                        </select>
-                    </label>
                   </div>
                 </div>
 
@@ -3085,6 +3226,9 @@ defineExpose({
                                 :hide-preview="hidePreview"
                                 :key="selectedDocument.id"
                                 :search-query="builderSearchQuery"
+                                :show-translate-section="
+                                    isInlineTranslationEnabled
+                                "
                                 :selected-translation-pointers="
                                     selectedTranslationPointers
                                 "
@@ -4206,6 +4350,171 @@ defineExpose({
     gap: 0.75rem;
 }
 
+.content-admin-workbench__translation-menu {
+    position: relative;
+}
+
+.content-admin-workbench__translation-trigger {
+    justify-content: center;
+    color: #334155;
+}
+
+.content-admin-workbench__translation-trigger .content-admin-workbench__icon {
+    width: 1.35rem;
+    height: 1.35rem;
+}
+
+.content-admin-workbench__translation-trigger.is-active {
+    border-color: #94a3b8;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.content-admin-workbench__translation-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 1250;
+    display: grid;
+    min-width: 275px;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.65rem;
+    background: #ffffff;
+    box-shadow: 0 18px 40px -24px rgba(15, 23, 42, 0.45);
+}
+
+.content-admin-workbench__translation-section {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.35rem 0.35rem 0.55rem;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 0.25rem;
+}
+
+.content-admin-workbench__translation-section-label {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.content-admin-workbench__translation-locales {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.content-admin-workbench__translation-locale {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #334155;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.content-admin-workbench__translation-locale:hover:not(:disabled) {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.content-admin-workbench__translation-locale.is-active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.content-admin-workbench__translation-locale:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.content-admin-workbench__translation-locale-flag {
+    width: 1rem;
+    height: 1rem;
+    overflow: hidden;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.content-admin-workbench__translation-locale-flag :deep(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.content-admin-workbench__translation-item {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    padding: 0.65rem 0.75rem;
+    color: #1f2937;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: left;
+}
+
+.content-admin-workbench__translation-item:hover:not(:disabled) {
+    border-color: #dbeafe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.content-admin-workbench__translation-item:disabled {
+    cursor: not-allowed;
+    color: #94a3b8;
+}
+
+.content-admin-workbench__translation-item--toggle {
+    align-items: center;
+}
+
+.content-admin-workbench__translation-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 2.2rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background-color 0.16s ease;
+}
+
+.content-admin-workbench__translation-switch::after {
+    position: absolute;
+    top: 0.2rem;
+    left: 0.2rem;
+    width: 0.85rem;
+    height: 0.85rem;
+    content: "";
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+    transition: transform 0.16s ease;
+}
+
+.content-admin-workbench__translation-switch.is-on {
+    background: #2563eb;
+}
+
+.content-admin-workbench__translation-switch.is-on::after {
+    transform: translateX(0.95rem);
+}
+
 .content-admin-workbench__panel {
     display: flex;
     flex-direction: column;
@@ -4497,26 +4806,6 @@ defineExpose({
     background-color: #fef2f2;
     border-color: #fca5a5;
     color: #991b1b;
-}
-
-.editor-header__locale {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #475569;
-}
-
-.editor-header__locale select {
-    min-width: 84px;
-    padding: 0.4rem 0.55rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.45rem;
-    background: #ffffff;
-    color: #111827;
-    font-size: 0.8rem;
-    font-weight: 600;
 }
 
 .editor-header__translation-controls {

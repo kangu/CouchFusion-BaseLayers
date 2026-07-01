@@ -237,9 +237,17 @@
                 :update-nested-array-item-field="updateNestedArrayItemField"
                 :update-custom-nested-array-item-field="updateCustomNestedArrayItemField"
                 :format-json-value="formatJsonValue"
-                :on-translate-field="triggerTranslateField"
-                :on-toggle-translate-selection="triggerToggleTranslateFieldSelection"
-                :is-translate-selected="isTranslateFieldSelected"
+                :on-translate-field="
+                    showTranslateSection ? triggerTranslateField : undefined
+                "
+                :on-toggle-translate-selection="
+                    showTranslateSection
+                        ? triggerToggleTranslateFieldSelection
+                        : undefined
+                "
+                :is-translate-selected="
+                    showTranslateSection ? isTranslateFieldSelected : undefined
+                "
             />
 
             <!-- New props are not enabled for the moment, keep it here for possible future use -->
@@ -292,13 +300,21 @@
                         :on-clone="onClone"
                         :on-create-global-alias="onCreateGlobalAlias"
                         :on-toggle-expanded="onToggleExpanded"
-                        :on-translate-field="onTranslateField"
-                        :on-translate-section="onTranslateSection"
+                        :on-translate-field="
+                            showTranslateSection ? onTranslateField : undefined
+                        "
+                        :on-translate-section="
+                            showTranslateSection ? onTranslateSection : undefined
+                        "
                         :on-toggle-translate-field-selection="
-                            onToggleTranslateFieldSelection
+                            showTranslateSection
+                                ? onToggleTranslateFieldSelection
+                                : undefined
                         "
                         :is-translate-field-selected="
-                            isTranslateFieldSelected
+                            showTranslateSection
+                                ? isTranslateFieldSelected
+                                : undefined
                         "
                     />
                 </template>

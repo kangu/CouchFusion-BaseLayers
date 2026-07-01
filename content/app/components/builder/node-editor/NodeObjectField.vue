@@ -18,9 +18,8 @@
                             field,
                             objectValue?.[field.key],
                         ),
-                        'node-panel__field--localized': Boolean(
-                            field.localized,
-                        ),
+                        'node-panel__field--localized':
+                            canTranslateField(field),
                     },
                 ]"
             >
@@ -288,9 +287,7 @@
                                                     ],
                                                 ),
                                             'node-panel__field--localized':
-                                                Boolean(
-                                                    arrayField.localized,
-                                                ),
+                                                canTranslateField(arrayField),
                                         },
                                     ]"
                                 >
@@ -1247,6 +1244,10 @@ const getImageKitTransformValue = (
 const canTranslateField = (
     schema: ComponentPropSchema | ComponentArrayItemField,
 ): boolean => {
+    if (!props.onTranslateField || !props.onToggleTranslateSelection) {
+        return false;
+    }
+
     if (!schema.localized || !schema.key) {
         return false;
     }

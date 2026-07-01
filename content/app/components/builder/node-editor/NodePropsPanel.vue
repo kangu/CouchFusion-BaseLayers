@@ -9,7 +9,7 @@
             :listeners="fieldWrapperListeners(prop)"
             :is-row="prop.type === 'boolean'"
             :is-match="shouldHighlightSelect(prop, propDraft[prop.key])"
-            :is-localized="Boolean(prop.localized)"
+            :is-localized="canTranslateField(prop)"
             :label="prop.label"
             :description="prop.description"
             :error="jsonErrors[prop.key]"
@@ -631,6 +631,10 @@ const normalizeImageKitTransformValue = (value: unknown) => {
 };
 
 const canTranslateField = (schema: ComponentPropSchema): boolean => {
+    if (!props.onTranslateField || !props.onToggleTranslateSelection) {
+        return false;
+    }
+
     if (!schema.localized || !schema.key) {
         return false;
     }
