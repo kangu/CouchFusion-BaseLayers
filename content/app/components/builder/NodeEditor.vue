@@ -755,12 +755,15 @@ const focusPropInput = async (request: {
         inline: "nearest",
     });
 
-    const imagePickerTrigger = field.querySelector<HTMLElement>(
-        "[data-image-field-open-library]",
-    );
-    if (imagePickerTrigger && !isDisabledElement(imagePickerTrigger)) {
-        imagePickerTrigger.click();
-        return;
+    const targetSchema = resolvePropPathSchema(request.propPath);
+    if (targetSchema && isImageFieldSchema(targetSchema)) {
+        const imagePickerTrigger = field.querySelector<HTMLElement>(
+            "[data-image-field-open-library]",
+        );
+        if (imagePickerTrigger && !isDisabledElement(imagePickerTrigger)) {
+            imagePickerTrigger.click();
+            return;
+        }
     }
 
     const focusTarget = field.querySelector<HTMLElement>(
@@ -1177,6 +1180,47 @@ const filteredExtraPropEntries = computed(() => {
 const getPropSchema = (key: string) =>
     componentDef.value?.props?.find((prop) => prop.key === key);
 
+const findNestedFieldSchema = (
+    schema: ComponentPropSchema | ComponentArrayItemField,
+    key: string,
+) => {
+    if ("items" in schema && Array.isArray(schema.items)) {
+        const nestedSchema = schema.items.find((item) => item.key === key);
+        if (nestedSchema) {
+            return nestedSchema;
+        }
+    }
+
+    if ("fields" in schema && Array.isArray(schema.fields)) {
+        return schema.fields.find((field) => field.key === key);
+    }
+
+    return undefined;
+};
+
+const resolvePropPathSchema = (propPath: Array<string | number>) => {
+    const [rootKey, ...nestedPath] = propPath;
+    if (typeof rootKey !== "string") {
+        return undefined;
+    }
+
+    let schema: ComponentPropSchema | ComponentArrayItemField | undefined =
+        getPropSchema(rootKey);
+    for (const segment of nestedPath) {
+        if (!schema) {
+            return undefined;
+        }
+
+        if (typeof segment === "number") {
+            continue;
+        }
+
+        schema = findNestedFieldSchema(schema, segment);
+    }
+
+    return schema;
+};
+
 const toCloneablePlainValue = (
     value: unknown,
     seen = new WeakMap<object, unknown>(),
@@ -1409,7 +1453,9 @@ const isImageKitTransformCompanionKey = (key: string) =>
 const imageKitTransformCompanionKey = (key: string) =>
     `${key}${IMAGEKIT_TRANSFORM_SUFFIX}`;
 
-const isImageFieldSchema = (schema: ComponentPropSchema) =>
+const isImageFieldSchema = (
+    schema: ComponentPropSchema | ComponentArrayItemField,
+) =>
     schema.ui?.component === "ContentImageField";
 
 const imageKitTransformCompanionType = (schema: ComponentPropSchema) =>

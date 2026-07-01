@@ -301,17 +301,11 @@
                         <span class="image-field__library-count">{{
                             displayedCountLabel
                         }}</span>
-                        <button
-                            v-if="canShowAll"
-                            type="button"
-                            class="image-field__button image-field__button--ghost"
-                            @click="showAllImages"
-                            :disabled="isLibraryLoading"
-                        >
-                            Show All
-                        </button>
                     </div>
-                    <div class="image-field__library-body">
+                    <div
+                        ref="libraryBodyRef"
+                        class="image-field__library-body"
+                    >
                         <p v-if="libraryError" class="image-field__error">
                             {{ libraryError }}
                         </p>
@@ -334,11 +328,18 @@
                                 class="image-field__library-card"
                             >
                                 <div class="image-field__library-thumbnail">
-                                    <img
-                                        :src="item.thumbnailUrl || item.url"
-                                        alt=""
-                                        loading="lazy"
-                                    />
+                                    <button
+                                        type="button"
+                                        class="image-field__library-preview-trigger"
+                                        :aria-label="`Preview ${item.name || item.filePath || 'image'}`"
+                                        @click="openLibraryPreview(item)"
+                                    >
+                                        <img
+                                            :src="item.thumbnailUrl || item.url"
+                                            alt=""
+                                            loading="lazy"
+                                        />
+                                    </button>
                                 </div>
                                 <div class="image-field__library-meta">
                                     <strong class="image-field__library-name">{{
@@ -372,6 +373,58 @@
                                 </div>
                             </li>
                         </ul>
+                        <div
+                            v-if="canLoadMore"
+                            class="image-field__library-load-more"
+                        >
+                            <button
+                                type="button"
+                                class="image-field__button image-field__button--ghost"
+                                @click="loadMoreImages"
+                                :disabled="isLibraryLoading"
+                            >
+                                {{ isLibraryLoading ? "Loading…" : "Load more" }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <Transition name="fade">
+            <div
+                v-if="previewLibraryItem"
+                class="image-field__preview-backdrop"
+                @click.self="closeLibraryPreview"
+                @keydown.esc.prevent.stop="closeLibraryPreview"
+                tabindex="-1"
+            >
+                <div
+                    class="image-field__preview-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    :aria-label="previewDialogTitle"
+                >
+                    <header class="image-field__preview-dialog-header">
+                        <div class="image-field__preview-dialog-copy">
+                            <h3>{{ previewLibraryItem.name || "Image preview" }}</h3>
+                            <p v-if="previewLibraryItem.filePath">
+                                {{ previewLibraryItem.filePath }}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            class="image-field__close"
+                            @click="closeLibraryPreview"
+                        >
+                            ✕
+                        </button>
+                    </header>
+                    <div class="image-field__preview-dialog-body">
+                        <img
+                            :src="previewLibraryItem.url"
+                            :alt="previewLibraryItem.name || previewLibraryItem.filePath || 'Image preview'"
+                        />
                     </div>
                 </div>
             </div>
@@ -467,6 +520,7 @@ const error = ref<string | null>(null);
 const pending = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const localFileInputRef = ref<HTMLInputElement | null>(null);
+const libraryBodyRef = ref<HTMLElement | null>(null);
 
 const isLibraryOpen = ref(false);
 const isLibraryLoading = ref(false);
@@ -474,11 +528,12 @@ const libraryMode = ref<LibraryMode>("imagekit");
 const libraryItems = ref<LibraryItem[]>([]);
 const libraryError = ref<string | null>(null);
 const localUploadError = ref<string | null>(null);
+const previewLibraryItem = ref<LibraryItem | null>(null);
 const searchTerm = ref("");
 const DEFAULT_LIBRARY_LIMIT = 30;
-const MAX_LIBRARY_LIMIT = 1000;
 const libraryLimit = ref<number>(DEFAULT_LIBRARY_LIMIT);
 const libraryTotal = ref(0);
+const libraryHasMore = ref(false);
 const localUploadPending = ref(false);
 const localDeletePending = ref<string | null>(null);
 const imageKitWidth = ref("");
@@ -530,6 +585,13 @@ const isLocalLibrary = computed(() => libraryMode.value === "local");
 const libraryTitle = computed(() =>
     isLocalLibrary.value ? "Select Local Image" : "Select Image",
 );
+const previewDialogTitle = computed(() => {
+    const name =
+        previewLibraryItem.value?.name ||
+        previewLibraryItem.value?.filePath ||
+        "image";
+    return `Preview ${name}`;
+});
 const responsivePictureSourceConfig = computed<ResponsivePictureSourceConfig[]>(
     () => {
         const uiDefinition =
@@ -677,18 +739,27 @@ const shouldUsePicturePreview = computed(
         responsivePicturePreviewSources.value.length > 0,
 );
 const displayedCountLabel = computed(() => {
-    if (!libraryTotal.value) {
+    const displayed = libraryItems.value.length;
+    if (!displayed && !libraryTotal.value) {
         return "";
     }
 
-    const displayed = libraryItems.value.length;
     const sourceLabel = isLocalLibrary.value ? "local" : "ImageKit";
+    if (libraryTotal.value <= 0) {
+        return `Displaying ${displayed}${libraryHasMore.value ? "+" : ""} ${sourceLabel} images`;
+    }
+
+    if (libraryHasMore.value && displayed >= libraryTotal.value) {
+        return `Displaying ${displayed}+ ${sourceLabel} images`;
+    }
+
     return `Displaying ${displayed} of ${libraryTotal.value} ${sourceLabel} images`;
 });
 const canShowAll = computed(() => {
-    return (
-        libraryTotal.value > 0 && libraryItems.value.length < libraryTotal.value
-    );
+    return libraryTotal.value > 0 && libraryItems.value.length < libraryTotal.value;
+});
+const canLoadMore = computed(() => {
+    return canShowAll.value || libraryHasMore.value;
 });
 
 const normalizeFolder = (value: unknown) => {
@@ -931,33 +1002,70 @@ const mapImageKitItem = (
     };
 };
 
-const fetchImageKitLibrary = async (requestedLimit: number) => {
+const mergeLibraryItems = (
+    existingItems: LibraryItem[],
+    nextItems: LibraryItem[],
+) => {
+    const seen = new Set(existingItems.map((item) => item.id));
+    const merged = [...existingItems];
+
+    for (const item of nextItems) {
+        if (seen.has(item.id)) {
+            continue;
+        }
+        seen.add(item.id);
+        merged.push(item);
+    }
+
+    return merged;
+};
+
+const fetchImageKitLibrary = async (
+    requestedLimit: number,
+    options: { append?: boolean } = {},
+) => {
+    const skip = options.append ? libraryItems.value.length : 0;
     const result = await getImageList({
         limit: requestedLimit,
+        skip,
         searchQuery: searchTerm.value.trim() || undefined,
         path: folderHint.value,
         sort: "DESC_CREATED",
     });
-    libraryItems.value = result.files.map((item) => mapImageKitItem(item));
+    const nextItems = result.files.map((item) => mapImageKitItem(item));
+    const mergedItems = options.append
+        ? mergeLibraryItems(libraryItems.value, nextItems)
+        : nextItems;
+
+    libraryItems.value = mergedItems;
     libraryTotal.value = result.total;
     libraryLimit.value = requestedLimit;
+    libraryHasMore.value =
+        nextItems.length >= requestedLimit &&
+        mergedItems.length > skip;
 };
 
-const fetchLocalLibrary = async (requestedLimit: number) => {
+const fetchLocalLibrary = async (
+    requestedLimit: number,
+    options: { append?: boolean } = {},
+) => {
+    const page = options.append
+        ? Math.floor(libraryItems.value.length / requestedLimit) + 1
+        : 1;
     const response = await requestFetch<LocalImageResponse>(
         "/api/content/local-images",
         {
             method: "GET",
             params: {
                 limit: requestedLimit,
-                page: 1,
+                page,
                 search: searchTerm.value.trim() || undefined,
             },
         },
     );
 
     const data = response as LocalImageResponse;
-    libraryItems.value = data.images.map((image) => ({
+    const nextItems = data.images.map((image) => ({
         id: image.filePath,
         name: image.name || image.filePath,
         filePath: image.filePath,
@@ -965,11 +1073,21 @@ const fetchLocalLibrary = async (requestedLimit: number) => {
         source: "local",
         canDelete: true,
     }));
+    const mergedItems = options.append
+        ? mergeLibraryItems(libraryItems.value, nextItems)
+        : nextItems;
+
+    libraryItems.value = mergedItems;
     libraryTotal.value = data.total;
     libraryLimit.value = data.pageSize ?? requestedLimit;
+    libraryHasMore.value =
+        nextItems.length >= requestedLimit &&
+        mergedItems.length < data.total;
 };
 
-const fetchLibrary = async (override: { limit?: number } = {}) => {
+const fetchLibrary = async (
+    override: { append?: boolean; limit?: number } = {},
+) => {
     const requestedLimit =
         override.limit ?? libraryLimit.value ?? DEFAULT_LIBRARY_LIMIT;
     isLibraryLoading.value = true;
@@ -977,9 +1095,13 @@ const fetchLibrary = async (override: { limit?: number } = {}) => {
 
     try {
         if (libraryMode.value === "local") {
-            await fetchLocalLibrary(requestedLimit);
+            await fetchLocalLibrary(requestedLimit, {
+                append: override.append,
+            });
         } else {
-            await fetchImageKitLibrary(requestedLimit);
+            await fetchImageKitLibrary(requestedLimit, {
+                append: override.append,
+            });
         }
     } catch (libraryFetchError) {
         libraryError.value =
@@ -1071,6 +1193,7 @@ const openLibrary = (mode: LibraryMode = "imagekit") => {
     libraryMode.value = mode;
     libraryItems.value = [];
     libraryTotal.value = 0;
+    libraryHasMore.value = false;
     libraryError.value = null;
     localUploadError.value = null;
     libraryLimit.value = DEFAULT_LIBRARY_LIMIT;
@@ -1084,22 +1207,45 @@ const closeLibrary = () => {
     isLibraryOpen.value = false;
     localDeletePending.value = null;
     localUploadError.value = null;
+    closeLibraryPreview();
 };
 
 const searchLibrary = async () => {
     libraryLimit.value = DEFAULT_LIBRARY_LIMIT;
+    libraryItems.value = [];
+    libraryTotal.value = 0;
+    libraryHasMore.value = false;
     await fetchLibrary({ limit: DEFAULT_LIBRARY_LIMIT });
 };
 
-const showAllImages = async () => {
-    if (isLibraryLoading.value || !canShowAll.value) {
+const restoreLibraryScrollPosition = async (scrollTop: number | null) => {
+    if (scrollTop === null) {
         return;
     }
-    const targetLimit =
-        libraryTotal.value > 0
-            ? Math.min(MAX_LIBRARY_LIMIT, libraryTotal.value)
-            : MAX_LIBRARY_LIMIT;
-    await fetchLibrary({ limit: targetLimit });
+
+    await nextTick();
+    if (libraryBodyRef.value) {
+        libraryBodyRef.value.scrollTop = scrollTop;
+    }
+
+    requestAnimationFrame(() => {
+        if (libraryBodyRef.value) {
+            libraryBodyRef.value.scrollTop = scrollTop;
+        }
+    });
+};
+
+const loadMoreImages = async () => {
+    if (isLibraryLoading.value || !canLoadMore.value) {
+        return;
+    }
+
+    const scrollTop = libraryBodyRef.value?.scrollTop ?? null;
+    await fetchLibrary({
+        append: true,
+        limit: DEFAULT_LIBRARY_LIMIT,
+    });
+    await restoreLibraryScrollPosition(scrollTop);
 };
 
 watch(isLibraryOpen, (isOpen) => {
@@ -1116,6 +1262,17 @@ const selectFromLibrary = (item: LibraryItem) => {
     localValue.value = ensureAbsoluteUrl(item.url);
     commitValue();
     closeLibrary();
+};
+
+const openLibraryPreview = (item: LibraryItem) => {
+    if (!item?.url) {
+        return;
+    }
+    previewLibraryItem.value = item;
+};
+
+const closeLibraryPreview = () => {
+    previewLibraryItem.value = null;
 };
 
 const deleteLocalImage = async (item: LibraryItem) => {
@@ -1143,6 +1300,9 @@ const deleteLocalImage = async (item: LibraryItem) => {
         libraryItems.value = libraryItems.value.filter(
             (entry) => entry.id !== item.id,
         );
+        if (previewLibraryItem.value?.id === item.id) {
+            closeLibraryPreview();
+        }
         libraryTotal.value = Math.max(0, libraryTotal.value - 1);
     } catch (deleteError) {
         localUploadError.value =
@@ -1161,6 +1321,7 @@ const setLibraryMode = (mode: LibraryMode) => {
     libraryMode.value = mode;
     libraryItems.value = [];
     libraryTotal.value = 0;
+    libraryHasMore.value = false;
     libraryError.value = null;
     localUploadError.value = null;
     libraryLimit.value = DEFAULT_LIBRARY_LIMIT;
@@ -1541,6 +1702,12 @@ watch(isLibraryOpen, async (isOpen) => {
     margin: 0;
 }
 
+.image-field__library-load-more {
+    display: flex;
+    justify-content: center;
+    padding: 1.25rem 0 0.25rem;
+}
+
 .image-field__library-card {
     border: 1px solid rgba(148, 163, 184, 0.35);
     border-radius: 0.75rem;
@@ -1560,10 +1727,31 @@ watch(isLibraryOpen, async (isOpen) => {
     place-items: center;
 }
 
-.image-field__library-thumbnail img {
+.image-field__library-preview-trigger {
+    width: 100%;
+    height: 100%;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: zoom-in;
+}
+
+.image-field__library-preview-trigger:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.55);
+    outline-offset: -3px;
+}
+
+.image-field__library-preview-trigger img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+    transition: transform 0.18s ease;
+}
+
+.image-field__library-preview-trigger:hover img {
+    transform: scale(1.025);
 }
 
 .image-field__library-meta {
@@ -1599,5 +1787,83 @@ watch(isLibraryOpen, async (isOpen) => {
     background: transparent;
     font-size: 1.125rem;
     cursor: pointer;
+}
+
+.image-field__preview-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.image-field__preview-dialog {
+    width: min(76rem, 100%);
+    max-height: 92vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 24px 70px rgba(2, 6, 23, 0.35);
+}
+
+.image-field__preview-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.image-field__preview-dialog-copy {
+    min-width: 0;
+}
+
+.image-field__preview-dialog-copy h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+    word-break: break-word;
+}
+
+.image-field__preview-dialog-copy p {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+    word-break: break-all;
+}
+
+.image-field__preview-dialog-body {
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background:
+        linear-gradient(45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%);
+    background-color: #f8fafc;
+    background-position:
+        0 0,
+        0 0.5rem,
+        0.5rem -0.5rem,
+        -0.5rem 0;
+    background-size: 1rem 1rem;
+}
+
+.image-field__preview-dialog-body img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(92vh - 6.5rem);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.18);
 }
 </style>
