@@ -1076,6 +1076,51 @@ const focusedPropKey = computed(() => {
     const firstPathToken = props.focusRequest.propPath[0];
     return typeof firstPathToken === "string" ? firstPathToken : null;
 });
+
+/**
+ * Reads the optional editor grouping key from top-level prop metadata.
+ * Focus groups let one visible preview target open related fields together.
+ */
+const resolveFocusGroup = (schema: ComponentPropSchema | undefined) => {
+    const focusGroup = schema?.ui?.focusGroup;
+    return typeof focusGroup === "string" && focusGroup.trim().length
+        ? focusGroup.trim()
+        : null;
+};
+
+const focusedPropGroup = computed(() => {
+    const activeKey = focusedPropKey.value;
+    if (!activeKey) {
+        return null;
+    }
+
+    return resolveFocusGroup(
+        baseVisibleProps.value.find((prop) => prop.key === activeKey),
+    );
+});
+
+/**
+ * Expands a grouped focused edit selection with one neighboring field on each
+ * side for the optional "show fields around" view.
+ */
+const resolveAroundIndexes = (
+    propsList: ComponentPropSchema[],
+    activeIndexes: number[],
+) => {
+    const validIndexes = activeIndexes.filter((index) => index >= 0);
+    if (!validIndexes.length) {
+        return new Set<number>();
+    }
+
+    const firstIndex = Math.min(...validIndexes);
+    const lastIndex = Math.max(...validIndexes);
+    return new Set(
+        [firstIndex - 1, ...validIndexes, lastIndex + 1].filter(
+            (index) => index >= 0 && index < propsList.length,
+        ),
+    );
+};
+
 const visibleProps = computed(() => {
     const propsList = baseVisibleProps.value;
     const activeKey = focusedPropKey.value;
@@ -1085,6 +1130,24 @@ const visibleProps = computed(() => {
         focusedPropDisplay.value === "all"
     ) {
         return propsList;
+    }
+
+    const activeGroup = focusedPropGroup.value;
+    if (activeGroup) {
+        const groupIndexes = propsList
+            .map((prop, index) =>
+                resolveFocusGroup(prop) === activeGroup ? index : -1,
+            )
+            .filter((index) => index >= 0);
+
+        if (focusedPropDisplay.value === "around") {
+            const aroundIndexes = resolveAroundIndexes(propsList, groupIndexes);
+            return propsList.filter((_prop, index) => aroundIndexes.has(index));
+        }
+
+        return propsList.filter(
+            (prop) => resolveFocusGroup(prop) === activeGroup,
+        );
     }
 
     const activeIndex = propsList.findIndex((prop) => prop.key === activeKey);

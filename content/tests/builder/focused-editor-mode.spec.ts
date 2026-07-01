@@ -64,6 +64,10 @@ describe("builder focused editor mode", () => {
         expect(nodeEditor).toContain("focusedPropDisplay?: \"active\" | \"around\" | \"all\"");
         expect(nodeEditor).toContain("node.type === 'component' && !isolateLayout");
         expect(workbench).toContain('{{ isFocusedEditSaving ? "Saving..." : "OK" }}');
+        expect(nodeEditor).toContain("const resolveFocusGroup =");
+        expect(nodeEditor).toContain("const focusedPropGroup = computed(() =>");
+        expect(nodeEditor).toContain("resolveFocusGroup(prop) === activeGroup");
+        expect(nodeEditor).toContain("const resolveAroundIndexes =");
         expect(nodeEditor).toContain("const visibleProps = computed(() =>");
         expect(nodeEditor).toContain("const showSupplementalEditors = computed(");
         expect(nodeEditor).toContain("isolateLayout ? '0px' : depth * 16 + 'px'");
