@@ -3,7 +3,7 @@ import { useLightning } from '../../composables/useLightning'
 import {defineEventHandler, readBody, createError} from 'h3'
 import {useRuntimeConfig} from '#imports'
 import {saveInvoiceToDatabase} from '../../../utils/orders'
-import type {LightningConfig} from "../../../types/lightning";
+import { resolveLightningConfig } from '../../utils/lightning-config'
 
 export default defineEventHandler(async (event) => {
     const body = await readBody<{ amount?: number; memo?: string; provider?: 'strike' | 'alby' | 'blink' }>(event)
@@ -16,14 +16,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const config = useRuntimeConfig()
-    // lightning config is provided by the lightning layer; surfaces under runtimeConfig.lightning
-    const lightningConfig = config.lightning as LightningConfig
-    if (!lightningConfig) {
-        throw createError({
-            statusCode: 500,
-            statusMessage: 'Lightning configuration missing'
-        })
-    }
+    const lightningConfig = await resolveLightningConfig(config)
     const { initialize, createPayment } = useLightning()
 
     // Initialize the composable with config

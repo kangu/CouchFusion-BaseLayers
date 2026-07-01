@@ -9,6 +9,7 @@ import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
  */
 interface LiveUpdatePayload {
   path: string
+  locale?: string | null
   document: MinimalContentDocument
 }
 
@@ -778,7 +779,9 @@ export const useContentLiveUpdates = (): void => {
           }
         }
 
-        contentStore.applyLiveDocument(document)
+        contentStore.applyLiveDocument(document, {
+          locale: data.payload?.locale ?? null
+        })
         // console.log('[content-live-updates] document applied', {
         //   path,
         //   summary: contentStore.getPage(path)

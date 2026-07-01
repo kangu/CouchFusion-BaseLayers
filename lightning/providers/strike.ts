@@ -24,7 +24,9 @@ function satsToBtc(sats: number): string {
 
 export function createStrikeProvider(config: StrikeConfig): LightningProvider {
   const baseUrl = config.baseUrl || "https://api.strike.me";
-  console.log("Initialize Strike with", config.apiKey);
+  console.log("Initialize Strike provider", {
+    apiKey: config.apiKey ? "configured" : "missing",
+  });
 
   const makeRequest = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${baseUrl}${endpoint}`;
@@ -217,6 +219,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
         const currentInvoice = await getInvoiceById(payload.data.entityId);
 
         const webhookEvent: WebhookEvent = {
+          eventId: typeof payload.id === "string" ? payload.id : undefined,
           invoiceId: payload.data.entityId,
           status: mapStrikeStatus(currentInvoice.state),
           amount: currentInvoice.amount
@@ -243,6 +246,7 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
 
         // Fallback: return event with pending status (safe default)
         const fallbackEvent: WebhookEvent = {
+          eventId: typeof payload.id === "string" ? payload.id : undefined,
           invoiceId: payload.data.entityId,
           status: "pending",
           timestamp: new Date(payload.created),
@@ -334,7 +338,9 @@ export function createStrikeProvider(config: StrikeConfig): LightningProvider {
     }
 
     // Create new subscription
-    console.log("Creating subscription with secret", config.webhookSecret);
+    console.log("Creating Strike webhook subscription", {
+      webhookSecret: config.webhookSecret ? "configured" : "missing",
+    });
     const payload = {
       webhookUrl,
       webhookVersion: "v1",

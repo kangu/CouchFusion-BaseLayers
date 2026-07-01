@@ -421,9 +421,12 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
-        applyLiveDocument(document: MinimalContentDocument): ContentPageSummary {
+        applyLiveDocument(
+            document: MinimalContentDocument,
+            options: { locale?: string | null } = {},
+        ): ContentPageSummary {
             const contentDocument = minimalToContentDocument(document)
-            const target = resolveStoreTarget(contentDocument.path)
+            const target = resolveStoreTarget(contentDocument.path, options.locale)
             const summary = extractSummary({ document: contentDocument })
 
             if (!this.pages[target.storeKey]) {

@@ -1,8 +1,9 @@
 import { defineEventHandler, readBody, createError, getHeader } from 'h3'
 import { useLightning } from '../../composables/useLightning'
-import type { LightningConfig } from '../../../types/lightning'
 import { createOrder, getProductPrice, saveInvoiceToDatabase, replaceMemoTemplate } from '../../../utils/orders'
 import { getDocument, getSession } from '#database/utils/couchdb'
+import { applyInvoiceCreatedFulfillment } from '../../utils/order-fulfillment'
+import { resolveLightningConfig } from '../../utils/lightning-config'
 
 function extractAuthSessionCookie(cookieHeader: string | undefined): string | null {
     if (!cookieHeader) {
@@ -130,14 +131,6 @@ export default defineEventHandler(async (event) => {
         })
     }
 
-    // Validate lightning config exists
-    if (!runtimeConfig.lightning) {
-        throw createError({
-            statusCode: 500,
-            statusMessage: 'Lightning configuration not found'
-        })
-    }
-
     try {
         // Get runtime config for database naming
         const dbLoginPrefix = runtimeConfig.dbLoginPrefix;
@@ -176,6 +169,9 @@ export default defineEventHandler(async (event) => {
         }
 
         const orderPayload: Record<string, unknown> = { ...body, sats: resolvedSats }
+        if (typeof valid_days === 'number' && Number.isFinite(valid_days) && valid_days > 0) {
+            orderPayload.valid_days = Math.floor(valid_days)
+        }
         if (validUntil) {
             orderPayload.validUntil = validUntil
         }
@@ -186,7 +182,7 @@ export default defineEventHandler(async (event) => {
             event,
             databaseName: ordersDatabase
         })
-        const lightningConfig = runtimeConfig.lightning as LightningConfig
+        const lightningConfig = await resolveLightningConfig(runtimeConfig)
         const { initialize, createPayment } = useLightning()
 
         // Initialize the composable with config
@@ -221,6 +217,16 @@ export default defineEventHandler(async (event) => {
                 databaseName: ordersDatabase
             })
             console.log('Invoice saved to database:', invoiceDocId)
+
+            const invoiceDoc = await getDocument(ordersDatabase, invoiceDocId)
+            const orderDoc = await getDocument(ordersDatabase, orderId)
+            if (invoiceDoc && orderDoc) {
+                await applyInvoiceCreatedFulfillment({
+                    ordersDatabase,
+                    invoiceDoc,
+                    orderDoc
+                })
+            }
         } catch (invoiceError: any) {
             console.error('Failed to save invoice to database:', invoiceError)
             // Continue execution - don't fail the purchase if invoice saving fails

@@ -11,11 +11,16 @@ import { lightningDesignDocument } from "../../utils/design-documents";
 import { createBlinkProvider } from "../../providers/blink";
 import { createStrikeProvider } from "../../providers/strike";
 import type { LightningConfig } from "../../types/lightning";
+import {
+  assertLightningConfigReady,
+  logLightningConfigSourceNotices,
+  resolveLightningConfigWithSources,
+} from "../utils/lightning-config";
 
 /**
  * Initialize Strike webhook subscription
  */
-async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
+async function initializeStrikeWebhook(lightningConfig: LightningConfig): Promise<void> {
   console.log("🔔 Initializing Strike webhook subscription...");
 
   try {
@@ -27,8 +32,6 @@ async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
       return;
     }
 
-    const lightningConfig = runtimeConfig.lightning as LightningConfig;
-
     // Validate Strike configuration
     if (!lightningConfig.providers?.strike) {
       console.warn(
@@ -38,6 +41,13 @@ async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
     }
 
     const strikeConfig = lightningConfig.providers.strike;
+
+    if (!strikeConfig.apiKey) {
+      console.warn(
+        "⚠️ Strike API key not configured, skipping webhook subscription setup",
+      );
+      return;
+    }
 
     if (!strikeConfig.webhookSecret) {
       console.warn(
@@ -67,16 +77,22 @@ async function initializeStrikeWebhook(runtimeConfig: any): Promise<void> {
   }
 }
 
-async function initializeBlinkWebhook(runtimeConfig: any): Promise<void> {
+async function initializeBlinkWebhook(lightningConfig: LightningConfig): Promise<void> {
   console.log("🔔 Initializing Blink webhook subscription...");
 
   try {
-    const lightningConfig = runtimeConfig.lightning as LightningConfig;
     const blinkConfig = lightningConfig.providers?.blink;
 
     if (!blinkConfig) {
       console.warn(
         "⚠️ Blink provider configuration not found, skipping webhook subscription setup",
+      );
+      return;
+    }
+
+    if (!blinkConfig.apiKey) {
+      console.warn(
+        "⚠️ Blink API key not configured, skipping webhook subscription setup",
       );
       return;
     }
@@ -121,6 +137,11 @@ async function initializeLightningLayer(): Promise<void> {
     // Get runtime config for database naming
     const runtimeConfig = useRuntimeConfig();
     const dbLoginPrefix = runtimeConfig.dbLoginPrefix;
+    const resolvedLightningConfig = await resolveLightningConfigWithSources(runtimeConfig);
+    const lightningConfig = resolvedLightningConfig.config;
+
+    logLightningConfigSourceNotices(resolvedLightningConfig);
+    assertLightningConfigReady(resolvedLightningConfig);
 
     if (!dbLoginPrefix) {
       throw new Error("dbLoginPrefix is not configured in runtime config");
@@ -139,10 +160,10 @@ async function initializeLightningLayer(): Promise<void> {
     );
 
     // initialize provider-specific webhook setup
-    if (runtimeConfig.lightning.defaultProvider === "strike") {
-      await initializeStrikeWebhook(runtimeConfig);
-    } else if (runtimeConfig.lightning.defaultProvider === "blink") {
-      await initializeBlinkWebhook(runtimeConfig);
+    if (lightningConfig.defaultProvider === "strike") {
+      await initializeStrikeWebhook(lightningConfig);
+    } else if (lightningConfig.defaultProvider === "blink") {
+      await initializeBlinkWebhook(lightningConfig);
     }
   } catch (error) {
     console.error("💥 CouchDB lightning layer initialization failed:", error);

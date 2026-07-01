@@ -4,6 +4,31 @@ export interface ContentFontFamilyOption {
   label: string;
 }
 
+/** Bunny catalog entry normalized for the admin font browser. */
+export interface BunnyFontCatalogEntry {
+  slug: string;
+  label: string;
+  category: string | null;
+  defSubset: string | null;
+  isVariable: boolean;
+  styles: Array<"normal" | "italic">;
+  weights: number[];
+  variants: Record<string, number>;
+}
+
+/** Installed font metadata returned after a Bunny font is downloaded. */
+export interface ContentInstalledFontFamily {
+  slug: string;
+  label: string;
+  category?: string | null;
+  installedAt: string;
+  installedBy: string | null;
+  styles: Array<"normal" | "italic">;
+  weights: number[];
+  widths: string[];
+  attachmentNames: string[];
+}
+
 /**
  * Client-side shape of the canonical `content-settings:fonts` document.
  *
@@ -38,6 +63,12 @@ type ContentFontSettingsResponse = {
   allowlist?: ContentFontFamilyOption[];
   section?: string;
   settings?: ContentFontSettingsDocument;
+  installedFamily?: ContentInstalledFontFamily;
+};
+
+type ContentFontCatalogResponse = {
+  success?: boolean;
+  fonts?: BunnyFontCatalogEntry[];
 };
 
 /** Runtime guard that validates incoming settings payload shape before state sync. */
@@ -84,6 +115,11 @@ export const useContentFontSettings = () => {
   const loading = useState<boolean>("content-font-settings-loading", () => false);
   const error = useState<string | null>("content-font-settings-error", () => null);
   const applying = useState<boolean>("content-font-settings-applying", () => false);
+  const catalog = useState<BunnyFontCatalogEntry[]>(
+    "content-font-catalog",
+    () => [],
+  );
+  const catalogLoading = useState<boolean>("content-font-catalog-loading", () => false);
   const runtimeCssVersion = useState<number>(
     "content-font-runtime-css-version",
     () => Date.now(),
@@ -188,6 +224,61 @@ export const useContentFontSettings = () => {
     }
   };
 
+  /** Fetch the available Bunny font catalog for the add-font dialog. */
+  const fetchCatalog = async () => {
+    catalogLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<ContentFontCatalogResponse>(
+        "/api/content/fonts/catalog",
+      );
+      catalog.value = response?.success === true && Array.isArray(response.fonts)
+        ? response.fonts
+        : [];
+      return catalog.value;
+    } catch (requestError: any) {
+      error.value =
+        requestError?.data?.statusMessage ||
+        requestError?.message ||
+        "Failed to load Bunny font catalog.";
+      throw requestError;
+    } finally {
+      catalogLoading.value = false;
+    }
+  };
+
+  /** Install one Bunny family using the current editor typography profile. */
+  const installFamily = async (payload: {
+    family: string;
+    styles: Array<"normal" | "italic">;
+    weights: number[];
+    widths: string[];
+  }) => {
+    applying.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<ContentFontSettingsResponse>(
+        "/api/content/fonts/install",
+        {
+          method: "POST",
+          body: payload,
+        },
+      );
+      syncFromResponse(response);
+      return response?.installedFamily ?? null;
+    } catch (requestError: any) {
+      error.value =
+        requestError?.data?.statusMessage ||
+        requestError?.message ||
+        "Failed to install Bunny font.";
+      throw requestError;
+    } finally {
+      applying.value = false;
+    }
+  };
+
   /** Manual stylesheet version bump helper used by builder workflows. */
   const bumpRuntimeStylesheet = () => {
     runtimeCssVersion.value = Date.now();
@@ -199,11 +290,15 @@ export const useContentFontSettings = () => {
     section,
     loading,
     applying,
+    catalog,
+    catalogLoading,
     error,
     runtimeCssVersion,
     fetchAdmin,
     saveAdmin,
     applyAdmin,
+    fetchCatalog,
+    installFamily,
     bumpRuntimeStylesheet,
   };
 };

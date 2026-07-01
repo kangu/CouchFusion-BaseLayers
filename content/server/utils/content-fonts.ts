@@ -44,6 +44,10 @@ const RUNTIME_CSS_PUBLIC_PATH = "/api/content/fonts/runtime.css";
 const FONT_ASSET_CONTENT_TYPE = "font/woff2";
 /** Public URL prefix used by attachment-backed font asset routes. */
 const FONT_ASSET_API_PREFIX = "/api/content/fonts/asset/";
+/** Public Bunny Fonts catalog endpoint. */
+const BUNNY_FONT_CATALOG_URL = "https://fonts.bunny.net/list";
+/** Keep Bunny catalog responses fresh enough for browsing without refetching per modal open. */
+const BUNNY_FONT_CATALOG_CACHE_MS = 60 * 60 * 1000;
 
 const ALLOWLIST_CONFIG_KEY = "content_fonts_allowlist";
 const DEFAULT_SANS_CONFIG_KEY = "content_fonts_default_sans";
@@ -62,6 +66,36 @@ export type ContentFontWidth = string;
 export interface ContentFontFamilyOption {
   slug: string;
   label: string;
+}
+
+/** Bunny catalog entry normalized for the admin font browser. */
+export interface BunnyFontCatalogEntry {
+  slug: string;
+  label: string;
+  category: string | null;
+  defSubset: string | null;
+  isVariable: boolean;
+  styles: ContentFontStyle[];
+  weights: number[];
+  variants: Record<string, number>;
+}
+
+interface BunnyFontCatalogCache {
+  fetchedAt: number;
+  entries: BunnyFontCatalogEntry[];
+}
+
+/** Font family metadata persisted after downloading a Bunny profile. */
+export interface ContentInstalledFontFamily {
+  slug: string;
+  label: string;
+  category?: string | null;
+  installedAt: string;
+  installedBy: string | null;
+  styles: ContentFontStyle[];
+  weights: number[];
+  widths: ContentFontWidth[];
+  attachmentNames: string[];
 }
 
 /**
@@ -132,6 +166,7 @@ interface ContentFontAssetsDocument extends CouchDBDocumentWithAttachments {
   _id: typeof CONTENT_FONT_ASSETS_DOC_ID;
   type: "content-font-assets";
   activeAttachmentNames: string[];
+  installedFamilies?: ContentInstalledFontFamily[];
   updatedAt: string;
   updatedBy: string | null;
 }
@@ -177,6 +212,181 @@ export const toFontFamilyLabel = (slug: string): string =>
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+
+/** Normalize the Bunny `/list` response into sorted, editor-friendly entries. */
+export const normalizeBunnyFontCatalogPayload = (payload: unknown): BunnyFontCatalogEntry[] => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+
+  const entries: BunnyFontCatalogEntry[] = [];
+  for (const [rawSlug, rawEntry] of Object.entries(payload as Record<string, unknown>)) {
+    const slug = normalizeSlug(rawSlug);
+    if (!slug || !rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+      continue;
+    }
+
+    const source = rawEntry as Record<string, unknown>;
+    const styles = normalizeStyles(source.styles);
+    const weights = normalizeWeights(source.weights);
+    const variantsSource = source.variants;
+    const variants: Record<string, number> = {};
+    if (variantsSource && typeof variantsSource === "object" && !Array.isArray(variantsSource)) {
+      for (const [variantKey, variantValue] of Object.entries(variantsSource as Record<string, unknown>)) {
+        const normalizedVariantKey = typeof variantKey === "string" ? variantKey.trim() : "";
+        const numericVariantValue = Number(variantValue);
+        if (normalizedVariantKey && Number.isFinite(numericVariantValue)) {
+          variants[normalizedVariantKey] = numericVariantValue;
+        }
+      }
+    }
+
+    entries.push({
+      slug,
+      label:
+        typeof source.familyName === "string" && source.familyName.trim()
+          ? source.familyName.trim()
+          : toFontFamilyLabel(slug),
+      category:
+        typeof source.category === "string" && source.category.trim()
+          ? source.category.trim()
+          : null,
+      defSubset:
+        typeof source.defSubset === "string" && source.defSubset.trim()
+          ? source.defSubset.trim()
+          : null,
+      isVariable: source.isVariable === true,
+      styles: styles.length > 0 ? styles.sort((left, right) => left.localeCompare(right)) : ["normal"],
+      weights: weights.length > 0 ? weights : [400],
+      variants,
+    });
+  }
+
+  return entries.sort((left, right) => left.label.localeCompare(right.label));
+};
+
+let bunnyFontCatalogCache: BunnyFontCatalogCache | null = null;
+
+/** Fetch and normalize the Bunny font catalog with a short in-memory cache. */
+export const getBunnyFontCatalog = async (): Promise<BunnyFontCatalogEntry[]> => {
+  const now = Date.now();
+  if (
+    bunnyFontCatalogCache &&
+    now - bunnyFontCatalogCache.fetchedAt < BUNNY_FONT_CATALOG_CACHE_MS
+  ) {
+    return bunnyFontCatalogCache.entries;
+  }
+
+  const response = await fetch(BUNNY_FONT_CATALOG_URL, {
+    headers: {
+      accept: "application/json,text/plain;q=0.9,*/*;q=0.8",
+    },
+  });
+  if (!response.ok) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: "Failed to fetch Bunny font catalog.",
+    });
+  }
+
+  const payload = await response.json();
+  const entries = normalizeBunnyFontCatalogPayload(payload);
+  bunnyFontCatalogCache = {
+    fetchedAt: now,
+    entries,
+  };
+  return entries;
+};
+
+/** Normalize installed-font metadata loaded from CouchDB. */
+const normalizeInstalledFontFamilies = (value: unknown): ContentInstalledFontFamily[] => {
+  const source = Array.isArray(value) ? value : [];
+  const familyMap = new Map<string, ContentInstalledFontFamily>();
+
+  for (const entry of source) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+
+    const candidate = entry as Record<string, unknown>;
+    const slug = normalizeSlug(candidate.slug);
+    if (!slug) {
+      continue;
+    }
+
+    familyMap.set(slug, {
+      slug,
+      label:
+        typeof candidate.label === "string" && candidate.label.trim()
+          ? candidate.label.trim()
+          : toFontFamilyLabel(slug),
+      category:
+        typeof candidate.category === "string" && candidate.category.trim()
+          ? candidate.category.trim()
+          : null,
+      installedAt:
+        typeof candidate.installedAt === "string" && candidate.installedAt.trim()
+          ? candidate.installedAt
+          : nowIso(),
+      installedBy:
+        typeof candidate.installedBy === "string" && candidate.installedBy.trim()
+          ? candidate.installedBy
+          : null,
+      styles: normalizeStyles(candidate.styles).length > 0
+        ? normalizeStyles(candidate.styles)
+        : [...DEFAULT_PROFILE_STYLES],
+      weights: normalizeWeights(candidate.weights).length > 0
+        ? normalizeWeights(candidate.weights)
+        : [...DEFAULT_PROFILE_WEIGHTS],
+      widths: normalizeWidths(candidate.widths).length > 0
+        ? normalizeWidths(candidate.widths)
+        : [...DEFAULT_PROFILE_WIDTHS],
+      attachmentNames: Array.isArray(candidate.attachmentNames)
+        ? candidate.attachmentNames
+            .map((name) => (typeof name === "string" ? name.trim() : ""))
+            .filter(Boolean)
+            .sort()
+        : [],
+    });
+  }
+
+  return Array.from(familyMap.values()).sort((left, right) => left.label.localeCompare(right.label));
+};
+
+/**
+ * Merge installed font families into runtime config.
+ *
+ * @remarks
+ * Once a user has downloaded fonts, those persisted choices become the primary
+ * selector source. `_config` allowlist entries remain a seed/fallback only when
+ * there are no installed families yet.
+ */
+export const mergeRuntimeConfigWithInstalledFonts = (
+  runtimeConfig: ContentFontRuntimeConfig,
+  installedFamilies: ContentInstalledFontFamily[],
+): ContentFontRuntimeConfig => {
+  const normalizedInstalled = normalizeInstalledFontFamilies(installedFamilies);
+  if (normalizedInstalled.length === 0) {
+    return runtimeConfig;
+  }
+
+  const allowlist = normalizedInstalled.map((entry) => ({
+    slug: entry.slug,
+    label: entry.label,
+  }));
+  const allowlistSlugs = new Set(allowlist.map((entry) => entry.slug));
+
+  return {
+    ...runtimeConfig,
+    allowlist,
+    defaultSans: allowlistSlugs.has(runtimeConfig.defaultSans)
+      ? runtimeConfig.defaultSans
+      : allowlist[0]?.slug ?? runtimeConfig.defaultSans,
+    defaultDisplay: allowlistSlugs.has(runtimeConfig.defaultDisplay)
+      ? runtimeConfig.defaultDisplay
+      : allowlist[0]?.slug ?? runtimeConfig.defaultDisplay,
+  };
+};
 
 /**
  * Resolve app slug used to address tenant CouchDB `_config` values.
@@ -576,6 +786,36 @@ const hasStoredFamilySelection = (value: unknown): boolean => {
   return Boolean(normalizeSlug(source.sansFamily) && normalizeSlug(source.displayFamily));
 };
 
+/** Read installed font metadata without creating the attachment container document. */
+const getExistingFontAssetsDocument = async (): Promise<ContentFontAssetsDocument | null> => {
+  const document = await getDocumentWithAttachments<ContentFontAssetsDocument>(
+    getContentDatabaseName(),
+    CONTENT_FONT_ASSETS_DOC_ID,
+    false,
+  );
+  if (!document || document.type !== "content-font-assets") {
+    return null;
+  }
+
+  return {
+    ...document,
+    _id: CONTENT_FONT_ASSETS_DOC_ID,
+    type: "content-font-assets",
+    activeAttachmentNames: Array.isArray(document.activeAttachmentNames)
+      ? document.activeAttachmentNames
+      : [],
+    installedFamilies: normalizeInstalledFontFamilies(document.installedFamilies),
+    updatedAt:
+      typeof document.updatedAt === "string" && document.updatedAt.trim()
+        ? document.updatedAt
+        : nowIso(),
+    updatedBy:
+      typeof document.updatedBy === "string" && document.updatedBy.trim()
+        ? document.updatedBy
+        : null,
+  };
+};
+
 /**
  * Retrieve effective font settings and runtime config for current tenant.
  *
@@ -594,9 +834,10 @@ export const getContentFontSettings = async (): Promise<{
   const mainDatabaseName = getMainDatabaseName();
   const mainSettingsDocumentId = getMainSettingsDocumentId();
 
-  const [contentSettingsDocument, mainSettingsDocument] = await Promise.all([
+  const [contentSettingsDocument, mainSettingsDocument, fontAssetsDocument] = await Promise.all([
     getDocument<ContentFontSettingsDocument>(contentDatabaseName, CONTENT_FONT_SETTINGS_DOC_ID),
     getDocument<MainSettingsDocument>(mainDatabaseName, mainSettingsDocumentId),
+    getExistingFontAssetsDocument(),
   ]);
 
   const storedMainSettings = getContentFontSettingsFromMainSettings(mainSettingsDocument);
@@ -609,9 +850,13 @@ export const getContentFontSettings = async (): Promise<{
       ? initialSettings.runtimeCssText
       : null;
 
-  const effectiveRuntimeConfig = runtimeCssForSync
+  const runtimeCssRuntimeConfig = runtimeCssForSync
     ? mergeRuntimeConfigWithRuntimeCss(runtimeConfig, runtimeCssForSync)
     : runtimeConfig;
+  const effectiveRuntimeConfig = mergeRuntimeConfigWithInstalledFonts(
+    runtimeCssRuntimeConfig,
+    fontAssetsDocument?.installedFamilies ?? [],
+  );
 
   let normalizedSettings = normalizeSettingsDocument(
     existing ?? initialSettings,
@@ -981,6 +1226,7 @@ const ensureFontAssetsDocument = async (payload: {
       activeAttachmentNames: Array.isArray(existing.activeAttachmentNames)
         ? existing.activeAttachmentNames
         : [],
+      installedFamilies: normalizeInstalledFontFamilies(existing.installedFamilies),
       updatedAt:
         typeof existing.updatedAt === "string" && existing.updatedAt.trim()
           ? existing.updatedAt
@@ -996,6 +1242,7 @@ const ensureFontAssetsDocument = async (payload: {
     _id: CONTENT_FONT_ASSETS_DOC_ID,
     type: "content-font-assets",
     activeAttachmentNames: [],
+    installedFamilies: [],
     updatedAt: nowIso(),
     updatedBy: payload.updatedBy ?? null,
   };
@@ -1092,6 +1339,11 @@ const syncFontAssetAttachments = async (payload: {
       const attachmentName = buildFontAttachmentName(familySlug, face);
       activeAttachments.add(attachmentName);
 
+      if (existingAttachments.has(attachmentName)) {
+        face.remoteUrl = `${FONT_ASSET_API_PREFIX}${attachmentName}`;
+        continue;
+      }
+
       const buffer = await downloadRemoteFontBuffer(face.remoteUrl);
       const putResponse = await putAttachment(
         payload.databaseName,
@@ -1159,6 +1411,68 @@ const syncFontAssetAttachments = async (payload: {
   }
 };
 
+/** Merge or replace installed-family metadata for a downloaded profile. */
+const upsertInstalledFontFamily = (
+  installedFamilies: ContentInstalledFontFamily[],
+  installedFamily: ContentInstalledFontFamily,
+): ContentInstalledFontFamily[] => {
+  const map = new Map<string, ContentInstalledFontFamily>();
+  for (const entry of normalizeInstalledFontFamilies(installedFamilies)) {
+    map.set(entry.slug, entry);
+  }
+  map.set(installedFamily.slug, installedFamily);
+  return Array.from(map.values()).sort((left, right) => left.label.localeCompare(right.label));
+};
+
+/** Upload one installed font profile into the attachment document without pruning other fonts. */
+const syncInstalledFontFamilyAttachments = async (payload: {
+  databaseName: string;
+  assetsDocument: ContentFontAssetsDocument;
+  familySlug: string;
+  faces: ParsedBunnyFontFace[];
+}): Promise<string[]> => {
+  const existingAttachmentNames = Object.keys(payload.assetsDocument._attachments ?? {});
+  const existingAttachments = new Set<string>([
+    ...existingAttachmentNames,
+    ...(payload.assetsDocument.activeAttachmentNames ?? []),
+    ...normalizeInstalledFontFamilies(payload.assetsDocument.installedFamilies)
+      .flatMap((entry) => entry.attachmentNames),
+  ]);
+  const attachmentNames: string[] = [];
+  let currentRev = payload.assetsDocument._rev;
+
+  if (!currentRev) {
+    throw new Error("Font assets document revision is missing.");
+  }
+
+  for (const face of payload.faces) {
+    const attachmentName = buildFontAttachmentName(payload.familySlug, face);
+    attachmentNames.push(attachmentName);
+
+    if (existingAttachments.has(attachmentName)) {
+      face.remoteUrl = `${FONT_ASSET_API_PREFIX}${attachmentName}`;
+      continue;
+    }
+
+    const buffer = await downloadRemoteFontBuffer(face.remoteUrl);
+    const putResponse = await putAttachment(
+      payload.databaseName,
+      CONTENT_FONT_ASSETS_DOC_ID,
+      attachmentName,
+      buffer,
+      FONT_ASSET_CONTENT_TYPE,
+      currentRev,
+    );
+    if (putResponse.rev) {
+      currentRev = putResponse.rev;
+    }
+    existingAttachments.add(attachmentName);
+    face.remoteUrl = `${FONT_ASSET_API_PREFIX}${attachmentName}`;
+  }
+
+  return Array.from(new Set(attachmentNames)).sort();
+};
+
 /** Render deterministic runtime CSS (`@font-face` + `:root` variables) from resolved faces. */
 const renderRuntimeCss = (payload: {
   sansLabel: string;
@@ -1204,6 +1518,112 @@ const toErrorMessage = (error: unknown): string => {
     return error.trim();
   }
   return "Unknown error";
+};
+
+/**
+ * Download one Bunny family using the current editor profile and make it selectable.
+ *
+ * @remarks
+ * This intentionally does not apply the family globally. It only materializes the
+ * requested profile into CouchDB attachments and records the family in the installed
+ * set so the builder dropdowns can select it before the normal Apply Fonts action.
+ */
+export const installContentFontFamily = async (payload: {
+  family?: unknown;
+  styles?: unknown;
+  weights?: unknown;
+  widths?: unknown;
+  updatedBy?: string | null;
+}): Promise<{
+  runtimeConfig: ContentFontRuntimeConfig;
+  settings: ContentFontSettingsDocument;
+  installedFamily: ContentInstalledFontFamily;
+}> => {
+  const familySlug = normalizeSlug(payload.family);
+  if (!familySlug) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Missing Bunny font family.",
+    });
+  }
+
+  const catalog = await getBunnyFontCatalog();
+  const catalogEntry = catalog.find((entry) => entry.slug === familySlug);
+  if (!catalogEntry) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: `Bunny font family not found: ${familySlug}.`,
+    });
+  }
+
+  const { settings } = await getContentFontSettings();
+  const styles = normalizeStyles(payload.styles).length > 0
+    ? normalizeStyles(payload.styles)
+    : settings.styles;
+  const weights = normalizeWeights(payload.weights).length > 0
+    ? normalizeWeights(payload.weights)
+    : settings.weights;
+  const widths = normalizeWidths(payload.widths).length > 0
+    ? normalizeWidths(payload.widths)
+    : settings.widths;
+
+  const databaseName = getContentDatabaseName();
+  const assetsDocument = await ensureFontAssetsDocument({
+    databaseName,
+    updatedBy: payload.updatedBy,
+  });
+  const faces = await resolveRemoteFamilyFaces(familySlug, styles, weights, widths);
+  const attachmentNames = await syncInstalledFontFamilyAttachments({
+    databaseName,
+    assetsDocument,
+    familySlug,
+    faces,
+  });
+  const installedFamily: ContentInstalledFontFamily = {
+    slug: familySlug,
+    label: catalogEntry.label,
+    category: catalogEntry.category,
+    installedAt: nowIso(),
+    installedBy: payload.updatedBy ?? null,
+    styles,
+    weights,
+    widths,
+    attachmentNames,
+  };
+
+  const latestDocument = await getDocumentWithAttachments<ContentFontAssetsDocument>(
+    databaseName,
+    CONTENT_FONT_ASSETS_DOC_ID,
+    false,
+  );
+  if (!latestDocument || typeof latestDocument._rev !== "string" || !latestDocument._rev.trim()) {
+    throw new Error("Unable to reload font assets document after font install.");
+  }
+
+  const nextDocument: ContentFontAssetsDocument = {
+    ...latestDocument,
+    _id: CONTENT_FONT_ASSETS_DOC_ID,
+    type: "content-font-assets",
+    activeAttachmentNames: Array.isArray(latestDocument.activeAttachmentNames)
+      ? latestDocument.activeAttachmentNames
+      : [],
+    installedFamilies: upsertInstalledFontFamily(
+      latestDocument.installedFamilies ?? [],
+      installedFamily,
+    ),
+    updatedAt: nowIso(),
+    updatedBy: payload.updatedBy ?? null,
+  };
+  const putResponse = await putDocument(databaseName, nextDocument);
+  if (putResponse.rev) {
+    nextDocument._rev = putResponse.rev;
+  }
+
+  const result = await getContentFontSettings();
+  return {
+    ...result,
+    installedFamily,
+  };
 };
 
 /**

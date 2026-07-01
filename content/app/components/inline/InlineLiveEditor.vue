@@ -9,7 +9,7 @@ import {
     type ComponentPublicInstance,
     watch,
 } from "vue";
-import { normalizePagePath } from "#content/utils/page";
+import { normalizePagePath, resolveContentPreviewPath } from "#content/utils/page";
 import type ContentAdminWorkbenchComponent from "#content/app/components/admin/ContentAdminWorkbench.vue";
 import type { ContentPageSummary } from "#content/types/content-page";
 import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
@@ -138,6 +138,7 @@ const workbenchProps = computed(() => ({
 
 const initialPath = computed(() => normalizePagePath(props.initialPath ?? "/"));
 const activePath = ref(initialPath.value);
+const previewPath = computed(() => resolveContentPreviewPath(activePath.value));
 const workbenchInstanceKey = ref(0);
 const hasUnsavedChanges = ref(false);
 const sidebarWidth = ref(630);
@@ -283,7 +284,7 @@ const previewUrl = computed(() => {
     }
 
     try {
-        const url = new URL(activePath.value || "/", resolvedBaseUrl.value);
+        const url = new URL(previewPath.value || "/", resolvedBaseUrl.value);
         url.searchParams.set("inline-preview", "1");
         url.searchParams.set(
             "preview-motion",
@@ -341,16 +342,18 @@ const postLiveUpdate = (document: MinimalContentDocument) => {
         return;
     }
 
-    const normalizedPath = normalizePagePath(
+    const normalizedPath = resolveContentPreviewPath(
         document.path ?? activePath.value,
     );
     const cloned = getClonedDocument({
         ...document,
         path: normalizedPath,
     });
+    const locale = selectedSummary.value?.localization?.locale ?? null;
 
     console.debug("[inline-live-editor] sending live update", {
         path: normalizedPath,
+        locale,
         document: cloned,
     });
 
@@ -359,6 +362,7 @@ const postLiveUpdate = (document: MinimalContentDocument) => {
             type: "live_updates",
             payload: {
                 path: normalizedPath,
+                locale,
                 document: cloned,
             },
         },
@@ -418,7 +422,7 @@ const postFocusMessage = (
         {
             type: "builder_focus",
             payload: {
-                path,
+                path: resolveContentPreviewPath(path),
                 uid,
                 mode,
                 propPath,
@@ -460,7 +464,7 @@ const flushPendingPreviewMessages = () => {
         pendingFocusTarget.value = null;
         postFocusMessage(
             target.uid,
-            normalizePagePath(target.path || activePath.value),
+            resolveContentPreviewPath(target.path || activePath.value),
             target.mode ?? "flash",
             target.propPath ?? "",
         );
@@ -609,6 +613,7 @@ const handleNodeFocus = (payload: {
     const normalizedPath = normalizePagePath(
         payload.path || activePath.value || "/",
     );
+    const previewTargetPath = resolveContentPreviewPath(normalizedPath);
     if (activePath.value !== normalizedPath) {
         activePath.value = normalizedPath;
         isIframeReady.value = false;
@@ -620,7 +625,7 @@ const handleNodeFocus = (payload: {
 
     sendFocusMessage(
         payload.uid,
-        normalizedPath,
+        previewTargetPath,
         payload.mode ?? "flash",
         payload.propPath ?? payload.propKey ?? "",
     );
@@ -769,11 +774,12 @@ const isInlinePreviewPropClickMessage = (
 
 const handlePreviewPropClick = (payload: InlinePreviewPropClickPayload) => {
     const normalizedPath = normalizePagePath(payload.path || activePath.value || "/");
+    const previewTargetPath = resolveContentPreviewPath(normalizedPath);
     if (activePath.value !== normalizedPath) {
         activePath.value = normalizedPath;
     }
 
-    sendFocusMessage(payload.uid, normalizedPath, "lock", payload.propPath);
+    sendFocusMessage(payload.uid, previewTargetPath, "lock", payload.propPath);
     const workbench = workbenchRef.value as WorkbenchComponentInstance | null;
     const directMethod = workbench?.focusPropFromPreview;
     if (typeof directMethod === "function") {

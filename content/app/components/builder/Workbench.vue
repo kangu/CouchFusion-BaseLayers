@@ -12,8 +12,12 @@ import {
 } from "vue";
 import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
+import FontBrowserDialog from "./FontBrowserDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
-import { useContentFontSettings } from "#content/app/composables/useContentFontSettings";
+import {
+    useContentFontSettings,
+    type BunnyFontCatalogEntry,
+} from "#content/app/composables/useContentFontSettings";
 import { useContentThemeSettings } from "#content/app/composables/useContentThemeSettings";
 import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
 import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
@@ -2165,6 +2169,9 @@ const widthDraft = ref<string[]>([]);
 const typographyNotice = ref<string | null>(null);
 const isTypographyApplying = ref(false);
 const isTypographyPanelExpanded = ref(false);
+const fontBrowserTarget = ref<"sans" | "display" | null>(null);
+const installingFontSlug = ref<string | null>(null);
+const ADD_FONT_OPTION_VALUE = "__content_add_new_font__";
 const TYPOGRAPHY_STYLE_OPTIONS = [
     { label: "Normal", value: "normal" as const },
     { label: "Italic", value: "italic" as const },
@@ -2194,6 +2201,7 @@ const typographyErrorMessage = computed(() => contentFontSettings.error.value);
 const isTypographyPending = computed(
     () => contentFontSettings.loading.value || contentFontSettings.applying.value,
 );
+const isFontBrowserOpen = computed(() => fontBrowserTarget.value !== null);
 
 const hasTypographyDraftChanges = computed(() => {
     const settings = contentFontSettings.settings.value;
@@ -2422,6 +2430,71 @@ const toggleTypographyPanel = () => {
         return;
     }
     isTypographyPanelExpanded.value = !isTypographyPanelExpanded.value;
+};
+
+const openFontBrowser = async (target: "sans" | "display") => {
+    fontBrowserTarget.value = target;
+    typographyNotice.value = null;
+
+    if (contentFontSettings.catalog.value.length === 0) {
+        await contentFontSettings.fetchCatalog();
+    }
+};
+
+const closeFontBrowser = () => {
+    fontBrowserTarget.value = null;
+    installingFontSlug.value = null;
+};
+
+const handleTypographyFamilyChange = (
+    target: "sans" | "display",
+    event: Event,
+) => {
+    const value = event.target instanceof HTMLSelectElement
+        ? event.target.value
+        : "";
+
+    if (value === ADD_FONT_OPTION_VALUE) {
+        void openFontBrowser(target);
+        return;
+    }
+
+    if (target === "sans") {
+        sansFamilyDraft.value = value;
+    } else {
+        displayFamilyDraft.value = value;
+    }
+};
+
+const installFontFromBrowser = async (font: BunnyFontCatalogEntry) => {
+    if (!fontBrowserTarget.value) {
+        return;
+    }
+
+    installingFontSlug.value = font.slug;
+    typographyNotice.value = null;
+
+    try {
+        await contentFontSettings.installFamily({
+            family: font.slug,
+            styles: previewStyles.value,
+            weights: previewWeights.value,
+            widths: widthDraft.value.length > 0
+                ? [...widthDraft.value]
+                : (contentFontSettings.settings.value?.widths ?? ["100%"]),
+        });
+
+        if (fontBrowserTarget.value === "sans") {
+            sansFamilyDraft.value = font.slug;
+        } else {
+            displayFamilyDraft.value = font.slug;
+        }
+
+        typographyNotice.value = `${font.label} installed. Apply fonts to publish it.`;
+        closeFontBrowser();
+    } finally {
+        installingFontSlug.value = null;
+    }
 };
 
 const syncTypographyDraft = () => {
@@ -2844,7 +2917,11 @@ const handleSaveDebugClick = () => {
                 <div class="builder-typography-card__grid">
                     <label>
                         <span>Sans family</span>
-                        <select v-model="sansFamilyDraft" :disabled="isTypographyPending">
+                        <select
+                            :value="sansFamilyDraft"
+                            :disabled="isTypographyPending"
+                            @change="handleTypographyFamilyChange('sans', $event)"
+                        >
                             <option
                                 v-for="option in typographyOptions"
                                 :key="`sans-${option.slug}`"
@@ -2852,17 +2929,27 @@ const handleSaveDebugClick = () => {
                             >
                                 {{ option.label }}
                             </option>
+                            <option :value="ADD_FONT_OPTION_VALUE">
+                                Add new...
+                            </option>
                         </select>
                     </label>
                     <label>
                         <span>Serif family</span>
-                        <select v-model="displayFamilyDraft" :disabled="isTypographyPending">
+                        <select
+                            :value="displayFamilyDraft"
+                            :disabled="isTypographyPending"
+                            @change="handleTypographyFamilyChange('display', $event)"
+                        >
                             <option
                                 v-for="option in typographyOptions"
                                 :key="`display-${option.slug}`"
                                 :value="option.slug"
                             >
                                 {{ option.label }}
+                            </option>
+                            <option :value="ADD_FONT_OPTION_VALUE">
+                                Add new...
                             </option>
                         </select>
                     </label>
@@ -2949,6 +3036,16 @@ const handleSaveDebugClick = () => {
                     </button>
                 </div>
             </div>
+
+            <FontBrowserDialog
+                :is-open="isFontBrowserOpen"
+                :fonts="contentFontSettings.catalog.value"
+                :loading="contentFontSettings.catalogLoading.value"
+                :installing="isTypographyPending"
+                :installing-slug="installingFontSlug"
+                @close="closeFontBrowser"
+                @install="installFontFromBrowser"
+            />
 
             <div v-if="isThemeFeatureEnabled" class="builder-theme-toggle">
                 <button

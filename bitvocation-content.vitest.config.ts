@@ -21,6 +21,8 @@ export default defineConfig({
       "#app": resolve(dirname, "../apps/bitvocation/tests/support/nuxt-app-stub.ts"),
       "#auth": resolve(dirname, "auth"),
       "#content": resolve(dirname, "content"),
+      "#database": resolve(dirname, "database"),
+      "#lightning": resolve(dirname, "lightning"),
       vue: resolve(
         dirname,
         "../apps/bitvocation/node_modules/vue/dist/vue.esm-bundler.js",

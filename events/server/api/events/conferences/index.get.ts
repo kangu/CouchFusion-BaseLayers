@@ -55,6 +55,24 @@ const parseYearFilter = (
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+const uniqueTextOptions = (values: readonly unknown[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const label = value.trim();
+    if (!label.length) continue;
+
+    const key = label.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    result.push(label);
+  }
+
+  return result.sort((left, right) => left.localeCompare(right));
+};
 const parseBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === "boolean") return value;
   const normalized = normalize(value);
@@ -188,16 +206,9 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
     ),
   ).sort((left, right) => right - left);
 
-  const continentOptions = Array.from(
-    new Set(
-      normalizedBaseConferences
-        .map((conference) => conference.continent)
-        .filter(
-          (continent): continent is string =>
-            typeof continent === "string" && continent.trim().length > 0,
-        ),
-    ),
-  ).sort((left, right) => left.localeCompare(right));
+  const continentOptions = uniqueTextOptions(
+    normalizedBaseConferences.map((conference) => conference.continent),
+  );
 
   return {
     conferences: paginatedConferences,

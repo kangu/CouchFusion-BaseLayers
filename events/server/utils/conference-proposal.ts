@@ -21,7 +21,18 @@ export interface ConferenceProposalDocument extends CouchDBDocument {
   city: string | null;
   country: string | null;
   continent: string | null;
+  region?: string | null;
   startDateIso: string | null;
+  recreateNextYear?: boolean;
+  discountCode?: string | null;
+  discountLabel?: string | null;
+  commissionLabel?: string | null;
+  logoUrl?: string | null;
+  logoFileId?: string | null;
+  organizerName?: string | null;
+  contactEmail?: string | null;
+  xAccountUrl?: string | null;
+  interestedInAdvertising?: boolean;
   notes: string | null;
   conferenceId: string | null;
   submittedBy: {
@@ -52,4 +63,3 @@ export const isProposalOpen = (
   if (!value) return false;
   return normalizeProposalStatus(value.status) === CONFERENCE_PROPOSAL_STATUS_PENDING;
 };
-

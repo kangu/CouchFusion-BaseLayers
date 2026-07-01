@@ -23,6 +23,9 @@ interface ConferenceCreatePayload {
   hasAirtable?: unknown;
   isPublished?: unknown;
   recreateNextYear?: unknown;
+  discountCode?: unknown;
+  discountLabel?: unknown;
+  commissionLabel?: unknown;
   contactName?: unknown;
   contactChannel?: unknown;
   bitvocationParticipation?: unknown;
@@ -278,9 +281,9 @@ export default defineEventHandler(async (event) => {
       false,
       "recreateNextYear",
     ),
-    discountCode: null,
-    discountLabel: null,
-    commissionLabel: null,
+    discountCode: asNullableText(payload.discountCode, 120, "discountCode"),
+    discountLabel: asNullableText(payload.discountLabel, 180, "discountLabel"),
+    commissionLabel: asNullableText(payload.commissionLabel, 180, "commissionLabel"),
     ticketsSold: null,
     commissionEarnedLabel: null,
     commissionReceived: null,

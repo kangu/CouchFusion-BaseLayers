@@ -136,7 +136,7 @@ function extractErrorMessage(error: unknown): string {
 
 class ImageKitService {
   private readonly client: ImageKit | null
-  private static readonly FALLBACK_SEARCH_LIMIT = 50
+  private static readonly FALLBACK_SEARCH_LIMIT = 1000
 
   constructor(config: ImageKitClientConfig | null) {
     if (!config) {
@@ -384,10 +384,12 @@ class ImageKitService {
     const searchQuery = this.buildSearchQuery(rawSearch)
     const keywords = rawSearch ? this.tokenizeKeywords(rawSearch) : []
     const limit = options.limit ?? 20
+    const skip = options.skip ?? 0
     const effectiveLimit = rawSearch ? Math.max(limit, ImageKitService.FALLBACK_SEARCH_LIMIT) : limit
+    const shouldUseKeywordFallback = Boolean(rawSearch && keywords.length && !this.isAdvancedQuery(rawSearch))
 
     const baseOptions = {
-      skip: options.skip ?? 0,
+      skip,
       limit: effectiveLimit,
       path: options.path ?? '',
       tags: options.tags ?? [],
@@ -395,6 +397,22 @@ class ImageKitService {
     }
 
     try {
+      if (shouldUseKeywordFallback) {
+        const fallbackFiles = await this.client.listFiles({
+          ...baseOptions,
+          skip: 0,
+          limit: Math.max(effectiveLimit, skip + limit),
+        })
+        const filtered = this.filterFilesByKeywords(fallbackFiles as ImageKitFile[], keywords)
+        return {
+          success: true,
+          data: {
+            files: filtered.slice(skip, skip + limit),
+            total: filtered.length,
+          },
+        }
+      }
+
       const files = await this.client.listFiles({
         ...baseOptions,
         searchQuery: searchQuery ?? undefined,
@@ -417,15 +435,19 @@ class ImageKitService {
     } catch (error) {
       console.error('ImageKit list files error:', error)
 
-      if (rawSearch) {
+      if (shouldUseKeywordFallback) {
         try {
-          const fallbackFiles = await this.client.listFiles(baseOptions)
+          const fallbackFiles = await this.client.listFiles({
+            ...baseOptions,
+            skip: 0,
+            limit: Math.max(effectiveLimit, skip + limit),
+          })
           const filtered = this.filterFilesByKeywords(fallbackFiles as ImageKitFile[], keywords)
           const total = keywords.length ? filtered.length : this.extractTotalCount(fallbackFiles, filtered.length)
           return {
             success: true,
             data: {
-              files: filtered.slice(0, limit),
+              files: filtered.slice(skip, skip + limit),
               total,
             },
           }

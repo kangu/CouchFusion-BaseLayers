@@ -26,10 +26,10 @@ export function normalizePagePath(path: string): string {
  */
 export function resolveContentRoutePath(path: string, fullPath?: string, requestUrl?: string): string {
     const sourcePath =
-        typeof requestUrl === 'string' && requestUrl.trim()
-            ? requestUrl
-            : typeof fullPath === 'string' && fullPath.trim()
-                ? fullPath
+        typeof fullPath === 'string' && fullPath.trim()
+            ? fullPath
+            : typeof requestUrl === 'string' && requestUrl.trim()
+                ? requestUrl
                 : null
 
     if (sourcePath) {
@@ -41,6 +41,25 @@ export function resolveContentRoutePath(path: string, fullPath?: string, request
     }
 
     return normalizePagePath(path)
+}
+
+/**
+ * Resolve content-builder routes to the public page path used by runtime preview.
+ *
+ * The inline editor is available at `/builder/...` and `/k/...`, but the preview
+ * iframe and content store must target the real content page route.
+ */
+export function resolveContentPreviewPath(path: string): string {
+    const normalizedPath = normalizePagePath(path)
+    const segments = normalizedPath.split('/').filter(Boolean)
+    const firstSegment = segments[0]
+
+    if (firstSegment !== 'builder' && firstSegment !== 'k') {
+        return normalizedPath
+    }
+
+    const publicSegments = segments.slice(1)
+    return publicSegments.length > 0 ? `/${publicSegments.join('/')}` : '/'
 }
 
 /**
