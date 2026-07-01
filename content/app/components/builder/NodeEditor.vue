@@ -2,13 +2,19 @@
     <div
         ref="panelRef"
         class="node-panel"
-        :class="{ 'node-panel--global-alias': isGlobalAliasNode }"
+        :class="{
+            'node-panel--global-alias': isGlobalAliasNode,
+            'node-panel--isolated': isolateLayout,
+        }"
         :data-builder-node-uid="node.uid"
-        :style="{ marginLeft: depth * 16 + 'px' }"
+        :style="{ marginLeft: isolateLayout ? '0px' : depth * 16 + 'px' }"
         @focusin="notifyFocus"
         @click="notifyFocus"
     >
-        <div v-if="node.type === 'component'" class="node-panel__header">
+        <div
+            v-if="node.type === 'component' && !isolateLayout"
+            class="node-panel__header"
+        >
             <div class="node-panel__header-main">
                 <div class="node-panel__header-text-row">
                     <div class="node-panel__header-text">
@@ -76,7 +82,7 @@
                         </svg>
                     </button>
                 </div>
-                <div class="node-panel__header-actions">
+                <div v-if="!isolateLayout" class="node-panel__header-actions">
                     <button
                         type="button"
                         class="node-panel__toggle"
@@ -264,6 +270,7 @@
 -->
 
             <NodeMarginsPanel
+                v-if="showSupplementalEditors"
                 :margin-draft="marginDraft"
                 :margin-options="marginOptions"
                 :margin-sides="marginSides"
@@ -274,6 +281,7 @@
             />
 
             <NodeChildrenPanel
+                v-if="showSupplementalEditors"
                 :allow-children="Boolean(componentDef?.allowChildren)"
                 :component-options="componentOptions"
                 :node-uid="node.uid"
@@ -291,7 +299,9 @@
                         :show-translate-section="showTranslateSection"
                         :focus-request="focusRequest"
                         :search-query="normalizedSearchQuery"
-                        :depth="depth + 1"
+                        :depth="isolateLayout ? 0 : depth + 1"
+                        :isolate-layout="isolateLayout"
+                        :focused-prop-display="focusedPropDisplay"
                         :on-update-prop="onUpdateProp"
                         :on-update-text="onUpdateText"
                         :on-add-child-component="onAddChildComponent"
@@ -512,6 +522,8 @@ const props = defineProps<{
     }) => void;
     sectionName?: string;
     onSaveSectionName?: (uid: string, value: string) => void;
+    isolateLayout?: boolean;
+    focusedPropDisplay?: "active" | "around" | "all";
     focusRequest?: {
         uidPath: string[];
         targetUid: string;
@@ -521,6 +533,8 @@ const props = defineProps<{
 }>();
 
 const depth = computed(() => props.depth ?? 0);
+const isolateLayout = computed(() => props.isolateLayout === true);
+const focusedPropDisplay = computed(() => props.focusedPropDisplay ?? "all");
 const panelRef = ref<HTMLElement | null>(null);
 const normalizedSearchQuery = computed(() =>
     normalizeSearchQuery(props.searchQuery),
@@ -675,6 +689,101 @@ const isDisabledElement = (element: Element): boolean => {
     return element.getAttribute("aria-disabled") === "true";
 };
 
+/**
+ * Waits until Vue DOM updates and browser layout have both settled enough for
+ * scroll and focus calls to target visible fields.
+ */
+const waitForFocusLayout = () =>
+    new Promise<void>((resolve) => {
+        if (typeof window === "undefined") {
+            resolve();
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+        });
+    });
+
+const resolveFocusTarget = (field: HTMLElement): HTMLElement | null =>
+    field.querySelector<HTMLElement>(
+        'textarea, input:not([type="checkbox"]):not([type="hidden"]), [contenteditable="true"], .ProseMirror',
+    );
+
+/**
+ * Rich text fields mount their editor surface after the prop wrapper exists.
+ * Wait a few animation frames so focused preview edits land in the real input.
+ */
+const waitForFocusTarget = async (
+    field: HTMLElement,
+): Promise<HTMLElement | null> => {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const target = resolveFocusTarget(field);
+        if (target) {
+            return target;
+        }
+        await nextTick();
+        await waitForFocusLayout();
+    }
+
+    return null;
+};
+
+const findScrollableAncestor = (element: HTMLElement): HTMLElement | null => {
+    let current = element.parentElement;
+    while (current) {
+        const style = window.getComputedStyle(current);
+        const canScroll =
+            /(auto|scroll)/.test(style.overflowY) &&
+            current.scrollHeight > current.clientHeight;
+        if (canScroll) {
+            return current;
+        }
+        current = current.parentElement;
+    }
+
+    const scrollingElement = document.scrollingElement;
+    return scrollingElement instanceof HTMLElement ? scrollingElement : null;
+};
+
+/**
+ * Centers the target field in the editor container that can actually scroll.
+ */
+const scrollPropFieldIntoView = async (field: HTMLElement) => {
+    field.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+    });
+    await waitForFocusLayout();
+
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    const scrollContainer = findScrollableAncestor(field);
+    if (!scrollContainer) {
+        return;
+    }
+
+    const fieldRect = field.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const availableOffset = Math.max(
+        16,
+        (containerRect.height - fieldRect.height) / 2,
+    );
+    const nextScrollTop =
+        scrollContainer.scrollTop +
+        fieldRect.top -
+        containerRect.top -
+        availableOffset;
+
+    scrollContainer.scrollTo({
+        top: Math.max(0, nextScrollTop),
+        behavior: "smooth",
+    });
+};
+
 const toPathDepth = (path: string): number =>
     path
         .split(".")
@@ -757,6 +866,7 @@ const focusPropInput = async (request: {
 
     await expandCollapsedArrayPaths(panel, request.propPath);
     await nextTick();
+    await waitForFocusLayout();
 
     const field = panel.querySelector<HTMLElement>(
         `[data-content-prop-path="${toPropPathAttr(request.propPath)}"]`,
@@ -765,11 +875,7 @@ const focusPropInput = async (request: {
         return;
     }
 
-    field.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "nearest",
-    });
+    await scrollPropFieldIntoView(field);
 
     const targetSchema = resolvePropPathSchema(request.propPath);
     if (targetSchema && isImageFieldSchema(targetSchema)) {
@@ -782,14 +888,14 @@ const focusPropInput = async (request: {
         }
     }
 
-    const focusTarget = field.querySelector<HTMLElement>(
-        'textarea, input:not([type="checkbox"]):not([type="hidden"]), [contenteditable="true"], .ProseMirror',
-    );
+    const focusTarget = await waitForFocusTarget(field);
 
     if (!focusTarget) {
         return;
     }
 
+    await scrollPropFieldIntoView(field);
+    await waitForFocusLayout();
     focusTarget.focus({ preventScroll: true });
     if (
         focusTarget instanceof HTMLInputElement ||
@@ -931,8 +1037,14 @@ watch(
         if (!request || !request.uidPath.includes(props.node.uid)) {
             return;
         }
-        void focusPropInput(request);
+        void nextTick(() => {
+            if (props.focusRequest?.token !== request.token) {
+                return;
+            }
+            void focusPropInput(request);
+        });
     },
+    { immediate: true },
 );
 
 const propDraft = reactive<Record<string, any>>({});
@@ -947,10 +1059,49 @@ const { filterVisibleFields } = useNodeEditorFieldVisibility({
     matchesSearch,
     normalizedSearchQuery,
 });
-const visibleProps = computed(() =>
+const baseVisibleProps = computed(() =>
     filterVisibleFields(componentDef.value?.props, propDraft).filter(
         (prop) => !INTERNAL_NODE_PROP_KEYS.has(prop.key),
     ),
+);
+const focusedPropKey = computed(() => {
+    if (
+        !isolateLayout.value ||
+        !props.focusRequest ||
+        props.focusRequest.targetUid !== props.node.uid
+    ) {
+        return null;
+    }
+
+    const firstPathToken = props.focusRequest.propPath[0];
+    return typeof firstPathToken === "string" ? firstPathToken : null;
+});
+const visibleProps = computed(() => {
+    const propsList = baseVisibleProps.value;
+    const activeKey = focusedPropKey.value;
+    if (
+        !isolateLayout.value ||
+        !activeKey ||
+        focusedPropDisplay.value === "all"
+    ) {
+        return propsList;
+    }
+
+    const activeIndex = propsList.findIndex((prop) => prop.key === activeKey);
+    if (activeIndex === -1) {
+        return propsList;
+    }
+
+    if (focusedPropDisplay.value === "around") {
+        return propsList.filter(
+            (_prop, index) => Math.abs(index - activeIndex) <= 1,
+        );
+    }
+
+    return propsList.filter((prop) => prop.key === activeKey);
+});
+const showSupplementalEditors = computed(
+    () => !isolateLayout.value || focusedPropDisplay.value === "all",
 );
 const slotDisplayName = computed(() => {
     if (props.node.type !== "component") {
@@ -2242,7 +2393,8 @@ const hydrateDrafts = () => {
 
     if (props.node.type === "component") {
         if (!(props.node.uid in collapsedNodes)) {
-            collapsedNodes[props.node.uid] = true;
+            collapsedNodes[props.node.uid] =
+                !props.focusRequest?.uidPath.includes(props.node.uid);
         }
         for (const key of definedPropKeys.value) {
             const schema = getPropSchema(key);
@@ -2917,6 +3069,42 @@ const applyTextValue = () => {
 .node-panel--global-alias {
     border-color: #e2e8f0;
     background: #ffffff;
+}
+
+.node-panel--isolated {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+.node-panel--isolated .node-panel__header-main {
+    min-width: 0;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.node-panel--isolated .node-panel__header-text-row {
+    min-width: 0;
+    flex: 1 1 180px;
+}
+
+.node-panel--isolated .node-panel__header-actions {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.node-panel--isolated .node-panel__body,
+.node-panel--isolated :deep(.node-panel__props),
+.node-panel--isolated :deep(.node-panel__field),
+.node-panel--isolated :deep(.node-panel__field-inline-control),
+.node-panel--isolated :deep(.rich-text-field),
+.node-panel--isolated :deep(.rich-text-field__surface),
+.node-panel--isolated :deep(.ProseMirror) {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .node-panel__header-text .component-internal-name {
