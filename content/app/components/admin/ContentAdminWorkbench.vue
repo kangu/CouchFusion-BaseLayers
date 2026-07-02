@@ -306,6 +306,7 @@ const isHistoryMenuOpen = ref(false);
 const isActionsMenuOpen = ref(false);
 const isTranslationMenuOpen = ref(false);
 const isInlineTranslationEnabled = ref(false);
+const isFocusedEditActive = ref(false);
 const historyMenuRef = ref<HTMLElement | null>(null);
 const translationMenuRef = ref<HTMLElement | null>(null);
 
@@ -313,13 +314,20 @@ const headerFixedStyles = computed(() => {
     if (!isHeaderPinned.value) {
         return undefined;
     }
-    const parsedTop = Number.parseFloat(headerPosition.top);
-    const safeTop = Number.isFinite(parsedTop) ? Math.max(parsedTop, 0) : 0;
     return {
-        top: `${safeTop}px`,
+        top: "0px",
         left: headerPosition.left,
         width: headerPosition.width,
     };
+});
+
+watch(isFocusedEditActive, (isActive) => {
+    if (isActive) {
+        closeActionsMenu();
+        closeHistoryMenu();
+        return;
+    }
+    void nextTick(() => updateHeaderMeasurements());
 });
 
 let headerObserver: IntersectionObserver | null = null;
@@ -2532,6 +2540,13 @@ async function handleSaveDocument(): Promise<void> {
     }
 }
 
+async function handleFocusedEditorSave(): Promise<void> {
+    await handleSaveDocument();
+    if (saveError.value) {
+        throw new Error(saveError.value);
+    }
+}
+
 async function handleSelectHistory(entryId: string): Promise<void> {
     if (!selectedSummary.value?.path) {
         return;
@@ -2911,7 +2926,7 @@ defineExpose({
             </div>
         </slot>
 
-        <div class="content-admin-workbench__panel">
+        <div v-if="!isFocusedEditActive" class="content-admin-workbench__panel">
             <div class="content-admin-workbench__panel-controls">
                 <div class="content-admin-workbench__search">
                     <label class="search-input">
@@ -2972,6 +2987,7 @@ defineExpose({
             ></div>
 
             <div
+                v-show="!isFocusedEditActive"
                 ref="headerRef"
                 class="content-admin-workbench__editor-header"
                 :class="{ 'is-pinned': isHeaderPinned }"
@@ -3193,7 +3209,7 @@ defineExpose({
             </div>
 
             <div
-                v-if="isHeaderPinned"
+                v-if="!isFocusedEditActive && isHeaderPinned"
                 :style="{ height: `${headerPlaceholderHeight}px` }"
                 aria-hidden="true"
             />
@@ -3229,6 +3245,7 @@ defineExpose({
                                 :show-translate-section="
                                     isInlineTranslationEnabled
                                 "
+                                :on-save-focused-edit="handleFocusedEditorSave"
                                 :selected-translation-pointers="
                                     selectedTranslationPointers
                                 "
@@ -3243,6 +3260,10 @@ defineExpose({
                                     handleSelectedTranslationPointersUpdate
                                 "
                                 @node-focus="handleNodeFocus"
+                                @focused-edit-change="
+                                    (isActive) =>
+                                        (isFocusedEditActive = isActive)
+                                "
                                 @update:search-query="
                                     (value) => (builderSearchQuery = value)
                                 "

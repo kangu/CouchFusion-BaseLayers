@@ -205,6 +205,7 @@ const props = defineProps<{
     searchQuery?: string;
     showTranslateSection?: boolean;
     selectedTranslationPointers?: string[];
+    onSaveFocusedEdit?: () => Promise<void> | void;
 }>();
 const emit = defineEmits<{
     (e: "document-change", document: MinimalContentDocument): void;
@@ -234,6 +235,7 @@ const emit = defineEmits<{
     ): void;
     (e: "update:searchQuery", value: string): void;
     (e: "update:selectedTranslationPointers", value: string[]): void;
+    (e: "focused-edit-change", isActive: boolean): void;
 }>();
 
 const { registry, createNode, createTextNode } = useComponentRegistry();
@@ -591,6 +593,32 @@ const nodePropFocusRequest = ref<{
     propPath: Array<string | number>;
     token: number;
 } | null>(null);
+const focusedEditSession = ref<{
+    uidPath: string[];
+    targetUid: string;
+    builderPath: number[];
+    propPath: Array<string | number>;
+    token: number;
+    snapshot: MinimalContentDocument;
+} | null>(null);
+const isFocusedEditSaving = ref(false);
+const focusedShowFieldsAround = ref(false);
+const focusedShowAllFields = ref(false);
+const focusedPropDisplay = computed<"active" | "around" | "all">(() => {
+    if (focusedShowAllFields.value) {
+        return "all";
+    }
+    if (focusedShowFieldsAround.value) {
+        return "around";
+    }
+    return "active";
+});
+
+watch(
+    () => Boolean(focusedEditSession.value),
+    (isActive) => emit("focused-edit-change", isActive),
+    { immediate: true },
+);
 const searchQuery = computed<string>({
     get: () => props.searchQuery ?? fallbackSearchQuery.value,
     set: (value) => {
@@ -1787,6 +1815,42 @@ const findBuilderNodeByUid = (
     return null;
 };
 
+const focusedEditNode = computed(() => {
+    const session = focusedEditSession.value;
+    if (!session) {
+        return null;
+    }
+
+    return findBuilderNodeByUid(builderTree.value, session.targetUid);
+});
+
+const focusedEditFocusRequest = computed(() => {
+    const session = focusedEditSession.value;
+    const request = nodePropFocusRequest.value;
+    if (!session || !request || request.targetUid !== session.targetUid) {
+        return request;
+    }
+
+    return {
+        ...request,
+        uidPath: [session.targetUid],
+    };
+});
+
+const focusedEditDisplayTitle = computed(() => {
+    const node = focusedEditNode.value;
+    if (!node) {
+        return "Focused edit";
+    }
+    if (node.type !== "component") {
+        return "Text";
+    }
+
+    const rootUid = focusedEditSession.value?.uidPath[0] ?? node.uid;
+    const localName = getLocalSectionName(rootUid).trim();
+    return localName || "Unnamed section";
+});
+
 const resolveFallbackPropPath = (
     uid: string,
     hint: InlinePreviewPropHint | undefined,
@@ -1802,6 +1866,127 @@ const resolveFallbackPropPath = (
 
     const inferred = inferPropPathFromPreviewHint(targetNode.props ?? {}, hint);
     return inferred ?? [];
+};
+
+const focusedEditSnapshot = (): MinimalContentDocument => getSerializedDocument();
+
+const openFocusedEditSession = (payload: {
+    uidPath: string[];
+    targetUid: string;
+    builderPath: number[];
+    propPath: Array<string | number>;
+}) => {
+    propFocusRequestToken.value += 1;
+    const token = propFocusRequestToken.value;
+    const request = {
+        uidPath: payload.uidPath,
+        targetUid: payload.targetUid,
+        propPath: payload.propPath,
+        token,
+    };
+
+    focusedShowFieldsAround.value = false;
+    focusedShowAllFields.value = false;
+    focusedEditSession.value = {
+        ...request,
+        builderPath: [...payload.builderPath],
+        snapshot: focusedEditSnapshot(),
+    };
+    nodePropFocusRequest.value = request;
+    handleNodeFocus({ uid: payload.targetUid, mode: "lock" });
+};
+
+const waitForFocusedTreeReturn = () =>
+    new Promise<void>((resolve) => {
+        if (typeof window === "undefined") {
+            resolve();
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+        });
+    });
+
+const waitForFocusedTreeSettle = () =>
+    new Promise<void>((resolve) => {
+        if (typeof window === "undefined") {
+            resolve();
+            return;
+        }
+        window.setTimeout(resolve, 300);
+    });
+
+const applyTreeFocusRequest = (
+    uidPath: string[],
+    targetUid: string,
+    propPath: Array<string | number>,
+) => {
+    propFocusRequestToken.value += 1;
+    nodePropFocusRequest.value = {
+        uidPath: [...uidPath],
+        targetUid,
+        propPath: [...propPath],
+        token: propFocusRequestToken.value,
+    };
+    handleNodeFocus({ uid: targetUid, mode: "lock" });
+};
+
+const restoreTreeFocusAfterFocusedEdit = async (
+    session: NonNullable<typeof focusedEditSession.value>,
+) => {
+    const resolvedUidPath = resolveUidPathByBuilderPath(session.builderPath);
+    const uidPath = resolvedUidPath.length ? resolvedUidPath : session.uidPath;
+    const targetUid = uidPath[uidPath.length - 1] ?? session.targetUid;
+    const rootUid = uidPath[0];
+    if (rootUid) {
+        expandedRootNodes[rootUid] = true;
+    }
+
+    await nextTick();
+    await waitForFocusedTreeReturn();
+
+    applyTreeFocusRequest(uidPath, targetUid, session.propPath);
+    await waitForFocusedTreeSettle();
+    applyTreeFocusRequest(uidPath, targetUid, session.propPath);
+};
+
+const closeFocusedEditSession = () => {
+    const session = focusedEditSession.value;
+    if (session) {
+        handleNodeFocus({ uid: session.targetUid, mode: "clear" });
+    }
+    focusedEditSession.value = null;
+    nodePropFocusRequest.value = null;
+    isFocusedEditSaving.value = false;
+    focusedShowFieldsAround.value = false;
+    focusedShowAllFields.value = false;
+    if (session) {
+        void restoreTreeFocusAfterFocusedEdit(session);
+    }
+};
+
+const cancelFocusedEditSession = () => {
+    if (!focusedEditSession.value || isFocusedEditSaving.value) {
+        return;
+    }
+
+    loadDocument(focusedEditSession.value.snapshot);
+    closeFocusedEditSession();
+};
+
+const confirmFocusedEditSession = async () => {
+    if (!focusedEditSession.value || isFocusedEditSaving.value) {
+        return;
+    }
+
+    isFocusedEditSaving.value = true;
+    try {
+        await props.onSaveFocusedEdit?.();
+        closeFocusedEditSession();
+    } finally {
+        isFocusedEditSaving.value = false;
+    }
 };
 
 const focusNodeProp = (payload: {
@@ -1862,14 +2047,12 @@ const focusNodeProp = (payload: {
     const rootUid = uidPath[0];
     expandedRootNodes[rootUid] = true;
 
-    propFocusRequestToken.value += 1;
-    nodePropFocusRequest.value = {
+    openFocusedEditSession({
         uidPath,
         targetUid,
+        builderPath,
         propPath,
-        token: propFocusRequestToken.value,
-    };
-    handleNodeFocus({ uid: targetUid, mode: "lock" });
+    });
 };
 
 const toBodyNodePointerSegments = (
@@ -2891,7 +3074,7 @@ const handleSaveDebugClick = () => {
 
 <template>
     <div class="builder-page">
-        <section class="builder-controls">
+        <section v-if="!focusedEditSession" class="builder-controls">
             <div v-if="isTypographyFeatureEnabled" class="builder-typography-toggle">
                 <button
                     type="button"
@@ -3390,7 +3573,110 @@ const handleSaveDebugClick = () => {
             </div> -->
         </section>
 
-        <section class="builder-tree">
+        <Transition name="builder-focused-editor" mode="out-in">
+        <section
+            v-if="focusedEditSession"
+            key="focused-editor"
+            class="builder-focused-editor"
+        >
+            <div class="builder-focused-editor__stage">
+                <div class="builder-focused-editor__card">
+                    <header class="builder-focused-editor__header">
+                        <div>
+                            <span class="builder-focused-editor__eyebrow">
+                                Focused edit
+                            </span>
+                            <h3>
+                                {{ focusedEditDisplayTitle }}
+                            </h3>
+                        </div>
+                        <button
+                            type="button"
+                            class="builder-focused-editor__close"
+                            :disabled="isFocusedEditSaving"
+                            aria-label="Cancel focused edit"
+                            @click="cancelFocusedEditSession"
+                        >
+                            ×
+                        </button>
+                    </header>
+
+                    <NodeEditor
+                        v-if="focusedEditNode"
+                        :node="focusedEditNode"
+                        :registry="runtimeRegistry"
+                        :component-options="componentOptions"
+                        :global-alias-ids="globalAliasIdList"
+                        :show-translate-section="showTranslateSection"
+                        :focus-request="focusedEditFocusRequest"
+                        :search-query="normalizedSearchQuery"
+                        isolate-layout
+                        :focused-prop-display="focusedPropDisplay"
+                        :on-update-prop="updateNodeProp"
+                        :on-update-text="updateTextNode"
+                        :on-add-child-component="addChildComponent"
+                        :on-add-child-text="addChildText"
+                        :on-remove="removeNode"
+                        :on-clone="cloneNode"
+                        :on-create-global-alias="openGlobalAliasModal"
+                        :on-toggle-expanded="handleRootExpansion"
+                        :on-focus-node="handleNodeFocus"
+                        :on-translate-field="handleTranslateField"
+                        :on-translate-section="handleTranslateSection"
+                        :on-toggle-translate-field-selection="
+                            handleToggleTranslateFieldSelection
+                        "
+                        :is-translate-field-selected="isTranslateFieldSelected"
+                        :section-name="getLocalSectionName(focusedEditNode.uid)"
+                        :on-save-section-name="saveLocalSectionName"
+                    />
+                    <div v-else class="builder-focused-editor__missing">
+                        The selected field is no longer available.
+                    </div>
+                </div>
+            </div>
+
+            <footer class="builder-focused-editor__bar">
+                <div class="builder-focused-editor__visibility">
+                    <label class="builder-focused-editor__toggle">
+                        <input
+                            v-model="focusedShowFieldsAround"
+                            type="checkbox"
+                            :disabled="focusedShowAllFields || isFocusedEditSaving"
+                        />
+                        <span>Show fields around</span>
+                    </label>
+                    <label class="builder-focused-editor__toggle">
+                        <input
+                            v-model="focusedShowAllFields"
+                            type="checkbox"
+                            :disabled="isFocusedEditSaving"
+                        />
+                        <span>Show all fields in section</span>
+                    </label>
+                </div>
+                <div class="builder-focused-editor__actions">
+                    <button
+                        type="button"
+                        class="builder-focused-editor__cancel"
+                        :disabled="isFocusedEditSaving"
+                        @click="cancelFocusedEditSession"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-focused-editor__save"
+                        :disabled="isFocusedEditSaving"
+                        @click="confirmFocusedEditSession"
+                    >
+                        {{ isFocusedEditSaving ? "Saving..." : "OK" }}
+                    </button>
+                </div>
+            </footer>
+        </section>
+
+        <section v-else key="tree" class="builder-tree">
             <div class="builder-tree__controls">
                 <div class="builder-add">
                     <button type="button" @click="openRootPicker()">
@@ -3561,6 +3847,7 @@ const handleSaveDebugClick = () => {
                 Drop here to move to the end
             </div>
         </section>
+        </Transition>
 
         <!--
     <section class="builder-output">
@@ -4339,6 +4626,214 @@ const handleSaveDebugClick = () => {
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+
+.builder-focused-editor {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+}
+
+.builder-focused-editor__stage {
+    min-height: 0;
+    min-width: 0;
+    display: block;
+    padding: 0;
+    overflow: visible;
+}
+
+.builder-focused-editor__card {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.builder-focused-editor__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 18px 35px -28px rgba(15, 23, 42, 0.4);
+}
+
+.builder-focused-editor__eyebrow {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: #2563eb;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.builder-focused-editor__header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.builder-focused-editor__close {
+    width: 2.1rem;
+    height: 2.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dbe3ef;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.builder-focused-editor__close:hover:not(:disabled) {
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+}
+
+.builder-focused-editor__missing {
+    padding: 1rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #64748b;
+    background: #ffffff;
+}
+
+.builder-focused-editor__bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.65rem;
+    border-top: 1px solid #dbe3ef;
+    border-bottom: 1px solid #dbe3ef;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
+}
+
+.builder-focused-editor__visibility,
+.builder-focused-editor__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.builder-focused-editor__actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+}
+
+.builder-focused-editor__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #334155;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.builder-focused-editor__toggle input {
+    width: 0.9rem;
+    height: 0.9rem;
+    margin: 0;
+    accent-color: #2563eb;
+}
+
+.builder-focused-editor__toggle:has(input:disabled) {
+    color: #94a3b8;
+}
+
+.builder-focused-editor__cancel,
+.builder-focused-editor__save {
+    min-width: 82px;
+    border-radius: 9px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.builder-focused-editor__cancel {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+}
+
+.builder-focused-editor__save {
+    border: 1px solid #1d4ed8;
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.builder-focused-editor__cancel:disabled,
+.builder-focused-editor__save:disabled,
+.builder-focused-editor__close:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+@media (max-width: 720px) {
+    .builder-focused-editor__bar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .builder-focused-editor__actions {
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+    }
+}
+
+.builder-focused-editor-enter-active {
+    animation: builderFocusedEditorBounceIn 0.42s cubic-bezier(0.2, 0.9, 0.24, 1.25);
+}
+
+.builder-focused-editor-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.builder-focused-editor-leave-to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+}
+
+@keyframes builderFocusedEditorBounceIn {
+    0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.96);
+    }
+
+    70% {
+        opacity: 1;
+        transform: translateY(-4px) scale(1.01);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .builder-tree__search {
