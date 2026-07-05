@@ -42,4 +42,23 @@ describe("section placement preview scroll focus", () => {
         expect(liveUpdates).not.toContain("if (mode !== 'flash')");
         expect(liveUpdates).not.toContain("scheduleHighlightClear(mode)");
     });
+
+    it("shows the live preview iframe width while resizing panels", () => {
+        const inlineEditor = readLayerFile(
+            "content/app/components/inline/InlineLiveEditor.vue",
+        );
+
+        expect(inlineEditor).toContain("previewFrameRef");
+        expect(inlineEditor).toContain("previewFrameWidth");
+        expect(inlineEditor).toContain("const isDividerResizeActive = computed(");
+        expect(inlineEditor).toContain("pendingDividerDrag.value || isDraggingDivider.value");
+        expect(inlineEditor).toContain("updatePreviewFrameSizeLabel");
+        expect(inlineEditor).toContain("inline-live-editor__resize-label");
+        expect(inlineEditor).toContain('v-if="isDividerResizeActive"');
+        expect(inlineEditor).not.toContain('v-if="isDraggingDivider"');
+        expect(inlineEditor).toContain("Preview {{ previewFrameWidthLabel }}");
+        expect(inlineEditor).toContain("position: fixed;");
+        expect(inlineEditor).toContain("top: 12px;");
+        expect(inlineEditor).toContain("right: 12px;");
+    });
 });

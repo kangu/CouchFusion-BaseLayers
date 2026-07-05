@@ -4376,6 +4376,9 @@ defineExpose({
 .content-admin-workbench {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
 }
 
 .content-admin-workbench__button {
@@ -5604,9 +5607,13 @@ defineExpose({
 }
 
 .content-admin-workbench__editor-body {
+    align-self: stretch;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    width: min(100%, 600px);
+    max-width: 800px;
+    box-sizing: border-box;
     padding: 1.25rem;
 }
 

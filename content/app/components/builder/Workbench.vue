@@ -4256,7 +4256,8 @@ const handleSaveDebugClick = () => {
     display: grid;
     gap: 24px;
     padding: 0;
-    max-width: 1200px;
+    width: 100%;
+    max-width: calc(100vw - 327px);
     margin: 0 auto;
 }
 

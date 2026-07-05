@@ -175,4 +175,64 @@ describe("builder focused editor mode", () => {
         expect(admin).not.toContain('class="builder-component-search"');
         expect(admin).not.toContain('placeholder="Search through content..."');
     });
+
+    it("allows the workbench to expand until a 320px live preview remains", () => {
+        const workbench = readLayerFile(
+            "content/app/components/builder/Workbench.vue",
+        );
+        const pageRuleIndex = workbench.indexOf(".builder-page {");
+        const pageRule = workbench.slice(pageRuleIndex, pageRuleIndex + 220);
+
+        expect(pageRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(pageRule).toContain("max-width: calc(100vw - 320px);");
+        expect(pageRule).not.toContain("max-width: 1200px;");
+    });
+
+    it("lets the inline builder shell expand while capping editor body content", () => {
+        const inlineEditor = readLayerFile(
+            "content/app/components/inline/InlineLiveEditor.vue",
+        );
+        const admin = readLayerFile(
+            "content/app/components/admin/ContentAdminWorkbench.vue",
+        );
+        const editorBodyRuleIndex = admin.indexOf(
+            ".content-admin-workbench__editor-body {",
+        );
+        const editorBodyRule = admin.slice(editorBodyRuleIndex, editorBodyRuleIndex + 260);
+
+        expect(inlineEditor).toContain("const MIN_PREVIEW_WIDTH = 320;");
+        expect(inlineEditor).toContain("let max = min;");
+        expect(inlineEditor).toContain("max = Math.max(min, viewportCap);");
+        expect(inlineEditor).not.toContain("const MAX_SIDEBAR_WIDTH = 720;");
+        expect(editorBodyRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(editorBodyRule).toContain("width: min(100%, 800px);");
+        expect(editorBodyRule).toContain("max-width: 800px;");
+    });
+
+    it("prevents horizontal scrolling in the inline workbench sidebar", () => {
+        const inlineEditor = readLayerFile(
+            "content/app/components/inline/InlineLiveEditor.vue",
+        );
+        const admin = readLayerFile(
+            "content/app/components/admin/ContentAdminWorkbench.vue",
+        );
+        const sidebarRuleIndex = inlineEditor.indexOf(".inline-live-editor__sidebar {");
+        const sidebarRule = inlineEditor.slice(sidebarRuleIndex, sidebarRuleIndex + 260);
+        const workbenchRuleIndex = inlineEditor.indexOf(".inline-live-editor__workbench {");
+        const workbenchRule = inlineEditor.slice(workbenchRuleIndex, workbenchRuleIndex + 240);
+        const adminRootRuleIndex = admin.indexOf(".content-admin-workbench {");
+        const adminRootRule = admin.slice(adminRootRuleIndex, adminRootRuleIndex + 260);
+        const editorBodyRuleIndex = admin.indexOf(".content-admin-workbench__editor-body {");
+        const editorBodyRule = admin.slice(editorBodyRuleIndex, editorBodyRuleIndex + 320);
+
+        expect(sidebarRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(sidebarRule).toContain("overflow-y: auto;");
+        expect(sidebarRule).toContain("overflow-x: hidden;");
+        expect(workbenchRule).toContain("width: 100%;");
+        expect(workbenchRule).toContain("min-width: 0;");
+        expect(adminRootRule).toContain("width: 100%;");
+        expect(adminRootRule).toContain("min-width: 0;");
+        expect(adminRootRule).toContain("overflow-x: clip;");
+        expect(editorBodyRule).toContain("align-self: stretch;");
+    });
 });
