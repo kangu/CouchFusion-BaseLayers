@@ -1095,7 +1095,6 @@ onBeforeRouteLeave(() => {
 .inline-live-editor__sidebar {
     overflow: auto;
     box-sizing: border-box;
-    border-right: 1px solid #e5e7eb;
     background-color: #f8fafc;
 }
 
@@ -1111,9 +1110,8 @@ onBeforeRouteLeave(() => {
 
 .inline-live-editor__divider::before {
     content: "";
-    width: 1px;
-    height: 80%;
-    border-radius: 999px;
+    width: 3px;
+    height: 100%;
     background-color: rgba(71, 85, 105, 0.35);
     transition: background-color 0.2s ease;
 }

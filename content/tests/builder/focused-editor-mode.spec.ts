@@ -82,6 +82,33 @@ describe("builder focused editor mode", () => {
         expect(nodeEditor).toContain(":focused-prop-display=\"focusedPropDisplay\"");
     });
 
+    it("only flashes the live preview from explicit node editor clicks", () => {
+        const nodeEditor = readLayerFile(
+            "content/app/components/builder/NodeEditor.vue",
+        );
+
+        expect(nodeEditor).toContain('@click="notifyPreviewFocusFromEditorClick"');
+        expect(nodeEditor).toContain("const notifyPreviewFocusFromEditorClick = () =>");
+        expect(nodeEditor).not.toContain('@focusin="notifyFocus"');
+        expect(nodeEditor).not.toContain('@focusin="notifyPreviewFocusFromEditorClick"');
+    });
+
+    it("uses a subtle blue hover surface for node editor sections", () => {
+        const nodeEditor = readLayerFile(
+            "content/app/components/builder/NodeEditor.vue",
+        );
+        const hoverRuleIndex = nodeEditor.indexOf(
+            ".node-panel:not(.node-panel--isolated):hover",
+        );
+        const hoverRule = nodeEditor.slice(hoverRuleIndex, hoverRuleIndex + 260);
+
+        expect(hoverRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(hoverRule).toContain("background: #f8fbff;");
+        expect(hoverRule).toContain("border-color: #bfdbfe;");
+        expect(hoverRule).toContain("rgba(37, 99, 235");
+        expect(nodeEditor).toContain("background-color 0.14s ease");
+    });
+
     it("opens site typography and theme as focused settings editors", () => {
         const workbench = readLayerFile(
             "content/app/components/builder/Workbench.vue",

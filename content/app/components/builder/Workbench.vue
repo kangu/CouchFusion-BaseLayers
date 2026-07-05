@@ -686,6 +686,7 @@ const filteredBuilderTree = computed(() =>
 );
 
 const isRootPickerOpen = ref(false);
+const isAddSectionButtonPlaying = ref(false);
 const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
 const pendingRootInsertIndex = ref<number | null>(null);
@@ -694,6 +695,12 @@ const isSectionPlacementDialogOpen = ref(false);
 const pendingSelectedComponentId = ref<string | null>(null);
 const pendingSectionNameDraft = ref("");
 const sectionNamePromptInputRef = ref<HTMLInputElement | null>(null);
+const addSectionSparkles = Array.from({ length: 7 }, (_, index) => ({
+    angle: `${(360 / 7) * index}deg`,
+    delay: `${index * 8}ms`,
+}));
+let addSectionAnimationTimer: ReturnType<typeof setTimeout> | null = null;
+let addSectionPickerTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isGlobalAliasModalOpen = ref(false);
 const isGlobalAliasSaving = ref(false);
@@ -1118,8 +1125,36 @@ const openRootPicker = (insertIndex: number | null = null) => {
     isRootPickerOpen.value = true;
 };
 
+const resetAddSectionButtonAnimation = () => {
+    if (addSectionAnimationTimer) {
+        clearTimeout(addSectionAnimationTimer);
+        addSectionAnimationTimer = null;
+    }
+    if (addSectionPickerTimer) {
+        clearTimeout(addSectionPickerTimer);
+        addSectionPickerTimer = null;
+    }
+    isAddSectionButtonPlaying.value = false;
+};
+
+const openRootPickerWithAnimation = () => {
+    resetAddSectionButtonAnimation();
+    isAddSectionButtonPlaying.value = true;
+
+    addSectionPickerTimer = setTimeout(() => {
+        openRootPicker();
+        addSectionPickerTimer = null;
+    }, 280);
+
+    addSectionAnimationTimer = setTimeout(() => {
+        isAddSectionButtonPlaying.value = false;
+        addSectionAnimationTimer = null;
+    }, 480);
+};
+
 const closeRootPicker = () => {
     isRootPickerOpen.value = false;
+    resetAddSectionButtonAnimation();
     if (isSectionNamePromptOpen.value) {
         return;
     }
@@ -1127,6 +1162,7 @@ const closeRootPicker = () => {
 };
 
 const closeAddSectionWorkflow = () => {
+    resetAddSectionButtonAnimation();
     isRootPickerOpen.value = false;
     isSectionNamePromptOpen.value = false;
     isSectionPlacementDialogOpen.value = false;
@@ -2450,6 +2486,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+    resetAddSectionButtonAnimation();
     if (typeof window !== "undefined") {
         window.removeEventListener(
             "scroll",
@@ -3933,8 +3970,39 @@ const handleSaveDebugClick = () => {
         <section v-else key="tree" class="builder-tree">
             <div class="builder-tree__controls">
                 <div class="builder-add">
-                    <button type="button" @click="openRootPicker()">
-                        + Section
+                    <button
+                        type="button"
+                        class="builder-add-section-button"
+                        :class="{
+                            'is-playing': isAddSectionButtonPlaying,
+                        }"
+                        @click="openRootPickerWithAnimation"
+                    >
+                        <span
+                            class="builder-add-section-button__ripple"
+                            aria-hidden="true"
+                        />
+                        <span
+                            class="builder-add-section-button__plus"
+                            aria-hidden="true"
+                        >
+                            +
+                        </span>
+                        <span>Section</span>
+                        <span
+                            class="builder-add-section-button__sparkles"
+                            aria-hidden="true"
+                        >
+                            <span
+                                v-for="sparkle in addSectionSparkles"
+                                :key="sparkle.angle"
+                                class="builder-add-section-button__sparkle"
+                                :style="{
+                                    '--sparkle-angle': sparkle.angle,
+                                    '--sparkle-delay': sparkle.delay,
+                                }"
+                            />
+                        </span>
                     </button>
                     <ComponentPickerDialog
                         :is-open="isRootPickerOpen"
@@ -4823,8 +4891,7 @@ const handleSaveDebugClick = () => {
     flex: 1;
 }
 
-.builder-add select,
-.builder-add button {
+.builder-add select {
     padding: 14px 10px;
     border-radius: 12px;
     border: 1px solid #cbd5f5;
@@ -4835,8 +4902,169 @@ const handleSaveDebugClick = () => {
     font-weight: 600;
 }
 
-.builder-add button:hover {
+.builder-add-section-button {
+    --duration: 440ms;
+    --scale-peak: 1.08;
+    --lift: -2px;
+    --rotate: 90deg;
+    --ripple-scale: 1.65;
+    --glow: 18px;
+    --sparkle-distance: 44px;
+    --radius: 10px;
+    --accent: #34aaf4;
+    --accent-2: #abf75f;
+    --ease: cubic-bezier(.2, .86, .24, 1.12);
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    min-width: 132px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    overflow: visible;
+    padding: 14px 14px;
+    border: 1px solid #cbd5f5;
+    border-radius: var(--radius);
+    background: #2563eb;
+    color: #ffffff;
+    cursor: pointer;
+    font-weight: 700;
+    line-height: 1;
+    transform: translateY(0) scale(1);
+    transition:
+        background-color 0.16s ease,
+        border-color 0.16s ease,
+        box-shadow 0.16s ease,
+        color 0.16s ease;
+}
+
+.builder-add-section-button:hover {
+    border-color: #1d4ed8;
     background: #1d4ed8;
+}
+
+.builder-add-section-button.is-playing {
+    animation: builderAddSectionButtonPlay var(--duration) var(--ease);
+    box-shadow:
+        0 0 0 4px rgba(52, 170, 244, 0.14),
+        0 18px var(--glow) -20px rgba(52, 170, 244, 0.8);
+}
+
+.builder-add-section-button__plus {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
+    font-size: 23px;
+    font-weight: 780;
+    line-height: 0.7;
+    transform-origin: center;
+}
+
+.builder-add-section-button.is-playing .builder-add-section-button__plus {
+    animation: builderAddSectionPlusPlay var(--duration) var(--ease);
+}
+
+.builder-add-section-button__ripple {
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border: 2px solid rgba(52, 170, 244, 0.32);
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(1);
+}
+
+.builder-add-section-button.is-playing .builder-add-section-button__ripple {
+    animation: builderAddSectionRipplePlay var(--duration) ease-out;
+}
+
+.builder-add-section-button__sparkles {
+    position: absolute;
+    inset: -38px;
+    pointer-events: none;
+}
+
+.builder-add-section-button__sparkle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent-2);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+}
+
+.builder-add-section-button.is-playing .builder-add-section-button__sparkle {
+    animation: builderAddSectionSparklePlay var(--duration) ease-out;
+    animation-delay: var(--sparkle-delay);
+}
+
+@keyframes builderAddSectionButtonPlay {
+    0% {
+        transform: translateY(0) scale(1);
+    }
+
+    35% {
+        transform: translateY(var(--lift)) scale(var(--scale-peak));
+    }
+
+    63% {
+        transform: translateY(calc(var(--lift) * -0.28)) scale(0.985);
+    }
+
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes builderAddSectionPlusPlay {
+    0% {
+        transform: rotate(0deg) scale(1);
+    }
+
+    45% {
+        transform: rotate(var(--rotate)) scale(1.15);
+    }
+
+    100% {
+        transform: rotate(var(--rotate)) scale(1);
+    }
+}
+
+@keyframes builderAddSectionRipplePlay {
+    0% {
+        opacity: 0;
+        transform: scale(1);
+    }
+
+    22% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(var(--ripple-scale));
+    }
+}
+
+@keyframes builderAddSectionSparklePlay {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--sparkle-angle)) translateX(12px) scale(0.35);
+    }
+
+    28% {
+        opacity: 0.9;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) rotate(var(--sparkle-angle)) translateX(var(--sparkle-distance)) scale(0.9);
+    }
 }
 
 .builder-load {
@@ -4869,8 +5097,6 @@ const handleSaveDebugClick = () => {
 }
 
 .builder-tree {
-    padding: 4px;
-    border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #fff;
     display: flex;

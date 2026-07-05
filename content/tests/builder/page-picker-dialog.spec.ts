@@ -18,10 +18,19 @@ describe("builder page picker dialog", () => {
         expect(admin).toContain("filteredPagePickerPages");
         expect(admin).toContain("openPageFromPicker");
         expect(admin).toContain("pagePickerTooltip");
+        expect(admin).toContain("pagePickerTooltipTitle");
+        expect(admin).toContain("pagePickerTooltipDescription");
+        expect(admin).toContain("pagePickerPageName");
         expect(admin).toContain('const title = computed(() => props.title ?? "...")');
+        expect(admin).toContain('import RichTooltip from "../ui/RichTooltip.vue"');
         expect(admin).toContain("content-admin-workbench__path-trigger");
         expect(admin).toContain("content-admin-workbench__path-caret");
-        expect(admin).toContain(':title="pagePickerTooltip"');
+        expect(admin).toContain(':title="pagePickerTooltipTitle"');
+        expect(admin).toContain(':description="pagePickerTooltipDescription"');
+        expect(admin).toContain('URL: ${currentEditedPath.value}');
+        expect(admin).toContain('Page name: ${pagePickerPageName.value}');
+        expect(admin).toContain('Updated at: ${lastUpdatedDisplay.value || "Never"}');
+        expect(admin).toContain(':aria-describedby="describedby"');
         expect(admin.indexOf('{{ isSavePending ? "Saving…" : "Save" }}')).toBeLessThan(
             admin.indexOf("content-admin-workbench__path-trigger"),
         );
@@ -41,6 +50,7 @@ describe("builder page picker dialog", () => {
         );
         expect(admin).not.toContain("Updated {{ lastUpdatedDisplay }}");
         expect(admin).not.toContain("editor-header__status-time");
+        expect(admin).not.toContain(':title="pagePickerTooltip"');
         expect(admin).not.toContain("Save Changes");
         expect(admin).not.toContain("content-admin-workbench__path-helper");
         expect(admin).not.toContain('props.title ?? "Content Builder"');

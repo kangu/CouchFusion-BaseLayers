@@ -27,4 +27,19 @@ describe("section placement preview scroll focus", () => {
         expect(workbench).toContain("forceScroll?: boolean");
         expect(workbench).toContain("block?: ScrollLogicalPosition");
     });
+
+    it("always clears preview focus highlights after the flash duration", () => {
+        const liveUpdates = readLayerFile(
+            "content/app/composables/useContentLiveUpdates.ts",
+        );
+
+        expect(liveUpdates).toContain("let highlightedElement: HTMLElement | null = null");
+        expect(liveUpdates).toContain("const clearElementShadow = (element: HTMLElement | null)");
+        expect(liveUpdates).toContain("highlightedElement = null");
+        expect(liveUpdates).toContain("const scheduleHighlightClear = () =>");
+        expect(liveUpdates).toContain("clearElementShadow(highlightedElement)");
+        expect(liveUpdates).toContain("scheduleHighlightClear()");
+        expect(liveUpdates).not.toContain("if (mode !== 'flash')");
+        expect(liveUpdates).not.toContain("scheduleHighlightClear(mode)");
+    });
 });

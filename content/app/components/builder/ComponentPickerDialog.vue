@@ -30,49 +30,103 @@
                         :class="{ 'is-active': manageCategoriesOpen }"
                         @click="toggleManageCategories"
                     >
-                        {{ manageCategoriesOpen ? "Back to Picker" : "Manage Categories" }}
+                        {{ manageCategoriesOpen ? "Picker" : "Categories" }}
                     </button>
-                    <div class="component-picker-view-toggle">
-                        <button
-                            type="button"
-                            class="component-picker-view-toggle__button"
-                            :class="{ 'is-active': previewDevice === 'desktop' }"
-                            @click="previewDevice = 'desktop'"
+                    <div class="component-picker-view-toggle" aria-label="Preview device">
+                        <RichTooltip
+                            title="Desktop preview"
+                            description="Show component thumbnails at desktop width."
                         >
-                            Desktop
-                        </button>
-                        <button
-                            type="button"
-                            class="component-picker-view-toggle__button"
-                            :class="{ 'is-active': previewDevice === 'mobile' }"
-                            @click="previewDevice = 'mobile'"
+                            <template #default="{ describedby }">
+                                <button
+                                    type="button"
+                                    class="component-picker-view-toggle__button"
+                                    aria-label="Desktop preview"
+                                    :aria-describedby="describedby"
+                                    :class="{ 'is-active': previewDevice === 'desktop' }"
+                                    @click="previewDevice = 'desktop'"
+                                >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="3" y="4" width="18" height="12" rx="2" />
+                                        <path d="M8 20h8M12 16v4" />
+                                    </svg>
+                                </button>
+                            </template>
+                        </RichTooltip>
+                        <RichTooltip
+                            title="Mobile preview"
+                            description="Show component thumbnails at mobile width."
                         >
-                            Mobile
-                        </button>
+                            <template #default="{ describedby }">
+                                <button
+                                    type="button"
+                                    class="component-picker-view-toggle__button"
+                                    aria-label="Mobile preview"
+                                    :aria-describedby="describedby"
+                                    :class="{ 'is-active': previewDevice === 'mobile' }"
+                                    @click="previewDevice = 'mobile'"
+                                >
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <rect x="7" y="2.5" width="10" height="19" rx="2" />
+                                        <path d="M11.8 18h.4" />
+                                    </svg>
+                                </button>
+                            </template>
+                        </RichTooltip>
                     </div>
                     <div class="component-picker-sort-control" aria-label="Sort components">
-                        <span class="component-picker-sort-control__label">Sort</span>
-                        <div class="component-picker-view-toggle">
-                            <button
-                                type="button"
-                                class="component-picker-view-toggle__button"
-                                :class="{ 'is-active': sortMode === 'updated' }"
-                                @click="sortMode = 'updated'"
+                        <div class="component-picker-view-toggle" aria-label="Sort components">
+                            <RichTooltip
+                                title="Sort by updated"
+                                description="Show recently updated components first."
                             >
-                                Updated
-                            </button>
-                            <button
-                                type="button"
-                                class="component-picker-view-toggle__button"
-                                :class="{ 'is-active': sortMode === 'name' }"
-                                @click="sortMode = 'name'"
+                                <template #default="{ describedby }">
+                                    <button
+                                        type="button"
+                                        class="component-picker-view-toggle__button"
+                                        aria-label="Sort by updated"
+                                        :aria-describedby="describedby"
+                                        :class="{ 'is-active': sortMode === 'updated' }"
+                                        @click="sortMode = 'updated'"
+                                    >
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M12 7v5l3 2" />
+                                            <path d="M21 12a9 9 0 1 1-3.6-7.2" />
+                                            <path d="M21 4v6h-6" />
+                                        </svg>
+                                    </button>
+                                </template>
+                            </RichTooltip>
+                            <RichTooltip
+                                title="Sort by name"
+                                description="Sort components alphabetically by label."
                             >
-                                Name
-                            </button>
+                                <template #default="{ describedby }">
+                                    <button
+                                        type="button"
+                                        class="component-picker-view-toggle__button"
+                                        aria-label="Sort by name"
+                                        :aria-describedby="describedby"
+                                        :class="{ 'is-active': sortMode === 'name' }"
+                                        @click="sortMode = 'name'"
+                                    >
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M4 7h10" />
+                                            <path d="M4 12h14" />
+                                            <path d="M4 17h7" />
+                                            <path d="M17 7l2-2l2 2" />
+                                            <path d="M19 5v14" />
+                                        </svg>
+                                    </button>
+                                </template>
+                            </RichTooltip>
                         </div>
                     </div>
                     <label class="component-picker-density-control" for="component-picker-thumbnail-columns">
-                        <span class="component-picker-density-control__label">Thumbnails</span>
+                        <span class="component-picker-density-control__meta">
+                            <span class="component-picker-density-control__label">Thumbs</span>
+                            <span class="component-picker-density-control__value">{{ thumbnailColumns }}</span>
+                        </span>
                         <input
                             id="component-picker-thumbnail-columns"
                             v-model.number="thumbnailColumns"
@@ -82,7 +136,6 @@
                             step="1"
                             @input="handleThumbnailColumnsInput"
                         />
-                        <span class="component-picker-density-control__value">{{ thumbnailColumns }}</span>
                     </label>
                 </div>
                 <button class="close-button" @click="close">
@@ -384,6 +437,7 @@ import type { CSSProperties } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
 import LazyLoader from "./LazyLoader.vue";
+import RichTooltip from "../ui/RichTooltip.vue";
 import { useComponentPickerCategories } from "#content/app/composables/useComponentPickerCategories";
 import {
     buildComponentPickerCategoryTabs,
@@ -745,6 +799,14 @@ const close = () => {
     closeExpanded();
 };
 
+const handlePickerKeydown = (event: KeyboardEvent) => {
+    if (!props.isOpen || event.key !== "Escape") {
+        return;
+    }
+    event.preventDefault();
+    close();
+};
+
 const select = (id: string) => {
     emit("select", id);
     close();
@@ -949,6 +1011,8 @@ const previewGridStyle = computed<CSSProperties>(() => ({
 
 let componentGridResizeObserver: ResizeObserver | null = null;
 
+const canUseDocument = () => typeof document !== "undefined";
+
 /**
  * Stores the current component picker grid width so preview scale values can be
  * derived in TypeScript instead of through build-warning-prone CSS calculations.
@@ -990,6 +1054,9 @@ const handleThumbnailColumnsInput = (event: Event) => {
 onMounted(() => {
     loadThumbnailColumns();
     updateComponentGridInlineSize();
+    if (props.isOpen && canUseDocument()) {
+        document.addEventListener("keydown", handlePickerKeydown);
+    }
 
     if (import.meta.client && componentGrid.value) {
         componentGridResizeObserver = new ResizeObserver(() => {
@@ -1000,6 +1067,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    if (canUseDocument()) {
+        document.removeEventListener("keydown", handlePickerKeydown);
+    }
     componentGridResizeObserver?.disconnect();
     componentGridResizeObserver = null;
 });
@@ -1008,12 +1078,18 @@ watch(
     () => props.isOpen,
     async (val) => {
         if (val) {
+            if (canUseDocument()) {
+                document.addEventListener("keydown", handlePickerKeydown);
+            }
             await fetchCategorySettings();
             cloneCategorySettingsToDraft();
              nextTick(() => {
                 searchInput.value?.focus();
             });
         } else {
+            if (canUseDocument()) {
+                document.removeEventListener("keydown", handlePickerKeydown);
+            }
             selectedCategory.value = "default";
             previewDevice.value = "desktop";
             manageCategoriesOpen.value = false;
@@ -1097,7 +1173,7 @@ watch(
     border-bottom: 1px solid #e5e7eb;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     flex-shrink: 0; /* Don't shrink header */
 }
 
@@ -1174,7 +1250,7 @@ watch(
 .component-picker-header-controls {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .component-picker-manage-button {
@@ -1182,7 +1258,7 @@ watch(
     background: #ffffff;
     color: #374151;
     border-radius: 999px;
-    padding: 7px 12px;
+    padding: 7px 10px;
     font-size: 0.78rem;
     font-weight: 700;
     cursor: pointer;
@@ -1199,22 +1275,34 @@ watch(
 .component-picker-view-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     background: #f3f4f6;
     border-radius: 999px;
-    padding: 4px;
+    padding: 3px;
 }
 
 .component-picker-view-toggle__button {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 30px;
     border: 0;
     background: transparent;
     border-radius: 999px;
-    padding: 6px 10px;
+    padding: 0;
     color: #4b5563;
-    font-size: 0.78rem;
-    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+.component-picker-view-toggle__button svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .component-picker-view-toggle__button.is-active {
@@ -1226,38 +1314,43 @@ watch(
 .component-picker-sort-control {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-}
-
-.component-picker-sort-control__label {
-    color: #374151;
-    font-size: 0.78rem;
-    font-weight: 600;
-    white-space: nowrap;
 }
 
 .component-picker-density-control {
-    display: inline-flex;
+    display: grid;
+    grid-template-columns: auto minmax(74px, 96px);
     align-items: center;
-    gap: 8px;
+    column-gap: 8px;
     color: #374151;
     font-size: 0.78rem;
     font-weight: 600;
+    line-height: 1.1;
+}
+
+.component-picker-density-control__meta {
+    display: grid;
+    gap: 2px;
+    min-width: 46px;
 }
 
 .component-picker-density-control__label {
-    white-space: nowrap;
+    color: #64748b;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
 .component-picker-density-control input[type="range"] {
-    width: 120px;
+    width: 96px;
     accent-color: #2563eb;
 }
 
 .component-picker-density-control__value {
-    min-width: 1.25rem;
-    text-align: right;
+    min-width: 0;
+    text-align: left;
     color: #111827;
+    font-size: 0.86rem;
 }
 
 .component-picker-tabs {

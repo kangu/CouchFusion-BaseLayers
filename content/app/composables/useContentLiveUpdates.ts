@@ -328,6 +328,7 @@ const shouldAllowNaturalFollow = (event: MouseEvent, target: Element): boolean =
 
 let highlightOverlay: HTMLDivElement | null = null
 let highlightClearTimer: ReturnType<typeof setTimeout> | null = null
+let highlightedElement: HTMLElement | null = null
 const HIGHLIGHT_FLASH_DURATION_MS = 900
 const SCROLL_SETTLE_FRAMES = 4
 const SCROLL_SETTLE_MAX_WAIT_MS = 1400
@@ -340,6 +341,15 @@ const clearPendingHighlightTimer = () => {
   clearTimeout(highlightClearTimer)
   highlightClearTimer = null
 }
+
+const clearElementShadow = (element: HTMLElement | null) => {
+  if (!element) {
+    return
+  }
+  element.classList.remove('builder-highlight-flash')
+  element.classList.remove('builder-highlight-lock')
+}
+
 /**
  * Scroll only when the target is sufficiently outside the viewport.
  * Example: `0.6` means at least 60% of the element is out of view.
@@ -458,6 +468,10 @@ const ensureHighlightOverlay = (): HTMLDivElement => {
  */
 const showHighlight = (target: HTMLElement) => {
   clearPendingHighlightTimer()
+  if (highlightedElement && highlightedElement !== target) {
+    clearElementShadow(highlightedElement)
+  }
+  highlightedElement = target
   const overlay = ensureHighlightOverlay()
   const rect = target.getBoundingClientRect()
   const top = rect.top
@@ -476,14 +490,12 @@ const clearHighlight = () => {
   if (highlightOverlay) {
     highlightOverlay.style.opacity = '0'
   }
+  clearElementShadow(highlightedElement)
+  highlightedElement = null
 }
 
-const scheduleHighlightClear = (mode: 'flash' | 'lock' | 'clear') => {
+const scheduleHighlightClear = () => {
   clearPendingHighlightTimer()
-
-  if (mode !== 'flash') {
-    return
-  }
 
   highlightClearTimer = setTimeout(() => {
     highlightClearTimer = null
@@ -540,25 +552,18 @@ const applyElementShadow = (
   element: HTMLElement,
   mode: 'flash' | 'lock' | 'clear' = 'flash'
 ) => {
-  const flashClass = 'builder-highlight-flash'
-  const lockClass = 'builder-highlight-lock'
-
-  element.classList.remove(flashClass)
-  element.classList.remove(lockClass)
+  clearElementShadow(element)
 
   if (mode === 'clear') {
     return
   }
 
   if (mode === 'lock') {
-    element.classList.add(lockClass)
+    element.classList.add('builder-highlight-lock')
     return
   }
 
-  // flash
-  element.classList.add(flashClass)
-  // remove after animation
-  window.setTimeout(() => element.classList.remove(flashClass), 900)
+  element.classList.add('builder-highlight-flash')
 }
 
 /**
@@ -867,7 +872,7 @@ export const useContentLiveUpdates = (): void => {
         ensureHighlightStyles()
         applyElementShadow(target, mode)
         showHighlight(target)
-        scheduleHighlightClear(mode)
+        scheduleHighlightClear()
       } catch (error) {
         console.error('Failed to highlight builder node:', error)
       }
@@ -954,6 +959,8 @@ export const useContentLiveUpdates = (): void => {
     window.removeEventListener('message', handleMessage)
     document.removeEventListener('click', handleInlinePreviewClick, true)
     clearPendingHighlightTimer()
+    clearElementShadow(highlightedElement)
+    highlightedElement = null
     if (highlightOverlay) {
       highlightOverlay.remove()
       highlightOverlay = null
