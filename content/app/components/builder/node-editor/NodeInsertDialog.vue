@@ -25,7 +25,7 @@
                     :key="`${insertDialog.key}-${option.index}`"
                 >
                     <button type="button" @click="handleInsertAt(option.index)">
-                        <strong>Position {{ option.index + 1 }}</strong>
+                        <strong>Insert here</strong>
                         <span>{{ option.preview }}</span>
                     </button>
                 </li>

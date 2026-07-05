@@ -7,17 +7,26 @@
         :data-prop-key="prop.key"
     >
         <div class="node-panel__array-header">
-            <button
-                type="button"
-                class="node-panel__array-toggle"
-                :data-state="
-                    collapsedArrays[prop.key] ? 'collapsed' : 'expanded'
-                "
-                @click="toggleArray(prop.key)"
-            >
-                {{ collapsedArrays[prop.key] ? "Expand" : "Collapse" }}
-                ({{ propDraft[prop.key]?.length || 0 }})
-            </button>
+            <div class="node-panel__array-header-main">
+                <button
+                    type="button"
+                    class="node-panel__array-toggle"
+                    :data-state="
+                        collapsedArrays[prop.key] ? 'collapsed' : 'expanded'
+                    "
+                    @click="toggleArray(prop.key)"
+                >
+                    {{ collapsedArrays[prop.key] ? "Expand" : "Collapse" }}
+                    ({{ propDraft[prop.key]?.length || 0 }})
+                </button>
+                <span
+                    v-if="collapsedArrays[prop.key]"
+                    class="node-panel__array-summary"
+                    :title="arraySummary"
+                >
+                    {{ arraySummary }}
+                </span>
+            </div>
             <button
                 type="button"
                 class="node-panel__array-add"
@@ -96,6 +105,7 @@
 import { computed } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeArrayItem from "./NodeArrayItem.vue";
+import { summarizeArrayValue } from "../../../utils/node-editor-summary";
 
 type AnyHandler = (...args: any[]) => void;
 type DragOverArrayItem = { propKey: string; index: number } | null;
@@ -195,6 +205,14 @@ const itemEntries = computed(() => {
     }
     return [] as FilterEntry[];
 });
+
+const arraySummary = computed(() =>
+    summarizeArrayValue(props.propDraft[props.prop.key] ?? [], {
+        fields: props.prop.type === "jsonarray" ? props.prop.items : undefined,
+        maxItems: 3,
+        maxLength: 120,
+    }),
+);
 
 const toPropPathAttr = (segments: Array<string | number>) =>
     segments.map((segment) => String(segment)).join(".");

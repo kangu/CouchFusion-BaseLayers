@@ -279,43 +279,74 @@
                             <div
                                 class="node-panel__array-header node-panel__array-header--nested"
                             >
-                                <button
-                                    type="button"
-                                    class="node-panel__array-toggle"
-                                    :data-state="
-                                        isNestedArrayCollapsed(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                            ? 'collapsed'
-                                            : 'expanded'
-                                    "
-                                    @click="
-                                        toggleNestedArray(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                    "
-                                >
-                                    {{
-                                        isNestedArrayCollapsed(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                            ? "Expand"
-                                            : "Collapse"
-                                    }}
-                                    ({{
-                                        getArrayItemStringArrayItems(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field,
-                                        ).length
-                                    }})
-                                </button>
+                                <div class="node-panel__array-header-main">
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-toggle"
+                                        :data-state="
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                                ? 'collapsed'
+                                                : 'expanded'
+                                        "
+                                        @click="
+                                            toggleNestedArray(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                        "
+                                    >
+                                        {{
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                                ? "Expand"
+                                                : "Collapse"
+                                        }}
+                                        ({{
+                                            getArrayItemStringArrayItems(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field,
+                                            ).length
+                                        }})
+                                    </button>
+                                    <span
+                                        v-if="
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                        "
+                                        class="node-panel__array-summary"
+                                        :title="
+                                            formatArraySummary(
+                                                getArrayItemStringArrayItems(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                    field,
+                                                ),
+                                            )
+                                        "
+                                    >
+                                        {{
+                                            formatArraySummary(
+                                                getArrayItemStringArrayItems(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                    field,
+                                                ),
+                                            )
+                                        }}
+                                    </span>
+                                </div>
                                 <button
                                     type="button"
                                     class="node-panel__array-add"
@@ -367,12 +398,7 @@
                                         },
                                     ]"
                                 >
-                                    <span
-                                        >{{ field.label }}
-                                        {{
-                                            nestedEntry.index + 1
-                                        }}</span
-                                    >
+                                    <span>{{ field.label }}</span>
                                     <div class="node-panel__field-inline-control">
                                         <component
                                             v-if="
@@ -560,9 +586,7 @@
                                             )
                                         "
                                     >
-                                        Move (#{{
-                                            nestedEntry.index + 1
-                                        }})
+                                        Move item
                                     </button>
                                 </div>
                             </div>
@@ -648,43 +672,76 @@
                             <div
                                 class="node-panel__array-header node-panel__array-header--nested"
                             >
-                                <button
-                                    type="button"
-                                    class="node-panel__array-toggle"
-                                    :data-state="
-                                        isNestedArrayCollapsed(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                            ? 'collapsed'
-                                            : 'expanded'
-                                    "
-                                    @click="
-                                        toggleNestedArray(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                    "
-                                >
-                                    {{
-                                        isNestedArrayCollapsed(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field.key,
-                                        )
-                                            ? "Expand"
-                                            : "Collapse"
-                                    }}
-                                    ({{
-                                        getNestedArrayItems(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field,
-                                        ).length
-                                    }})
-                                </button>
+                                <div class="node-panel__array-header-main">
+                                    <button
+                                        type="button"
+                                        class="node-panel__array-toggle"
+                                        :data-state="
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                                ? 'collapsed'
+                                                : 'expanded'
+                                        "
+                                        @click="
+                                            toggleNestedArray(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                        "
+                                    >
+                                        {{
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                                ? "Expand"
+                                                : "Collapse"
+                                        }}
+                                        ({{
+                                            getNestedArrayItems(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field,
+                                            ).length
+                                        }})
+                                    </button>
+                                    <span
+                                        v-if="
+                                            isNestedArrayCollapsed(
+                                                prop.key,
+                                                arrayItemEntry.index,
+                                                field.key,
+                                            )
+                                        "
+                                        class="node-panel__array-summary"
+                                        :title="
+                                            formatArraySummary(
+                                                getNestedArrayItems(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                    field,
+                                                ),
+                                                field.items,
+                                            )
+                                        "
+                                    >
+                                        {{
+                                            formatArraySummary(
+                                                getNestedArrayItems(
+                                                    prop.key,
+                                                    arrayItemEntry.index,
+                                                    field,
+                                                ),
+                                                field.items,
+                                            )
+                                        }}
+                                    </span>
+                                </div>
                                 <button
                                     type="button"
                                     class="node-panel__array-add"
@@ -1151,48 +1208,84 @@
                                                 <div
                                                     class="node-panel__array-header node-panel__array-header--nested"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        class="node-panel__array-toggle"
-                                                        :data-state="
-                                                            isNestedArrayCollapsed(
-                                                                prop.key,
-                                                                arrayItemEntry.index,
-                                                                `${field.key}-${nestedField.key}`,
-                                                                nestedIndex,
-                                                            )
-                                                                ? 'collapsed'
-                                                                : 'expanded'
-                                                        "
-                                                        @click="
-                                                            toggleNestedArray(
-                                                                prop.key,
-                                                                arrayItemEntry.index,
-                                                                `${field.key}-${nestedField.key}`,
-                                                                nestedIndex,
-                                                            )
-                                                        "
-                                                    >
-                                                        {{
-                                                            isNestedArrayCollapsed(
-                                                                prop.key,
-                                                                arrayItemEntry.index,
-                                                                `${field.key}-${nestedField.key}`,
-                                                                nestedIndex,
-                                                            )
-                                                                ? "Expand"
-                                                                : "Collapse"
-                                                        }}
-                                                        ({{
-                                                            getNestedArrayItemStringArrayItems(
-                                                                prop.key,
-                                                                arrayItemEntry.index,
-                                                                field,
-                                                                nestedIndex,
-                                                                nestedField,
-                                                            ).length
-                                                        }})
-                                                    </button>
+                                                    <div class="node-panel__array-header-main">
+                                                        <button
+                                                            type="button"
+                                                            class="node-panel__array-toggle"
+                                                            :data-state="
+                                                                isNestedArrayCollapsed(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    `${field.key}-${nestedField.key}`,
+                                                                    nestedIndex,
+                                                                )
+                                                                    ? 'collapsed'
+                                                                    : 'expanded'
+                                                            "
+                                                            @click="
+                                                                toggleNestedArray(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    `${field.key}-${nestedField.key}`,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                        >
+                                                            {{
+                                                                isNestedArrayCollapsed(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    `${field.key}-${nestedField.key}`,
+                                                                    nestedIndex,
+                                                                )
+                                                                    ? "Expand"
+                                                                    : "Collapse"
+                                                            }}
+                                                            ({{
+                                                                getNestedArrayItemStringArrayItems(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    field,
+                                                                    nestedIndex,
+                                                                    nestedField,
+                                                                ).length
+                                                            }})
+                                                        </button>
+                                                        <span
+                                                            v-if="
+                                                                isNestedArrayCollapsed(
+                                                                    prop.key,
+                                                                    arrayItemEntry.index,
+                                                                    `${field.key}-${nestedField.key}`,
+                                                                    nestedIndex,
+                                                                )
+                                                            "
+                                                            class="node-panel__array-summary"
+                                                            :title="
+                                                                formatArraySummary(
+                                                                    getNestedArrayItemStringArrayItems(
+                                                                        prop.key,
+                                                                        arrayItemEntry.index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        nestedField,
+                                                                    ),
+                                                                )
+                                                            "
+                                                        >
+                                                            {{
+                                                                formatArraySummary(
+                                                                    getNestedArrayItemStringArrayItems(
+                                                                        prop.key,
+                                                                        arrayItemEntry.index,
+                                                                        field,
+                                                                        nestedIndex,
+                                                                        nestedField,
+                                                                    ),
+                                                                )
+                                                            }}
+                                                        </span>
+                                                    </div>
                                                     <button
                                                         type="button"
                                                         class="node-panel__array-add"
@@ -1247,10 +1340,6 @@
                                                         <span
                                                             >{{
                                                                 nestedField.label
-                                                            }}
-                                                            {{
-                                                                nestedEntry.index +
-                                                                1
                                                             }}</span
                                                         >
                                                         <div class="node-panel__field-inline-control">
@@ -1486,11 +1575,7 @@
                                                                 )
                                                             "
                                                         >
-                                                            Move
-                                                            (#{{
-                                                                nestedEntry.index +
-                                                                1
-                                                            }})
+                                                            Move item
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1699,9 +1784,7 @@
                                             )
                                         "
                                     >
-                                        Move (#{{
-                                            nestedIndex + 1
-                                        }})
+                                        Move item
                                     </button>
                                 </div>
                             </div>
@@ -1864,7 +1947,7 @@
                         )
                     "
                 >
-                    Move (#{{ arrayItemEntry.index + 1 }})
+                    Move item
                 </button>
             </div>
         </div>
@@ -1925,7 +2008,7 @@
                     },
                 ]"
             >
-                <span>{{ prop.label }} {{ stringEntry.index + 1 }}</span>
+                <span>{{ prop.label }}</span>
                 <div class="node-panel__field-inline-control">
                     <component
                         v-if="prop.ui?.component"
@@ -2069,7 +2152,7 @@
                         )
                     "
                 >
-                    Move (#{{ stringEntry.index + 1 }})
+                    Move item
                 </button>
             </div>
         </div>
@@ -2079,6 +2162,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
+import { summarizeArrayValue } from "../../../utils/node-editor-summary";
 import NodeObjectField from "./NodeObjectField.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeTranslateInline from "./NodeTranslateInline.vue";
@@ -2165,6 +2249,16 @@ const arrayItemEntry = computed(() => props.entry);
 const stringEntry = computed(() => props.entry);
 const toPropPathAttr = (segments: Array<string | number>) =>
     segments.map((segment) => String(segment)).join(".");
+
+const formatArraySummary = (
+    items: unknown[],
+    fields?: ComponentArrayItemField[],
+): string =>
+    summarizeArrayValue(items, {
+        fields,
+        maxItems: 3,
+        maxLength: 120,
+    });
 
 const imageKitTransformFieldKey = (key: string) => `${key}ImagekitTransforms`;
 
