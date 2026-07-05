@@ -128,10 +128,21 @@ const emit = defineEmits<{
         },
     ): void;
     (e: "unsaved-state-change", hasChanges: boolean): void;
-    (e: "node-focus", payload: { uid: string; path: string }): void;
+    (
+        e: "node-focus",
+        payload: {
+            uid: string;
+            path: string;
+            mode?: "flash" | "lock" | "clear";
+            propKey?: string;
+            propPath?: string;
+            scrollBlock?: ScrollLogicalPosition;
+            forceScroll?: boolean;
+        },
+    ): void;
 }>();
 
-const title = computed(() => props.title ?? "Content Builder");
+const title = computed(() => props.title ?? "...");
 const description = computed(
     () =>
         props.description ??
@@ -201,9 +212,13 @@ type BuilderWorkbenchInstance = ComponentPublicInstance<{
         sectionId?: string;
         hint?: InlinePreviewPropHint;
     }) => void;
+    openSiteTypographyPanel: () => void;
+    openSiteThemePanel: () => void;
 }>;
 
-const filterTerm = ref("");
+const pagePickerQuery = ref("");
+const isPagePickerOpen = ref(false);
+const pagePickerSearchInputRef = ref<HTMLInputElement | null>(null);
 const selectedPath = ref<string | null>(null);
 const isSelectingPage = ref(false);
 const selectionError = ref<string | null>(null);
@@ -295,12 +310,6 @@ type DuplicateNodeEntry = {
 const duplicateNodes = ref<DuplicateNodeEntry[]>([]);
 const duplicateSourceDocument = ref<MinimalContentDocument | null>(null);
 
-const editorCardRef = ref<HTMLElement | null>(null);
-const headerRef = ref<HTMLElement | null>(null);
-const headerSentinelRef = ref<HTMLElement | null>(null);
-const isHeaderPinned = ref(false);
-const headerPlaceholderHeight = ref(0);
-const headerPosition = reactive({ top: "0px", left: "0px", width: "auto" });
 const hasLoadedInitialDocument = ref(false);
 const isHistoryMenuOpen = ref(false);
 const isActionsMenuOpen = ref(false);
@@ -308,30 +317,15 @@ const isTranslationMenuOpen = ref(false);
 const isInlineTranslationEnabled = ref(false);
 const isFocusedEditActive = ref(false);
 const historyMenuRef = ref<HTMLElement | null>(null);
+const actionsMenuRef = ref<HTMLElement | null>(null);
 const translationMenuRef = ref<HTMLElement | null>(null);
-
-const headerFixedStyles = computed(() => {
-    if (!isHeaderPinned.value) {
-        return undefined;
-    }
-    return {
-        top: "0px",
-        left: headerPosition.left,
-        width: headerPosition.width,
-    };
-});
 
 watch(isFocusedEditActive, (isActive) => {
     if (isActive) {
         closeActionsMenu();
         closeHistoryMenu();
-        return;
     }
-    void nextTick(() => updateHeaderMeasurements());
 });
-
-let headerObserver: IntersectionObserver | null = null;
-let resizeObserver: ResizeObserver | null = null;
 
 const updateUnsavedState = (value: boolean) => {
     if (hasUnsavedChanges.value === value) {
@@ -421,6 +415,9 @@ const lastUpdatedDisplay = computed(() =>
             null,
         lastSavedAt.value,
     ),
+);
+const pagePickerTooltip = computed(
+    () => lastUpdatedDisplay.value || "Open page picker",
 );
 const missingLocalizedCount = computed(
     () => selectedSummary.value?.localization?.missingLocalizedCount ?? 0,
@@ -530,15 +527,6 @@ const translationHasDialogContent = computed(
         !!translationNotice.value ||
         !!translationLastResult.value,
 );
-const pageListId = "content-admin-pages-datalist";
-
-const searchPlaceholder = computed(() => {
-    if (isIndexLoading.value) {
-        return "Loading pages…";
-    }
-    return `Search pages (${totalPagesCount.value} total)`;
-});
-
 const selectedHistoryDocument = computed<MinimalContentDocument | null>(() => {
     if (!selectedHistoryId.value) {
         return null;
@@ -563,6 +551,31 @@ const selectedDocument = computed<MinimalContentDocument | null>(() => {
     }
 
     return resolveDocument(selectedSummary.value);
+});
+
+const filteredPagePickerPages = computed<ContentPageSummary[]>(() => {
+    const terms = pagePickerQuery.value
+        .split(/\s+/)
+        .map((term) => term.trim().toLowerCase())
+        .filter(Boolean);
+    const pages = availablePages.value ?? [];
+
+    if (!terms.length) {
+        return pages;
+    }
+
+    return pages.filter((page) => {
+        const haystack = [
+            page.path,
+            page.title ?? "",
+            page.seoTitle ?? "",
+            page.seoDescription ?? "",
+        ]
+            .join(" ")
+            .toLowerCase();
+
+        return terms.every((term) => haystack.includes(term));
+    });
 });
 
 watch(
@@ -735,44 +748,6 @@ watch(
     },
 );
 
-const updateHeaderMeasurements = () => {
-    const headerEl = headerRef.value;
-    if (!headerEl) {
-        return;
-    }
-    const cardEl = editorCardRef.value;
-    const cardRect = cardEl?.getBoundingClientRect();
-    const headerRect = headerEl.getBoundingClientRect();
-    const referenceRect = cardRect ?? headerRect;
-
-    headerPosition.top = cardRect ? `${cardRect.top}px` : "0px";
-    headerPosition.left = `${referenceRect.left}px`;
-    headerPosition.width = `${referenceRect.width}px`;
-    headerPlaceholderHeight.value = headerEl.offsetHeight;
-};
-
-const handleIntersection: IntersectionObserverCallback = (entries) => {
-    const entry = entries[0];
-    if (!entry) {
-        return;
-    }
-    const shouldPin = !entry.isIntersecting;
-
-    if (shouldPin === isHeaderPinned.value) {
-        return;
-    }
-
-    if (shouldPin) {
-        updateHeaderMeasurements();
-    }
-
-    isHeaderPinned.value = shouldPin;
-
-    if (!shouldPin) {
-        nextTick(() => updateHeaderMeasurements());
-    }
-};
-
 const handleHistoryMenuOutsidePointerDown = (event: PointerEvent) => {
     if (
         !isHistoryMenuOpen.value &&
@@ -784,6 +759,8 @@ const handleHistoryMenuOutsidePointerDown = (event: PointerEvent) => {
     const target = event.target as Node | null;
     if (historyMenuRef.value && target && !historyMenuRef.value.contains(target)) {
         closeHistoryMenu();
+    }
+    if (actionsMenuRef.value && target && !actionsMenuRef.value.contains(target)) {
         closeActionsMenu();
     }
     if (
@@ -808,45 +785,18 @@ onMounted(() => {
         return;
     }
 
-    updateHeaderMeasurements();
-
-    window.addEventListener("resize", updateHeaderMeasurements);
     window.addEventListener("pointerdown", handleHistoryMenuOutsidePointerDown);
     window.addEventListener("keydown", handleHistoryMenuEscape);
-
-    if ("ResizeObserver" in window) {
-        resizeObserver = new ResizeObserver(() => updateHeaderMeasurements());
-
-        if (headerRef.value) {
-            resizeObserver.observe(headerRef.value);
-        }
-
-        if (editorCardRef.value) {
-            resizeObserver.observe(editorCardRef.value);
-        }
-
-    }
-
-    if (headerSentinelRef.value) {
-        headerObserver = new IntersectionObserver(handleIntersection, {
-            threshold: 0,
-        });
-        headerObserver.observe(headerSentinelRef.value);
-    }
 });
 
 onBeforeUnmount(() => {
     if (typeof window !== "undefined") {
-        window.removeEventListener("resize", updateHeaderMeasurements);
         window.removeEventListener(
             "pointerdown",
             handleHistoryMenuOutsidePointerDown,
         );
         window.removeEventListener("keydown", handleHistoryMenuEscape);
     }
-
-    headerObserver?.disconnect();
-    resizeObserver?.disconnect();
 });
 
 function formatTimestamp(
@@ -941,16 +891,16 @@ function resolveDocument(
     );
 }
 
-async function openPageForEditing(path: string, force = false): Promise<void> {
+async function openPageForEditing(path: string, force = false): Promise<boolean> {
     const normalizedPath = toBasePath(normalizePagePath(path));
     if (!force && normalizedPath === selectedPath.value) {
-        return;
+        return false;
     }
 
     if (hasUnsavedChanges.value && normalizedPath !== selectedPath.value) {
         const confirmed = await confirmDiscardUnsavedChanges();
         if (!confirmed) {
-            return;
+            return false;
         }
         updateUnsavedState(false);
         lastSavedSnapshot.value = latestDocument.value
@@ -959,7 +909,7 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
     }
 
     if (isSelectingPage.value) {
-        return;
+        return false;
     }
 
     if (normalizedPath !== selectedPath.value) {
@@ -992,41 +942,42 @@ async function openPageForEditing(path: string, force = false): Promise<void> {
         contentStore
             .fetchHistory(normalizedPath, force, { locale: activeLocale.value })
             .catch(() => {});
+        return true;
     } catch (error: any) {
         selectionError.value = error?.message || "Failed to load page content.";
+        return false;
     } finally {
         isSelectingPage.value = false;
     }
 }
 
-function handlePageSearchChange(event: Event): void {
-    const target = event.target as HTMLInputElement | null;
-    if (!target) {
+function openPagePicker(): void {
+    isPagePickerOpen.value = true;
+    nextTick(() => {
+        pagePickerSearchInputRef.value?.focus();
+    });
+}
+
+function closePagePicker(): void {
+    isPagePickerOpen.value = false;
+}
+
+async function openPageFromPicker(path: string): Promise<void> {
+    const normalizedPath = toBasePath(normalizePagePath(path));
+    if (selectedPath.value === normalizedPath) {
+        closePagePicker();
         return;
     }
 
-    const rawValue = target.value.trim();
-    if (!rawValue) {
-        return;
+    const didOpen = await openPageForEditing(path);
+    if (didOpen) {
+        closePagePicker();
     }
+}
 
-    const normalizedPath = normalizePagePath(rawValue);
-    const pages = availablePages.value ?? [];
-    const byPath = pages.find(
-        (page) => normalizePagePath(page.path) === normalizedPath,
-    );
-    if (byPath) {
-        openPageForEditing(byPath.path);
-        return;
-    }
-
-    const lowerValue = rawValue.toLowerCase();
-    const byTitle = pages.find(
-        (page) => page.title?.toLowerCase() === lowerValue,
-    );
-    if (byTitle) {
-        openPageForEditing(byTitle.path);
-    }
+function publicRouteForPath(path: string): string {
+    const normalized = normalizePagePath(path);
+    return normalized === "/" ? "/" : normalized;
 }
 
 function resetCreatePageForm(): void {
@@ -1316,7 +1267,7 @@ async function handleCreatePage(): Promise<void> {
         }, { locale: contentI18nConfig.value.defaultLocale });
         await contentStore.fetchIndex(true);
         await openPageForEditing(normalizedPath, true);
-        filterTerm.value = "";
+        pagePickerQuery.value = "";
         isCreateModalOpen.value = false;
         emit("create-success", summary);
         feedback.value.success?.(`Page "${summary.title}" created.`, {
@@ -1476,7 +1427,15 @@ function handleThemePreviewChange(payload: {
 
 function handleNodeFocus(
     payload:
-        | { uid?: string; path?: string; mode?: string; propKey?: string }
+        | {
+              uid?: string;
+              path?: string;
+              mode?: string;
+              propKey?: string;
+              propPath?: string;
+              scrollBlock?: ScrollLogicalPosition;
+              forceScroll?: boolean;
+          }
         | Event,
 ): void {
     if (!payload || typeof payload !== "object" || payload instanceof Event) {
@@ -1496,6 +1455,10 @@ function handleNodeFocus(
                 : undefined,
         propKey:
             typeof payload.propKey === "string" ? payload.propKey : undefined,
+        propPath:
+            typeof payload.propPath === "string" ? payload.propPath : undefined,
+        scrollBlock: payload.scrollBlock,
+        forceScroll: payload.forceScroll === true,
     });
 }
 
@@ -2622,14 +2585,13 @@ const toggleHistoryMenu = () => {
         return;
     }
     closeActionsMenu();
+    closeTranslationMenu();
     isHistoryMenuOpen.value = !isHistoryMenuOpen.value;
 };
 
 const toggleActionsMenu = () => {
-    if (!selectedSummary.value) {
-        return;
-    }
     closeHistoryMenu();
+    closeTranslationMenu();
     isActionsMenuOpen.value = !isActionsMenuOpen.value;
 };
 
@@ -2659,6 +2621,21 @@ const handleSelectActiveLocale = (locale: string): void => {
 const handleToggleInlineTranslations = (): void => {
     isInlineTranslationEnabled.value = !isInlineTranslationEnabled.value;
     closeTranslationMenu();
+};
+
+const handleCreatePageFromActionsMenu = () => {
+    closeActionsMenu();
+    showCreatePageModal();
+};
+
+const handleSiteTypographyFromActionsMenu = () => {
+    closeActionsMenu();
+    builderRef.value?.openSiteTypographyPanel();
+};
+
+const handleSiteThemeFromActionsMenu = () => {
+    closeActionsMenu();
+    builderRef.value?.openSiteThemePanel();
 };
 
 const handleDuplicateFromActionsMenu = () => {
@@ -2795,9 +2772,44 @@ defineExpose({
         >
             <div class="content-admin-workbench__header">
                 <div class="content-admin-workbench__header-copy">
-                    <div class="content-admin-workbench__title">
-                        {{ currentEditedPath }}
-                    </div>
+                    <button
+                        type="button"
+                        class="content-admin-workbench__button content-admin-workbench__button--primary"
+                        :class="ui.saveButton"
+                        :disabled="isSavePending || !selectedSummary"
+                        @click="handleSaveDocument"
+                    >
+                        <svg
+                            v-if="isSavePending"
+                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                            />
+                        </svg>
+                        <span>{{ isSavePending ? "Saving…" : "Save" }}</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="content-admin-workbench__path-trigger"
+                        aria-label="Open page picker"
+                        :title="pagePickerTooltip"
+                        @click="openPagePicker"
+                    >
+                        <span class="content-admin-workbench__path-text">
+                            {{ currentEditedPath }}
+                        </span>
+                        <span
+                            class="content-admin-workbench__path-caret"
+                            aria-hidden="true"
+                        >
+                            ▾
+                        </span>
+                    </button>
                 </div>
                 <div class="content-admin-workbench__header-actions">
                     <div
@@ -2904,61 +2916,210 @@ defineExpose({
                             </button>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--primary"
-                        :class="ui.createButton"
-                        @click="showCreatePageModal"
+                    <div
+                        ref="historyMenuRef"
+                        class="content-admin-workbench__history-menu"
                     >
-                        <svg
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted content-admin-workbench__history-trigger"
+                            :class="{ 'is-active': isHistoryMenuOpen }"
+                            :disabled="!selectedSummary"
+                            :aria-expanded="isHistoryMenuOpen"
+                            aria-haspopup="menu"
+                            aria-label="History"
+                            title="History"
+                            @click="toggleHistoryMenu"
                         >
-                            <path
-                                fill="currentColor"
-                                d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"
-                            />
-                        </svg>
-                    </button>
+                            <svg
+                                class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 16 16"
+                                aria-hidden="true"
+                            >
+                                <path d="M0 0h16v16H0z" fill="none" />
+                                <g fill="currentColor">
+                                    <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022zm2.004.45a7 7 0 0 0-.985-.299l.219-.976q.576.129 1.126.342zm1.37.71a7 7 0 0 0-.439-.27l.493-.87a8 8 0 0 1 .979.654l-.615.789a7 7 0 0 0-.418-.302zm1.834 1.79a7 7 0 0 0-.653-.796l.724-.69q.406.429.747.91zm.744 1.352a7 7 0 0 0-.214-.468l.893-.45a8 8 0 0 1 .45 1.088l-.95.313a7 7 0 0 0-.179-.483m.53 2.507a7 7 0 0 0-.1-1.025l.985-.17q.1.58.116 1.17zm-.131 1.538q.05-.254.081-.51l.993.123a8 8 0 0 1-.23 1.155l-.964-.267q.069-.247.12-.501m-.952 2.379q.276-.436.486-.908l.914.405q-.24.54-.555 1.038zm-.964 1.205q.183-.183.35-.378l.758.653a8 8 0 0 1-.401.432z" />
+                                    <path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0z" />
+                                    <path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5" />
+                                </g>
+                            </svg>
+                        </button>
+
+                        <div
+                            v-if="isHistoryMenuOpen"
+                            class="content-admin-workbench__history-dropdown"
+                            role="menu"
+                        >
+                            <div class="history-menu">
+                                <div class="history-menu__header">
+                                    <span>History</span>
+                                </div>
+                                <div v-if="historyError" class="history-menu__error">
+                                    {{ historyError }}
+                                </div>
+                                <div
+                                    v-else-if="isHistoryLoading"
+                                    class="history-menu__hint"
+                                >
+                                    Loading history…
+                                </div>
+                                <div v-else class="history-menu__list" role="none">
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        class="history-menu__item"
+                                        :class="{
+                                            'is-active': !selectedHistoryId,
+                                        }"
+                                        @click="handleHistoryMenuSelection('')"
+                                    >
+                                        Current version
+                                    </button>
+                                    <template v-if="historyEntries.length">
+                                        <button
+                                            v-for="entry in historyEntries"
+                                            :key="entry.id"
+                                            type="button"
+                                            role="menuitem"
+                                            class="history-menu__item"
+                                            :class="{
+                                                'is-active':
+                                                    entry.id === selectedHistoryId,
+                                            }"
+                                            @click="
+                                                handleHistoryMenuSelection(entry.id)
+                                            "
+                                        >
+                                            {{ formatHistoryLabel(entry.timestamp) }}
+                                        </button>
+                                    </template>
+                                    <p
+                                        v-else
+                                        class="history-menu__hint"
+                                    >
+                                        No history available yet.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div
+                        ref="actionsMenuRef"
+                        class="content-admin-workbench__actions-menu"
+                    >
+                        <button
+                            type="button"
+                            class="content-admin-workbench__button content-admin-workbench__button--muted content-admin-workbench__actions-trigger"
+                            :class="{ 'is-active': isActionsMenuOpen }"
+                            :aria-expanded="isActionsMenuOpen"
+                            aria-haspopup="menu"
+                            aria-label="Open actions menu"
+                            @click="toggleActionsMenu"
+                        >
+                            <svg
+                                class="content-admin-workbench__icon content-admin-workbench__icon--sm"
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <path fill="currentColor" d="M7 10l5 5l5-5z" />
+                            </svg>
+                        </button>
+                        <div
+                            v-if="isActionsMenuOpen"
+                            class="content-admin-workbench__actions-dropdown"
+                            role="menu"
+                        >
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                @click="handleCreatePageFromActionsMenu"
+                            >
+                                New Page
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                :disabled="!selectedSummary"
+                                @click="handleSiteTypographyFromActionsMenu"
+                            >
+                                Site Typography
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                :disabled="!selectedSummary"
+                                @click="handleSiteThemeFromActionsMenu"
+                            >
+                                Site Theme
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                :disabled="isDuplicatePending || !selectedSummary"
+                                @click="handleDuplicateFromActionsMenu"
+                            >
+                                Duplicate
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                :disabled="
+                                    isTranslationPending ||
+                                    !translationLocaleOptions.length ||
+                                    !!selectedHistoryId
+                                "
+                                @click="handleTranslateFromActionsMenu"
+                            >
+                                {{ isTranslationPending ? "Translating..." : "Translate" }}
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitemcheckbox"
+                                class="content-admin-workbench__actions-item content-admin-workbench__actions-item--toggle"
+                                :aria-checked="forcePreviewMotion"
+                                :disabled="!selectedSummary"
+                                @click="
+                                    forcePreviewMotion = !forcePreviewMotion;
+                                    closeActionsMenu();
+                                "
+                            >
+                                <span>Render Animations</span>
+                                <span
+                                    class="content-admin-workbench__translation-switch"
+                                    :class="{ 'is-on': forcePreviewMotion }"
+                                    aria-hidden="true"
+                                />
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item content-admin-workbench__actions-item--danger"
+                                :disabled="isDeletePending || !selectedSummary"
+                                @click="handleDeleteFromActionsMenu"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </slot>
 
-        <div v-if="!isFocusedEditActive" class="content-admin-workbench__panel">
+        <div
+            v-if="
+                !isFocusedEditActive &&
+                (indexError || (!isIndexLoading && !hasPages))
+            "
+            class="content-admin-workbench__panel"
+        >
             <div class="content-admin-workbench__panel-controls">
-                <div class="content-admin-workbench__search">
-                    <label class="search-input">
-                        <svg
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__icon--muted"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path
-                                fill="currentColor"
-                                d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
-                            />
-                        </svg>
-                        <input
-                            v-model="filterTerm"
-                            :list="pageListId"
-                            type="search"
-                            :placeholder="searchPlaceholder"
-                            @change="handlePageSearchChange"
-                        />
-                        <datalist :id="pageListId">
-                            <option
-                                v-for="page in availablePages || []"
-                                :key="page.path"
-                                :value="page.path"
-                            >
-                                {{ `${page.path} — ${page.title || "[No title]"}` }}
-                            </option>
-                        </datalist>
-                    </label>
-                </div>
                 <div v-if="indexError" class="content-admin-workbench__error">
                     <svg
                         class="content-admin-workbench__icon content-admin-workbench__icon--md"
@@ -2979,240 +3140,191 @@ defineExpose({
             </div>
         </div>
 
-        <div ref="editorCardRef" class="content-admin-workbench__editor">
-            <div
-                ref="headerSentinelRef"
-                aria-hidden="true"
-                class="content-admin-workbench__sentinel"
-            ></div>
-
-            <div
-                v-show="!isFocusedEditActive"
-                ref="headerRef"
-                class="content-admin-workbench__editor-header"
-                :class="{ 'is-pinned': isHeaderPinned }"
-                :style="headerFixedStyles"
-            >
-              <div class="flex flex-col flex-1">
-
-                <div class="flex-none flex">
-                  <div class="editor-header__actions">
-                    <div class="editor-header__save-group" ref="historyMenuRef">
-                      <div class="editor-header__save-split">
-                        <button
-                            type="button"
-                            class="content-admin-workbench__button content-admin-workbench__button--primary"
-                            :class="ui.saveButton"
-                            :disabled="isSavePending || !selectedSummary"
-                            @click="handleSaveDocument"
+        <div
+            v-if="isPagePickerOpen"
+            class="content-admin-workbench__modal content-admin-workbench__page-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="content-page-picker-title"
+            @keydown.esc="closePagePicker"
+        >
+            <div class="modal__backdrop" @click="closePagePicker"></div>
+            <div class="modal__panel modal__panel--page-picker">
+                <header class="modal__header page-picker__header">
+                    <div>
+                        <p class="page-picker__eyebrow">Open page</p>
+                        <h2
+                            id="content-page-picker-title"
+                            class="modal__title"
                         >
-                          <svg
-                              v-if="isSavePending"
-                              class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                          >
-                            <path
-                                fill="currentColor"
-                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
-                            />
-                          </svg>
-                          <span>{{ isSavePending ? "Saving…" : "Save Changes" }}</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__history-button"
-                            :class="{ 'is-active': isHistoryMenuOpen }"
-                            :disabled="!selectedSummary"
-                            :aria-expanded="isHistoryMenuOpen"
-                            aria-haspopup="menu"
-                            @click="toggleHistoryMenu"
-                        >
-                          History
-                        </button>
-                        <button
-                            type="button"
-                            class="content-admin-workbench__button content-admin-workbench__button--muted editor-header__save-menu-toggle"
-                            :disabled="!selectedSummary"
-                            :aria-expanded="isActionsMenuOpen"
-                            aria-haspopup="menu"
-                            aria-label="Open save actions menu"
-                            @click="toggleActionsMenu"
-                        >
-                          <svg
-                              class="content-admin-workbench__icon content-admin-workbench__icon--sm"
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              aria-hidden="true"
-                          >
-                            <path fill="currentColor" d="M7 10l5 5l5-5z" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      <div
-                          v-if="isActionsMenuOpen"
-                          class="editor-header__actions-dropdown"
-                          role="menu"
-                      >
-                        <button
-                            type="button"
-                            role="menuitem"
-                            class="editor-header__actions-item"
-                            :disabled="isDuplicatePending || !selectedSummary"
-                            @click="handleDuplicateFromActionsMenu"
-                        >
-                          Duplicate
-                        </button>
-                        <button
-                            type="button"
-                            role="menuitem"
-                            class="editor-header__actions-item"
-                            :disabled="
-                                isTranslationPending ||
-                                !translationLocaleOptions.length ||
-                                !!selectedHistoryId
-                            "
-                            @click="handleTranslateFromActionsMenu"
-                        >
-                          {{ isTranslationPending ? "Translating..." : "Translate" }}
-                        </button>
-                        <button
-                            type="button"
-                            role="menuitemcheckbox"
-                            class="editor-header__actions-item editor-header__actions-item--toggle"
-                            :aria-checked="forcePreviewMotion"
-                            :disabled="!selectedSummary"
-                            @click="
-                                forcePreviewMotion = !forcePreviewMotion;
-                                closeActionsMenu();
-                            "
-                        >
-                          Keep Animations Running
-                          <span>{{ forcePreviewMotion ? "On" : "Off" }}</span>
-                        </button>
-                        <button
-                            type="button"
-                            role="menuitem"
-                            class="editor-header__actions-item editor-header__actions-item--danger"
-                            :disabled="isDeletePending || !selectedSummary"
-                            @click="handleDeleteFromActionsMenu"
-                        >
-                          Delete
-                        </button>
-                      </div>
-
-                      <div
-                          v-if="isHistoryMenuOpen"
-                          class="editor-header__history-dropdown"
-                          role="menu"
-                      >
-                        <div class="history-menu">
-                          <div class="history-menu__header">
-                            <span>History</span>
-                          </div>
-                          <div v-if="historyError" class="history-menu__error">
-                            {{ historyError }}
-                          </div>
-                          <div
-                              v-else-if="isHistoryLoading"
-                              class="history-menu__hint"
-                          >
-                            Loading history…
-                          </div>
-                          <div v-else class="history-menu__list" role="none">
-                            <button
-                                type="button"
-                                role="menuitem"
-                                class="history-menu__item"
-                                :class="{
-                                            'is-active': !selectedHistoryId,
-                                        }"
-                                @click="handleHistoryMenuSelection('')"
-                            >
-                              Current version
-                            </button>
-                            <template v-if="historyEntries.length">
-                              <button
-                                  v-for="entry in historyEntries"
-                                  :key="entry.id"
-                                  type="button"
-                                  role="menuitem"
-                                  class="history-menu__item"
-                                  :class="{
-                                                'is-active':
-                                                    entry.id === selectedHistoryId,
-                                            }"
-                                  @click="
-                                                handleHistoryMenuSelection(entry.id)
-                                            "
-                              >
-                                {{ formatHistoryLabel(entry.timestamp) }}
-                              </button>
-                            </template>
-                            <p
-                                v-else
-                                class="history-menu__hint"
-                            >
-                              No history available yet.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                            Search content pages
+                        </h2>
+                        <p class="modal__subtitle">
+                            Open a page directly inside this builder workbench.
+                        </p>
                     </div>
-                  </div>
-                </div>
-
-                <div class="editor-header__status-line">
-                    <span v-if="lastUpdatedDisplay" class="editor-header__status-time">
-                        Updated {{ lastUpdatedDisplay }}
-                    </span>
-                    <span
-                        v-if="selectedSummary && !isDefaultActiveLocale"
-                        class="editor-header__status"
-                    >
-                        Missing localized values: {{ missingLocalizedCount }}
-                    </span>
-                    <span
-                        v-if="stagedLocaleCount > 0"
-                        class="editor-header__status"
-                    >
-                        Staged locales: {{ stagedLocaleCount }}
-                    </span>
-                </div>
-
-                <div class="editor-header__fullrow">
-                    <label
-                        class="builder-component-search"
-                        :class="{ 'is-active': builderSearchQuery.length > 0 }"
+                    <button
+                        type="button"
+                        class="modal__close"
+                        aria-label="Close page picker"
+                        @click="closePagePicker"
                     >
                         <svg
-                            class="builder-component-search__icon"
                             xmlns="http://www.w3.org/2000/svg"
+                            width="1em"
+                            height="1em"
                             viewBox="0 0 24 24"
                             aria-hidden="true"
                         >
+                            <path d="M0 0h24v24H0z" fill="none" />
                             <path
                                 fill="currentColor"
-                                d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
+                                d="m6.4 18.308l-.708-.708l5.6-5.6l-5.6-5.6l.708-.708l5.6 5.6l5.6-5.6l.708.708l-5.6 5.6l5.6 5.6l-.708.708l-5.6-5.6z"
                             />
                         </svg>
-                        <input
-                            v-model="builderSearchQuery"
-                            type="search"
-                            placeholder="Search through content..."
-                        />
-                    </label>
-                </div>
-              </div>
-            </div>
+                    </button>
+                </header>
 
+                <label class="page-picker__search">
+                    <svg
+                        class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__icon--muted"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                    >
+                        <path
+                            fill="currentColor"
+                            d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
+                        />
+                    </svg>
+                    <input
+                        ref="pagePickerSearchInputRef"
+                        v-model="pagePickerQuery"
+                        type="search"
+                        placeholder="Search by URL, title, SEO title, or description"
+                    />
+                </label>
+
+                <div class="page-picker__summary">
+                    <span>
+                        Showing {{ filteredPagePickerPages.length }} of
+                        {{ totalPagesCount }} pages
+                    </span>
+                    <button
+                        v-if="pagePickerQuery"
+                        type="button"
+                        class="page-picker__clear"
+                        @click="pagePickerQuery = ''"
+                    >
+                        Clear
+                    </button>
+                </div>
+
+                <div class="page-picker__table-wrap">
+                    <table class="page-picker__table">
+                        <thead>
+                            <tr>
+                                <th>URL</th>
+                                <th>Title</th>
+                                <th>Status</th>
+                                <th>Updated</th>
+                                <th class="page-picker__actions-col">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="isIndexLoading">
+                                <td colspan="5" class="page-picker__empty">
+                                    Loading pages…
+                                </td>
+                            </tr>
+                            <tr v-else-if="!filteredPagePickerPages.length">
+                                <td colspan="5" class="page-picker__empty">
+                                    No pages match the current search.
+                                </td>
+                            </tr>
+                            <tr
+                                v-for="page in filteredPagePickerPages"
+                                :key="page.id"
+                                tabindex="0"
+                                class="page-picker__row"
+                                :class="{
+                                    'is-current':
+                                        toBasePath(page.path) === selectedPath,
+                                }"
+                                @click="openPageFromPicker(page.path)"
+                                @keyup.enter="openPageFromPicker(page.path)"
+                            >
+                                <td class="page-picker__path">
+                                    {{ page.path }}
+                                </td>
+                                <td>
+                                    {{
+                                        page.seoTitle ||
+                                        page.title ||
+                                        "Untitled page"
+                                    }}
+                                </td>
+                                <td>
+                                    <span
+                                        class="page-picker__status"
+                                        :class="
+                                            page.publicationState === 'draft'
+                                                ? 'page-picker__status--draft'
+                                                : 'page-picker__status--published'
+                                        "
+                                    >
+                                        {{ page.publicationState || "published" }}
+                                    </span>
+                                </td>
+                                <td>{{ formatTimestamp(page.updatedAt) || "—" }}</td>
+                                <td class="page-picker__actions">
+                                    <button
+                                        type="button"
+                                        class="page-picker__open"
+                                        @click.stop="
+                                            openPageFromPicker(page.path)
+                                        "
+                                    >
+                                        Open
+                                    </button>
+                                    <a
+                                        class="page-picker__view"
+                                        :href="publicRouteForPath(page.path)"
+                                        target="_blank"
+                                        rel="noopener"
+                                        @click.stop
+                                    >
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-admin-workbench__editor">
             <div
-                v-if="!isFocusedEditActive && isHeaderPinned"
-                :style="{ height: `${headerPlaceholderHeight}px` }"
-                aria-hidden="true"
-            />
+                v-if="
+                    !isFocusedEditActive &&
+                    ((selectedSummary && !isDefaultActiveLocale) ||
+                        stagedLocaleCount > 0)
+                "
+                class="editor-header__status-line"
+            >
+                <span
+                    v-if="selectedSummary && !isDefaultActiveLocale"
+                    class="editor-header__status"
+                >
+                    Missing localized values: {{ missingLocalizedCount }}
+                </span>
+                <span v-if="stagedLocaleCount > 0" class="editor-header__status">
+                    Staged locales: {{ stagedLocaleCount }}
+                </span>
+            </div>
 
             <div class="content-admin-workbench__editor-body">
                 <div class="content-admin-workbench__editor-canvas">
@@ -4339,7 +4451,7 @@ defineExpose({
 }
 
 .content-admin-workbench__header {
-  padding: 0.5rem 0.75rem;
+    padding: 0.5rem 0.75rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -4359,6 +4471,59 @@ defineExpose({
     color: #111827;
 }
 
+.content-admin-workbench__header-copy {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.content-admin-workbench__path-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    gap: 0.45rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: #111827;
+    padding: 0.25rem 0.1rem;
+    font: inherit;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.content-admin-workbench__path-trigger:hover,
+.content-admin-workbench__path-trigger:focus-visible {
+    color: #1d4ed8;
+    outline: none;
+}
+
+.content-admin-workbench__path-trigger:focus-visible {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+.content-admin-workbench__path-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 0.28em;
+    white-space: nowrap;
+}
+
+.content-admin-workbench__path-caret {
+    flex: 0 0 auto;
+    color: #64748b;
+    font-size: 0.8rem;
+    line-height: 1;
+}
+
 .content-admin-workbench__description {
     margin-top: 0.25rem;
     font-size: 0.875rem;
@@ -4371,18 +4536,88 @@ defineExpose({
     gap: 0.75rem;
 }
 
+.content-admin-workbench__actions-menu {
+    position: relative;
+}
+
+.content-admin-workbench__actions-trigger {
+    min-width: 2.5rem;
+    justify-content: center;
+    padding-inline: 0.65rem;
+}
+
+.content-admin-workbench__actions-trigger.is-active {
+    border-color: #94a3b8;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.content-admin-workbench__actions-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 1250;
+    display: grid;
+    min-width: 250px;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.65rem;
+    background: #ffffff;
+    box-shadow: 0 18px 40px -24px rgba(15, 23, 42, 0.45);
+}
+
+.content-admin-workbench__actions-item {
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    color: #0f172a;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.content-admin-workbench__actions-item:hover:not(:disabled) {
+    border-color: #dbeafe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.content-admin-workbench__actions-item:disabled {
+    cursor: not-allowed;
+    color: #94a3b8;
+}
+
+.content-admin-workbench__actions-item--danger {
+    color: #b91c1c;
+}
+
+.content-admin-workbench__actions-item--danger:hover:not(:disabled) {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
 .content-admin-workbench__translation-menu {
     position: relative;
 }
 
 .content-admin-workbench__translation-trigger {
+    min-width: 2.5rem;
     justify-content: center;
+    padding-inline: 0.65rem;
     color: #334155;
-}
-
-.content-admin-workbench__translation-trigger .content-admin-workbench__icon {
-    width: 1.35rem;
-    height: 1.35rem;
 }
 
 .content-admin-workbench__translation-trigger.is-active {
@@ -4554,43 +4789,11 @@ defineExpose({
 }
 
 @media (min-width: 1024px) {
-.content-admin-workbench__panel-controls {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.content-admin-workbench__search {
-    flex: 1;
-}
-}
-
-.search-input {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.5rem;
-    background-color: #ffffff;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    color: #4b5563;
-    width: 100%;
-}
-
-.search-input:focus-within {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
-}
-
-.search-input input {
-    width: 100%;
-    border: 0;
-    background: transparent;
-    padding: 0;
-    font-size: 0.875rem;
-    color: #374151;
-    outline: none;
+    .content-admin-workbench__panel-controls {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
 }
 
 .content-admin-workbench__error {
@@ -4667,63 +4870,6 @@ defineExpose({
     box-shadow: 0 10px 30px -15px rgba(15, 23, 42, 0.16);
 }
 
-.content-admin-workbench__sentinel {
-    position: absolute;
-    top: 0;
-    width: 100%;
-    height: 1px;
-    pointer-events: none;
-}
-
-.content-admin-workbench__editor-header {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    border-bottom: 1px solid #e5e7eb;
-    padding: 1rem 1.25rem;
-    background-color: #ffffff;
-    transition: box-shadow 0.2s ease;
-    z-index: 5;
-}
-
-.content-admin-workbench__editor-header.is-pinned {
-    position: fixed;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 10px 30px -20px rgba(15, 23, 42, 0.3);
-}
-
-@media (min-width: 1024px) {
-    .content-admin-workbench__editor-header {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-}
-
-.editor-header__left {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.editor-header__meta {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.875rem;
-    color: #111827;
-}
-
-.editor-header__meta-label {
-    font-weight: 600;
-    color: #2563eb;
-}
-
-.editor-header__meta-value {
-    font-weight: 500;
-}
-
 .editor-header__status {
     font-size: 0.75rem;
     color: #6b7280;
@@ -4738,153 +4884,6 @@ defineExpose({
 .editor-header__status--success {
     color: #0f766e;
     font-weight: 500;
-}
-
-.editor-header__status-time {
-    color: #6b7280;
-}
-
-.editor-header__actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
-
-.editor-header__save-group {
-    position: relative;
-}
-
-.editor-header__save-split {
-    display: inline-flex;
-    align-items: stretch;
-    gap: 0.35rem;
-}
-
-.editor-header__save-menu-toggle {
-    min-width: 2.35rem;
-    justify-content: center;
-    padding-inline: 0.5rem;
-}
-
-.editor-header__actions-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    z-index: 1200;
-    min-width: 230px;
-    padding: 0.5rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-    background-color: #ffffff;
-    box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.35);
-    display: grid;
-    gap: 0.25rem;
-}
-
-.editor-header__actions-item {
-    width: 100%;
-    text-align: left;
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    padding: 0.5rem 0.65rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.4rem;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.82rem;
-    font-weight: 600;
-    transition:
-        border-color 0.15s ease,
-        color 0.15s ease,
-        background-color 0.15s ease;
-}
-
-.editor-header__actions-item:hover:not(:disabled) {
-    border-color: #93c5fd;
-    color: #1d4ed8;
-    background-color: #f8fafc;
-}
-
-.editor-header__actions-item:disabled {
-    opacity: 0.6;
-    cursor: default;
-}
-
-.editor-header__actions-item--toggle span {
-    color: #475569;
-    font-size: 0.75rem;
-}
-
-.editor-header__actions-item--danger {
-    color: #b91c1c;
-    border-color: #fecaca;
-}
-
-.editor-header__actions-item--danger:hover:not(:disabled) {
-    background-color: #fef2f2;
-    border-color: #fca5a5;
-    color: #991b1b;
-}
-
-.editor-header__translation-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    padding: 0.35rem 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.5rem;
-    background: #f8fafc;
-}
-
-.editor-header__translation-targets {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    color: #334155;
-}
-
-.editor-header__translation-target {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.2rem 0.45rem;
-    border-radius: 999px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    color: #1e293b;
-    font-size: 0.72rem;
-    font-weight: 600;
-}
-
-.editor-header__translation-target input {
-    width: 12px;
-    height: 12px;
-    margin: 0;
-}
-
-.editor-header__translation-overwrite {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #475569;
-}
-
-.editor-header__translation-overwrite select {
-    min-width: 110px;
-    padding: 0.35rem 0.45rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 0.45rem;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.75rem;
-    font-weight: 600;
 }
 
 .translation-config__content {
@@ -5491,60 +5490,27 @@ defineExpose({
     white-space: pre;
 }
 
-.editor-header__fullrow {
-    width: 100%;
-    margin-top: 0.5rem;
-    flex: 1 1 100%;
-}
-
-.builder-component-search {
-    position: relative;
-    display: flex;
-    align-items: center;
-    width: 100%;
-    gap: 0.5rem;
-}
-
-.builder-component-search input {
-    width: 100%;
-    padding: 0.65rem 0.85rem 0.65rem 2.5rem;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(148, 163, 184, 0.5);
-    font-size: 0.95rem;
-    background: #fff;
-}
-
-.builder-component-search__icon {
-    position: absolute;
-    left: 0.85rem;
-    width: 1rem;
-    height: 1rem;
-    color: #94a3b8;
-    pointer-events: none;
-}
-
-.builder-component-search.is-active input {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-}
-
-.builder-component-search.is-active .builder-component-search__icon {
-    color: #2563eb;
-}
-
-.editor-header__history {
+.content-admin-workbench__history-menu {
     position: relative;
 }
 
-.editor-header__history-button {
+.content-admin-workbench__history-trigger {
     min-width: 2.5rem;
+    justify-content: center;
+    padding-inline: 0.65rem;
 }
 
-.editor-header__history-dropdown {
+.content-admin-workbench__history-trigger.is-active {
+    border-color: #94a3b8;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.content-admin-workbench__history-dropdown {
     position: absolute;
     top: calc(100% + 8px);
     right: 0;
-    z-index: 1200;
+    z-index: 1250;
 }
 
 .history-menu {
@@ -5692,6 +5658,192 @@ defineExpose({
     background-color: #ffffff;
     padding: 1.5rem;
     box-shadow: 0 25px 50px -12px rgba(30, 64, 175, 0.35);
+}
+
+.modal__panel--page-picker {
+    width: min(100% - 1.25rem, 70rem);
+    max-height: min(calc(100vh - 1.25rem), 880px);
+    max-height: min(calc(100dvh - 1.25rem), 880px);
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 0.85rem;
+    overflow: hidden;
+    padding: 1.25rem;
+}
+
+.page-picker__header {
+    margin-bottom: 0;
+}
+
+.page-picker__eyebrow {
+    margin: 0 0 0.25rem;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.page-picker__search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.65rem;
+    background: #ffffff;
+    padding: 0.65rem 0.8rem;
+}
+
+.page-picker__search:focus-within {
+    border-color: #f8931a;
+    box-shadow: 0 0 0 3px rgba(248, 147, 26, 0.14);
+}
+
+.page-picker__search input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: #111827;
+    font-size: 0.95rem;
+}
+
+.page-picker__summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: #64748b;
+    font-size: 0.78rem;
+}
+
+.page-picker__clear {
+    border: 0;
+    background: transparent;
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.page-picker__table-wrap {
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.65rem;
+    background: #ffffff;
+}
+
+.page-picker__table {
+    width: 100%;
+    min-width: 780px;
+    border-collapse: collapse;
+}
+
+.page-picker__table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.page-picker__table td {
+    padding: 0.7rem 0.75rem;
+    border-top: 1px solid #f1f5f9;
+    color: #334155;
+    font-size: 0.86rem;
+    vertical-align: middle;
+}
+
+.page-picker__row {
+    cursor: pointer;
+}
+
+.page-picker__row:hover,
+.page-picker__row:focus-visible {
+    background: #fff7ed;
+    outline: none;
+}
+
+.page-picker__row.is-current {
+    background: #eff6ff;
+}
+
+.page-picker__path {
+    color: #0f172a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.page-picker__status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.page-picker__status--published {
+    border-color: #99f6e4;
+    background: #f0fdfa;
+    color: #0f766e;
+}
+
+.page-picker__status--draft {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+}
+
+.page-picker__actions-col {
+    width: 9.5rem;
+}
+
+.page-picker__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    white-space: nowrap;
+}
+
+.page-picker__open,
+.page-picker__view {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.45rem;
+    background: #ffffff;
+    color: #1d4ed8;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.76rem;
+    font-weight: 800;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.page-picker__open:hover,
+.page-picker__view:hover {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.page-picker__empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: #64748b;
 }
 
 .modal__panel--translation {

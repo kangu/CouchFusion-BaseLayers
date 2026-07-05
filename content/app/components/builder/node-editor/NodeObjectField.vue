@@ -223,23 +223,32 @@
                         <div
                             class="node-panel__array-header node-panel__array-header--nested"
                         >
-                            <button
-                                type="button"
-                                class="node-panel__array-toggle"
-                                :data-state="
-                                    collapsedArrays[field.key]
-                                        ? 'collapsed'
-                                        : 'expanded'
-                                "
-                                @click="toggleArray(field.key)"
-                            >
-                                {{
-                                    collapsedArrays[field.key]
-                                        ? 'Expand'
-                                        : 'Collapse'
-                                }}
-                                ({{ getArrayItems(field).length }})
-                            </button>
+                            <div class="node-panel__array-header-main">
+                                <button
+                                    type="button"
+                                    class="node-panel__array-toggle"
+                                    :data-state="
+                                        collapsedArrays[field.key]
+                                            ? 'collapsed'
+                                            : 'expanded'
+                                    "
+                                    @click="toggleArray(field.key)"
+                                >
+                                    {{
+                                        collapsedArrays[field.key]
+                                            ? 'Expand'
+                                            : 'Collapse'
+                                    }}
+                                    ({{ getArrayItems(field).length }})
+                                </button>
+                                <span
+                                    v-if="collapsedArrays[field.key]"
+                                    class="node-panel__array-summary"
+                                    :title="formatArraySummary(field)"
+                                >
+                                    {{ formatArraySummary(field) }}
+                                </span>
+                            </div>
                             <button
                                 type="button"
                                 class="node-panel__array-add"
@@ -732,9 +741,7 @@
                                             )
                                         "
                                     >
-                                        Move (#{{
-                                            index + 1
-                                        }})
+                                        Move item
                                     </button>
                                 </div>
                             </div>
@@ -839,7 +846,7 @@
                             type="button"
                             @click="insertArrayItemAt(option.index)"
                         >
-                            <strong>Position {{ option.index + 1 }}</strong>
+                            <strong>Insert here</strong>
                             <span>{{ option.preview }}</span>
                         </button>
                     </li>
@@ -881,6 +888,10 @@ import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/build
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeReorderDialog from "./NodeReorderDialog.vue";
 import NodeTranslateInline from "./NodeTranslateInline.vue";
+import {
+    summarizeArrayValue,
+    summarizeNodeEditorValue,
+} from "../../../utils/node-editor-summary";
 
 type FieldContext = (field: ComponentArrayItemField) => Record<string, any>;
 
@@ -1033,21 +1044,26 @@ const openArrayInsertDialog = (field: ComponentArrayItemField) => {
     collapsedArrays.value[field.key] = false;
 };
 
-const formatArrayItemPreview = (value: unknown): string => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-        const entries = Object.entries(value as Record<string, unknown>);
-        if (!entries.length) {
-            return "(empty object)";
-        }
-        return entries
-            .slice(0, 3)
-            .map(
-                ([key, entryValue]) =>
-                    `${key}: ${typeof entryValue === "string" ? entryValue : JSON.stringify(entryValue)}`,
-            )
-            .join(", ");
-    }
-    return "(empty)";
+const formatArraySummary = (field: ComponentArrayItemField): string => {
+    const fields = field.type === "jsonarray" ? field.items : undefined;
+    return summarizeArrayValue(getArrayItems(field), {
+        fields,
+        maxItems: 3,
+        maxLength: 120,
+    });
+};
+
+const formatArrayItemPreview = (
+    value: unknown,
+    field?: ComponentArrayItemField,
+): string => {
+    const fields = field?.type === "jsonarray" ? field.items : undefined;
+    return (
+        summarizeNodeEditorValue(value, {
+            fields,
+            maxLength: 96,
+        }) || "Empty"
+    );
 };
 
 const getInsertPositions = () => {
@@ -1059,9 +1075,9 @@ const getInsertPositions = () => {
     const positions: Array<{ index: number; preview: string }> = [];
     for (let index = 0; index <= items.length; index += 1) {
         const before =
-            index > 0 ? formatArrayItemPreview(items[index - 1]) : "Beginning";
+            index > 0 ? formatArrayItemPreview(items[index - 1], field) : "Beginning";
         const after =
-            index < items.length ? formatArrayItemPreview(items[index]) : "End";
+            index < items.length ? formatArrayItemPreview(items[index], field) : "End";
         positions.push({ index, preview: `${before} → ${after}` });
     }
     return positions;

@@ -10,6 +10,23 @@ import {
 } from "./node-editor-test-utils";
 
 describe("NodeEditor search highlights", () => {
+    it("shows the component prop count on collapsed section buttons", async () => {
+        const node = createComponentNode("node-1", "hero", {
+            title: "Alpha",
+        });
+
+        const wrapper = mountNodeEditor({ node });
+        const toggle = wrapper.find("button.node-panel__toggle[data-state]");
+
+        expect(toggle.attributes("data-state")).toBe("collapsed");
+        expect(toggle.text()).toBe("7 props");
+
+        await expandNode(wrapper);
+
+        expect(toggle.attributes("data-state")).toBe("expanded");
+        expect(toggle.text()).toBe("Collapse");
+    });
+
     it("renders highlight overlays for matching text inputs and textareas", async () => {
         const node = createComponentNode("node-1", "hero", {
             title: "Alpha Beta",

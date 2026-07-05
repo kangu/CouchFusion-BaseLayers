@@ -147,6 +147,8 @@ const pendingFocusTarget = ref<{
     path: string;
     mode?: "flash" | "lock" | "clear";
     propPath?: string;
+    scrollBlock?: ScrollLogicalPosition;
+    forceScroll?: boolean;
 } | null>(null);
 const pendingLiveUpdate = ref(false);
 const pendingFontPreview = ref(false);
@@ -413,6 +415,8 @@ const postFocusMessage = (
     path: string,
     mode: "flash" | "lock" | "clear" = "flash",
     propPath = "",
+    scrollBlock?: ScrollLogicalPosition,
+    forceScroll = false,
 ) => {
     if (!iframeRef.value?.contentWindow) {
         return;
@@ -426,6 +430,8 @@ const postFocusMessage = (
                 uid,
                 mode,
                 propPath,
+                scrollBlock,
+                forceScroll,
             },
         },
         previewOrigin.value,
@@ -467,6 +473,8 @@ const flushPendingPreviewMessages = () => {
             resolveContentPreviewPath(target.path || activePath.value),
             target.mode ?? "flash",
             target.propPath ?? "",
+            target.scrollBlock,
+            target.forceScroll === true,
         );
     }
 
@@ -538,14 +546,23 @@ const sendFocusMessage = (
     path: string,
     mode: "flash" | "lock" | "clear" = "flash",
     propPath = "",
+    scrollBlock?: ScrollLogicalPosition,
+    forceScroll = false,
 ) => {
     if (!canPostToPreview()) {
-        pendingFocusTarget.value = { uid, path, mode, propPath };
+        pendingFocusTarget.value = {
+            uid,
+            path,
+            mode,
+            propPath,
+            scrollBlock,
+            forceScroll,
+        };
         return;
     }
 
     pendingFocusTarget.value = null;
-    postFocusMessage(uid, path, mode, propPath);
+    postFocusMessage(uid, path, mode, propPath, scrollBlock, forceScroll);
 };
 
 const handlePageSelected = (summary: ContentPageSummary | null) => {
@@ -605,6 +622,8 @@ const handleNodeFocus = (payload: {
     mode?: "flash" | "lock" | "clear";
     propPath?: string;
     propKey?: string;
+    scrollBlock?: ScrollLogicalPosition;
+    forceScroll?: boolean;
 } | Event) => {
     if (!payload || typeof payload !== "object" || payload instanceof Event) {
         return;
@@ -628,6 +647,8 @@ const handleNodeFocus = (payload: {
         previewTargetPath,
         payload.mode ?? "flash",
         payload.propPath ?? payload.propKey ?? "",
+        payload.scrollBlock,
+        payload.forceScroll === true,
     );
 };
 

@@ -91,7 +91,11 @@
                         "
                         @click="toggleNode(node.uid)"
                     >
-                        {{ collapsedNodes[node.uid] ? "Expand" : "Collapse" }}
+                        {{
+                            collapsedNodes[node.uid]
+                                ? collapsedPropsLabel
+                                : "Collapse"
+                        }}
                     </button>
                     <button
                         v-if="
@@ -1064,6 +1068,10 @@ const baseVisibleProps = computed(() =>
         (prop) => !INTERNAL_NODE_PROP_KEYS.has(prop.key),
     ),
 );
+const collapsedPropsLabel = computed(() => {
+    const count = baseVisibleProps.value.length;
+    return `${count} ${count === 1 ? "prop" : "props"}`;
+});
 const focusedPropKey = computed(() => {
     if (
         !isolateLayout.value ||
@@ -3606,11 +3614,34 @@ const applyTextValue = () => {
 
 .node-panel :deep(.node-panel__array-header) {
     display: flex;
-    justify-content: flex-start;
+    align-items: center;
+    justify-content: space-between;
     gap: 10px;
 }
 
+.node-panel :deep(.node-panel__array-header-main) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.node-panel :deep(.node-panel__array-summary) {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+    color: #475569;
+    font-size: 0.82rem;
+    line-height: 1.3;
+}
+
 .node-panel :deep(.node-panel__array-toggle) {
+    flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -3756,9 +3787,9 @@ const applyTextValue = () => {
 
 .node-panel :deep(.node-panel__array-item) {
     border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 12px;
-    background: rgba(202, 202, 202, 0.66);
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8fafc;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -3768,6 +3799,8 @@ const applyTextValue = () => {
 .node-panel :deep(.node-panel__array-item--nested) {
     cursor: default;
     margin-left: 12px;
+    border-left: 3px solid #93c5fd;
+    background: #ffffff;
 }
 
 .node-panel :deep(.node-panel__array-actions) {
