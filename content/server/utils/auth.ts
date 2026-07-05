@@ -40,6 +40,18 @@ async function getCurrentUserDocumentRoles(username: string | null | undefined):
     }
 }
 
+const getSessionRoles = async (sessionCookie: string) => {
+    const session = await getSession({ authSessionCookie: sessionCookie })
+    const sessionRoles = session?.userCtx?.roles ?? []
+    const documentRoles = await getCurrentUserDocumentRoles(session?.userCtx?.name)
+    const roles = [...new Set([...sessionRoles, ...documentRoles])]
+
+    return {
+        session,
+        roles,
+    }
+}
+
 /**
  * Resolve the CouchDB session for the current request and ensure the user has at least one of the required roles.
  */
@@ -56,10 +68,7 @@ export async function requireRoleSession(event: H3Event, roles: string | string[
         })
     }
 
-    const session = await getSession({ authSessionCookie: sessionCookie })
-    const sessionRoles = session?.userCtx?.roles ?? []
-    const documentRoles = await getCurrentUserDocumentRoles(session?.userCtx?.name)
-    const userRoles = [...new Set([...sessionRoles, ...documentRoles])]
+    const { session, roles: userRoles } = await getSessionRoles(sessionCookie)
 
     const hasRole = expectedRoles.some((role) => userRoles.includes(role))
 
@@ -78,6 +87,34 @@ export async function requireRoleSession(event: H3Event, roles: string | string[
  */
 export async function requireAdminSession(event: H3Event) {
     return requireRoleSession(event, ['admin', '_admin'])
+}
+
+/**
+ * Ensure the current request belongs to a content editor.
+ */
+export async function requireContentEditorSession(event: H3Event) {
+    return requireRoleSession(event, ['admin', '_admin', 'editor'])
+}
+
+/**
+ * Resolve an optional content editor session for public endpoints that should
+ * continue serving anonymous published content.
+ */
+export async function resolveContentEditorSession(event: H3Event) {
+    const cookieHeader = getHeader(event, 'cookie')
+    const sessionCookie = extractAuthSessionCookie(cookieHeader)
+
+    if (!sessionCookie) {
+        return null
+    }
+
+    try {
+        const { session, roles } = await getSessionRoles(sessionCookie)
+        const canEditContent = ['admin', '_admin', 'editor'].some((role) => roles.includes(role))
+        return canEditContent ? session : null
+    } catch {
+        return null
+    }
 }
 
 /**

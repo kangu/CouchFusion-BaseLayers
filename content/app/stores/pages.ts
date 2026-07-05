@@ -2,7 +2,12 @@ import { defineStore } from 'pinia'
 import { normalizePagePath, pageIdFromPath } from '#content/utils/page'
 import { createDocumentFromTree } from '#content/app/utils/contentBuilder'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
-import type { ContentPageDocument, ContentPageSummary, ContentPageHistoryEntry } from '#content/types/content-page'
+import type {
+    ContentPageDocument,
+    ContentPageSummary,
+    ContentPageHistoryEntry,
+    ContentPagePublicationState,
+} from '#content/types/content-page'
 import { createError, useRuntimeConfig } from '#imports'
 import {
     ensureMinimalBody,
@@ -10,7 +15,8 @@ import {
     deriveStem,
     clonePlain,
     minimalToContentDocument,
-    normalizeSeoImage
+    normalizeSeoImage,
+    normalizePublicationState
 } from '#content/utils/page-documents'
 import {
     buildLocalizedPath,
@@ -106,6 +112,7 @@ const normalizeDocument = (
         meta: raw.meta && typeof raw.meta === 'object' ? clonePlain(raw.meta) : (raw.metadata && typeof raw.metadata === 'object' ? clonePlain(raw.metadata) : {}),
         extension: raw.extension ?? 'md',
         navigation: typeof raw.navigation === 'boolean' ? raw.navigation : true,
+        publicationState: normalizePublicationState(raw.publicationState),
         createdAt: raw.createdAt ?? raw.created_at ?? null,
         updatedAt: raw.updatedAt ?? raw.updated_at ?? null
     }
@@ -147,6 +154,7 @@ const extractSummary = (payload: any): ContentPageSummary => {
         seoTitle: document.seo.title,
         seoDescription: document.seo.description,
         seoImage: document.seo.image ?? fallbackSeoImage ?? null,
+        publicationState: normalizePublicationState(payload?.publicationState ?? document.publicationState),
         meta,
         updatedAt,
         document,
@@ -349,6 +357,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             seoTitle?: string | null
             seoDescription?: string | null
             seoImage?: string | null
+            publicationState?: ContentPagePublicationState
         }, options: { locale?: string | null } = {}): Promise<ContentPageSummary> {
             const normalizedPath = normalizePagePath(payload.path)
             const minimal = createDocumentFromTree(
@@ -367,6 +376,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             )
 
             const document = minimalToContentDocument(minimal)
+            document.publicationState = normalizePublicationState(payload.publicationState)
             return await this.saveDocument(document, {
                 method: 'POST',
                 locale: options.locale
@@ -394,7 +404,8 @@ export const useContentPagesStore = defineStore('content-pages', {
                 },
                 stem: document.stem ?? deriveStem(normalizedPath),
                 meta: document.meta ? clonePlain(document.meta) : {},
-                navigation: typeof document.navigation === 'boolean' ? document.navigation : true
+                navigation: typeof document.navigation === 'boolean' ? document.navigation : true,
+                publicationState: normalizePublicationState(document.publicationState)
             }
 
             const response: any = await $f('/api/content/pages', {
@@ -417,6 +428,33 @@ export const useContentPagesStore = defineStore('content-pages', {
             } catch (error) {
                 console.error('Failed to refresh history after save:', error)
             }
+
+            return summary
+        },
+
+        async updatePublicationState(
+            path: string,
+            publicationState: ContentPagePublicationState,
+            options: { locale?: string | null } = {},
+        ): Promise<ContentPageSummary> {
+            const target = resolveStoreTarget(path, options.locale)
+            const $f = useRequestFetch()
+
+            const response: any = await $f('/api/content/pages/publication-state', {
+                method: 'PATCH',
+                body: {
+                    path: target.basePath,
+                    locale: target.locale,
+                    publicationState
+                }
+            })
+
+            const summary = extractSummary(response?.page ?? response)
+            this.pages[target.storeKey] = createEmptyFetchState(summary)
+
+            const existingIndex = this.index.data.filter((entry) => entry.id !== summary.id)
+            existingIndex.push(summary)
+            this.index.data = existingIndex.sort((a, b) => a.path.localeCompare(b.path))
 
             return summary
         },

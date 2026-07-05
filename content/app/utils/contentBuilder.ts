@@ -37,6 +37,7 @@ export interface MinimalContentDocument {
   extension: string
   meta: Record<string, any>
   navigation: boolean
+  publicationState?: 'published' | 'draft'
   path: string
   seo: {
     title: string

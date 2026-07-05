@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import type { ContentPageSummary } from "#content/types/content-page";
+import type {
+  ContentPagePublicationState,
+  ContentPageSummary,
+} from "#content/types/content-page";
 import { useContentPagesStore } from "#content/app/stores/pages";
 import { resolveContentI18nConfig } from "#content/utils/i18n";
 import { normalizePagePath } from "#content/utils/page";
@@ -68,11 +71,13 @@ const localizationFilter = ref<"all" | "needs-localization" | "localized">(
 const localePresenceFilter = ref<"all" | "present" | "missing">("all");
 const localeFilter = ref("");
 const imageFilter = ref<"all" | "with-image" | "without-image">("all");
+const publicationFilter = ref<"all" | ContentPagePublicationState>("all");
 const sortBy = ref<"path" | "title" | "updated">("updated");
 const sortDirection = ref<"asc" | "desc">("desc");
 const pageSize = ref(25);
 const currentPage = ref(1);
 const deletingById = ref<Record<string, boolean>>({});
+const updatingPublicationById = ref<Record<string, boolean>>({});
 const pageActionNotice = ref<string | null>(null);
 const pageActionError = ref<string | null>(null);
 
@@ -224,6 +229,13 @@ const filteredPages = computed<ContentPageSummary[]>(() => {
       if (imageFilter.value === "without-image" && hasImage) {
         return false;
       }
+    }
+
+    if (
+      publicationFilter.value !== "all" &&
+      page.publicationState !== publicationFilter.value
+    ) {
+      return false;
     }
 
     return true;
@@ -404,6 +416,7 @@ const handleCreateNewPage = async () => {
         seoDescription: createForm.seoDescription || "SEO description.",
         seoImage: normalizeSeoImage(createForm.seoImage),
         meta: metaPayload,
+        publicationState: "draft",
       },
       { locale: defaultLocale.value },
     );
@@ -462,6 +475,7 @@ const handleClonePage = async () => {
       },
       meta: metaPayload,
       stem: deriveStem(normalizedPath),
+      publicationState: "draft",
     };
     await contentStore.saveDocument(duplicatedDocument, {
       method: "POST",
@@ -622,6 +636,53 @@ const openPublicPage = (path: string) => {
   window.open(publicRouteForPath(path), "_blank", "noopener");
 };
 
+const isPublicationState = (value: string): value is ContentPagePublicationState =>
+  value === "published" || value === "draft";
+
+const handlePublicationStateChange = async (
+  page: ContentPageSummary,
+  value: string,
+) => {
+  if (!isPublicationState(value) || value === page.publicationState) {
+    return;
+  }
+
+  updatingPublicationById.value = {
+    ...updatingPublicationById.value,
+    [page.id]: true,
+  };
+  pageActionError.value = null;
+  pageActionNotice.value = null;
+
+  try {
+    await contentStore.updatePublicationState(page.path, value);
+    pageActionNotice.value =
+      value === "draft"
+        ? `Page "${page.title || page.path}" moved to draft.`
+        : `Page "${page.title || page.path}" published.`;
+  } catch (error: any) {
+    pageActionError.value =
+      error?.data?.statusMessage ||
+      error?.message ||
+      "Failed to update page status.";
+  } finally {
+    const next = { ...updatingPublicationById.value };
+    delete next[page.id];
+    updatingPublicationById.value = next;
+  }
+};
+
+const handlePublicationStateEvent = (
+  page: ContentPageSummary,
+  event: Event,
+) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  void handlePublicationStateChange(page, target.value);
+};
+
 const handleDelete = async (page: ContentPageSummary) => {
   if (deletingById.value[page.id]) {
     return;
@@ -660,11 +721,12 @@ watch(
     localeFilter,
     localePresenceFilter,
     imageFilter,
+    publicationFilter,
     sortBy,
     sortDirection,
   ],
   () => {
-  currentPage.value = 1;
+    currentPage.value = 1;
   },
 );
 
@@ -894,6 +956,15 @@ watch(totalPageCount, (value) => {
             <option value="without-image">Without Image</option>
           </select>
         </label>
+
+        <label class="pages-field">
+          <span>Status</span>
+          <select v-model="publicationFilter">
+            <option value="all">All</option>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+          </select>
+        </label>
       </div>
 
       <div class="pages-toolbar__group pages-toolbar__group--right">
@@ -953,6 +1024,7 @@ watch(totalPageCount, (value) => {
                 Title <span>{{ sortLabel("title") }}</span>
               </button>
             </th>
+            <th>Status</th>
             <th>
               <button
                 type="button"
@@ -969,14 +1041,26 @@ watch(totalPageCount, (value) => {
         </thead>
         <tbody>
           <tr v-if="isLoading">
-            <td colspan="6" class="empty-cell">Loading pages…</td>
+            <td colspan="7" class="empty-cell">Loading pages…</td>
           </tr>
           <tr v-else-if="!paginatedPages.length">
-            <td colspan="6" class="empty-cell">No pages match the current filters.</td>
+            <td colspan="7" class="empty-cell">No pages match the current filters.</td>
           </tr>
           <tr v-for="page in paginatedPages" :key="page.id">
             <td class="mono">{{ page.path }}</td>
             <td>{{ page.title || "—" }}</td>
+            <td>
+              <select
+                class="publication-select"
+                :value="page.publicationState"
+                :disabled="Boolean(updatingPublicationById[page.id])"
+                :aria-label="`Publication state for ${page.title || page.path}`"
+                @change="handlePublicationStateEvent(page, $event)"
+              >
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+              </select>
+            </td>
             <td>{{ formatTimestamp(page.updatedAt) }}</td>
             <td>
               <div class="locale-cell">
@@ -1432,6 +1516,22 @@ watch(totalPageCount, (value) => {
 
 .pages-field--compact {
   min-width: 120px;
+}
+
+.publication-select {
+  min-width: 112px;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  padding: 0.38rem 0.5rem;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.publication-select:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 .pages-button {

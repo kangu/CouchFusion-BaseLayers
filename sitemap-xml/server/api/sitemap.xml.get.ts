@@ -16,6 +16,7 @@ import { useRuntimeConfig, useAppConfig } from "#imports";
 import { getView } from "#database/utils/couchdb";
 import { getContentDatabaseName } from "#content/server/utils/database";
 import { normalizePagePath } from "#content/utils/page";
+import { normalizePublicationState } from "#content/utils/page-documents";
 import {
   resolveIgnoredPrefixes,
   isContentRoute,
@@ -24,6 +25,18 @@ import {
 type SitemapEntry = {
   path: string;
   updatedAt: string | null;
+};
+
+type ContentRouteCandidate = {
+  path: string;
+  basePath: string;
+  doc: Record<string, any> | undefined;
+  row: any;
+};
+
+type ContentRouteResult = {
+  entries: SitemapEntry[];
+  draftPaths: Set<string>;
 };
 
 const escapeXml = (value: string): string => {
@@ -58,17 +71,44 @@ const loadStaticRoutes = (runtimeConfig: any): string[] => {
   return configured;
 };
 
+const readDocumentMeta = (
+  rawDoc: Record<string, any> | undefined,
+): Record<string, any> => {
+  if (rawDoc?.meta && typeof rawDoc.meta === "object") {
+    return rawDoc.meta;
+  }
+  if (rawDoc?.metadata && typeof rawDoc.metadata === "object") {
+    return rawDoc.metadata;
+  }
+  return {};
+};
+
+const resolveContentBasePath = (
+  rawDoc: Record<string, any> | undefined,
+  fallbackPath: string,
+): string => {
+  const meta = readDocumentMeta(rawDoc);
+  const i18n = meta?.contentI18n;
+  const candidate =
+    i18n && typeof i18n === "object" && typeof i18n.basePath === "string"
+      ? i18n.basePath
+      : typeof rawDoc?.contentBasePath === "string"
+        ? rawDoc.contentBasePath
+        : fallbackPath;
+
+  return normalizePagePath(candidate);
+};
+
 const loadContentRoutes = async (
   ignoredPrefixes: string[],
-): Promise<SitemapEntry[]> => {
+): Promise<ContentRouteResult> => {
   const databaseName = getContentDatabaseName();
   const viewResult = await getView(databaseName, "content", "by_path", {
     include_docs: true,
   });
 
   const rows = Array.isArray(viewResult?.rows) ? viewResult.rows : [];
-
-  return rows.reduce<SitemapEntry[]>((acc, row: any) => {
+  const candidates = rows.reduce<ContentRouteCandidate[]>((acc, row: any) => {
     const rawDoc: Record<string, any> | undefined = row?.doc;
     const rawPath =
       typeof row?.key === "string"
@@ -82,6 +122,32 @@ const loadContentRoutes = async (
     }
 
     const normalizedPath = normalizePagePath(rawPath);
+    acc.push({
+      path: normalizedPath,
+      basePath: resolveContentBasePath(rawDoc, normalizedPath),
+      doc: rawDoc,
+      row,
+    });
+
+    return acc;
+  }, []);
+
+  const draftBasePaths = new Set(
+    candidates
+      .filter((entry) => normalizePublicationState(entry.doc?.publicationState) === "draft")
+      .map((entry) => entry.basePath),
+  );
+  const draftPaths = new Set<string>();
+
+  const entries = candidates.reduce<SitemapEntry[]>((acc, candidate) => {
+    const rawDoc = candidate.doc;
+    const normalizedPath = candidate.path;
+
+    if (draftBasePaths.has(candidate.basePath)) {
+      draftPaths.add(candidate.basePath);
+      draftPaths.add(candidate.path);
+      return acc;
+    }
 
     if (!isContentRoute(normalizedPath, ignoredPrefixes)) {
       return acc;
@@ -93,19 +159,14 @@ const loadContentRoutes = async (
       return acc;
     }
 
-    const meta =
-      rawDoc?.meta && typeof rawDoc.meta === "object"
-        ? rawDoc.meta
-        : rawDoc?.metadata && typeof rawDoc.metadata === "object"
-          ? rawDoc.metadata
-          : {};
+    const meta = readDocumentMeta(rawDoc);
 
     if (meta?.sitemap?.exclude === true) {
       return acc;
     }
 
     const updatedAt =
-      rawDoc?.updatedAt ?? rawDoc?.updated_at ?? row?.value?.updatedAt ?? null;
+      rawDoc?.updatedAt ?? rawDoc?.updated_at ?? candidate.row?.value?.updatedAt ?? null;
 
     acc.push({
       path: normalizedPath,
@@ -114,6 +175,8 @@ const loadContentRoutes = async (
 
     return acc;
   }, []);
+
+  return { entries, draftPaths };
 };
 
 const parseExtraRoutes = (value: any): SitemapEntry[] => {
@@ -247,7 +310,11 @@ export default defineEventHandler(async (event) => {
     }
 
     const contentRoutes = await loadContentRoutes(ignoredPrefixes);
-    for (const entry of contentRoutes) {
+    for (const draftPath of contentRoutes.draftPaths) {
+      entriesMap.delete(draftPath);
+    }
+
+    for (const entry of contentRoutes.entries) {
       if (!isContentRoute(entry.path, ignoredPrefixes)) {
         continue;
       }

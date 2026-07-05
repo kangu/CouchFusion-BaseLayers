@@ -1,3 +1,5 @@
+export type ContentPagePublicationState = 'published' | 'draft'
+
 export interface ContentPageDocument {
     _id: string
     title: string | null
@@ -21,6 +23,7 @@ export interface ContentPageDocument {
     meta?: Record<string, any>
     extension?: string
     navigation?: boolean
+    publicationState?: ContentPagePublicationState
     createdAt?: string | null
     updatedAt?: string | null
 
@@ -45,6 +48,7 @@ export interface ContentPageSummary {
     seoTitle: string | null
     seoDescription: string | null
     seoImage: string | null
+    publicationState: ContentPagePublicationState
     meta: Record<string, any>
     updatedAt: string | null
     document: ContentPageDocument | null

@@ -158,6 +158,11 @@ const buildBaseSections = (
                     icon: "mdi:account-group-outline",
                 },
                 {
+                    label: "Users Workbench",
+                    route: "/admin/users-workbench",
+                    icon: "mdi:table-account",
+                },
+                {
                     label: "Surveys",
                     route: "/admin/surveys",
                     icon: "mdi:poll",

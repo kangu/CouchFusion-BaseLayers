@@ -1,6 +1,6 @@
 import { normalizePagePath } from '#content/utils/page'
 import type { MinimalContentDocument } from '#content/app/utils/contentBuilder'
-import type { ContentPageDocument } from '#content/types/content-page'
+import type { ContentPageDocument, ContentPagePublicationState } from '#content/types/content-page'
 
 export const clonePlain = <T>(value: T): T => {
     if (value === undefined || value === null) {
@@ -39,6 +39,10 @@ export const normalizeSeoImage = (value: any): string | null => {
         return null
     }
     return isAbsoluteUrl(trimmed) ? trimmed : null
+}
+
+export const normalizePublicationState = (value: unknown): ContentPagePublicationState => {
+    return value === 'draft' ? 'draft' : 'published'
 }
 
 export const contentIdFromPath = (path: string): string => {
@@ -85,6 +89,7 @@ export const minimalToContentDocument = (doc: MinimalContentDocument): ContentPa
         meta: doc.meta ? clonePlain(doc.meta) : {},
         extension: doc.extension ?? 'md',
         navigation: typeof doc.navigation === 'boolean' ? doc.navigation : true,
+        publicationState: normalizePublicationState(doc.publicationState),
         createdAt: doc.createdAt ?? null,
         updatedAt: doc.updatedAt ?? null
     }
@@ -102,6 +107,7 @@ export const contentToMinimalDocument = (doc: ContentPageDocument): MinimalConte
         extension: doc.extension ?? 'md',
         meta: doc.meta ? clonePlain(doc.meta) : {},
         navigation: typeof doc.navigation === 'boolean' ? doc.navigation : true,
+        publicationState: normalizePublicationState(doc.publicationState),
         path: doc.path,
         seo: {
             title: doc.seo?.title ?? doc.title ?? 'Page title',

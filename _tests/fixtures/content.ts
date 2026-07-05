@@ -17,6 +17,7 @@ export interface ContentPageSeedOptions {
   seoDescription?: string | null;
   meta?: Record<string, any> | null;
   navigation?: boolean;
+  publicationState?: 'published' | 'draft';
   extension?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -68,6 +69,7 @@ export const buildContentPageDocument = (
     meta: clone(options.meta ?? {}),
     extension: options.extension ?? "md",
     navigation: options.navigation ?? true,
+    publicationState: options.publicationState,
     createdAt,
     updatedAt,
     type: options.type ?? "page",

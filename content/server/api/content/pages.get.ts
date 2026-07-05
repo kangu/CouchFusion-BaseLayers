@@ -16,8 +16,9 @@ import {
     setBodyValue,
     toPageDocumentRecord,
 } from '../../utils/content-i18n'
-import { normalizeSeoImage } from '#content/utils/page-documents'
+import { normalizePublicationState, normalizeSeoImage } from '#content/utils/page-documents'
 import { getEffectiveContentI18nConfig } from '../../utils/content-i18n-settings'
+import { resolveContentEditorSession } from '../../utils/auth'
 
 const toResponseEntry = (
     document: Record<string, any>,
@@ -37,6 +38,11 @@ const toResponseEntry = (
     const seoTitle = document.seoTitle ?? document.seo?.title ?? null
     const seoDescription = document.seoDescription ?? document.seo?.description ?? null
     const meta = document.meta ?? document.metadata ?? {}
+    const publicationState = normalizePublicationState(document.publicationState)
+    const responseDocument = {
+        ...document,
+        publicationState,
+    }
 
     return {
         id: document._id || pageIdFromPath(normalizedPath),
@@ -44,13 +50,14 @@ const toResponseEntry = (
         title: document.title ?? null,
         seoTitle,
         seoDescription,
+        publicationState,
         meta,
         updatedAt:
             localization.updatedAtByLocale[localization.locale] ??
             document.updatedAt ??
             document.updated_at ??
             null,
-        doc: document,
+        doc: responseDocument,
         localization,
     }
 }
@@ -99,6 +106,8 @@ export default defineEventHandler(async (event) => {
         const requestedPath = typeof query.path === 'string' ? query.path : null
         const { effective: contentI18nConfig } = await getEffectiveContentI18nConfig()
         const databaseName = getContentDatabaseName()
+        const contentEditorSession = await resolveContentEditorSession(event)
+        const canReadDrafts = Boolean(contentEditorSession)
 
         if (requestedPath) {
             const normalizedRequestedPath = normalizePagePath(requestedPath)
@@ -150,6 +159,13 @@ export default defineEventHandler(async (event) => {
                 })
             }
 
+            if (normalizePublicationState(masterDocument.publicationState) === 'draft' && !canReadDrafts) {
+                throw createError({
+                    statusCode: 404,
+                    statusMessage: 'Page not found',
+                })
+            }
+
             const localeDocument =
                 locale === contentI18nConfig.defaultLocale
                     ? masterDocument
@@ -178,6 +194,7 @@ export default defineEventHandler(async (event) => {
                 contentI18nConfig,
             )
             responseDocument.path = responsePath
+            responseDocument.publicationState = normalizePublicationState(masterDocument.publicationState)
 
             if (hasLocaleDocument && localeDocument) {
                 const mergedBodyValue = buildLocalizedBodyForRead(
@@ -317,6 +334,13 @@ export default defineEventHandler(async (event) => {
                     null
 
                 if (!masterDocument) {
+                    return null
+                }
+
+                if (
+                    normalizePublicationState(masterDocument.publicationState) === 'draft' &&
+                    !canReadDrafts
+                ) {
                     return null
                 }
 

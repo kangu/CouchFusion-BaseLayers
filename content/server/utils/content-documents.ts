@@ -7,6 +7,7 @@ import {
     contentIdFromPath,
     ensureLayout,
     ensureMinimalBody,
+    normalizePublicationState,
     normalizeSeoImage
 } from '#content/utils/page-documents'
 
@@ -80,6 +81,7 @@ export const sanitiseIncomingDocument = (
         meta,
         extension: raw.extension ?? existing.extension ?? 'md',
         navigation: typeof raw.navigation === 'boolean' ? raw.navigation : (typeof existing.navigation === 'boolean' ? existing.navigation : true),
+        publicationState: normalizePublicationState(raw.publicationState ?? existing.publicationState),
         createdAt: options.isCreate ? now : existing.createdAt ?? now,
         updatedAt: now,
         type: 'page'
