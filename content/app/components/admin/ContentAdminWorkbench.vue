@@ -45,6 +45,7 @@ import {
 } from "#content/app/composables/useLlmTranslations";
 import { resolveLocaleMeta } from "#content/app/utils/locales-meta";
 import type { InlinePreviewPropHint } from "#content/app/utils/inline-preview-prop-path";
+import RichTooltip from "../ui/RichTooltip.vue";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
 );
@@ -416,8 +417,30 @@ const lastUpdatedDisplay = computed(() =>
         lastSavedAt.value,
     ),
 );
-const pagePickerTooltip = computed(
-    () => lastUpdatedDisplay.value || "Open page picker",
+const pagePickerPageName = computed(() => {
+    const title = selectedSummary.value?.title?.trim();
+    if (title) {
+        return title;
+    }
+
+    const documentTitle = latestDocument.value?.title?.trim();
+    if (documentTitle) {
+        return documentTitle;
+    }
+
+    const seoTitle = selectedSummary.value?.seoTitle?.trim();
+    if (seoTitle) {
+        return seoTitle;
+    }
+
+    return currentEditedPath.value;
+});
+const pagePickerTooltipTitle = computed(
+    () => `URL: ${currentEditedPath.value}`,
+);
+const pagePickerTooltipDescription = computed(
+    () =>
+        `Page name: ${pagePickerPageName.value}\nUpdated at: ${lastUpdatedDisplay.value || "Never"}`,
 );
 const missingLocalizedCount = computed(
     () => selectedSummary.value?.localization?.missingLocalizedCount ?? 0,
@@ -2793,23 +2816,30 @@ defineExpose({
                         </svg>
                         <span>{{ isSavePending ? "Saving…" : "Save" }}</span>
                     </button>
-                    <button
-                        type="button"
-                        class="content-admin-workbench__path-trigger"
-                        aria-label="Open page picker"
-                        :title="pagePickerTooltip"
-                        @click="openPagePicker"
+                    <RichTooltip
+                        :title="pagePickerTooltipTitle"
+                        :description="pagePickerTooltipDescription"
                     >
-                        <span class="content-admin-workbench__path-text">
-                            {{ currentEditedPath }}
-                        </span>
-                        <span
-                            class="content-admin-workbench__path-caret"
-                            aria-hidden="true"
-                        >
-                            ▾
-                        </span>
-                    </button>
+                        <template #default="{ describedby }">
+                            <button
+                                type="button"
+                                class="content-admin-workbench__path-trigger"
+                                aria-label="Open page picker"
+                                :aria-describedby="describedby"
+                                @click="openPagePicker"
+                            >
+                                <span class="content-admin-workbench__path-text">
+                                    {{ currentEditedPath }}
+                                </span>
+                                <span
+                                    class="content-admin-workbench__path-caret"
+                                    aria-hidden="true"
+                                >
+                                    ▾
+                                </span>
+                            </button>
+                        </template>
+                    </RichTooltip>
                 </div>
                 <div class="content-admin-workbench__header-actions">
                     <div
@@ -4346,6 +4376,9 @@ defineExpose({
 .content-admin-workbench {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
 }
 
 .content-admin-workbench__button {
@@ -5577,6 +5610,11 @@ defineExpose({
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    width: min(100%, 800px);
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: 0;
+    box-sizing: border-box;
     padding: 1.25rem;
 }
 

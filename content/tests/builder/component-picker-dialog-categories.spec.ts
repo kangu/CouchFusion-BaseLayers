@@ -135,17 +135,32 @@ describe("ComponentPickerDialog category management", () => {
     await nextTick();
     await nextTick();
 
+    expect(wrapper.find(".component-picker-manage-button").text()).toBe("Categories");
+    expect(wrapper.find('[aria-label="Desktop preview"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Mobile preview"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Sort by updated"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Sort by name"]').exists()).toBe(true);
+    expect(wrapper.findAll(".rich-tooltip")).toHaveLength(4);
+    expect(wrapper.find('[aria-label="Desktop preview"]').attributes("title")).toBeUndefined();
+    expect(wrapper.find('[aria-label="Mobile preview"]').attributes("title")).toBeUndefined();
+    expect(wrapper.find('[aria-label="Sort by updated"]').attributes("title")).toBeUndefined();
+    expect(wrapper.find('[aria-label="Sort by name"]').attributes("title")).toBeUndefined();
+    expect(wrapper.find(".component-picker-density-control__label").text()).toBe(
+      "Thumbs",
+    );
+    expect(wrapper.text()).not.toContain("Manage Categories");
     expect(wrapper.findAll(".component-picker-tab").map((tab) => tab.text())).toContain(
       "Landing",
     );
 
     await wrapper
       .findAll("button")
-      .find((button) => button.text() === "Manage Categories")
+      .find((button) => button.text() === "Categories")
       ?.trigger("click");
     await nextTick();
 
     expect(wrapper.find(".component-picker-manage").exists()).toBe(true);
+    expect(wrapper.find(".component-picker-manage-button").text()).toBe("Picker");
     expect(wrapper.emitted("select")).toBeUndefined();
   });
 
@@ -156,7 +171,7 @@ describe("ComponentPickerDialog category management", () => {
 
     await wrapper
       .findAll("button")
-      .find((button) => button.text() === "Manage Categories")
+      .find((button) => button.text() === "Categories")
       ?.trigger("click");
     await nextTick();
 
@@ -193,6 +208,17 @@ describe("ComponentPickerDialog category management", () => {
       ["GlobalFooter"],
     ]);
     expect(wrapper.emitted("select")).toBeUndefined();
+  });
+
+  it("closes the picker when Escape is pressed", async () => {
+    const wrapper = mountPicker();
+    await nextTick();
+    await nextTick();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await nextTick();
+
+    expect(wrapper.emitted("close")).toEqual([[]]);
   });
 
   it("sorts components by newest update timestamp by default", async () => {
@@ -232,7 +258,7 @@ describe("ComponentPickerDialog category management", () => {
 
     await wrapper
       .findAll("button")
-      .find((button) => button.text() === "Name")
+      .find((button) => button.attributes("aria-label") === "Sort by name")
       ?.trigger("click");
     await nextTick();
 

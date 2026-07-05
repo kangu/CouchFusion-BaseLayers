@@ -82,6 +82,33 @@ describe("builder focused editor mode", () => {
         expect(nodeEditor).toContain(":focused-prop-display=\"focusedPropDisplay\"");
     });
 
+    it("only flashes the live preview from explicit node editor clicks", () => {
+        const nodeEditor = readLayerFile(
+            "content/app/components/builder/NodeEditor.vue",
+        );
+
+        expect(nodeEditor).toContain('@click="notifyPreviewFocusFromEditorClick"');
+        expect(nodeEditor).toContain("const notifyPreviewFocusFromEditorClick = () =>");
+        expect(nodeEditor).not.toContain('@focusin="notifyFocus"');
+        expect(nodeEditor).not.toContain('@focusin="notifyPreviewFocusFromEditorClick"');
+    });
+
+    it("uses a subtle blue hover surface for node editor sections", () => {
+        const nodeEditor = readLayerFile(
+            "content/app/components/builder/NodeEditor.vue",
+        );
+        const hoverRuleIndex = nodeEditor.indexOf(
+            ".node-panel:not(.node-panel--isolated):hover",
+        );
+        const hoverRule = nodeEditor.slice(hoverRuleIndex, hoverRuleIndex + 260);
+
+        expect(hoverRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(hoverRule).toContain("background: #f8fbff;");
+        expect(hoverRule).toContain("border-color: #bfdbfe;");
+        expect(hoverRule).toContain("rgba(37, 99, 235");
+        expect(nodeEditor).toContain("background-color 0.14s ease");
+    });
+
     it("opens site typography and theme as focused settings editors", () => {
         const workbench = readLayerFile(
             "content/app/components/builder/Workbench.vue",
@@ -147,5 +174,69 @@ describe("builder focused editor mode", () => {
         expect(iconRule).toContain("height: 22px;");
         expect(admin).not.toContain('class="builder-component-search"');
         expect(admin).not.toContain('placeholder="Search through content..."');
+    });
+
+    it("allows the workbench to expand until a 320px live preview remains after divider chrome", () => {
+        const workbench = readLayerFile(
+            "content/app/components/builder/Workbench.vue",
+        );
+        const pageRuleIndex = workbench.indexOf(".builder-page {");
+        const pageRule = workbench.slice(pageRuleIndex, pageRuleIndex + 220);
+
+        expect(pageRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(pageRule).toContain("max-width: calc(100vw - 327px);");
+        expect(pageRule).not.toContain("max-width: 1200px;");
+    });
+
+    it("lets the inline builder shell expand while capping editor body content", () => {
+        const inlineEditor = readLayerFile(
+            "content/app/components/inline/InlineLiveEditor.vue",
+        );
+        const admin = readLayerFile(
+            "content/app/components/admin/ContentAdminWorkbench.vue",
+        );
+        const editorBodyRuleIndex = admin.indexOf(
+            ".content-admin-workbench__editor-body {",
+        );
+        const editorBodyRule = admin.slice(editorBodyRuleIndex, editorBodyRuleIndex + 260);
+
+        expect(inlineEditor).toContain("const MIN_PREVIEW_WIDTH = 320;");
+        expect(inlineEditor).toContain("let max = min;");
+        expect(inlineEditor).toContain("const occupiedPreviewChromeWidth = measurePreviewChromeWidth();");
+        expect(inlineEditor).toContain("window.innerWidth - MIN_PREVIEW_WIDTH - occupiedPreviewChromeWidth");
+        expect(inlineEditor).not.toContain("const MAX_SIDEBAR_WIDTH = 720;");
+        expect(editorBodyRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(editorBodyRule).toContain("width: min(100%, 800px);");
+        expect(editorBodyRule).toContain("max-width: 800px;");
+        expect(editorBodyRule).toContain("margin-left: auto;");
+        expect(editorBodyRule).toContain("margin-right: 0;");
+    });
+
+    it("prevents horizontal scrolling in the inline workbench sidebar", () => {
+        const inlineEditor = readLayerFile(
+            "content/app/components/inline/InlineLiveEditor.vue",
+        );
+        const admin = readLayerFile(
+            "content/app/components/admin/ContentAdminWorkbench.vue",
+        );
+        const sidebarRuleIndex = inlineEditor.indexOf(".inline-live-editor__sidebar {");
+        const sidebarRule = inlineEditor.slice(sidebarRuleIndex, sidebarRuleIndex + 260);
+        const workbenchRuleIndex = inlineEditor.indexOf(".inline-live-editor__workbench {");
+        const workbenchRule = inlineEditor.slice(workbenchRuleIndex, workbenchRuleIndex + 240);
+        const adminRootRuleIndex = admin.indexOf(".content-admin-workbench {");
+        const adminRootRule = admin.slice(adminRootRuleIndex, adminRootRuleIndex + 260);
+        const editorBodyRuleIndex = admin.indexOf(".content-admin-workbench__editor-body {");
+        const editorBodyRule = admin.slice(editorBodyRuleIndex, editorBodyRuleIndex + 320);
+
+        expect(sidebarRuleIndex).toBeGreaterThanOrEqual(0);
+        expect(sidebarRule).toContain("overflow-y: auto;");
+        expect(sidebarRule).toContain("overflow-x: hidden;");
+        expect(workbenchRule).toContain("width: 100%;");
+        expect(workbenchRule).toContain("min-width: 0;");
+        expect(adminRootRule).toContain("width: 100%;");
+        expect(adminRootRule).toContain("min-width: 0;");
+        expect(adminRootRule).toContain("overflow-x: clip;");
+        expect(editorBodyRule).not.toContain("align-self: stretch;");
+        expect(editorBodyRule).toContain("width: min(100%, 800px);");
     });
 });

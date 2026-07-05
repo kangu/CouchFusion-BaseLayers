@@ -120,6 +120,7 @@ const runtimeConfig = useRuntimeConfig();
 const route = useRoute();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+const previewFrameRef = ref<HTMLDivElement | null>(null);
 const workbenchRef =
     ref<ComponentPublicInstance<ContentAdminWorkbenchExpose> | null>(null);
 const isIframeReady = ref(false);
@@ -161,6 +162,11 @@ const pendingDividerDrag = ref(false);
 const dividerPointerId = ref<number | null>(null);
 const dragStartX = ref(0);
 const dragStartWidth = ref(0);
+const previewFrameWidth = ref(0);
+let previewFrameMeasureFrame: number | null = null;
+const isDividerResizeActive = computed(
+    () => pendingDividerDrag.value || isDraggingDivider.value,
+);
 
 const beforeUnloadHandler = (event: BeforeUnloadEvent) => {
     event.preventDefault();
@@ -197,8 +203,7 @@ const builderBasePath = computed(() => {
 });
 
 const MIN_SIDEBAR_WIDTH = 320;
-const MAX_SIDEBAR_WIDTH = 720;
-const MIN_PREVIEW_WIDTH = 480;
+const MIN_PREVIEW_WIDTH = 320;
 const DRAG_ACTIVATION_THRESHOLD = 3;
 const SIDEBAR_STORAGE_KEY = "inline-live-editor-sidebar-width";
 
@@ -220,22 +225,79 @@ const resolveBaseCandidates = () => {
     return "";
 };
 
+const measurePreviewChromeWidth = (): number => {
+    if (typeof window === "undefined") {
+        return 0;
+    }
+
+    const frameRect = previewFrameRef.value?.getBoundingClientRect();
+    if (!frameRect) {
+        return dividerRef.value?.getBoundingClientRect().width ?? 0;
+    }
+
+    return Math.max(
+        0,
+        Math.round(window.innerWidth - frameRect.width - sidebarWidth.value),
+    );
+};
+
 const clampSidebarWidth = (value: number): number => {
     const min = MIN_SIDEBAR_WIDTH;
-    let max = Math.max(min, MAX_SIDEBAR_WIDTH);
+    let max = min;
 
     if (typeof window !== "undefined") {
-        const viewportCap = window.innerWidth - MIN_PREVIEW_WIDTH;
+        const occupiedPreviewChromeWidth = measurePreviewChromeWidth();
+        const viewportCap =
+            window.innerWidth - MIN_PREVIEW_WIDTH - occupiedPreviewChromeWidth;
         if (Number.isFinite(viewportCap)) {
-            max = Math.min(max, Math.max(min, viewportCap));
+            max = Math.max(min, viewportCap);
         }
     }
 
     return Math.min(Math.max(value, min), max);
 };
 
+const fallbackPreviewFrameWidth = (): number => {
+    if (typeof window === "undefined") {
+        return 0;
+    }
+    const dividerWidth = dividerRef.value?.getBoundingClientRect().width ?? 0;
+    return Math.max(
+        0,
+        Math.round(window.innerWidth - sidebarWidth.value - dividerWidth),
+    );
+};
+
+const previewFrameWidthLabel = computed(() => {
+    const width = previewFrameWidth.value > 0
+        ? previewFrameWidth.value
+        : fallbackPreviewFrameWidth();
+    return `${Math.max(0, Math.round(width))}px`;
+});
+
+const updatePreviewFrameSizeLabel = () => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    if (previewFrameMeasureFrame !== null) {
+        window.cancelAnimationFrame(previewFrameMeasureFrame);
+    }
+
+    previewFrameMeasureFrame = window.requestAnimationFrame(() => {
+        previewFrameMeasureFrame = null;
+        const rect = previewFrameRef.value?.getBoundingClientRect();
+        previewFrameWidth.value = rect
+            ? Math.max(0, Math.round(rect.width))
+            : fallbackPreviewFrameWidth();
+    });
+};
+
 const applySidebarConstraints = () => {
     sidebarWidth.value = clampSidebarWidth(sidebarWidth.value);
+    if (isDividerResizeActive.value) {
+        updatePreviewFrameSizeLabel();
+    }
 };
 
 const loadStoredSidebarWidth = (): number | null => {
@@ -703,6 +765,7 @@ const handleDividerDrag = (event: PointerEvent) => {
         }
         pendingDividerDrag.value = false;
         isDraggingDivider.value = true;
+        updatePreviewFrameSizeLabel();
     }
 
     if (!isDraggingDivider.value) {
@@ -711,6 +774,7 @@ const handleDividerDrag = (event: PointerEvent) => {
 
     event.preventDefault();
     sidebarWidth.value = clampSidebarWidth(dragStartWidth.value + delta);
+    updatePreviewFrameSizeLabel();
 };
 
 const beginDividerDrag = (event: PointerEvent) => {
@@ -728,6 +792,7 @@ const beginDividerDrag = (event: PointerEvent) => {
     pendingDividerDrag.value = true;
     dragStartX.value = event.clientX;
     dragStartWidth.value = sidebarWidth.value;
+    updatePreviewFrameSizeLabel();
 
     if (dividerRef.value) {
         try {
@@ -992,6 +1057,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
     applyBeforeUnload(false);
     stopDividerDrag();
+    if (typeof window !== "undefined" && previewFrameMeasureFrame !== null) {
+        window.cancelAnimationFrame(previewFrameMeasureFrame);
+        previewFrameMeasureFrame = null;
+    }
     window.removeEventListener("message", handlePreviewMessage);
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", applySidebarConstraints);
@@ -1005,6 +1074,9 @@ watch(
             return;
         }
         persistSidebarWidth(value);
+        if (isDividerResizeActive.value) {
+            updatePreviewFrameSizeLabel();
+        }
     },
 );
 
@@ -1034,6 +1106,14 @@ onBeforeRouteLeave(() => {
             '--inline-sidebar-width': `${sidebarWidth}px`,
         }"
     >
+        <div
+            v-if="isDividerResizeActive"
+            class="inline-live-editor__resize-label"
+            aria-live="polite"
+        >
+            Preview {{ previewFrameWidthLabel }}
+        </div>
+
         <section class="inline-live-editor__sidebar">
             <ContentAdminWorkbench
                 ref="workbenchRef"
@@ -1065,7 +1145,10 @@ onBeforeRouteLeave(() => {
         ></div>
 
         <section class="inline-live-editor__preview">
-            <div class="inline-live-editor__preview-frame">
+            <div
+                ref="previewFrameRef"
+                class="inline-live-editor__preview-frame"
+            >
                 <iframe
                     v-if="isClientReady && previewUrl"
                     ref="iframeRef"
@@ -1093,9 +1176,9 @@ onBeforeRouteLeave(() => {
 }
 
 .inline-live-editor__sidebar {
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     box-sizing: border-box;
-    border-right: 1px solid #e5e7eb;
     background-color: #f8fafc;
 }
 
@@ -1111,9 +1194,8 @@ onBeforeRouteLeave(() => {
 
 .inline-live-editor__divider::before {
     content: "";
-    width: 1px;
-    height: 80%;
-    border-radius: 999px;
+    width: 3px;
+    height: 100%;
     background-color: rgba(71, 85, 105, 0.35);
     transition: background-color 0.2s ease;
 }
@@ -1125,9 +1207,30 @@ onBeforeRouteLeave(() => {
 }
 
 .inline-live-editor__workbench {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
+}
+
+.inline-live-editor__resize-label {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 10000;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid rgba(147, 197, 253, 0.45);
+    border-radius: 0.45rem;
+    background: rgba(15, 23, 42, 0.86);
+    color: #eff6ff;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.26);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    pointer-events: none;
 }
 
 .inline-live-editor__preview {

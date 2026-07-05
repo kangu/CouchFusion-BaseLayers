@@ -8,8 +8,7 @@
         }"
         :data-builder-node-uid="node.uid"
         :style="{ marginLeft: isolateLayout ? '0px' : depth * 16 + 'px' }"
-        @focusin="notifyFocus"
-        @click="notifyFocus"
+        @click="notifyPreviewFocusFromEditorClick"
     >
         <div
             v-if="node.type === 'component' && !isolateLayout"
@@ -654,6 +653,10 @@ const notifyFocus = (mode: "flash" | "lock" | "clear" = "flash") => {
     if (props.onFocusNode) {
         props.onFocusNode({ uid: props.node.uid, mode });
     }
+};
+
+const notifyPreviewFocusFromEditorClick = () => {
+    notifyFocus("flash");
 };
 
 const requestRemoveNode = (uid: string) => {
@@ -3115,6 +3118,16 @@ const applyTextValue = () => {
     margin-bottom: 12px;
     background: #fff;
     flex: 1;
+    transition:
+        background-color 0.14s ease,
+        border-color 0.14s ease,
+        box-shadow 0.14s ease;
+}
+
+.node-panel:not(.node-panel--isolated):hover {
+    border-color: #bfdbfe;
+    background: #f8fbff;
+    box-shadow: 0 12px 30px -28px rgba(37, 99, 235, 0.45);
 }
 
 .node-panel__header {
