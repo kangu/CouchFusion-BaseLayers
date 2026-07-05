@@ -7,7 +7,9 @@ const readLayerFile = (path: string) =>
 
 describe("builder focused editor mode", () => {
     it("opens preview focus in an isolated focused editor with rollback", () => {
-        const workbench = readLayerFile("app/components/builder/Workbench.vue");
+        const workbench = readLayerFile(
+            "content/app/components/builder/Workbench.vue",
+        );
 
         expect(workbench).toContain("focusedEditSession");
         expect(workbench).toContain("focusedEditDisplayTitle");
@@ -25,9 +27,11 @@ describe("builder focused editor mode", () => {
     });
 
     it("uses the app save path from the focused editor save bar", () => {
-        const workbench = readLayerFile("app/components/builder/Workbench.vue");
+        const workbench = readLayerFile(
+            "content/app/components/builder/Workbench.vue",
+        );
         const admin = readLayerFile(
-            "app/components/admin/ContentAdminWorkbench.vue",
+            "content/app/components/admin/ContentAdminWorkbench.vue",
         );
 
         expect(workbench).toContain("onSaveFocusedEdit?: () => Promise<void> | void");
@@ -41,9 +45,11 @@ describe("builder focused editor mode", () => {
     });
 
     it("keeps preview focus requests visible inside the focused editor", () => {
-        const workbench = readLayerFile("app/components/builder/Workbench.vue");
+        const workbench = readLayerFile(
+            "content/app/components/builder/Workbench.vue",
+        );
         const nodeEditor = readLayerFile(
-            "app/components/builder/NodeEditor.vue",
+            "content/app/components/builder/NodeEditor.vue",
         );
 
         expect(workbench).toContain("focusedEditFocusRequest");

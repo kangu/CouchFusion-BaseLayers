@@ -13,6 +13,9 @@ import {
 import NodeEditor from "./NodeEditor.vue";
 import ComponentPickerDialog from "./ComponentPickerDialog.vue";
 import FontBrowserDialog from "./FontBrowserDialog.vue";
+import SectionPlacementDialog, {
+    type SectionPlacementPreviewDocument,
+} from "./SectionPlacementDialog.vue";
 import { useComponentRegistry } from "../../composables/useComponentRegistry";
 import {
     useContentFontSettings,
@@ -224,7 +227,18 @@ const emit = defineEmits<{
             tokens: Record<string, string>;
         },
     ): void;
-    (e: "node-focus", payload: { uid: string; path: string }): void;
+    (
+        e: "node-focus",
+        payload: {
+            uid: string;
+            path: string;
+            mode?: "flash" | "lock" | "clear";
+            propKey?: string;
+            propPath?: string;
+            scrollBlock?: ScrollLogicalPosition;
+            forceScroll?: boolean;
+        },
+    ): void;
     (
         e: "translate-scope",
         payload: {
@@ -306,6 +320,10 @@ const globalComponentOptions = computed<ComponentDefinition[]>(() =>
         .filter((entry) => entry.enabled)
         .map((entry) => toGlobalComponentDefinition(entry))
         .filter((entry): entry is ComponentDefinition => Boolean(entry)),
+);
+
+const previewGlobalComponents = computed<ContentGlobalComponentEntry[]>(
+    () => globalComponentsRegistry.components.value,
 );
 
 const globalAliasDefaultsById = computed<
@@ -602,6 +620,7 @@ const focusedEditSession = ref<{
     snapshot: MinimalContentDocument;
 } | null>(null);
 const isFocusedEditSaving = ref(false);
+const pendingInsertedSectionFocus = ref<string | null>(null);
 const focusedShowFieldsAround = ref(false);
 const focusedShowAllFields = ref(false);
 const focusedPropDisplay = computed<"active" | "around" | "all">(() => {
@@ -661,6 +680,7 @@ const draggingUid = ref<string | null>(null);
 const dragOverUid = ref<string | null>(null);
 const pendingRootInsertIndex = ref<number | null>(null);
 const isSectionNamePromptOpen = ref(false);
+const isSectionPlacementDialogOpen = ref(false);
 const pendingSelectedComponentId = ref<string | null>(null);
 const pendingSectionNameDraft = ref("");
 const sectionNamePromptInputRef = ref<HTMLInputElement | null>(null);
@@ -1099,6 +1119,7 @@ const closeRootPicker = () => {
 const closeAddSectionWorkflow = () => {
     isRootPickerOpen.value = false;
     isSectionNamePromptOpen.value = false;
+    isSectionPlacementDialogOpen.value = false;
     pendingRootInsertIndex.value = null;
     pendingSelectedComponentId.value = null;
     pendingSectionNameDraft.value = "";
@@ -1128,10 +1149,23 @@ const confirmRootComponentWithName = () => {
     if (!componentId || !sectionName) {
         return;
     }
+    pendingSectionNameDraft.value = sectionName;
+    isSectionNamePromptOpen.value = false;
+    isSectionPlacementDialogOpen.value = true;
+};
+
+const confirmRootSectionPlacement = (insertIndex: number) => {
+    const componentId = pendingSelectedComponentId.value;
+    const sectionName = pendingSectionNameDraft.value.trim();
+    if (!componentId || !sectionName) {
+        closeAddSectionWorkflow();
+        return;
+    }
     const node = createNode(componentId);
     applyGlobalAliasDefaultsToNode(node, globalAliasDefaultsById.value);
-    insertRootNode(node, pendingRootInsertIndex.value);
+    insertRootNode(node, insertIndex);
     saveLocalSectionName(node.uid, sectionName);
+    pendingInsertedSectionFocus.value = node.uid;
     closeAddSectionWorkflow();
 };
 
@@ -1166,6 +1200,38 @@ const getLocalSectionName = (uid: string): string => {
     }
     return getSectionNamesById()[sectionId] ?? "";
 };
+
+const rootSectionNamesByUid = computed<Record<string, string>>(() => {
+    const namesBySectionId = getSectionNamesById();
+    const namesByUid: Record<string, string> = {};
+    for (const node of builderTree.value) {
+        const sectionId = getRootSectionId(node);
+        if (!sectionId) {
+            continue;
+        }
+        namesByUid[node.uid] = namesBySectionId[sectionId] ?? "";
+    }
+    return namesByUid;
+});
+
+const serializedSectionDocuments = computed<SectionPlacementPreviewDocument[]>(
+    () =>
+        builderTree.value.map((node, index) => ({
+            uid: node.uid,
+            document: createDocumentFromTree(
+                [node],
+                {
+                    ...pageConfig,
+                    meta: pageConfig.meta ?? {},
+                    path: `${pageConfig.path || "/"}__section_${index}`,
+                },
+                { spacing: layout.spacing },
+                {
+                    annotateBuilderUids: true,
+                },
+            ),
+        })),
+);
 
 const saveLocalSectionName = (uid: string, value: string) => {
     const node = getRootNodeByUid(uid);
@@ -1729,11 +1795,38 @@ const handleDrop = (uid: string | null) => {
 const handleNodeFocus = (payload: {
     uid: string;
     mode?: "flash" | "lock" | "clear";
+    propKey?: string;
+    propPath?: string;
+    block?: ScrollLogicalPosition;
+    forceScroll?: boolean;
 }) => {
     emit("node-focus", {
         uid: payload.uid,
         path: pageConfig.path,
         mode: payload.mode ?? "flash",
+        propKey: payload.propKey,
+        propPath: payload.propPath,
+        scrollBlock: payload.block,
+        forceScroll: payload.forceScroll,
+    });
+};
+
+const flushPendingInsertedSectionFocus = () => {
+    const uid = pendingInsertedSectionFocus.value;
+    if (!uid) {
+        return;
+    }
+    if (!builderTree.value.some((node) => node.uid === uid)) {
+        pendingInsertedSectionFocus.value = null;
+        return;
+    }
+
+    pendingInsertedSectionFocus.value = null;
+    handleNodeFocus({
+        uid,
+        mode: "flash",
+        block: "start",
+        forceScroll: true,
     });
 };
 
@@ -2266,6 +2359,7 @@ const schedulePreviewDocumentEmit = (document: MinimalContentDocument) => {
             const cloned = cloneDocument(document);
             if (cloned) {
                 emit("document-preview-change", cloned);
+                flushPendingInsertedSectionFocus();
             }
         } catch (error) {
             console.error("Failed to emit preview document change", error);
@@ -3792,6 +3886,18 @@ const handleSaveDebugClick = () => {
                     </div>
                 </form>
             </div>
+            <SectionPlacementDialog
+                :is-open="isSectionPlacementDialogOpen"
+                :nodes="builderTree"
+                :section-names-by-uid="rootSectionNamesByUid"
+                :selected-component-label="pendingSelectedComponentLabel"
+                :section-name="pendingSectionNameDraft"
+                :initial-insert-index="pendingRootInsertIndex"
+                :serialized-section-documents="serializedSectionDocuments"
+                :global-components="previewGlobalComponents"
+                @insert="confirmRootSectionPlacement"
+                @cancel="cancelRootComponentSelection"
+            />
             <div
                 v-if="isGlobalAliasModalOpen"
                 class="builder-section-name-modal-backdrop"
@@ -3865,7 +3971,7 @@ const handleSaveDebugClick = () => {
                 >
                     <Content
                         :value="serializedDocument"
-                        :global-components="globalComponentsRegistry.components"
+                        :global-components="previewGlobalComponents"
                     />
                 </div>
                 <div

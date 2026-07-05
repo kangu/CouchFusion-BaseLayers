@@ -30,6 +30,8 @@ interface BuilderFocusPayload {
   uid: string
   mode?: 'flash' | 'lock' | 'clear'
   propPath?: string
+  scrollBlock?: ScrollLogicalPosition
+  forceScroll?: boolean
 }
 
 /**
@@ -839,10 +841,12 @@ export const useContentLiveUpdates = (): void => {
         }
 
         const propPath = data.payload!.propPath ?? ''
-        const didTriggerScroll = shouldScrollFocusTargetIntoView(target, propPath)
+        const scrollBlock = data.payload!.scrollBlock ?? 'center'
+        const forceScroll = data.payload!.forceScroll === true
+        const didTriggerScroll = forceScroll || shouldScrollFocusTargetIntoView(target, propPath)
 
         if (didTriggerScroll) {
-          target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          target.scrollIntoView({ block: scrollBlock, behavior: 'smooth' })
           await waitForScrollToSettle()
         }
 
@@ -856,9 +860,9 @@ export const useContentLiveUpdates = (): void => {
           return
         }
 
-        if (shouldScrollFocusTargetIntoView(target, propPath)) {
+        if (forceScroll || shouldScrollFocusTargetIntoView(target, propPath)) {
           // Fallback for any late layout shifts that still require visibility alignment.
-          target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          target.scrollIntoView({ block: scrollBlock, behavior: 'smooth' })
         }
         ensureHighlightStyles()
         applyElementShadow(target, mode)

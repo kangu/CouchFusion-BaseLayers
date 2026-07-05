@@ -128,7 +128,18 @@ const emit = defineEmits<{
         },
     ): void;
     (e: "unsaved-state-change", hasChanges: boolean): void;
-    (e: "node-focus", payload: { uid: string; path: string }): void;
+    (
+        e: "node-focus",
+        payload: {
+            uid: string;
+            path: string;
+            mode?: "flash" | "lock" | "clear";
+            propKey?: string;
+            propPath?: string;
+            scrollBlock?: ScrollLogicalPosition;
+            forceScroll?: boolean;
+        },
+    ): void;
 }>();
 
 const title = computed(() => props.title ?? "Content Builder");
@@ -1476,7 +1487,15 @@ function handleThemePreviewChange(payload: {
 
 function handleNodeFocus(
     payload:
-        | { uid?: string; path?: string; mode?: string; propKey?: string }
+        | {
+              uid?: string;
+              path?: string;
+              mode?: string;
+              propKey?: string;
+              propPath?: string;
+              scrollBlock?: ScrollLogicalPosition;
+              forceScroll?: boolean;
+          }
         | Event,
 ): void {
     if (!payload || typeof payload !== "object" || payload instanceof Event) {
@@ -1496,6 +1515,10 @@ function handleNodeFocus(
                 : undefined,
         propKey:
             typeof payload.propKey === "string" ? payload.propKey : undefined,
+        propPath:
+            typeof payload.propPath === "string" ? payload.propPath : undefined,
+        scrollBlock: payload.scrollBlock,
+        forceScroll: payload.forceScroll === true,
     });
 }
 
