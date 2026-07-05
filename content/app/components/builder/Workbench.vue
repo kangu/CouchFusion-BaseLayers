@@ -604,6 +604,8 @@ const previewSpacingClass = computed(
 const expandedRootNodes = reactive<Record<string, boolean>>({});
 
 const fallbackSearchQuery = ref("");
+const builderTreeSearchRef = ref<HTMLElement | null>(null);
+const isBuilderTreeSearchSticky = ref(false);
 const propFocusRequestToken = ref(0);
 const nodePropFocusRequest = ref<{
     uidPath: string[];
@@ -620,6 +622,8 @@ const focusedEditSession = ref<{
     snapshot: MinimalContentDocument;
 } | null>(null);
 const isFocusedEditSaving = ref(false);
+const isSiteTypographyEditorOpen = ref(false);
+const isSiteThemeEditorOpen = ref(false);
 const pendingInsertedSectionFocus = ref<string | null>(null);
 const focusedShowFieldsAround = ref(false);
 const focusedShowAllFields = ref(false);
@@ -632,9 +636,15 @@ const focusedPropDisplay = computed<"active" | "around" | "all">(() => {
     }
     return "active";
 });
+const isIsolatedEditorActive = computed(
+    () =>
+        Boolean(focusedEditSession.value) ||
+        isSiteTypographyEditorOpen.value ||
+        isSiteThemeEditorOpen.value,
+);
 
 watch(
-    () => Boolean(focusedEditSession.value),
+    () => isIsolatedEditorActive.value,
     (isActive) => emit("focused-edit-change", isActive),
     { immediate: true },
 );
@@ -2389,6 +2399,15 @@ watch(
     { deep: true, immediate: true },
 );
 
+const updateBuilderTreeSearchStickyState = () => {
+    const searchEl = builderTreeSearchRef.value;
+    if (!searchEl) {
+        isBuilderTreeSearchSticky.value = false;
+        return;
+    }
+    isBuilderTreeSearchSticky.value = searchEl.getBoundingClientRect().top <= 5.5;
+};
+
 onMounted(() => {
     globalComponentsRegistry
         .fetchPublic()
@@ -2414,6 +2433,12 @@ onMounted(() => {
             })
             .catch(() => {});
     }
+
+    updateBuilderTreeSearchStickyState();
+    if (typeof window !== "undefined") {
+        window.addEventListener("scroll", updateBuilderTreeSearchStickyState, true);
+        window.addEventListener("resize", updateBuilderTreeSearchStickyState);
+    }
 });
 
 watch(
@@ -2425,6 +2450,14 @@ watch(
 );
 
 onBeforeUnmount(() => {
+    if (typeof window !== "undefined") {
+        window.removeEventListener(
+            "scroll",
+            updateBuilderTreeSearchStickyState,
+            true,
+        );
+        window.removeEventListener("resize", updateBuilderTreeSearchStickyState);
+    }
     if (documentEmitTimeout) {
         clearTimeout(documentEmitTimeout);
         documentEmitTimeout = null;
@@ -2449,7 +2482,6 @@ const weightDraft = ref<number[]>([]);
 const widthDraft = ref<string[]>([]);
 const typographyNotice = ref<string | null>(null);
 const isTypographyApplying = ref(false);
-const isTypographyPanelExpanded = ref(false);
 const fontBrowserTarget = ref<"sans" | "display" | null>(null);
 const installingFontSlug = ref<string | null>(null);
 const ADD_FONT_OPTION_VALUE = "__content_add_new_font__";
@@ -2483,6 +2515,14 @@ const isTypographyPending = computed(
     () => contentFontSettings.loading.value || contentFontSettings.applying.value,
 );
 const isFontBrowserOpen = computed(() => fontBrowserTarget.value !== null);
+const isTypographySelectionValid = computed(
+    () =>
+        Boolean(sansFamilyDraft.value) &&
+        Boolean(displayFamilyDraft.value) &&
+        styleDraft.value.length > 0 &&
+        weightDraft.value.length > 0 &&
+        widthDraft.value.length > 0,
+);
 
 const hasTypographyDraftChanges = computed(() => {
     const settings = contentFontSettings.settings.value;
@@ -2497,6 +2537,11 @@ const hasTypographyDraftChanges = computed(() => {
         !hasSameStrings(sortStrings(settings.widths), sortStrings(widthDraft.value))
     );
 });
+const canConfirmSiteTypography = computed(
+    () =>
+        !isTypographyPending.value &&
+        (!hasTypographyDraftChanges.value || isTypographySelectionValid.value),
+);
 
 const typographyStatusLabel = computed(() => {
     const settings = contentFontSettings.settings.value;
@@ -2706,13 +2751,6 @@ watch(
     { immediate: true },
 );
 
-const toggleTypographyPanel = () => {
-    if (!isTypographyFeatureEnabled.value) {
-        return;
-    }
-    isTypographyPanelExpanded.value = !isTypographyPanelExpanded.value;
-};
-
 const openFontBrowser = async (target: "sans" | "display") => {
     fontBrowserTarget.value = target;
     typographyNotice.value = null;
@@ -2829,6 +2867,47 @@ const applyTypographySelection = async () => {
     }
 };
 
+const openSiteTypographyPanel = () => {
+    if (
+        !isTypographyFeatureEnabled.value ||
+        focusedEditSession.value ||
+        isSiteThemeEditorOpen.value
+    ) {
+        return;
+    }
+
+    closeFontBrowser();
+    resetTypographyDraft();
+    isSiteTypographyEditorOpen.value = true;
+};
+
+const closeSiteTypographyPanel = (resetDraft = true) => {
+    if (resetDraft) {
+        resetTypographyDraft();
+    }
+    closeFontBrowser();
+    isSiteTypographyEditorOpen.value = false;
+};
+
+const cancelSiteTypographyPanel = () => {
+    if (isTypographyApplying.value) {
+        return;
+    }
+    closeSiteTypographyPanel(true);
+};
+
+const confirmSiteTypographyPanel = async () => {
+    if (!canConfirmSiteTypography.value || isTypographyApplying.value) {
+        return;
+    }
+
+    if (hasTypographyDraftChanges.value) {
+        await applyTypographySelection();
+    }
+
+    closeSiteTypographyPanel(false);
+};
+
 watch(
     () => contentFontSettings.settings.value,
     () => {
@@ -2843,9 +2922,9 @@ const THEME_MODES = [
 ];
 
 const themeModeDraft = ref<"simple" | "full">("simple");
-const isThemePanelExpanded = ref(false);
 const themeDraft = ref<Record<string, string>>({});
 const themeNotice = ref<string | null>(null);
+const isThemeSubmitting = ref(false);
 
 const themeSettings = computed(() => contentThemeSettings.settings.value);
 const themeSchema = computed(() => contentThemeSettings.schema.value);
@@ -2949,6 +3028,9 @@ const hasThemeDraftChanges = computed(() => {
     const draft = createComparableThemeTokenMap(themeDraft.value);
     return JSON.stringify(original) !== JSON.stringify(draft);
 });
+const canConfirmSiteTheme = computed(
+    () => Boolean(themeSettings.value) && !isThemePending.value && !isThemeSubmitting.value,
+);
 
 const themeStatusLabel = computed(() => {
     const settings = themeSettings.value;
@@ -3041,11 +3123,48 @@ const applyThemeDraft = async () => {
     themeNotice.value = "Theme applied.";
 };
 
-const toggleThemePanel = () => {
-    if (!isThemeFeatureEnabled.value) {
+const openSiteThemePanel = () => {
+    if (
+        !isThemeFeatureEnabled.value ||
+        focusedEditSession.value ||
+        isSiteTypographyEditorOpen.value
+    ) {
         return;
     }
-    isThemePanelExpanded.value = !isThemePanelExpanded.value;
+
+    resetThemeDraft();
+    isSiteThemeEditorOpen.value = true;
+};
+
+const closeSiteThemePanel = (resetDraft = true) => {
+    if (resetDraft) {
+        resetThemeDraft();
+    }
+    isSiteThemeEditorOpen.value = false;
+};
+
+const cancelSiteThemePanel = () => {
+    if (isThemeSubmitting.value) {
+        return;
+    }
+    closeSiteThemePanel(true);
+};
+
+const confirmSiteThemePanel = async () => {
+    if (!canConfirmSiteTheme.value) {
+        return;
+    }
+
+    isThemeSubmitting.value = true;
+    try {
+        if (hasThemeDraftChanges.value) {
+            await saveThemeDraft();
+        }
+        await applyThemeDraft();
+        closeSiteThemePanel(false);
+    } finally {
+        isThemeSubmitting.value = false;
+    }
 };
 
 const previewThemeTokens = computed(() => {
@@ -3111,6 +3230,8 @@ defineExpose({
     getSerializedDocument,
     loadDocument,
     focusNodeProp,
+    openSiteTypographyPanel,
+    openSiteThemePanel,
 });
 
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -3168,315 +3289,7 @@ const handleSaveDebugClick = () => {
 
 <template>
     <div class="builder-page">
-        <section v-if="!focusedEditSession" class="builder-controls">
-            <div v-if="isTypographyFeatureEnabled" class="builder-typography-toggle">
-                <button
-                    type="button"
-                    class="builder-typography-toggle__button"
-                    :aria-expanded="isTypographyPanelExpanded"
-                    @click="toggleTypographyPanel"
-                >
-                    {{
-                        isTypographyPanelExpanded
-                            ? "Hide Typography"
-                            : "Typography"
-                    }}
-                </button>
-                <span class="builder-typography-toggle__summary">
-                    {{ typographySummaryLabel }}
-                </span>
-            </div>
-
-            <div
-                v-if="isTypographyFeatureEnabled && isTypographyPanelExpanded"
-                class="builder-typography-card"
-            >
-                <div class="builder-typography-card__header">
-                    <h3>Typography</h3>
-                    <span>{{ typographyStatusLabel }}</span>
-                </div>
-                <div class="builder-typography-card__grid">
-                    <label>
-                        <span>Sans family</span>
-                        <select
-                            :value="sansFamilyDraft"
-                            :disabled="isTypographyPending"
-                            @change="handleTypographyFamilyChange('sans', $event)"
-                        >
-                            <option
-                                v-for="option in typographyOptions"
-                                :key="`sans-${option.slug}`"
-                                :value="option.slug"
-                            >
-                                {{ option.label }}
-                            </option>
-                            <option :value="ADD_FONT_OPTION_VALUE">
-                                Add new...
-                            </option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>Serif family</span>
-                        <select
-                            :value="displayFamilyDraft"
-                            :disabled="isTypographyPending"
-                            @change="handleTypographyFamilyChange('display', $event)"
-                        >
-                            <option
-                                v-for="option in typographyOptions"
-                                :key="`display-${option.slug}`"
-                                :value="option.slug"
-                            >
-                                {{ option.label }}
-                            </option>
-                            <option :value="ADD_FONT_OPTION_VALUE">
-                                Add new...
-                            </option>
-                        </select>
-                    </label>
-                </div>
-                <div class="builder-typography-card__profiles">
-                    <fieldset class="builder-typography-card__fieldset">
-                        <legend>Styles</legend>
-                        <label
-                            v-for="option in TYPOGRAPHY_STYLE_OPTIONS"
-                            :key="`style-${option.value}`"
-                            class="builder-typography-card__choice"
-                        >
-                            <input
-                                v-model="styleDraft"
-                                type="checkbox"
-                                :value="option.value"
-                                :disabled="isTypographyPending"
-                            />
-                            <span>{{ option.label }}</span>
-                        </label>
-                    </fieldset>
-                    <fieldset class="builder-typography-card__fieldset">
-                        <legend>Weights</legend>
-                        <label
-                            v-for="weight in TYPOGRAPHY_WEIGHT_OPTIONS"
-                            :key="`weight-${weight}`"
-                            class="builder-typography-card__choice"
-                        >
-                            <input
-                                v-model="weightDraft"
-                                type="checkbox"
-                                :value="weight"
-                                :disabled="isTypographyPending"
-                            />
-                            <span>{{ weight }}</span>
-                        </label>
-                    </fieldset>
-                    <fieldset class="builder-typography-card__fieldset">
-                        <legend>Widths</legend>
-                        <label
-                            v-for="option in TYPOGRAPHY_WIDTH_OPTIONS"
-                            :key="`width-${option.value}`"
-                            class="builder-typography-card__choice"
-                        >
-                            <input
-                                v-model="widthDraft"
-                                type="checkbox"
-                                :value="option.value"
-                                :disabled="isTypographyPending"
-                            />
-                            <span>{{ option.label }}</span>
-                        </label>
-                        <p class="builder-typography-card__hint">
-                            Only widths exposed by Bunny for the selected family will be materialized.
-                        </p>
-                    </fieldset>
-                </div>
-                <p v-if="typographyErrorMessage" class="builder-typography-card__error">
-                    {{ typographyErrorMessage }}
-                </p>
-                <p v-else-if="typographyNotice" class="builder-typography-card__notice">
-                    {{ typographyNotice }}
-                </p>
-                <div class="builder-typography-card__actions">
-                    <button
-                        type="button"
-                        class="builder-typography-card__cancel"
-                        :disabled="isTypographyPending || !hasTypographyDraftChanges"
-                        @click="resetTypographyDraft"
-                    >
-                        Reset
-                    </button>
-                    <button
-                        type="button"
-                        class="builder-typography-card__apply"
-                        :disabled="isTypographyPending || !sansFamilyDraft || !displayFamilyDraft || styleDraft.length === 0 || weightDraft.length === 0 || widthDraft.length === 0"
-                        @click="applyTypographySelection"
-                    >
-                        {{
-                            isTypographyApplying
-                                ? "Applying…"
-                                : "Apply Fonts"
-                        }}
-                    </button>
-                </div>
-            </div>
-
-            <FontBrowserDialog
-                :is-open="isFontBrowserOpen"
-                :fonts="contentFontSettings.catalog.value"
-                :loading="contentFontSettings.catalogLoading.value"
-                :installing="isTypographyPending"
-                :installing-slug="installingFontSlug"
-                @close="closeFontBrowser"
-                @install="installFontFromBrowser"
-            />
-
-            <div v-if="isThemeFeatureEnabled" class="builder-theme-toggle">
-                <button
-                    type="button"
-                    class="builder-theme-toggle__button"
-                    :aria-expanded="isThemePanelExpanded"
-                    @click="toggleThemePanel"
-                >
-                    {{
-                        isThemePanelExpanded
-                            ? "Hide Theme"
-                            : "Theme"
-                    }}
-                </button>
-                <span class="builder-theme-toggle__summary">
-                    {{ themeSummaryLabel }}
-                </span>
-            </div>
-
-            <div
-                v-if="isThemeFeatureEnabled && isThemePanelExpanded"
-                class="builder-theme-card"
-            >
-                <div class="builder-theme-card__header">
-                    <h3>Theme</h3>
-                    <span>{{ themeStatusLabel }}</span>
-                </div>
-
-                <div class="builder-theme-card__mode">
-                    <button
-                        v-for="mode in THEME_MODES"
-                        :key="`theme-mode-${mode.value}`"
-                        type="button"
-                        class="builder-theme-card__mode-btn"
-                        :class="{ 'builder-theme-card__mode-btn--active': themeModeDraft === mode.value }"
-                        :disabled="isThemePending"
-                        @click="themeModeDraft = mode.value"
-                    >
-                        {{ mode.label }}
-                    </button>
-                </div>
-
-                <div v-if="themeModeDraft === 'simple'" class="builder-theme-card__simple">
-                    <label
-                        v-for="token in themeSimpleTokenDefinitions"
-                        :key="`theme-simple-${token.key}`"
-                    >
-                        <span>{{ token.label }}</span>
-                        <input
-                            type="text"
-                            :value="getThemeTokenValue(token.key)"
-                            :disabled="isThemePending || isThemeTokenReadOnly(token.key)"
-                            @input="
-                                (event: Event) =>
-                                    updateThemeTokenValue(
-                                        token.key,
-                                        (event.target as HTMLInputElement).value,
-                                    )
-                            "
-                        />
-                    </label>
-                </div>
-
-                <div v-else class="builder-theme-card__full">
-                    <section
-                        v-for="namespace in themeNamespaceSections"
-                        :key="`theme-namespace-${namespace.key}`"
-                        class="builder-theme-card__namespace"
-                    >
-                        <header class="builder-theme-card__namespace-header">
-                            <div>
-                                <h4>{{ namespace.label }}</h4>
-                                <p>{{ namespace.description }}</p>
-                            </div>
-                            <span
-                                v-if="namespace.compileTimeOnly"
-                                class="builder-theme-card__namespace-badge"
-                            >
-                                Read-only (compile-time)
-                            </span>
-                        </header>
-
-                        <p
-                            v-if="namespace.tokens.length === 0"
-                            class="builder-theme-card__namespace-empty"
-                        >
-                            No project keys configured for this namespace yet.
-                        </p>
-
-                        <div v-else class="builder-theme-card__namespace-grid">
-                            <label
-                                v-for="token in namespace.tokens"
-                                :key="`theme-token-${token.key}`"
-                            >
-                                <span>
-                                    {{ token.label }}
-                                    <em v-if="isThemeTokenReadOnly(token.key)"> · read-only</em>
-                                </span>
-                                <input
-                                    type="text"
-                                    :value="getThemeTokenValue(token.key)"
-                                    :disabled="isThemePending || isThemeTokenReadOnly(token.key)"
-                                    @input="
-                                        (event: Event) =>
-                                            updateThemeTokenValue(
-                                                token.key,
-                                                (event.target as HTMLInputElement).value,
-                                            )
-                                    "
-                                />
-                            </label>
-                        </div>
-                    </section>
-                </div>
-
-                <p v-if="themeErrorMessage" class="builder-theme-card__error">
-                    {{ themeErrorMessage }}
-                </p>
-                <p v-else-if="themeNotice" class="builder-theme-card__notice">
-                    {{ themeNotice }}
-                </p>
-
-                <div class="builder-theme-card__actions">
-                    <button
-                        type="button"
-                        class="builder-theme-card__cancel"
-                        :disabled="isThemePending || !themeSettings || !hasThemeDraftChanges"
-                        @click="resetThemeDraft"
-                    >
-                        Reset
-                    </button>
-                    <button
-                        type="button"
-                        class="builder-theme-card__save"
-                        :disabled="isThemePending || !themeSettings || !hasThemeDraftChanges"
-                        @click="saveThemeDraft"
-                    >
-                        Save Draft
-                    </button>
-                    <button
-                        type="button"
-                        class="builder-theme-card__apply"
-                        :disabled="isThemePending || !themeSettings || hasThemeDraftChanges"
-                        @click="applyThemeDraft"
-                    >
-                        Apply Theme
-                    </button>
-                </div>
-            </div>
-
+        <section v-if="!isIsolatedEditorActive" class="builder-controls">
             <button
                 v-if="!isSeoCardExpanded"
                 type="button"
@@ -3669,7 +3482,354 @@ const handleSaveDebugClick = () => {
 
         <Transition name="builder-focused-editor" mode="out-in">
         <section
-            v-if="focusedEditSession"
+            v-if="isSiteTypographyEditorOpen"
+            key="site-typography"
+            class="builder-focused-editor builder-site-typography"
+        >
+            <div class="builder-focused-editor__stage">
+                <div class="builder-focused-editor__card">
+                    <header class="builder-focused-editor__header">
+                        <div>
+                            <span class="builder-focused-editor__eyebrow">
+                                Site-wide
+                            </span>
+                            <h3>Site Typography</h3>
+                        </div>
+                        <button
+                            type="button"
+                            class="builder-focused-editor__close"
+                            :disabled="isTypographyApplying"
+                            aria-label="Cancel site typography"
+                            @click="cancelSiteTypographyPanel"
+                        >
+                            ×
+                        </button>
+                    </header>
+
+                    <div class="builder-typography-card">
+                        <div class="builder-typography-card__header">
+                            <h3>Site Typography</h3>
+                            <span>{{ typographyStatusLabel }}</span>
+                        </div>
+                        <div class="builder-typography-card__grid">
+                            <label>
+                                <span>Sans family</span>
+                                <select
+                                    :value="sansFamilyDraft"
+                                    :disabled="isTypographyPending"
+                                    @change="
+                                        handleTypographyFamilyChange('sans', $event)
+                                    "
+                                >
+                                    <option
+                                        v-for="option in typographyOptions"
+                                        :key="`sans-${option.slug}`"
+                                        :value="option.slug"
+                                    >
+                                        {{ option.label }}
+                                    </option>
+                                    <option :value="ADD_FONT_OPTION_VALUE">
+                                        Add new...
+                                    </option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Serif family</span>
+                                <select
+                                    :value="displayFamilyDraft"
+                                    :disabled="isTypographyPending"
+                                    @change="
+                                        handleTypographyFamilyChange('display', $event)
+                                    "
+                                >
+                                    <option
+                                        v-for="option in typographyOptions"
+                                        :key="`display-${option.slug}`"
+                                        :value="option.slug"
+                                    >
+                                        {{ option.label }}
+                                    </option>
+                                    <option :value="ADD_FONT_OPTION_VALUE">
+                                        Add new...
+                                    </option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="builder-typography-card__profiles">
+                            <fieldset class="builder-typography-card__fieldset">
+                                <legend>Styles</legend>
+                                <label
+                                    v-for="option in TYPOGRAPHY_STYLE_OPTIONS"
+                                    :key="`style-${option.value}`"
+                                    class="builder-typography-card__choice"
+                                >
+                                    <input
+                                        v-model="styleDraft"
+                                        type="checkbox"
+                                        :value="option.value"
+                                        :disabled="isTypographyPending"
+                                    />
+                                    <span>{{ option.label }}</span>
+                                </label>
+                            </fieldset>
+                            <fieldset class="builder-typography-card__fieldset">
+                                <legend>Weights</legend>
+                                <label
+                                    v-for="weight in TYPOGRAPHY_WEIGHT_OPTIONS"
+                                    :key="`weight-${weight}`"
+                                    class="builder-typography-card__choice"
+                                >
+                                    <input
+                                        v-model="weightDraft"
+                                        type="checkbox"
+                                        :value="weight"
+                                        :disabled="isTypographyPending"
+                                    />
+                                    <span>{{ weight }}</span>
+                                </label>
+                            </fieldset>
+                            <fieldset class="builder-typography-card__fieldset">
+                                <legend>Widths</legend>
+                                <label
+                                    v-for="option in TYPOGRAPHY_WIDTH_OPTIONS"
+                                    :key="`width-${option.value}`"
+                                    class="builder-typography-card__choice"
+                                >
+                                    <input
+                                        v-model="widthDraft"
+                                        type="checkbox"
+                                        :value="option.value"
+                                        :disabled="isTypographyPending"
+                                    />
+                                    <span>{{ option.label }}</span>
+                                </label>
+                                <p class="builder-typography-card__hint">
+                                    Only widths exposed by Bunny for the selected family will be materialized.
+                                </p>
+                            </fieldset>
+                        </div>
+                        <p
+                            v-if="typographyErrorMessage"
+                            class="builder-typography-card__error"
+                        >
+                            {{ typographyErrorMessage }}
+                        </p>
+                        <p
+                            v-else-if="typographyNotice"
+                            class="builder-typography-card__notice"
+                        >
+                            {{ typographyNotice }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="builder-focused-editor__bar">
+                <div class="builder-focused-editor__visibility">
+                    <span class="builder-site-typography__summary">
+                        {{ typographySummaryLabel }}
+                    </span>
+                </div>
+                <div class="builder-focused-editor__actions">
+                    <button
+                        type="button"
+                        class="builder-focused-editor__cancel"
+                        :disabled="isTypographyApplying"
+                        @click="cancelSiteTypographyPanel"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-focused-editor__save"
+                        :disabled="!canConfirmSiteTypography"
+                        @click="confirmSiteTypographyPanel"
+                    >
+                        {{ isTypographyApplying ? "Applying..." : "OK" }}
+                    </button>
+                </div>
+            </footer>
+        </section>
+
+        <section
+            v-else-if="isSiteThemeEditorOpen"
+            key="site-theme"
+            class="builder-focused-editor builder-site-theme"
+        >
+            <div class="builder-focused-editor__stage">
+                <div class="builder-focused-editor__card">
+                    <header class="builder-focused-editor__header">
+                        <div>
+                            <span class="builder-focused-editor__eyebrow">
+                                Site-wide
+                            </span>
+                            <h3>Site Theme</h3>
+                        </div>
+                        <button
+                            type="button"
+                            class="builder-focused-editor__close"
+                            :disabled="isThemeSubmitting"
+                            aria-label="Cancel site theme"
+                            @click="cancelSiteThemePanel"
+                        >
+                            ×
+                        </button>
+                    </header>
+
+                    <div class="builder-theme-card">
+                        <div class="builder-theme-card__header">
+                            <h3>Site Theme</h3>
+                            <span>{{ themeStatusLabel }}</span>
+                        </div>
+
+                        <div class="builder-theme-card__mode">
+                            <button
+                                v-for="mode in THEME_MODES"
+                                :key="`theme-mode-${mode.value}`"
+                                type="button"
+                                class="builder-theme-card__mode-btn"
+                                :class="{
+                                    'builder-theme-card__mode-btn--active':
+                                        themeModeDraft === mode.value,
+                                }"
+                                :disabled="isThemePending || isThemeSubmitting"
+                                @click="themeModeDraft = mode.value"
+                            >
+                                {{ mode.label }}
+                            </button>
+                        </div>
+
+                        <div
+                            v-if="themeModeDraft === 'simple'"
+                            class="builder-theme-card__simple"
+                        >
+                            <label
+                                v-for="token in themeSimpleTokenDefinitions"
+                                :key="`theme-simple-${token.key}`"
+                            >
+                                <span>{{ token.label }}</span>
+                                <input
+                                    type="text"
+                                    :value="getThemeTokenValue(token.key)"
+                                    :disabled="
+                                        isThemePending ||
+                                        isThemeSubmitting ||
+                                        isThemeTokenReadOnly(token.key)
+                                    "
+                                    @input="
+                                        (event: Event) =>
+                                            updateThemeTokenValue(
+                                                token.key,
+                                                (event.target as HTMLInputElement)
+                                                    .value,
+                                            )
+                                    "
+                                />
+                            </label>
+                        </div>
+
+                        <div v-else class="builder-theme-card__full">
+                            <section
+                                v-for="namespace in themeNamespaceSections"
+                                :key="`theme-namespace-${namespace.key}`"
+                                class="builder-theme-card__namespace"
+                            >
+                                <header class="builder-theme-card__namespace-header">
+                                    <div>
+                                        <h4>{{ namespace.label }}</h4>
+                                        <p>{{ namespace.description }}</p>
+                                    </div>
+                                    <span
+                                        v-if="namespace.compileTimeOnly"
+                                        class="builder-theme-card__namespace-badge"
+                                    >
+                                        Read-only (compile-time)
+                                    </span>
+                                </header>
+
+                                <p
+                                    v-if="namespace.tokens.length === 0"
+                                    class="builder-theme-card__namespace-empty"
+                                >
+                                    No project keys configured for this namespace yet.
+                                </p>
+
+                                <div
+                                    v-else
+                                    class="builder-theme-card__namespace-grid"
+                                >
+                                    <label
+                                        v-for="token in namespace.tokens"
+                                        :key="`theme-token-${token.key}`"
+                                    >
+                                        <span>
+                                            {{ token.label }}
+                                            <em v-if="isThemeTokenReadOnly(token.key)">
+                                                · read-only
+                                            </em>
+                                        </span>
+                                        <input
+                                            type="text"
+                                            :value="getThemeTokenValue(token.key)"
+                                            :disabled="
+                                                isThemePending ||
+                                                isThemeSubmitting ||
+                                                isThemeTokenReadOnly(token.key)
+                                            "
+                                            @input="
+                                                (event: Event) =>
+                                                    updateThemeTokenValue(
+                                                        token.key,
+                                                        (
+                                                            event.target as HTMLInputElement
+                                                        ).value,
+                                                    )
+                                            "
+                                        />
+                                    </label>
+                                </div>
+                            </section>
+                        </div>
+
+                        <p v-if="themeErrorMessage" class="builder-theme-card__error">
+                            {{ themeErrorMessage }}
+                        </p>
+                        <p v-else-if="themeNotice" class="builder-theme-card__notice">
+                            {{ themeNotice }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="builder-focused-editor__bar">
+                <div class="builder-focused-editor__visibility">
+                    <span class="builder-site-typography__summary">
+                        {{ themeSummaryLabel }}
+                    </span>
+                </div>
+                <div class="builder-focused-editor__actions">
+                    <button
+                        type="button"
+                        class="builder-focused-editor__cancel"
+                        :disabled="isThemeSubmitting"
+                        @click="cancelSiteThemePanel"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="builder-focused-editor__save"
+                        :disabled="!canConfirmSiteTheme"
+                        @click="confirmSiteThemePanel"
+                    >
+                        {{ isThemeSubmitting ? "Applying..." : "OK" }}
+                    </button>
+                </div>
+            </footer>
+        </section>
+
+        <section
+            v-else-if="focusedEditSession"
             key="focused-editor"
             class="builder-focused-editor"
         >
@@ -3793,6 +3953,31 @@ const handleSaveDebugClick = () => {
                     />
                 </div>
             </div>
+            <label
+                ref="builderTreeSearchRef"
+                class="builder-component-search builder-tree__search"
+                :class="{
+                    'is-active': searchQuery.length > 0,
+                    'is-stuck': isBuilderTreeSearchSticky,
+                }"
+            >
+                <svg
+                    class="builder-component-search__icon"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                >
+                    <path
+                        fill="currentColor"
+                        d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.47 4.24l5.06 5.06-1.41 1.41-5.06-5.06A6.5 6.5 0 1 1 9.5 3m0 2A4.5 4.5 0 1 0 14 9.5 4.5 4.5 0 0 0 9.5 5Z"
+                    />
+                </svg>
+                <input
+                    v-model="searchQuery"
+                    type="search"
+                    placeholder="Search through content..."
+                />
+            </label>
             <p v-if="!builderTree.length" class="builder-empty">
                 No components added yet.
             </p>
@@ -3955,6 +4140,16 @@ const handleSaveDebugClick = () => {
         </section>
         </Transition>
 
+        <FontBrowserDialog
+            :is-open="isFontBrowserOpen"
+            :fonts="contentFontSettings.catalog.value"
+            :loading="contentFontSettings.catalogLoading.value"
+            :installing="isTypographyPending"
+            :installing-slug="installingFontSlug"
+            @close="closeFontBrowser"
+            @install="installFontFromBrowser"
+        />
+
         <!--
     <section class="builder-output">
       <h2>Serialized Output</h2>
@@ -4013,29 +4208,6 @@ const handleSaveDebugClick = () => {
     border: 1px solid #cbd5e1;
     border-radius: 10px;
     background: #ffffff;
-}
-
-.builder-typography-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.builder-typography-toggle__button {
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 7px 12px;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.builder-typography-toggle__summary {
-    font-size: 0.78rem;
-    color: #475569;
 }
 
 .builder-typography-card__header {
@@ -4161,29 +4333,6 @@ const handleSaveDebugClick = () => {
     margin: 0;
     font-size: 0.78rem;
     color: #0369a1;
-}
-
-.builder-theme-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.builder-theme-toggle__button {
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 7px 12px;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.builder-theme-toggle__summary {
-    font-size: 0.78rem;
-    color: #475569;
 }
 
 .builder-theme-card {
@@ -4489,11 +4638,6 @@ const handleSaveDebugClick = () => {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #fff;
-}
-
-.builder-tree__search {
-    flex: 1 1 320px;
-    min-width: 260px;
 }
 
 .builder-search label {
@@ -4871,6 +5015,13 @@ const handleSaveDebugClick = () => {
     color: #94a3b8;
 }
 
+.builder-site-typography__summary {
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
 .builder-focused-editor__cancel,
 .builder-focused-editor__save {
     min-width: 82px;
@@ -4944,10 +5095,65 @@ const handleSaveDebugClick = () => {
 
 .builder-tree__search {
     position: sticky;
-    top: 0;
+    top: 5px;
     z-index: 2;
-    margin-bottom: 8px;
+    margin: 10px 0 14px;
     background: #fff;
+    border-radius: 12px;
+    transition:
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+
+.builder-tree__search.is-stuck {
+    background: #f5f9ff;
+    box-shadow: 0 8px 20px -18px rgba(37, 99, 235, 0.45);
+}
+
+.builder-component-search {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.builder-component-search input {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px 10px 44px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 14px;
+    line-height: 1.35;
+    outline: none;
+    transition:
+        border-color 0.16s ease,
+        background-color 0.16s ease,
+        box-shadow 0.16s ease;
+}
+
+.builder-tree__search.is-stuck input {
+    border-color: #bfdbfe;
+    background: #f8fbff;
+}
+
+.builder-component-search__icon {
+    position: absolute;
+    left: 13px;
+    width: 22px;
+    height: 22px;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.builder-component-search.is-active input {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.builder-component-search.is-active .builder-component-search__icon {
+    color: #2563eb;
 }
 
 .builder-empty {

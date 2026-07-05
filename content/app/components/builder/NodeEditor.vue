@@ -91,7 +91,11 @@
                         "
                         @click="toggleNode(node.uid)"
                     >
-                        {{ collapsedNodes[node.uid] ? "Expand" : "Collapse" }}
+                        {{
+                            collapsedNodes[node.uid]
+                                ? collapsedPropsLabel
+                                : "Collapse"
+                        }}
                     </button>
                     <button
                         v-if="
@@ -1064,6 +1068,10 @@ const baseVisibleProps = computed(() =>
         (prop) => !INTERNAL_NODE_PROP_KEYS.has(prop.key),
     ),
 );
+const collapsedPropsLabel = computed(() => {
+    const count = baseVisibleProps.value.length;
+    return `${count} ${count === 1 ? "prop" : "props"}`;
+});
 const focusedPropKey = computed(() => {
     if (
         !isolateLayout.value ||
