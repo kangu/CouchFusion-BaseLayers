@@ -225,12 +225,30 @@ const resolveBaseCandidates = () => {
     return "";
 };
 
+const measurePreviewChromeWidth = (): number => {
+    if (typeof window === "undefined") {
+        return 0;
+    }
+
+    const frameRect = previewFrameRef.value?.getBoundingClientRect();
+    if (!frameRect) {
+        return dividerRef.value?.getBoundingClientRect().width ?? 0;
+    }
+
+    return Math.max(
+        0,
+        Math.round(window.innerWidth - frameRect.width - sidebarWidth.value),
+    );
+};
+
 const clampSidebarWidth = (value: number): number => {
     const min = MIN_SIDEBAR_WIDTH;
     let max = min;
 
     if (typeof window !== "undefined") {
-        const viewportCap = window.innerWidth - MIN_PREVIEW_WIDTH;
+        const occupiedPreviewChromeWidth = measurePreviewChromeWidth();
+        const viewportCap =
+            window.innerWidth - MIN_PREVIEW_WIDTH - occupiedPreviewChromeWidth;
         if (Number.isFinite(viewportCap)) {
             max = Math.max(min, viewportCap);
         }

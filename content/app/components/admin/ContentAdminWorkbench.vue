@@ -5607,12 +5607,13 @@ defineExpose({
 }
 
 .content-admin-workbench__editor-body {
-    align-self: stretch;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    width: min(100%, 600px);
+    width: min(100%, 800px);
     max-width: 800px;
+    margin-left: auto;
+    margin-right: 0;
     box-sizing: border-box;
     padding: 1.25rem;
 }

@@ -176,7 +176,7 @@ describe("builder focused editor mode", () => {
         expect(admin).not.toContain('placeholder="Search through content..."');
     });
 
-    it("allows the workbench to expand until a 320px live preview remains", () => {
+    it("allows the workbench to expand until a 320px live preview remains after divider chrome", () => {
         const workbench = readLayerFile(
             "content/app/components/builder/Workbench.vue",
         );
@@ -184,7 +184,7 @@ describe("builder focused editor mode", () => {
         const pageRule = workbench.slice(pageRuleIndex, pageRuleIndex + 220);
 
         expect(pageRuleIndex).toBeGreaterThanOrEqual(0);
-        expect(pageRule).toContain("max-width: calc(100vw - 320px);");
+        expect(pageRule).toContain("max-width: calc(100vw - 327px);");
         expect(pageRule).not.toContain("max-width: 1200px;");
     });
 
@@ -202,11 +202,14 @@ describe("builder focused editor mode", () => {
 
         expect(inlineEditor).toContain("const MIN_PREVIEW_WIDTH = 320;");
         expect(inlineEditor).toContain("let max = min;");
-        expect(inlineEditor).toContain("max = Math.max(min, viewportCap);");
+        expect(inlineEditor).toContain("const occupiedPreviewChromeWidth = measurePreviewChromeWidth();");
+        expect(inlineEditor).toContain("window.innerWidth - MIN_PREVIEW_WIDTH - occupiedPreviewChromeWidth");
         expect(inlineEditor).not.toContain("const MAX_SIDEBAR_WIDTH = 720;");
         expect(editorBodyRuleIndex).toBeGreaterThanOrEqual(0);
         expect(editorBodyRule).toContain("width: min(100%, 800px);");
         expect(editorBodyRule).toContain("max-width: 800px;");
+        expect(editorBodyRule).toContain("margin-left: auto;");
+        expect(editorBodyRule).toContain("margin-right: 0;");
     });
 
     it("prevents horizontal scrolling in the inline workbench sidebar", () => {
@@ -233,6 +236,7 @@ describe("builder focused editor mode", () => {
         expect(adminRootRule).toContain("width: 100%;");
         expect(adminRootRule).toContain("min-width: 0;");
         expect(adminRootRule).toContain("overflow-x: clip;");
-        expect(editorBodyRule).toContain("align-self: stretch;");
+        expect(editorBodyRule).not.toContain("align-self: stretch;");
+        expect(editorBodyRule).toContain("width: min(100%, 800px);");
     });
 });
