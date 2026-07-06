@@ -359,6 +359,47 @@ export async function getDocument<T extends CouchDBDocument = CouchDBDocument>(
   }
 }
 
+const normalizeLocalDocumentName = (documentId: string): string =>
+  documentId.startsWith("_local/") ? documentId.slice("_local/".length) : documentId;
+
+/**
+ * Get a CouchDB _local document. Local documents are addressed through
+ * /{db}/_local/{id} and are not returned by normal views.
+ */
+export async function getLocalDocument<
+  T extends CouchDBDocument = CouchDBDocument,
+>(
+  databaseName: string,
+  documentId: string,
+  config?: CouchDBConfig,
+): Promise<T | null> {
+  try {
+    const { baseUrl } = getCouchDBConfig(config);
+    const localName = normalizeLocalDocumentName(documentId);
+    const response = await couchDBRequest(
+      `${baseUrl}/${databaseName}/_local/${encodeURIComponent(localName)}`,
+      {},
+      config,
+    );
+
+    if (response.ok) {
+      return (await response.json()) as T;
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const error: CouchDBError = await response.json();
+    throw new Error(
+      `CouchDB local document fetch error: ${error.error} - ${error.reason}`,
+    );
+  } catch (error) {
+    console.warn(`Failed to get local document: ${documentId}`, error);
+    return null;
+  }
+}
+
 /**
  * Retrieve a document along with attachment metadata or inline attachment data.
  *
@@ -647,6 +688,39 @@ export async function putDocument<T extends CouchDBDocument>(
 }
 
 /**
+ * Create or update a CouchDB _local document.
+ */
+export async function putLocalDocument<T extends CouchDBDocument>(
+  databaseName: string,
+  document: T,
+  config?: CouchDBConfig,
+): Promise<CouchDBResponse> {
+  const { baseUrl } = getCouchDBConfig(config);
+  const localName = normalizeLocalDocumentName(document._id);
+
+  const response = await couchDBRequest(
+    `${baseUrl}/${databaseName}/_local/${encodeURIComponent(localName)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        ...document,
+        _id: `_local/${localName}`,
+      }),
+    },
+    config,
+  );
+
+  if (!response.ok) {
+    const error: CouchDBError = await response.json();
+    throw new Error(
+      `CouchDB local document error: ${error.error} - ${error.reason}`,
+    );
+  }
+
+  return (await response.json()) as CouchDBResponse;
+}
+
+/**
  * Delete a document from a database
  */
 export async function deleteDocument(
@@ -668,6 +742,36 @@ export async function deleteDocument(
   if (!response.ok) {
     const error: CouchDBError = await response.json();
     throw new Error(`CouchDB delete error: ${error.error} - ${error.reason}`);
+  }
+
+  return (await response.json()) as CouchDBResponse;
+}
+
+/**
+ * Delete a CouchDB _local document.
+ */
+export async function deleteLocalDocument(
+  databaseName: string,
+  documentId: string,
+  revision: string,
+  config?: CouchDBConfig,
+): Promise<CouchDBResponse> {
+  const { baseUrl } = getCouchDBConfig(config);
+  const localName = normalizeLocalDocumentName(documentId);
+
+  const response = await couchDBRequest(
+    `${baseUrl}/${databaseName}/_local/${encodeURIComponent(localName)}?rev=${encodeURIComponent(revision)}`,
+    {
+      method: "DELETE",
+    },
+    config,
+  );
+
+  if (!response.ok) {
+    const error: CouchDBError = await response.json();
+    throw new Error(
+      `CouchDB local document delete error: ${error.error} - ${error.reason}`,
+    );
   }
 
   return (await response.json()) as CouchDBResponse;

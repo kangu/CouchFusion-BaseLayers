@@ -1,14 +1,17 @@
-import { bulkDocs, getView, putDocument } from '#database/utils/couchdb'
+import {
+    deleteLocalDocument,
+    getLocalDocument,
+    putLocalDocument,
+    type CouchDBDocument,
+} from '#database/utils/couchdb'
 import { clonePlain } from '#content/utils/page-documents'
 import { normalizePagePath } from '#content/utils/page'
 import { getContentDatabaseName } from './database'
 import type { StoredContentPageDocument } from './content-documents'
 import { CONTENT_META_I18N_KEY, normalizeLocaleCode } from '#content/utils/i18n'
 
-const HISTORY_PREFIX = 'oldpage-'
-const HISTORY_MAX_ENTRIES = 3
-const HISTORY_DESIGN_DOC = 'content'
-const HISTORY_VIEW = 'history_by_path'
+const HISTORY_MAX_ENTRIES = 5
+const HISTORY_INDEX_PREFIX = 'page-history-index-'
 
 export interface PageHistoryRecord {
     id: string
@@ -19,7 +22,41 @@ export interface PageHistoryRecord {
     document: StoredContentPageDocument
 }
 
-const buildHistoryId = (documentId: string, timestamp: string) => `${HISTORY_PREFIX}${documentId}-${timestamp}`
+interface PageHistoryIndexEntry {
+    id: string
+    timestamp: string
+}
+
+interface PageHistoryIndexDocument extends CouchDBDocument {
+    type: 'page-history-index'
+    path: string
+    locale: string
+    entries: PageHistoryIndexEntry[]
+}
+
+const toLocalId = (id: string) => id.startsWith('_local/') ? id : `_local/${id}`
+
+const buildHistoryId = (documentId: string, timestamp: string) => toLocalId(`${documentId}-${timestamp}`)
+
+const buildHistoryIndexId = (path: string, locale: string) =>
+    toLocalId(`${HISTORY_INDEX_PREFIX}${encodeURIComponent(path)}-${locale}`)
+
+const normalizeIndexEntries = (entries: unknown): PageHistoryIndexEntry[] => {
+    if (!Array.isArray(entries)) {
+        return []
+    }
+
+    return entries
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return null
+            }
+            const id = typeof (entry as any).id === 'string' ? toLocalId((entry as any).id) : ''
+            const timestamp = typeof (entry as any).timestamp === 'string' ? (entry as any).timestamp : ''
+            return id && timestamp ? { id, timestamp } : null
+        })
+        .filter((entry): entry is PageHistoryIndexEntry => Boolean(entry))
+}
 
 const cloneForHistory = (document: StoredContentPageDocument, timestamp: string): StoredContentPageDocument => {
     const cloned = clonePlain(document) as StoredContentPageDocument
@@ -41,6 +78,43 @@ const cloneForHistory = (document: StoredContentPageDocument, timestamp: string)
     return cloned
 }
 
+const loadHistoryIndex = async (
+    databaseName: string,
+    basePath: string,
+    locale: string,
+): Promise<PageHistoryIndexDocument> => {
+    const existing = await getLocalDocument<PageHistoryIndexDocument>(
+        databaseName,
+        buildHistoryIndexId(basePath, locale),
+    )
+
+    if (existing) {
+        return {
+            ...existing,
+            type: 'page-history-index',
+            path: basePath,
+            locale,
+            entries: normalizeIndexEntries(existing.entries),
+        }
+    }
+
+    return {
+        _id: buildHistoryIndexId(basePath, locale),
+        type: 'page-history-index',
+        path: basePath,
+        locale,
+        entries: [],
+    }
+}
+
+const deleteHistoryDocument = async (databaseName: string, documentId: string) => {
+    const existing = await getLocalDocument(databaseName, documentId)
+    if (!existing?._rev) {
+        return
+    }
+    await deleteLocalDocument(databaseName, documentId, existing._rev)
+}
+
 export const savePageHistory = async (document: StoredContentPageDocument) => {
     const databaseName = getContentDatabaseName()
     const timestamp = new Date().toISOString()
@@ -48,31 +122,24 @@ export const savePageHistory = async (document: StoredContentPageDocument) => {
     const locale = normalizeLocaleCode(historyDocument.contentLocale) ?? 'en'
     const basePath = normalizePagePath(historyDocument.contentBasePath || document.path || '/')
 
-    await putDocument(databaseName, historyDocument)
+    await putLocalDocument(databaseName, historyDocument)
 
-    const viewResponse = await getView(databaseName, HISTORY_DESIGN_DOC, HISTORY_VIEW, {
-        startkey: [basePath, locale, '\ufff0'],
-        endkey: [basePath, locale],
-        include_docs: true,
-        descending: true
+    const indexDocument = await loadHistoryIndex(databaseName, basePath, locale)
+    const nextEntries = [
+        { id: historyDocument._id, timestamp },
+        ...indexDocument.entries.filter((entry) => entry.id !== historyDocument._id),
+    ].sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+
+    const keptEntries = nextEntries.slice(0, HISTORY_MAX_ENTRIES)
+    const surplusEntries = nextEntries.slice(HISTORY_MAX_ENTRIES)
+
+    await putLocalDocument(databaseName, {
+        ...indexDocument,
+        entries: keptEntries,
     })
 
-    const rows = viewResponse?.rows || []
-    if (rows.length <= HISTORY_MAX_ENTRIES) {
-        return
-    }
-
-    const surplus = rows.slice(HISTORY_MAX_ENTRIES)
-        .map((row) => row.doc)
-        .filter((doc): doc is { _id: string; _rev: string } => Boolean(doc?._id && doc?._rev))
-        .map((doc) => ({
-            _id: doc._id,
-            _rev: doc._rev,
-            _deleted: true
-        }))
-
-    if (surplus.length) {
-        await bulkDocs(databaseName, surplus)
+    for (const entry of surplusEntries) {
+        await deleteHistoryDocument(databaseName, entry.id)
     }
 }
 
@@ -82,26 +149,29 @@ export const fetchPageHistory = async (
     limit = HISTORY_MAX_ENTRIES,
 ): Promise<PageHistoryRecord[]> => {
     const databaseName = getContentDatabaseName()
+    const basePath = normalizePagePath(path)
     const normalizedLocale = normalizeLocaleCode(locale) ?? 'en'
-    const viewResponse = await getView(databaseName, HISTORY_DESIGN_DOC, HISTORY_VIEW, {
-        startkey: [path, normalizedLocale, '\ufff0'],
-        endkey: [path, normalizedLocale],
-        include_docs: true,
-        descending: true,
-        limit
-    })
+    const indexDocument = await loadHistoryIndex(databaseName, basePath, normalizedLocale)
+    const entries = normalizeIndexEntries(indexDocument.entries)
+        .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+        .slice(0, limit)
 
-    const rows = viewResponse?.rows || []
+    const documents = await Promise.all(
+        entries.map(async (entry) => ({
+            entry,
+            doc: await getLocalDocument<StoredContentPageDocument>(databaseName, entry.id),
+        })),
+    )
 
-    return rows
-        .map((row) => {
-            const doc = (row.doc ? clonePlain(row.doc) : null) as StoredContentPageDocument | null
+    return documents
+        .map(({ entry, doc }) => {
+            doc = (doc ? clonePlain(doc) : null) as StoredContentPageDocument | null
             if (!doc) {
                 return null
             }
-            doc.path = doc.path || path
-            const localeValue = normalizeLocaleCode(doc.contentLocale || row.value?.locale) ?? normalizedLocale
-            const timestamp = doc.savedAt || doc.updatedAt || doc.updated_at || row.value?.timestamp || new Date().toISOString()
+            doc.path = doc.path || basePath
+            const localeValue = normalizeLocaleCode(doc.contentLocale) ?? normalizedLocale
+            const timestamp = doc.savedAt || doc.updatedAt || doc.updated_at || entry.timestamp || new Date().toISOString()
             return {
                 id: doc._id,
                 path: doc.path,

@@ -480,8 +480,72 @@ describe('content pages API handlers', () => {
     const historyResponse = await historyHandler(historyEvent)
 
     expect(historyResponse.success).toBe(true)
+    expect(historyResponse.history[0].id).toMatch(/^_local\/page-/)
+    expect(historyResponse.history[0].id).not.toContain('oldpage-')
     expect(historyResponse.history[0].path).toBe('/story')
     expect(historyResponse.history[0].document.title).toBe('Updated Title')
+
+    const allDocs = await getAllDocs(contentHarness.getContext().databaseName, {
+      startkey: 'page-/story-',
+      endkey: 'page-/story-\ufff0',
+    })
+    expect(allDocs?.rows ?? []).toHaveLength(0)
+  })
+
+  it('keeps the latest five local page history snapshots', async () => {
+    await seedContentPages(contentHarness, { path: '/timeline', title: 'Original Title' })
+    const admin = await seedAdminUser(contentHarness)
+    const cookieHeader = admin.setCookie?.split(';')[0] ?? ''
+
+    const handler = (await import('../server/api/content/pages.put')).default
+    const historyHandler = (await import('../server/api/content/pages/history.get')).default
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      for (let index = 1; index <= 6; index += 1) {
+        vi.setSystemTime(new Date(`2026-07-07T10:00:0${index}.000Z`))
+        const event = createMockEvent({
+          method: 'PUT',
+          body: {
+            document: {
+              path: '/timeline',
+              title: `Timeline Version ${index}`,
+              layout: { spacing: 'tight' },
+              body: { type: 'minimal', value: [] },
+              seo: { title: `Timeline Version ${index}`, description: 'Updated Description' },
+              meta: { category: 'news' },
+              navigation: true,
+            },
+          },
+          headers: {
+            cookie: cookieHeader,
+          },
+        })
+
+        const response = await handler(event)
+        expect(response.success).toBe(true)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+
+    const historyEvent = createMockEvent({
+      path: '/api/content/pages/history',
+      query: { path: '/timeline', limit: 10 },
+      headers: { cookie: cookieHeader },
+    })
+
+    const historyResponse = await historyHandler(historyEvent)
+
+    expect(historyResponse.success).toBe(true)
+    expect(historyResponse.history).toHaveLength(5)
+    expect(historyResponse.history.map((entry: any) => entry.document.title)).toEqual([
+      'Timeline Version 6',
+      'Timeline Version 5',
+      'Timeline Version 4',
+      'Timeline Version 3',
+      'Timeline Version 2',
+    ])
   })
 
   it('deletes a page', async () => {
