@@ -18,11 +18,64 @@ const siteName = computed(() => adminWorkspaceConfig.value.siteName ?? brandName
 const footerText = computed(
   () => adminWorkspaceConfig.value.footerText ?? `© ${new Date().getFullYear()} ${brandName.value}`,
 );
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "adminWorkspace.sidebarCollapsed";
+const SIDEBAR_COLLAPSED_COOKIE_KEY = "adminWorkspaceSidebarCollapsed";
+const SIDEBAR_PREPAINT_CLASS = "aw-sidebar-precollapsed";
+const sidebarCollapsedCookie = useCookie<string>(SIDEBAR_COLLAPSED_COOKIE_KEY, {
+  default: () => "false",
+  maxAge: 60 * 60 * 24 * 365,
+  path: "/",
+  sameSite: "lax",
+});
 const hasSiteLogo = computed(() => Boolean(nuxtApp.vueApp.component("SiteLogo")));
 const hasToastNotification = computed(() => Boolean(nuxtApp.vueApp.component("ToastNotification")));
 const userInitial = computed(() => {
   const username = (user.value?.name ?? "").trim();
   return username ? username.charAt(0).toUpperCase() : "U";
+});
+
+const readSidebarCollapsedPreference = () => {
+  if (!import.meta.client) {
+    return sidebarCollapsedCookie.value === "true";
+  }
+
+  try {
+    const storedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    return storedValue === null
+      ? sidebarCollapsedCookie.value === "true"
+      : storedValue === "true";
+  } catch {
+    return sidebarCollapsedCookie.value === "true";
+  }
+};
+
+const sidebarCollapsed = ref(readSidebarCollapsedPreference());
+const sidebarToggleLabel = computed(() => (
+  sidebarCollapsed.value ? "Expand sidebar" : "Collapse sidebar"
+));
+
+const persistSidebarCollapsedPreference = (value: boolean) => {
+  sidebarCollapsedCookie.value = value ? "true" : "false";
+
+  if (!import.meta.client) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, value ? "true" : "false");
+  } catch {
+    // Ignore storage failures; the interactive state still works for this session.
+  }
+};
+
+useHead({
+  script: [
+    {
+      key: "admin-workspace-sidebar-preference",
+      innerHTML: `;(function(){try{var storageKey='${SIDEBAR_COLLAPSED_STORAGE_KEY}';var cookieKey='${SIDEBAR_COLLAPSED_COOKIE_KEY}';var prepaintClass='${SIDEBAR_PREPAINT_CLASS}';var storedValue=localStorage.getItem(storageKey);var cookieCollapsed=document.cookie.indexOf(cookieKey+'=true')!==-1;var collapsed=storedValue===null?cookieCollapsed:storedValue==='true';if(storedValue!==null){document.cookie=cookieKey+'='+(storedValue==='true'?'true':'false')+'; path=/; max-age=31536000; SameSite=Lax';}if(collapsed){document.documentElement.classList.add(prepaintClass);}}catch(error){}})();`,
+      tagPosition: "head",
+    },
+  ],
 });
 
 const {
@@ -43,6 +96,11 @@ const closeProfileMenu = () => {
 
 const toggleProfileMenu = () => {
   profileMenuOpen.value = !profileMenuOpen.value;
+};
+
+const toggleSidebarCollapsed = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  persistSidebarCollapsedPreference(sidebarCollapsed.value);
 };
 
 const handleEditProfile = async () => {
@@ -99,18 +157,53 @@ onMounted(() => {
     document.removeEventListener("keydown", handleEscape);
   });
 });
+
+onMounted(async () => {
+  sidebarCollapsed.value = readSidebarCollapsedPreference();
+  persistSidebarCollapsedPreference(sidebarCollapsed.value);
+  await nextTick();
+  document.documentElement.classList.remove(SIDEBAR_PREPAINT_CLASS);
+});
 </script>
 
 <template>
   <div
     class="aw-shell min-h-screen bg-gray-50"
-    :class="themeClass"
+    :class="[themeClass, { 'aw-sidebar-collapsed': sidebarCollapsed }]"
   >
-    <aside class="aw-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col">
-      <div class="aw-sidebar-surface flex flex-col flex-grow bg-white border-r border-gray-200 overflow-y-auto">
-        <div class="aw-sidebar-brand flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <div class="flex items-center">
-            <div class="h-8 rounded-sm flex items-center justify-center mr-3">
+    <aside
+      class="aw-sidebar relative z-40 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:flex-col transition-[width] duration-300 ease-out"
+      :class="sidebarCollapsed ? 'lg:w-[4.5rem]' : 'lg:w-64'"
+    >
+      <button
+        type="button"
+        class="aw-sidebar-collapse-toggle absolute right-0 top-8 z-50 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200/80 bg-white/90 text-gray-500 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.7)] backdrop-blur-xl transition-all duration-200 ease-out hover:border-orange-200 hover:bg-white hover:text-orange-600 hover:shadow-[0_16px_34px_-18px_rgba(249,115,22,0.9)] active:shadow-[0_6px_18px_-14px_rgba(15,23,42,0.8)] focus:outline-none focus-visible:border-gray-300 focus-visible:shadow-[0_12px_30px_-20px_rgba(15,23,42,0.75)]"
+        :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        :title="sidebarToggleLabel"
+        :aria-pressed="sidebarCollapsed"
+        @click="toggleSidebarCollapsed"
+      >
+        <Icon
+          :name="sidebarCollapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'"
+          class="aw-sidebar-collapse-icon h-4 w-4 transition-transform duration-300 ease-out"
+        />
+      </button>
+      <div
+        class="aw-sidebar-surface flex flex-col flex-grow bg-white border-r border-gray-200 transition-[border-radius,box-shadow] duration-300 ease-out"
+        :class="sidebarCollapsed ? 'overflow-visible shadow-[18px_0_40px_-32px_rgba(15,23,42,0.45)]' : 'overflow-y-auto'"
+      >
+        <div
+          class="aw-sidebar-brand relative flex h-16 items-center border-b border-gray-200 transition-all duration-300 ease-out"
+          :class="sidebarCollapsed ? 'justify-center px-3 py-4' : 'justify-between px-6 py-4'"
+        >
+          <div
+            class="flex min-w-0 items-center"
+            :class="sidebarCollapsed ? 'hidden' : ''"
+          >
+            <div
+              class="h-8 min-w-0 rounded-sm flex items-center justify-center transition-all duration-300 ease-out"
+              :class="sidebarCollapsed ? 'mr-0 w-10 overflow-hidden' : 'mr-3'"
+            >
               <component
                 :is="'SiteLogo'"
                 v-if="hasSiteLogo"
@@ -118,7 +211,8 @@ onMounted(() => {
               />
               <span
                 v-else
-                class="text-sm font-semibold text-gray-800"
+                class="aw-sidebar-brand-text truncate text-sm font-semibold text-gray-800 transition-all duration-200"
+                :class="sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100'"
               >
                 {{ brandName }}
               </span>
@@ -126,12 +220,24 @@ onMounted(() => {
           </div>
         </div>
 
-        <nav class="aw-sidebar-nav flex-1 px-4 py-6 overflow-y-auto">
-          <SidebarNavigation :sections="navigationSections" />
+        <nav
+          class="aw-sidebar-nav flex-1 transition-all duration-300 ease-out"
+          :class="sidebarCollapsed ? 'overflow-visible px-3 py-5' : 'overflow-y-auto px-4 py-6'"
+        >
+          <SidebarNavigation
+            :sections="navigationSections"
+            :collapsed="sidebarCollapsed"
+          />
         </nav>
 
-        <div class="aw-sidebar-footer px-6 py-4 border-t border-gray-200">
-          <p class="aw-sidebar-footer-text text-xs text-gray-400">
+        <div
+          class="aw-sidebar-footer border-t border-gray-200 transition-all duration-300 ease-out"
+          :class="sidebarCollapsed ? 'px-3 py-3' : 'px-6 py-4'"
+        >
+          <p
+            class="aw-sidebar-footer-text truncate text-xs text-gray-400 transition-all duration-200"
+            :class="sidebarCollapsed ? 'opacity-0' : 'opacity-100'"
+          >
             {{ footerText }}
           </p>
         </div>
@@ -217,7 +323,10 @@ onMounted(() => {
       </div>
     </Transition>
 
-    <div class="aw-main lg:ml-64 flex flex-col min-h-screen">
+    <div
+      class="aw-main flex flex-col min-h-screen transition-[margin] duration-300 ease-out"
+      :class="sidebarCollapsed ? 'lg:ml-[4.5rem]' : 'lg:ml-64'"
+    >
       <header class="aw-header bg-white shadow-sm border-b border-gray-200 lg:static lg:overflow-y-visible">
         <div class="max-w-7xl mx-auto px-4">
           <div class="relative flex justify-between h-16">
@@ -329,3 +438,90 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+@media (min-width: 1024px) {
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar {
+    width: 4.5rem;
+    transition: none !important;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-main {
+    margin-left: 4.5rem;
+    transition: none !important;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-surface,
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-nav,
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-brand,
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-footer {
+    transition: none !important;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-surface,
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-nav {
+    overflow: visible;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-brand {
+    justify-content: center;
+    padding: 1rem 0.75rem;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-brand > div,
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-footer-text,
+  :global(html.aw-sidebar-precollapsed) :deep(.aw-nav-section-title),
+  :global(html.aw-sidebar-precollapsed) :deep(.aw-nav-label) {
+    clip: rect(0 0 0 0);
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-nav {
+    padding: 1.25rem 0.75rem;
+  }
+
+  :global(html.aw-sidebar-precollapsed) .aw-sidebar-footer {
+    padding: 0.75rem;
+  }
+
+  :global(html.aw-sidebar-precollapsed) :deep(.aw-nav-items) {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  :global(html.aw-sidebar-precollapsed) :deep(.aw-nav-link-desktop) {
+    border-radius: 1rem;
+    justify-content: center;
+    padding: 0.75rem 0;
+  }
+
+  :global(html.aw-sidebar-precollapsed) :deep(.aw-nav-icon-desktop) {
+    height: 1.5rem;
+    margin-right: 0;
+    width: 1.5rem;
+  }
+}
+
+.aw-sidebar-collapse-toggle {
+  outline: none;
+  transform: translate(50%, -50%);
+}
+
+.aw-sidebar-collapse-toggle:focus,
+.aw-sidebar-collapse-toggle:focus-visible {
+  outline: none;
+}
+
+.aw-sidebar-collapse-toggle:hover {
+  transform: translate(50%, calc(-50% - 1px)) rotate(3deg) scale(1.1);
+}
+
+.aw-sidebar-collapse-toggle:active {
+  transform: translate(50%, -50%) scale(0.9);
+}
+</style>
