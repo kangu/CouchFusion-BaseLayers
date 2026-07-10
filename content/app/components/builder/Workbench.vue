@@ -620,6 +620,10 @@ const focusedEditSession = ref<{
     propPath: Array<string | number>;
     token: number;
     snapshot: MinimalContentDocument;
+    expandedRootNodes: Record<string, boolean>;
+    scrollX: number;
+    scrollY: number;
+    editorScrollTop: number;
 } | null>(null);
 const isFocusedEditSaving = ref(false);
 const isSiteTypographyEditorOpen = ref(false);
@@ -2030,6 +2034,10 @@ const openFocusedEditSession = (payload: {
         ...request,
         builderPath: [...payload.builderPath],
         snapshot: focusedEditSnapshot(),
+        expandedRootNodes: { ...expandedRootNodes },
+        scrollX: typeof window === "undefined" ? 0 : window.scrollX,
+        scrollY: typeof window === "undefined" ? 0 : window.scrollY,
+        editorScrollTop: typeof document === "undefined" ? 0 : document.querySelector<HTMLElement>(".inline-live-editor__sidebar")?.scrollTop ?? 0,
     };
     nodePropFocusRequest.value = request;
     handleNodeFocus({ uid: payload.targetUid, mode: "lock" });
@@ -2101,7 +2109,20 @@ const closeFocusedEditSession = () => {
     focusedShowFieldsAround.value = false;
     focusedShowAllFields.value = false;
     if (session) {
-        void restoreTreeFocusAfterFocusedEdit(session);
+        Object.keys(expandedRootNodes).forEach((uid) => delete expandedRootNodes[uid]);
+        Object.assign(expandedRootNodes, session.expandedRootNodes);
+        void nextTick().then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+            Object.keys(expandedRootNodes).forEach((uid) => delete expandedRootNodes[uid]);
+            Object.assign(expandedRootNodes, session.expandedRootNodes);
+            expandedRootNodes[session.uidPath[0] ?? session.targetUid] = true;
+            window.scrollTo({ left: session.scrollX, top: session.scrollY, behavior: "auto" });
+            const sidebar = document.querySelector<HTMLElement>(".inline-live-editor__sidebar");
+            if (sidebar) sidebar.scrollTop = session.editorScrollTop;
+            setTimeout(() => {
+                const settledSidebar = document.querySelector<HTMLElement>(".inline-live-editor__sidebar");
+                if (settledSidebar) settledSidebar.scrollTop = session.editorScrollTop;
+            }, 100);
+        })));
     }
 };
 
@@ -2444,6 +2465,13 @@ const updateBuilderTreeSearchStickyState = () => {
     isBuilderTreeSearchSticky.value = searchEl.getBoundingClientRect().top <= 5.5;
 };
 
+/** Exits focused editing before the selected preview section changes. */
+const handlePreviewSectionChange = () => {
+    if (focusedEditSession.value) {
+        closeFocusedEditSession();
+    }
+};
+
 onMounted(() => {
     globalComponentsRegistry
         .fetchPublic()
@@ -2474,6 +2502,7 @@ onMounted(() => {
     if (typeof window !== "undefined") {
         window.addEventListener("scroll", updateBuilderTreeSearchStickyState, true);
         window.addEventListener("resize", updateBuilderTreeSearchStickyState);
+        window.addEventListener("content:preview-section", handlePreviewSectionChange);
     }
 });
 
@@ -2494,6 +2523,7 @@ onBeforeUnmount(() => {
             true,
         );
         window.removeEventListener("resize", updateBuilderTreeSearchStickyState);
+        window.removeEventListener("content:preview-section", handlePreviewSectionChange);
     }
     if (documentEmitTimeout) {
         clearTimeout(documentEmitTimeout);
@@ -3900,6 +3930,7 @@ const handleSaveDebugClick = () => {
                         :global-alias-ids="globalAliasIdList"
                         :show-translate-section="showTranslateSection"
                         :focus-request="focusedEditFocusRequest"
+                        :expanded="isRootExpanded(focusedEditNode.uid)"
                         :search-query="normalizedSearchQuery"
                         isolate-layout
                         :focused-prop-display="focusedPropDisplay"
@@ -4072,6 +4103,7 @@ const handleSaveDebugClick = () => {
                     :global-alias-ids="globalAliasIdList"
                     :show-translate-section="showTranslateSection"
                     :focus-request="nodePropFocusRequest"
+                    :expanded="isRootExpanded(node.uid)"
                     :search-query="normalizedSearchQuery"
                     :on-update-prop="updateNodeProp"
                     :on-update-text="updateTextNode"

@@ -500,6 +500,12 @@ const postFocusMessage = (
     );
 };
 
+const postPreviewSection = (event: Event) => {
+    const detail = (event as CustomEvent<{ uid?: string; sectionId?: string }>).detail;
+    if (!iframeRef.value?.contentWindow || !detail?.sectionId) return;
+    iframeRef.value.contentWindow.postMessage({ type: "builder_preview_section", payload: detail }, previewOrigin.value);
+};
+
 const flushPendingPreviewMessages = () => {
     if (!canPostToPreview()) {
         return;
@@ -1034,6 +1040,7 @@ watch(
 
 onMounted(() => {
     window.addEventListener("message", handlePreviewMessage);
+    window.addEventListener("content:preview-section", postPreviewSection);
 
     if (typeof window !== "undefined") {
         const stored = loadStoredSidebarWidth();
@@ -1062,6 +1069,7 @@ onBeforeUnmount(() => {
         previewFrameMeasureFrame = null;
     }
     window.removeEventListener("message", handlePreviewMessage);
+    window.removeEventListener("content:preview-section", postPreviewSection);
     if (typeof window !== "undefined") {
         window.removeEventListener("resize", applySidebarConstraints);
     }

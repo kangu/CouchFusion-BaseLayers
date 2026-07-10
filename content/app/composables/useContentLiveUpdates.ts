@@ -930,9 +930,10 @@ export const useContentLiveUpdates = (): void => {
     const sectionId = sectionOwner?.getAttribute('data-section-id')?.trim() || undefined
     const hint = collectInlineHint(target)
 
-    // Preserve native interaction on form/button controls (for example
-    // accordion toggles) while still emitting prop-focus metadata.
-    const preserveNativeInteraction = Boolean(interactiveControl)
+    // Controls with editable prop markers are editor targets in live preview.
+    // Components must opt in with data-inline-preview-interactive to preserve
+    // native behavior (for example, an accordion toggle).
+    const preserveNativeInteraction = false
     if (!preserveNativeInteraction) {
       if (event.cancelable) {
         event.preventDefault()

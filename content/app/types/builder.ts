@@ -110,6 +110,7 @@ export interface ComponentDefinition {
   flow?: ComponentFlowItem[];
   allowChildren?: boolean;
   childHint?: string;
+  previewSections?: Array<{ id: string; label: string }>;
 }
 
 export type BuilderMarginBreakpoint = 'base' | 'sm' | 'md' | 'lg' | 'xl';

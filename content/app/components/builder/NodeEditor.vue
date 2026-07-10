@@ -180,6 +180,13 @@
             class="node-panel__body"
             v-show="!collapsedNodes[node.uid]"
         >
+            <LivePreviewSectionNavigator
+                v-if="componentDef?.previewSections?.length"
+                :sections="componentDef.previewSections"
+                :active-section="previewSection"
+                visible
+                @select="selectPreviewSection"
+            />
             <NodePropsPanel
                 :search-query="normalizedSearchQuery"
                 :visible-props="visibleProps"
@@ -437,6 +444,7 @@ import NodeChildrenPanel from "./node-editor/NodeChildrenPanel.vue";
 import NodeInsertDialog from "./node-editor/NodeInsertDialog.vue";
 import NodeMarginsPanel from "./node-editor/NodeMarginsPanel.vue";
 import NodePropsPanel from "./node-editor/NodePropsPanel.vue";
+import LivePreviewSectionNavigator from "../inline/LivePreviewSectionNavigator.vue";
 import NodeReorderDialog from "./node-editor/NodeReorderDialog.vue";
 import { useNodeEditorSearchHighlight } from "./node-editor/composables/useNodeEditorSearchHighlight";
 import { useNodeEditorFieldVisibility } from "./node-editor/composables/useNodeEditorFieldVisibility";
@@ -492,6 +500,7 @@ const props = defineProps<{
     showTranslateSection?: boolean;
     searchQuery?: string;
     depth?: number;
+    expanded?: boolean;
     onUpdateProp: (uid: string, key: string, value: unknown) => void;
     onUpdateText: (uid: string, value: string) => void;
     onAddChildComponent: (parentUid: string, componentId: string) => void;
@@ -604,6 +613,11 @@ const componentDef = computed(() =>
         ? props.registry.lookup[props.node.component]
         : undefined,
 );
+const previewSection = ref("");
+const selectPreviewSection = (sectionId: string) => {
+    previewSection.value = sectionId;
+    window.dispatchEvent(new CustomEvent("content:preview-section", { detail: { uid: props.node.uid, sectionId } }));
+};
 const isGlobalAliasNode = computed(() => {
     if (props.node.type !== "component") {
         return false;
@@ -2467,8 +2481,9 @@ const hydrateDrafts = () => {
 
     if (props.node.type === "component") {
         if (!(props.node.uid in collapsedNodes)) {
-            collapsedNodes[props.node.uid] =
-                !props.focusRequest?.uidPath.includes(props.node.uid);
+            collapsedNodes[props.node.uid] = props.expanded === true
+                ? false
+                : !props.focusRequest?.uidPath.includes(props.node.uid);
         }
         for (const key of definedPropKeys.value) {
             const schema = getPropSchema(key);

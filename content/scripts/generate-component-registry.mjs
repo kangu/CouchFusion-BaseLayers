@@ -1710,6 +1710,12 @@ const applyBuilderComponentMeta = (definition, meta) => {
   if (typeof meta.description === 'string' && meta.description.trim().length > 0) {
     definition.description = meta.description.trim()
   }
+  if (Array.isArray(meta.previewSections)) {
+    definition.previewSections = meta.previewSections
+      .filter((section) => section && typeof section.id === 'string' && typeof section.label === 'string')
+      .map((section) => ({ id: section.id.trim(), label: section.label.trim() }))
+      .filter((section) => section.id && section.label)
+  }
 }
 
 const escapeString = (value) =>
