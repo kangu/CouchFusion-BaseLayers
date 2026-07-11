@@ -3831,6 +3831,7 @@ const applyTextValue = () => {
     background: #ffffff;
 }
 
+
 .node-panel :deep(.node-panel__array-actions) {
     display: flex;
     align-items: center;

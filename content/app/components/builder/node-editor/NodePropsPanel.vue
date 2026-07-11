@@ -558,8 +558,7 @@ const props = defineProps<{
     isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
-const fieldWrapperTag = (schema: ComponentPropSchema) =>
-    schema.ui?.component ? "div" : "label";
+const fieldWrapperTag = (_schema: ComponentPropSchema) => "div";
 
 const resolvePrimitiveInputType = (schema: ComponentPropSchema) => {
     if (schema.type !== "number") {
@@ -599,8 +598,7 @@ const formatRangeDisplayValue = (value: unknown) => {
     return "0";
 };
 
-const fieldWrapperRole = (schema: ComponentPropSchema) =>
-    schema.ui?.component ? "group" : undefined;
+const fieldWrapperRole = (_schema: ComponentPropSchema) => "group";
 
 const preventFieldWrapperActivation = (event: Event) => {
     event.stopPropagation();

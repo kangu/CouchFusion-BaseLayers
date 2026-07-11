@@ -44,7 +44,7 @@
             v-show="!collapsedArrays[prop.key]"
         >
             <div class="node-panel__array-fields">
-                <label
+                <div
                     v-for="field in filterVisibleFields(
                         prop.items,
                         arrayItemEntry.value,
@@ -68,6 +68,7 @@
                                 canTranslateField(field),
                         },
                     ]"
+                    role="group"
                 >
                     <span>{{ field.label }}</span>
                     <template v-if="field.type === 'textarea'">
@@ -1921,34 +1922,11 @@
                             />
                         </div>
                     </template>
-                </label>
+                </div>
             </div>
             <div class="node-panel__array-actions">
-                <button
-                    type="button"
-                    class="node-panel__array-remove"
-                    @click="
-                        confirmRemoveArrayItem(
-                            prop.key,
-                            arrayItemEntry.index,
-                        )
-                    "
-                >
-                    Remove item
-                </button>
-                <button
-                    type="button"
-                    class="node-panel__array-reorder-link"
-                    @click="
-                        openTopLevelArrayReorderDialog(
-                            prop.key,
-                            'jsonarray',
-                            arrayItemEntry.index,
-                        )
-                    "
-                >
-                    Move item
-                </button>
+                <button type="button" class="node-panel__array-remove" @click="confirmRemoveArrayItem(prop.key, arrayItemEntry.index)">Remove item</button>
+                <button type="button" class="node-panel__array-reorder-link" @click="openTopLevelArrayReorderDialog(prop.key, 'jsonarray', arrayItemEntry.index)">Move item</button>
             </div>
         </div>
     </template>
