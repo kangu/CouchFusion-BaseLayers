@@ -37,6 +37,11 @@ const resolveInvoiceStatus = (invoiceDoc: CouchDBDocument): string => {
   return typeof status === "string" ? status.trim() : "";
 };
 
+const resolveInvoiceProvider = (invoiceDoc: CouchDBDocument): string => {
+  const provider = invoiceDoc.provider || invoiceDoc.payment?.provider || invoiceDoc.invoiceData?.provider;
+  return typeof provider === "string" ? provider.trim() : "";
+};
+
 /**
  * Resolves the invoice creation timestamp from normalized and legacy invoice fields.
  */
@@ -79,6 +84,9 @@ export const isStalePendingInvoice = (
   now: Date,
   maxPendingMs = DEFAULT_MAX_PENDING_MS,
 ): boolean => {
+  if (resolveInvoiceProvider(invoiceDoc) === "nwc") {
+    return false;
+  }
   if (resolveInvoiceStatus(invoiceDoc) !== PENDING_STATUS) {
     return false;
   }

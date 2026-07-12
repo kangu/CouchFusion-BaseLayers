@@ -38,7 +38,7 @@ Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, stat
 ## Conventions
 - Route rules force `cors: true` on `/api/**` and `x-powered-by: btc` header — do not strip.
 - All provider implementations must satisfy the `LightningProvider` interface in `types/lightning.ts`.
-- Provider names are the lowercase string keys `'strike' | 'alby' | 'blink'`; never invent new keys without updating `LightningConfig` and `services/lightning.ts` switch.
+- Provider names are the lowercase string keys `'strike' | 'alby' | 'blink' | 'nwc'`; never invent new keys without updating `LightningConfig` and `services/lightning.ts` switch.
 - Invoice currency defaults to `sats`; BTC conversion lives in `providers/strike.ts` (`satsToBtc`) — keep precision at 8 decimals.
 - Webhook routes must be idempotent; status transitions go through `server/utils/payment-state.ts`.
 - Persisted docs use `type: 'lightning_invoice'` (and related) prefixes; design docs live in `utils/design-documents.ts`.
@@ -49,7 +49,7 @@ Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, stat
 - Extends layer: `../database` (uses `#database/utils/couchdb` — `getDocument`, `getView`, `bulkDocs`, `putDocument`, `validateCouchDBEnvironment`).
 - No other layers imported.
 - Consuming app must provide `runtimeConfig.lightning` with `defaultProvider` and `providers.{strike,alby,blink}` (see `README_alby.md`).
-- Env: `ALBY_PAT`, `STRIKE_API_KEY`, `NUXT_PUBLIC_SITE_URL` (webhook base) — set by consuming app.
+- NWC configuration is server-only in CouchDB `_config`: `lightning_default_provider=nwc`, `nwc_connection_uri`, and optional `nwc_reconcile_interval_ms`. The URI is secret material and must never be logged or exposed.
 - `crypto` (node builtin) used by Strike provider signature verification.
 
 ## Build / Test commands

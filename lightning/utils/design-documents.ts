@@ -53,8 +53,9 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_provider: {
       map: `function(doc) {
-        if (doc.provider && doc.type === 'lightning_invoice') {
-          emit(doc.provider, doc);
+        var provider = doc.provider || (doc.invoiceData && doc.invoiceData.provider) || (doc.payment && doc.payment.provider);
+        if (provider && doc.type === 'lightning_invoice') {
+          emit(provider, doc);
         }
       }`
     },
@@ -92,8 +93,10 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
      */
     by_provider_and_status: {
       map: `function(doc) {
-        if (doc.provider && doc.status && doc.type === 'lightning_invoice') {
-          emit([doc.provider, doc.status], doc);
+        var provider = doc.provider || (doc.invoiceData && doc.invoiceData.provider) || (doc.payment && doc.payment.provider);
+        var status = doc.status || (doc.payment && doc.payment.status) || (doc.invoiceData && doc.invoiceData.status);
+        if (provider && status && doc.type === 'lightning_invoice') {
+          emit([provider, status], doc);
         }
       }`
     },

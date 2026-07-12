@@ -2,6 +2,7 @@ import type { LightningProvider, LightningConfig, InvoiceRequest, InvoiceRespons
 import { createStrikeProvider } from '../providers/strike'
 import { createAlbyProvider } from '../providers/alby'
 import { createBlinkProvider } from '../providers/blink'
+import { createNwcProvider } from '../providers/nwc'
 
 export function createLightningService(config: LightningConfig) {
   const providerInstances = new Map<string, LightningProvider>()
@@ -37,6 +38,13 @@ export function createLightningService(config: LightningConfig) {
           throw new Error('Blink provider not configured')
         }
         provider = createBlinkProvider(config.providers.blink)
+        break
+
+      case 'nwc':
+        if (!config.providers.nwc) {
+          throw new Error('NWC provider not configured')
+        }
+        provider = createNwcProvider(config.providers.nwc)
         break
         
       default:

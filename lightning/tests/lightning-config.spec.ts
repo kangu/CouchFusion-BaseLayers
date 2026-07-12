@@ -150,6 +150,40 @@ describe("lightning config resolver", () => {
     );
   });
 
+  it("reads the NWC URI only when NWC is selected and does not disclose it in source notices", async () => {
+    const connectionUri = "nostr+walletconnect://wallet-pubkey?relay=wss%3A%2F%2Frelay.example&secret=private-secret";
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "nwc",
+      nwc_connection_uri: connectionUri,
+      nwc_reconcile_interval_ms: "45000",
+    });
+
+    const { formatLightningConfigSourceLog, resolveLightningConfigWithSources } = await import("../server/utils/lightning-config");
+    const resolved = await resolveLightningConfigWithSources();
+
+    expect(resolved.config.defaultProvider).toBe("nwc");
+    expect(resolved.config.providers.nwc).toEqual({
+      connectionUri,
+      reconcileIntervalMs: 45000,
+    });
+    const output = formatLightningConfigSourceLog(resolved).join("\n");
+    expect(output).toContain("providers.nwc.connectionUri: present from CouchDB key nwc_connection_uri");
+    expect(output).not.toContain(connectionUri);
+    expect(output).not.toContain("private-secret");
+  });
+
+  it("requires the NWC URI only when NWC is the selected provider", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "nwc",
+    });
+
+    const { resolveLightningConfig } = await import("../server/utils/lightning-config");
+
+    await expect(resolveLightningConfig()).rejects.toThrow(
+      "Missing required Lightning CouchDB config values in cf_env_bitvocation: nwc_connection_uri",
+    );
+  });
+
   it("formats source notices without leaking credential values", async () => {
     readCouchConfigValuesMock.mockResolvedValueOnce({
       lightning_default_provider: "strike",
