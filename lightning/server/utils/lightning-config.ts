@@ -7,6 +7,7 @@ import type {
   AlbyConfig,
   BlinkConfig,
   LightningConfig,
+  NwcConfig,
   StrikeConfig,
 } from "../../types/lightning";
 
@@ -39,9 +40,11 @@ const CONFIG_KEYS = [
   "alby_webhook_url",
   "alby_webhook_endpoint_id",
   "alby_webhook_secret",
+  "nwc_connection_uri",
+  "nwc_reconcile_interval_ms",
 ];
 
-const PROVIDERS = ["strike", "alby", "blink"] as const;
+const PROVIDERS = ["strike", "alby", "blink", "nwc"] as const;
 
 const PROVIDER_SOURCE_PATHS: Record<LightningConfig["defaultProvider"], string[]> = {
   strike: [
@@ -63,6 +66,10 @@ const PROVIDER_SOURCE_PATHS: Record<LightningConfig["defaultProvider"], string[]
     "providers.alby.webhookEndpointId",
     "providers.alby.webhookSecret",
   ],
+  nwc: [
+    "providers.nwc.connectionUri",
+    "providers.nwc.reconcileIntervalMs",
+  ],
 };
 
 const parseOptional = (value: unknown): string | null => {
@@ -75,7 +82,7 @@ const parseOptional = (value: unknown): string | null => {
 };
 
 const normalizeProvider = (value: string | null): LightningConfig["defaultProvider"] | null => {
-  if (value === "strike" || value === "alby" || value === "blink") {
+  if (value === "strike" || value === "alby" || value === "blink" || value === "nwc") {
     return value;
   }
 
@@ -115,6 +122,11 @@ const shouldIncludeProvider = (provider: Record<string, unknown> | undefined): b
   }
 
   return Object.values(provider).some((value) => parseOptional(value));
+};
+
+const parsePositiveInteger = (value: unknown): number | undefined => {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
 
 /**
@@ -206,6 +218,19 @@ export const resolveLightningConfigWithSources = async (
     ) || undefined,
   };
 
+  const nwc: NwcConfig = {
+    connectionUri: resolveValue(
+      "providers.nwc.connectionUri",
+      "nwc_connection_uri",
+    ),
+    reconcileIntervalMs: parsePositiveInteger(couchValues.nwc_reconcile_interval_ms),
+  };
+  sources["providers.nwc.reconcileIntervalMs"] = {
+    key: "nwc_reconcile_interval_ms",
+    present: Boolean(nwc.reconcileIntervalMs),
+    source: nwc.reconcileIntervalMs ? "couchdb" : "missing",
+  };
+
   const resolvedProviders: LightningConfig["providers"] = {};
   if (shouldIncludeProvider(strike) || defaultProvider === "strike") {
     resolvedProviders.strike = strike;
@@ -215,6 +240,9 @@ export const resolveLightningConfigWithSources = async (
   }
   if (shouldIncludeProvider(alby) || defaultProvider === "alby") {
     resolvedProviders.alby = alby;
+  }
+  if (shouldIncludeProvider(nwc) || defaultProvider === "nwc") {
+    resolvedProviders.nwc = nwc;
   }
 
   for (const provider of PROVIDERS) {
@@ -261,6 +289,10 @@ const getRequiredCouchKeys = (
 
   if (provider === "alby" && !resolved.sources["providers.alby.accessToken"]?.present) {
     missing.push("alby_access_token");
+  }
+
+  if (provider === "nwc" && !resolved.sources["providers.nwc.connectionUri"]?.present) {
+    missing.push("nwc_connection_uri");
   }
 
   return missing;

@@ -1,3 +1,6 @@
+export type LightningProviderName = 'strike' | 'alby' | 'blink' | 'nwc'
+export type LightningInvoiceStatus = 'pending' | 'paid' | 'expired' | 'cancelled' | 'failed'
+
 export interface InvoiceRequest {
   amount: number
   currency: string
@@ -12,9 +15,9 @@ export interface InvoiceResponse {
   paymentRequest?: string
   amount: number
   currency: string
-  status: 'pending' | 'paid' | 'expired' | 'cancelled'
+  status: LightningInvoiceStatus
   expiresAt?: Date
-  provider?: 'strike' | 'alby' | 'blink'
+  provider?: LightningProviderName
   paymentContext?: Record<string, any>
   // Quote data (Strike provider)
   quoteId?: string
@@ -68,11 +71,17 @@ export interface BlinkConfig {
   webhookEndpointId?: string
 }
 
+export interface NwcConfig {
+  connectionUri: string
+  reconcileIntervalMs?: number
+}
+
 export interface LightningConfig {
-  defaultProvider: 'strike' | 'alby' | 'blink'
+  defaultProvider: LightningProviderName
   providers: {
     strike?: StrikeConfig
     alby?: AlbyConfig
     blink?: BlinkConfig
+    nwc?: NwcConfig
   }
 }

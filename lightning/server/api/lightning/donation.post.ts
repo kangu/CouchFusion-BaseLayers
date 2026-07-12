@@ -4,9 +4,10 @@ import {defineEventHandler, readBody, createError} from 'h3'
 import {useRuntimeConfig} from '#imports'
 import {saveInvoiceToDatabase} from '../../../utils/orders'
 import { resolveLightningConfig } from '../../utils/lightning-config'
+import type { LightningProviderName } from '../../../types/lightning'
 
 export default defineEventHandler(async (event) => {
-    const body = await readBody<{ amount?: number; memo?: string; provider?: 'strike' | 'alby' | 'blink' }>(event)
+    const body = await readBody<{ amount?: number; memo?: string; provider?: LightningProviderName }>(event)
     const amount = Number(body?.amount || 0)
     const memo = typeof body?.memo === 'string' ? body.memo : ''
     const donationOrderId = randomUUID()

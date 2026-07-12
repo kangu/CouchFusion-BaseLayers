@@ -1,11 +1,11 @@
 import { createLightningInvoice, checkLightningInvoiceStatus, type CreateInvoiceOptions } from '../../utils/lightning'
-import type { LightningConfig } from '../../types/lightning'
+import type { LightningConfig, LightningInvoiceStatus, LightningProviderName } from '../../types/lightning'
 import { getDocument } from '#database/utils/couchdb'
 
 export interface PaymentOptions {
   description?: string
   metadata?: Record<string, any>
-  provider?: 'strike' | 'alby' | 'blink'
+  provider?: LightningProviderName
 }
 
 export interface PaymentInfo {
@@ -14,9 +14,9 @@ export interface PaymentInfo {
   paymentRequest: string
   amount: number
   currency: string
-  status: 'pending' | 'paid' | 'expired' | 'cancelled'
+  status: LightningInvoiceStatus
   expiresAt?: Date
-  provider?: 'strike' | 'alby' | 'blink'
+  provider?: LightningProviderName
   paymentContext?: Record<string, any>
 }
 
