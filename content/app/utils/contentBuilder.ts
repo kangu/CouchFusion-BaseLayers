@@ -14,6 +14,8 @@ export type MinimalContentEntry = MinimalContentNode | string
 export type SpacingPresetId = 'none' | 'tight' | 'cozy' | 'roomy'
 
 export interface PageConfigInput {
+  /** Existing persistence identifier, retained while editing an existing page. */
+  id?: string
   path: string
   title: string
   seoTitle: string
@@ -22,6 +24,8 @@ export interface PageConfigInput {
   navigation: boolean
   extension: string
   meta?: Record<string, any>
+  /** Publication state retained while editing an existing page. */
+  publicationState?: 'published' | 'draft'
 }
 
 export interface MinimalContentDocument {
@@ -426,7 +430,7 @@ export const createDocumentFromTree = (
   const idSegment = pathToIdSegment(normalizedPath)
 
   return {
-    id: `content/${idSegment}`,
+    id: config.id || `content/${idSegment}`,
     title: config.title,
     ...(layout ? { layout } : {}),
     body: {
@@ -436,6 +440,7 @@ export const createDocumentFromTree = (
     extension: config.extension,
     meta: config.meta ?? {},
     navigation: config.navigation,
+    ...(config.publicationState ? { publicationState: config.publicationState } : {}),
     path: normalizedPath,
     seo: {
       title: config.seoTitle,

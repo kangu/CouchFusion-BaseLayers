@@ -31,8 +31,8 @@ describe("builder page picker dialog", () => {
         expect(admin).toContain('Page name: ${pagePickerPageName.value}');
         expect(admin).toContain('Updated at: ${lastUpdatedDisplay.value || "Never"}');
         expect(admin).toContain(':aria-describedby="describedby"');
-        expect(admin.indexOf('{{ isSavePending ? "Saving…" : "Save" }}')).toBeLessThan(
-            admin.indexOf("content-admin-workbench__path-trigger"),
+        expect(admin.indexOf("content-admin-workbench__path-trigger")).toBeLessThan(
+            admin.indexOf("content-admin-workbench__save-float"),
         );
         expect(admin).toContain("content-admin-workbench__page-picker");
         expect(admin).toContain("Search by URL, title, SEO title, or description");

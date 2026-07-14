@@ -376,6 +376,7 @@ const globalAliasIdList = computed(() => Array.from(globalAliasIds.value));
 
 const builderTree = ref<BuilderTree>([]);
 const pageConfig = reactive<PageConfigInput>({
+    id: "",
     path: "/",
     title: "Page title",
     seoTitle: "Page title",
@@ -384,6 +385,7 @@ const pageConfig = reactive<PageConfigInput>({
     navigation: true,
     extension: "md",
     meta: {},
+    publicationState: undefined,
 });
 const resolvedBuilderLocale = computed(() =>
     resolveContentLocalePath(pageConfig.path || "/", contentI18nConfig.value)
@@ -975,6 +977,7 @@ const pruneExpandedRoots = () => {
 const applyDocument = (doc: MinimalContentDocument | null) => {
     if (!doc) {
         builderTree.value = [];
+        pageConfig.id = "";
         pageConfig.path = "/";
         pageConfig.title = "Page title";
         pageConfig.seoTitle = "Page title";
@@ -983,6 +986,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
+        pageConfig.publicationState = undefined;
         syncRootSectionNamesMetadata();
         syncSeoDraftFromPageConfig();
         isSeoCardExpanded.value = false;
@@ -992,6 +996,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     }
 
     builderTree.value = deserializeTree(doc.body?.value ?? []);
+    pageConfig.id = doc.id ?? "";
     pageConfig.path = doc.path ?? "/";
     pageConfig.title = doc.title ?? "";
     pageConfig.seoTitle = doc.seo?.title ?? "";
@@ -1000,6 +1005,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = isPlainObject(doc.meta) ? { ...doc.meta } : {};
+    pageConfig.publicationState = doc.publicationState;
     syncRootSectionNamesMetadata();
     syncSeoDraftFromPageConfig();
     isSeoCardExpanded.value = false;
@@ -1272,6 +1278,7 @@ const serializedSectionDocuments = computed<SectionPlacementPreviewDocument[]>(
                 [node],
                 {
                     ...pageConfig,
+                    id: undefined,
                     meta: pageConfig.meta ?? {},
                     path: `${pageConfig.path || "/"}__section_${index}`,
                 },
@@ -2124,6 +2131,19 @@ const closeFocusedEditSession = () => {
             }, 100);
         })));
     }
+};
+
+/** Exits focused editing without restoring the local snapshot before a server reload. */
+const discardFocusedEditForReload = () => {
+    const session = focusedEditSession.value;
+    if (session) {
+        handleNodeFocus({ uid: session.targetUid, mode: "clear" });
+    }
+    focusedEditSession.value = null;
+    nodePropFocusRequest.value = null;
+    isFocusedEditSaving.value = false;
+    focusedShowFieldsAround.value = false;
+    focusedShowAllFields.value = false;
 };
 
 const cancelFocusedEditSession = () => {
@@ -3296,6 +3316,7 @@ const loadDocument = (doc: MinimalContentDocument | null) => {
 defineExpose({
     getSerializedDocument,
     loadDocument,
+    discardFocusedEditForReload,
     focusNodeProp,
     openSiteTypographyPanel,
     openSiteThemePanel,
@@ -5156,6 +5177,10 @@ const handleSaveDebugClick = () => {
     display: block;
     padding: 0;
     overflow: visible;
+}
+
+.builder-page.builder-workbench--save-clearance .builder-focused-editor__stage {
+    padding-bottom: 8rem;
 }
 
 .builder-focused-editor__card {

@@ -9,6 +9,7 @@ import {
     ref,
     watch,
     type ComponentPublicInstance,
+    type CSSProperties,
 } from "vue";
 import { storeToRefs } from "pinia";
 import { normalizePagePath } from "#content/utils/page";
@@ -45,6 +46,12 @@ import {
 } from "#content/app/composables/useLlmTranslations";
 import { resolveLocaleMeta } from "#content/app/utils/locales-meta";
 import type { InlinePreviewPropHint } from "#content/app/utils/inline-preview-prop-path";
+import { resolveDocumentSectionName } from "#content/app/utils/pending-document-changes";
+import {
+    deserializeSaveBarPosition,
+    serializeSaveBarPosition,
+    type SaveBarPositionBounds,
+} from "#content/app/utils/save-bar-position";
 import RichTooltip from "../ui/RichTooltip.vue";
 const BuilderWorkbench = defineAsyncComponent(
     () => import("../builder/Workbench.vue"),
@@ -56,6 +63,14 @@ type FeedbackLink = {
 };
 
 type FeedbackHandler = (message: string, link?: FeedbackLink) => void;
+
+type PendingDocumentChange = {
+    path: string;
+    label: string;
+    kind: "added" | "removed" | "changed";
+};
+
+const SAVE_BAR_POSITION_STORAGE_KEY = "content-admin-workbench.save-bar-position.v1";
 
 interface FeedbackHandlers {
     success?: FeedbackHandler;
@@ -82,6 +97,80 @@ const defaultUi: UiConfig = {
     cancelButton: "",
     modalSaveButton: "",
     modalCancelButton: "",
+};
+
+const DOCUMENT_CHANGE_LABELS: Record<string, string> = {
+    title: "Page title",
+    seoTitle: "SEO title",
+    seoDescription: "SEO description",
+    seoImage: "SEO image",
+    description: "Description",
+    label: "Label",
+    heading: "Heading",
+    headline: "Headline",
+    body: "Body copy",
+    text: "Text",
+    href: "Link",
+    image: "Image",
+};
+
+/** Flattens document leaves so saved and in-progress values can be compared. */
+const collectDocumentLeafValues = (
+    value: unknown,
+    path = "",
+    target = new Map<string, string>(),
+): Map<string, string> => {
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            target.set(path, "[]");
+            return target;
+        }
+
+        value.forEach((item, index) =>
+            collectDocumentLeafValues(item, `${path}.${index}`, target),
+        );
+        return target;
+    }
+
+    if (value && typeof value === "object") {
+        const entries = Object.entries(value as Record<string, unknown>);
+        if (entries.length === 0) {
+            target.set(path, "{}");
+            return target;
+        }
+
+        entries.forEach(([key, item]) =>
+            collectDocumentLeafValues(item, path ? `${path}.${key}` : key, target),
+        );
+        return target;
+    }
+
+    target.set(path, JSON.stringify(value));
+    return target;
+};
+
+/** Converts a document leaf path into a compact, editor-facing change label. */
+const formatDocumentChangeLabel = (
+    path: string,
+    currentDocument: unknown,
+    savedDocument: unknown,
+): string => {
+    const parts = path.split(".").filter(Boolean);
+    const field = parts.at(-1) ?? "Document";
+    const fieldLabel = DOCUMENT_CHANGE_LABELS[field] ?? field.replace(/([A-Z])/g, " $1");
+    const sectionIndex = parts.findIndex((part) => /^\d+$/.test(part));
+
+    if (sectionIndex >= 0) {
+        const sectionName =
+            resolveDocumentSectionName(currentDocument, path) ??
+            resolveDocumentSectionName(savedDocument, path);
+        if (sectionName) {
+            return `${sectionName} · ${fieldLabel}`;
+        }
+        return `Section ${Number(parts[sectionIndex]) + 1} · ${fieldLabel}`;
+    }
+
+    return fieldLabel.charAt(0).toUpperCase() + fieldLabel.slice(1);
 };
 
 const props = defineProps<{
@@ -207,6 +296,7 @@ const hasActiveLocaleStagedDocument = computed(
 type BuilderWorkbenchInstance = ComponentPublicInstance<{
     getSerializedDocument: () => MinimalContentDocument;
     loadDocument: (doc: MinimalContentDocument | null) => void;
+    discardFocusedEditForReload: () => void;
     focusNodeProp: (payload: {
         uid: string;
         propPath: string;
@@ -228,7 +318,23 @@ const builderSearchQuery = ref("");
 const selectedTranslationPointers = ref<string[]>([]);
 
 const builderRef = ref<BuilderWorkbenchInstance | null>(null);
+const workbenchRef = ref<HTMLElement | null>(null);
+const saveBarRef = ref<HTMLElement | null>(null);
+const saveBarStyle = ref<CSSProperties>({});
+const isSaveBarPositioned = ref(false);
+const saveBarCustomPosition = ref<{ left: number; top: number } | null>(null);
+const isSaveBarDragging = ref(false);
+const isSaveBarBouncing = ref(false);
+const hasRestoredSaveBarPosition = ref(false);
+let saveBarResizeObserver: ResizeObserver | null = null;
+let saveBarDragPointerId: number | null = null;
+let saveBarDragOffset = { left: 0, top: 0 };
+let saveBarBounceTimer: ReturnType<typeof setTimeout> | null = null;
+let saveBarSnapTimer: ReturnType<typeof setTimeout> | null = null;
 const isSavePending = ref(false);
+const isSaveConfirmed = ref(false);
+const isDiscardChangesConfirmOpen = ref(false);
+let saveConfirmationTimer: ReturnType<typeof setTimeout> | null = null;
 const isDeletePending = ref(false);
 const saveError = ref<string | null>(null);
 const lastSavedAt = ref<string | null>(null);
@@ -267,6 +373,97 @@ const translationNotice = ref<{
     type: "success" | "error";
     message: string;
 } | null>(null);
+const pendingDocumentChanges = computed<PendingDocumentChange[]>(() => {
+    if (!latestDocument.value || !lastSavedSnapshot.value) {
+        return [];
+    }
+
+    try {
+        const savedDocument = JSON.parse(lastSavedSnapshot.value) as unknown;
+        const savedValues = collectDocumentLeafValues(savedDocument);
+        const currentValues = collectDocumentLeafValues(latestDocument.value);
+        const paths = new Set([...savedValues.keys(), ...currentValues.keys()]);
+
+        return [...paths]
+            .filter(
+                (path) => {
+                    const [rootKey] = path.split(".");
+                    return (
+                        ![
+                            "_id",
+                            "_rev",
+                            "id",
+                            "stem",
+                            "createdAt",
+                            "updatedAt",
+                            "publicationState",
+                        ].includes(rootKey) &&
+                        savedValues.get(path) !== currentValues.get(path)
+                    );
+                },
+            )
+            .map((path) => ({
+                path,
+                label: formatDocumentChangeLabel(
+                    path,
+                    latestDocument.value,
+                    savedDocument,
+                ),
+                kind: savedValues.has(path)
+                    ? currentValues.has(path)
+                        ? "changed"
+                        : "removed"
+                    : "added",
+            }))
+            .sort((left, right) => left.label.localeCompare(right.label));
+    } catch {
+        return [];
+    }
+});
+const pendingChangeCount = computed(() => pendingDocumentChanges.value.length);
+watch(pendingChangeCount, (count) => {
+    if (count === 0) {
+        isDiscardChangesConfirmOpen.value = false;
+    }
+});
+const pendingChangeStatus = computed(() => {
+    if (isSavePending.value) {
+        return `Saving ${pendingChangeCount.value || ""} changes…`.replace(
+            "  changes",
+            " changes",
+        );
+    }
+
+    if (pendingChangeCount.value === 0) {
+        return "All changes saved";
+    }
+
+    return `${pendingChangeCount.value} ${
+        pendingChangeCount.value === 1 ? "change" : "changes"
+    } ready to save`;
+});
+const pendingChangeTooltipTitle = computed(() =>
+    pendingChangeCount.value === 0
+        ? "No pending document changes"
+        : `${pendingChangeCount.value} pending ${
+              pendingChangeCount.value === 1 ? "change" : "changes"
+          }`,
+);
+const pendingChangeTooltipDescription = computed(() => {
+    if (pendingChangeCount.value === 0) {
+        return "This document matches its last saved version.";
+    }
+
+    const listedChanges = pendingDocumentChanges.value
+        .slice(0, 8)
+        .map((change) => `• ${change.kind}: ${change.label}`);
+    const remaining = pendingChangeCount.value - listedChanges.length;
+    if (remaining > 0) {
+        listedChanges.push(`• ${remaining} more change${remaining === 1 ? "" : "s"}`);
+    }
+
+    return listedChanges.join("\n");
+});
 const {
     pending: isTranslationPending,
     error: translationError,
@@ -317,14 +514,19 @@ const isActionsMenuOpen = ref(false);
 const isTranslationMenuOpen = ref(false);
 const isInlineTranslationEnabled = ref(false);
 const isFocusedEditActive = ref(false);
+const focusedEditorNeedsSaveClearance = ref(false);
 const historyMenuRef = ref<HTMLElement | null>(null);
 const actionsMenuRef = ref<HTMLElement | null>(null);
 const translationMenuRef = ref<HTMLElement | null>(null);
 
 watch(isFocusedEditActive, (isActive) => {
+    focusedEditorNeedsSaveClearance.value = false;
+
     if (isActive) {
         closeActionsMenu();
         closeHistoryMenu();
+
+        void nextTick(() => syncSaveBarPosition());
     }
 });
 
@@ -803,6 +1005,332 @@ const handleHistoryMenuEscape = (event: KeyboardEvent) => {
     }
 };
 
+/** Adds scroll clearance only after the fixed Save bar overlaps focused content. */
+const updateFocusedEditorSaveClearance = (): void => {
+    if (
+        !isFocusedEditActive.value ||
+        focusedEditorNeedsSaveClearance.value ||
+        !workbenchRef.value ||
+        !saveBarRef.value
+    ) {
+        return;
+    }
+
+    const focusedEditorCard = workbenchRef.value.querySelector<HTMLElement>(
+        ".builder-focused-editor__card",
+    );
+
+    if (!focusedEditorCard) {
+        return;
+    }
+
+    const cardBounds = focusedEditorCard.getBoundingClientRect();
+    const saveBarBounds = saveBarRef.value.getBoundingClientRect();
+
+    if (cardBounds.bottom > saveBarBounds.top) {
+        focusedEditorNeedsSaveClearance.value = true;
+    }
+};
+
+/** Returns the current visible Workbench-safe rectangle for the fixed Save bar. */
+const getSaveBarBounds = (): SaveBarPositionBounds | null => {
+    if (!saveBarRef.value) {
+        return null;
+    }
+
+    const saveBarBounds = saveBarRef.value.getBoundingClientRect();
+    const sidebarInset = 0;
+    const maxLeft = window.innerWidth - saveBarBounds.width;
+    const maxTop = window.innerHeight - saveBarBounds.height;
+
+    return {
+        minLeft: sidebarInset,
+        maxLeft: Math.max(sidebarInset, maxLeft),
+        minTop: sidebarInset,
+        maxTop: Math.max(sidebarInset, maxTop),
+    };
+};
+
+/** Saves a custom Save-bar location as ratios so it survives viewport changes. */
+const persistSaveBarPosition = (): void => {
+    if (
+        typeof window === "undefined" ||
+        !saveBarCustomPosition.value
+    ) {
+        return;
+    }
+
+    const bounds = getSaveBarBounds();
+    if (!bounds) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            SAVE_BAR_POSITION_STORAGE_KEY,
+            JSON.stringify(serializeSaveBarPosition(saveBarCustomPosition.value, bounds)),
+        );
+    } catch {}
+};
+
+/** Restores the custom Save-bar location after client-side measurements are available. */
+const restoreSaveBarPosition = (): void => {
+    if (typeof window === "undefined" || hasRestoredSaveBarPosition.value) {
+        return;
+    }
+
+    const bounds = getSaveBarBounds();
+    if (!bounds) {
+        return;
+    }
+    hasRestoredSaveBarPosition.value = true;
+
+    try {
+        const raw = window.localStorage.getItem(SAVE_BAR_POSITION_STORAGE_KEY);
+        if (!raw) {
+            return;
+        }
+        const stored = JSON.parse(raw) as {
+            leftRatio?: unknown;
+            topRatio?: unknown;
+        };
+        if (
+            typeof stored.leftRatio !== "number" ||
+            typeof stored.topRatio !== "number"
+        ) {
+            window.localStorage.removeItem(SAVE_BAR_POSITION_STORAGE_KEY);
+            return;
+        }
+
+        saveBarCustomPosition.value = deserializeSaveBarPosition(
+            { leftRatio: stored.leftRatio, topRatio: stored.topRatio },
+            bounds,
+        );
+        syncSaveBarPosition();
+    } catch {
+        window.localStorage.removeItem(SAVE_BAR_POSITION_STORAGE_KEY);
+    }
+};
+
+/** Clamps a custom Save-bar point to the visible Workbench-safe rectangle. */
+const clampSaveBarPosition = (position: { left: number; top: number }) => {
+    const bounds = getSaveBarBounds();
+    if (!bounds) {
+        return position;
+    }
+
+    return {
+        left: Math.min(Math.max(position.left, bounds.minLeft), bounds.maxLeft),
+        top: Math.min(Math.max(position.top, bounds.minTop), bounds.maxTop),
+    };
+};
+
+/** Returns the measured default fixed position used for snapping and Reset. */
+const getDefaultSaveBarPosition = (): { left: number; top: number } | null => {
+    if (!workbenchRef.value || !saveBarRef.value) {
+        return null;
+    }
+
+    const workbenchBounds = workbenchRef.value.getBoundingClientRect();
+    const saveBarBounds = saveBarRef.value.getBoundingClientRect();
+    const inset = window.innerWidth <= 640 ? 16 : 24;
+    const bottomInset = window.innerWidth <= 640
+        ? 16
+        : isFocusedEditActive.value
+            ? 96
+            : 24;
+
+    return clampSaveBarPosition({
+        left: Math.max(inset, workbenchBounds.left + inset),
+        top: window.innerHeight - bottomInset - saveBarBounds.height,
+    });
+};
+
+/** Plays the short spring bounce used when the bar returns to its default location. */
+const triggerSaveBarBounce = (): void => {
+    if (saveBarBounceTimer) {
+        clearTimeout(saveBarBounceTimer);
+    }
+    isSaveBarBouncing.value = false;
+    void nextTick(() => {
+        isSaveBarBouncing.value = true;
+        saveBarBounceTimer = window.setTimeout(() => {
+            isSaveBarBouncing.value = false;
+            saveBarBounceTimer = null;
+        }, 420);
+    });
+};
+
+/** Snaps a nearby custom Save-bar position back to its default fixed placement. */
+const snapSaveBarToDefault = (): void => {
+    if (!saveBarCustomPosition.value) {
+        return;
+    }
+
+    if (saveBarSnapTimer) {
+        clearTimeout(saveBarSnapTimer);
+    }
+    if (typeof window !== "undefined") {
+        try {
+            window.localStorage.removeItem(SAVE_BAR_POSITION_STORAGE_KEY);
+        } catch {}
+    }
+
+    const defaultPosition = getDefaultSaveBarPosition();
+    if (!defaultPosition) {
+        saveBarCustomPosition.value = null;
+        syncSaveBarPosition();
+        return;
+    }
+
+    isSaveBarDragging.value = false;
+    saveBarCustomPosition.value = defaultPosition;
+    syncSaveBarPosition();
+    triggerSaveBarBounce();
+    saveBarSnapTimer = window.setTimeout(() => {
+        saveBarCustomPosition.value = null;
+        syncSaveBarPosition();
+        saveBarSnapTimer = null;
+    }, 280);
+};
+
+/** Snaps the custom Save-bar position home from a double-click on its drag grip. */
+const handleSaveBarDragHandleDoubleClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    snapSaveBarToDefault();
+};
+
+/** Updates the floating Save bar from a captured pointer drag. */
+const handleSaveBarDragMove = (event: PointerEvent): void => {
+    if (saveBarDragPointerId !== event.pointerId) {
+        return;
+    }
+
+    saveBarCustomPosition.value = clampSaveBarPosition({
+        left: event.clientX - saveBarDragOffset.left,
+        top: event.clientY - saveBarDragOffset.top,
+    });
+    syncSaveBarPosition();
+};
+
+/** Finishes a Save-bar drag and snaps it home when released near its default. */
+const handleSaveBarDragEnd = (event: PointerEvent): void => {
+    if (saveBarDragPointerId !== event.pointerId) {
+        return;
+    }
+
+    saveBarDragPointerId = null;
+    isSaveBarDragging.value = false;
+    window.removeEventListener("pointermove", handleSaveBarDragMove);
+    window.removeEventListener("pointerup", handleSaveBarDragEnd);
+    window.removeEventListener("pointercancel", handleSaveBarDragEnd);
+
+    const customPosition = saveBarCustomPosition.value;
+    const defaultPosition = getDefaultSaveBarPosition();
+    if (
+        customPosition &&
+        defaultPosition &&
+        Math.hypot(
+            customPosition.left - defaultPosition.left,
+            customPosition.top - defaultPosition.top,
+        ) <= 42
+    ) {
+        snapSaveBarToDefault();
+        return;
+    }
+
+    persistSaveBarPosition();
+};
+
+/** Captures pointer dragging from the dedicated Save-bar grip. */
+const handleSaveBarDragStart = (event: PointerEvent): void => {
+    if (event.button !== 0 || !saveBarRef.value) {
+        return;
+    }
+
+    const grip = event.currentTarget as HTMLElement;
+    const saveBarBounds = saveBarRef.value.getBoundingClientRect();
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    saveBarDragPointerId = event.pointerId;
+    saveBarDragOffset = {
+        left: event.clientX - saveBarBounds.left,
+        top: event.clientY - saveBarBounds.top,
+    };
+    isSaveBarDragging.value = true;
+    saveBarCustomPosition.value = {
+        left: saveBarBounds.left,
+        top: saveBarBounds.top,
+    };
+    window.addEventListener("pointermove", handleSaveBarDragMove);
+    window.addEventListener("pointerup", handleSaveBarDragEnd);
+    window.addEventListener("pointercancel", handleSaveBarDragEnd);
+};
+
+/** Keeps the viewport-fixed save bar aligned with the Workbench or a custom drag point. */
+const syncSaveBarPosition = (): void => {
+    if (typeof window === "undefined" || !workbenchRef.value) {
+        return;
+    }
+
+    if (saveBarCustomPosition.value) {
+        const position = clampSaveBarPosition(saveBarCustomPosition.value);
+        const width = saveBarRef.value?.getBoundingClientRect().width ?? 0;
+        saveBarCustomPosition.value = position;
+        saveBarStyle.value = {
+            left: `${position.left}px`,
+            top: `${position.top}px`,
+            right: "auto",
+            bottom: "auto",
+            width: `${width}px`,
+        };
+        isSaveBarPositioned.value = true;
+        void nextTick(updateFocusedEditorSaveClearance);
+        return;
+    }
+
+    const workbenchBounds = workbenchRef.value.getBoundingClientRect();
+    const inset = window.innerWidth <= 640 ? 16 : 24;
+    const width = Math.max(0, workbenchBounds.width - inset * 2);
+
+    saveBarStyle.value = {
+        left: `${Math.max(inset, workbenchBounds.left + inset)}px`,
+        right: "auto",
+        width: `${width}px`,
+        top: "auto",
+        bottom: "",
+    };
+    isSaveBarPositioned.value = true;
+
+    void nextTick(updateFocusedEditorSaveClearance);
+};
+
+/** Starts Save-bar measurement when the asynchronously rendered Workbench mounts. */
+watch(
+    workbenchRef,
+    (workbench) => {
+        saveBarResizeObserver?.disconnect();
+        saveBarResizeObserver = null;
+
+        if (typeof window === "undefined" || !workbench) {
+            isSaveBarPositioned.value = false;
+            return;
+        }
+
+        void nextTick(() => {
+            syncSaveBarPosition();
+
+            requestAnimationFrame(restoreSaveBarPosition);
+
+            if (typeof ResizeObserver !== "undefined" && workbenchRef.value) {
+                saveBarResizeObserver = new ResizeObserver(syncSaveBarPosition);
+                saveBarResizeObserver.observe(workbenchRef.value);
+            }
+        });
+    },
+    { flush: "post" },
+);
+
 onMounted(() => {
     if (typeof window === "undefined") {
         return;
@@ -810,17 +1338,59 @@ onMounted(() => {
 
     window.addEventListener("pointerdown", handleHistoryMenuOutsidePointerDown);
     window.addEventListener("keydown", handleHistoryMenuEscape);
+    window.addEventListener("resize", syncSaveBarPosition);
+    window.addEventListener("scroll", syncSaveBarPosition, true);
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(restoreSaveBarPosition);
+    });
+
 });
 
 onBeforeUnmount(() => {
+    if (saveConfirmationTimer) {
+        clearTimeout(saveConfirmationTimer);
+    }
+
+    if (saveBarBounceTimer) {
+        clearTimeout(saveBarBounceTimer);
+    }
+    if (saveBarSnapTimer) {
+        clearTimeout(saveBarSnapTimer);
+    }
+
+    saveBarResizeObserver?.disconnect();
+    saveBarResizeObserver = null;
+
     if (typeof window !== "undefined") {
+        window.removeEventListener("pointermove", handleSaveBarDragMove);
+        window.removeEventListener("pointerup", handleSaveBarDragEnd);
+        window.removeEventListener("pointercancel", handleSaveBarDragEnd);
         window.removeEventListener(
             "pointerdown",
             handleHistoryMenuOutsidePointerDown,
         );
         window.removeEventListener("keydown", handleHistoryMenuEscape);
+        window.removeEventListener("resize", syncSaveBarPosition);
+        window.removeEventListener("scroll", syncSaveBarPosition, true);
     }
 });
+
+/** Shows the brief confirmation state after a document save has succeeded. */
+const showSaveConfirmedState = (): void => {
+    if (saveConfirmationTimer) {
+        clearTimeout(saveConfirmationTimer);
+    }
+
+    isSaveConfirmed.value = false;
+    void nextTick(() => {
+        isSaveConfirmed.value = true;
+    });
+    saveConfirmationTimer = window.setTimeout(() => {
+        isSaveConfirmed.value = false;
+        saveConfirmationTimer = null;
+    }, 1000);
+};
 
 function formatTimestamp(
     value: string | null,
@@ -972,6 +1542,41 @@ async function openPageForEditing(path: string, force = false): Promise<boolean>
     } finally {
         isSelectingPage.value = false;
     }
+}
+
+/** Opens the inline discard confirmation for the current local document changes. */
+const openDiscardChangesConfirm = (): void => {
+    if (pendingChangeCount.value > 0 && !isSelectingPage.value) {
+        isDiscardChangesConfirmOpen.value = true;
+    }
+};
+
+/** Closes the inline discard confirmation without modifying the local document. */
+const closeDiscardChangesConfirm = (): void => {
+    isDiscardChangesConfirmOpen.value = false;
+};
+
+/** Discards local document state and reloads the selected page from the server. */
+async function handleDiscardDocumentChanges(): Promise<void> {
+    if (
+        pendingChangeCount.value === 0 ||
+        !selectedPath.value ||
+        isSelectingPage.value
+    ) {
+        return;
+    }
+
+    closeDiscardChangesConfirm();
+    const didReload = await openPageForEditing(selectedPath.value, true);
+    if (!didReload) {
+        return;
+    }
+
+    builderRef.value?.discardFocusedEditForReload();
+    isFocusedEditActive.value = false;
+    stagedDocumentsByLocale.value = {};
+    selectedTranslationPointers.value = [];
+    updateUnsavedState(false);
 }
 
 function openPagePicker(): void {
@@ -2504,6 +3109,7 @@ async function handleSaveDocument(): Promise<void> {
             builder.loadDocument(clonePlain(savedMinimalDocument));
         }
         updateUnsavedState(false);
+        showSaveConfirmedState();
 
         emit("save-success", savedSummary);
         feedback.value.success?.(
@@ -2795,27 +3401,6 @@ defineExpose({
         >
             <div class="content-admin-workbench__header">
                 <div class="content-admin-workbench__header-copy">
-                    <button
-                        type="button"
-                        class="content-admin-workbench__button content-admin-workbench__button--primary"
-                        :class="ui.saveButton"
-                        :disabled="isSavePending || !selectedSummary"
-                        @click="handleSaveDocument"
-                    >
-                        <svg
-                            v-if="isSavePending"
-                            class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            aria-hidden="true"
-                        >
-                            <path
-                                fill="currentColor"
-                                d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
-                            />
-                        </svg>
-                        <span>{{ isSavePending ? "Saving…" : "Save" }}</span>
-                    </button>
                     <RichTooltip
                         :title="pagePickerTooltipTitle"
                         :description="pagePickerTooltipDescription"
@@ -3373,6 +3958,7 @@ defineExpose({
                             </p>
                         </div>
                         <div
+                            ref="workbenchRef"
                             class="editor-canvas__workbench"
                             :class="{
                                 'editor-canvas__workbench--full': hidePreview,
@@ -3383,6 +3969,10 @@ defineExpose({
                                 :initial-document="selectedDocument"
                                 :hide-preview="hidePreview"
                                 :key="selectedDocument.id"
+                                :class="{
+                                    'builder-workbench--save-clearance':
+                                        focusedEditorNeedsSaveClearance,
+                                }"
                                 :search-query="builderSearchQuery"
                                 :show-translate-section="
                                     isInlineTranslationEnabled
@@ -3410,6 +4000,125 @@ defineExpose({
                                     (value) => (builderSearchQuery = value)
                                 "
                             />
+                            <div
+                                v-show="isSaveBarPositioned"
+                                ref="saveBarRef"
+                                class="content-admin-workbench__save-float"
+                                :class="{
+                                    'content-admin-workbench__save-float--raised':
+                                        isFocusedEditActive,
+                                    'content-admin-workbench__save-float--dragging':
+                                        isSaveBarDragging,
+                                    'content-admin-workbench__save-float--bouncing':
+                                        isSaveBarBouncing,
+                                }"
+                                :style="saveBarStyle"
+                            >
+                                <div class="content-admin-workbench__save-bar">
+                                    <span
+                                        class="content-admin-workbench__save-drag-grip"
+                                        aria-hidden="true"
+                                        title="Drag Save bar · double-click to snap home"
+                                        @pointerdown="handleSaveBarDragStart"
+                                        @dblclick="handleSaveBarDragHandleDoubleClick"
+                                    >
+                                        <svg viewBox="0 0 12 18" focusable="false">
+                                            <circle cx="3" cy="3" r="1" />
+                                            <circle cx="9" cy="3" r="1" />
+                                            <circle cx="3" cy="9" r="1" />
+                                            <circle cx="9" cy="9" r="1" />
+                                            <circle cx="3" cy="15" r="1" />
+                                            <circle cx="9" cy="15" r="1" />
+                                        </svg>
+                                    </span>
+                                    <RichTooltip
+                                        :title="pendingChangeTooltipTitle"
+                                        :description="pendingChangeTooltipDescription"
+                                        placement="top"
+                                        :max-width="360"
+                                    >
+                                        <template #default="{ describedby }">
+                                            <span
+                                                class="content-admin-workbench__save-status"
+                                                tabindex="0"
+                                                :aria-describedby="describedby"
+                                            >
+                                                <span
+                                                    class="content-admin-workbench__save-status-dot"
+                                                    :class="{
+                                                        'is-pending': pendingChangeCount > 0,
+                                                    }"
+                                                    aria-hidden="true"
+                                                />
+                                                {{ pendingChangeStatus }}
+                                            </span>
+                                        </template>
+                                    </RichTooltip>
+                                    <div
+                                        v-if="pendingChangeCount > 0"
+                                        class="content-admin-workbench__discard-control"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="content-admin-workbench__discard-changes"
+                                            :disabled="isSelectingPage"
+                                            aria-label="Discard unsaved changes"
+                                            title="Discard local changes and reload the saved page"
+                                            @click="openDiscardChangesConfirm"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 512 512" aria-hidden="true">
+                                                <path d="M0 0h512v512H0z" fill="none" />
+                                                <path fill="currentColor" d="m150.79 479.797l-85.27-185.08c-3.13-6.79-.15-14.862 6.634-17.993l129.163-59.51c6.783-3.12 14.862-.15 17.987 6.646l85.283 185.067c3.13 6.802.15 14.863-6.646 18L168.79 486.43c-6.795 3.144-14.868.15-18-6.633m26.17-69.31l15.318-44.522l44.522 15.32l7.66-22.253l-44.523-15.318l15.325-44.522l-22.252-7.66l-15.325 44.516l-44.515-15.324l-7.66 22.258l44.516 15.324l-15.324 44.522zm106.07-211.05c47.9-85.625-53.11-105.304-102.586-62.593l-38.9 51.353C105.95 210 97.853 175.98 109.226 158.424l54.106-73.515l97.158-52.146c7.108-5.2 17.838-8.133 32.767-8.445l194.467 1.463l.866 112.044l-107.304-7.725c1.818 43.394-42.734 53.08-66.683 106.905l-13.813 46.38c-30.217-10.16-41.29-34.367-17.76-83.95zm-129.828-3.077l39.046-51.33c12.434-10.477 29.51-17.675 46.92-17.375c-15.264 16.008-20.158 25.557-23.475 39.046c-8 19.775-17.74 29.69-30.366 23.296c-10.712 10.322-21.412 14.87-32.125 6.364z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            v-if="isDiscardChangesConfirmOpen"
+                                            class="content-admin-workbench__discard-popover"
+                                            role="alertdialog"
+                                            aria-label="Discard local changes"
+                                        >
+                                            <strong>Discard local changes?</strong>
+                                            <p>Reload the latest saved page.</p>
+                                            <div class="content-admin-workbench__discard-popover-actions">
+                                                <button type="button" @click="closeDiscardChangesConfirm">
+                                                    Keep editing
+                                                </button>
+                                                <button type="button" @click="handleDiscardDocumentChanges">
+                                                    Discard
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <button
+                                    type="button"
+                                    class="content-admin-workbench__button content-admin-workbench__button--primary"
+                                    :class="[
+                                        ui.saveButton,
+                                        'content-admin-workbench__button--save-pulse',
+                                        {
+                                            'content-admin-workbench__button--save-confirmed':
+                                                isSaveConfirmed,
+                                        },
+                                    ]"
+                                    :disabled="isSavePending || !selectedSummary"
+                                    @click="handleSaveDocument"
+                                >
+                                    <svg
+                                        v-if="isSavePending"
+                                        class="content-admin-workbench__icon content-admin-workbench__icon--sm content-admin-workbench__spinner"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            fill="currentColor"
+                                            d="M12 4V2a10 10 0 1 1-10 10h2a8 8 0 1 0 8-8Z"
+                                        />
+                                    </svg>
+                                    <span>{{ isSavePending ? "Saving…" : isSaveConfirmed ? "✓ Saved" : "Save" }}</span>
+                                </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="editor-canvas__placeholder">
@@ -4416,6 +5125,86 @@ defineExpose({
     background-color: #1d4ed8;
 }
 
+.content-admin-workbench__button--save-pulse {
+    --save-pulse-duration: 520ms;
+    --save-pulse-scale: 1.06;
+    --save-ring-spread: 18px;
+    --save-ring-opacity: 0.73;
+    --save-confirm-hold: 1000ms;
+    --save-ease: cubic-bezier(.34,1.56,.64,1);
+    position: relative;
+    isolation: isolate;
+}
+
+.content-admin-workbench__button--save-confirmed {
+    background-color: #16986d;
+    border-color: #16986d;
+    animation: content-admin-workbench-save-pulse var(--save-pulse-duration)
+        var(--save-ease);
+}
+
+.content-admin-workbench__button--save-confirmed:hover:not(:disabled) {
+    background-color: #117d5a;
+}
+
+.content-admin-workbench__button--save-confirmed::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border: 2px solid rgba(37, 99, 235, var(--save-ring-opacity));
+    border-radius: inherit;
+    pointer-events: none;
+    animation: content-admin-workbench-save-ring var(--save-pulse-duration)
+        ease-out;
+}
+
+@keyframes content-admin-workbench-save-pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    38% {
+        transform: scale(0.965);
+    }
+
+    65% {
+        transform: scale(var(--save-pulse-scale));
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes content-admin-workbench-save-ring {
+    0% {
+        opacity: 0.8;
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, var(--save-ring-opacity));
+    }
+
+    100% {
+        opacity: 0;
+        box-shadow: 0 0 0 var(--save-ring-spread)
+            rgba(37, 99, 235, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .content-admin-workbench__button--save-confirmed,
+    .content-admin-workbench__button--save-confirmed::after {
+        animation: none;
+    }
+
+    .content-admin-workbench__save-float {
+        transition: none;
+    }
+
+    .content-admin-workbench__save-float--bouncing {
+        animation: none;
+    }
+}
+
 .content-admin-workbench__button--primary:focus-visible {
     box-shadow:
         0 0 0 2px #ffffff,
@@ -4510,6 +5299,248 @@ defineExpose({
     min-width: 0;
     align-items: center;
     gap: 0.75rem;
+}
+
+.content-admin-workbench__save-float {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    z-index: 1600;
+    transition:
+        left 280ms cubic-bezier(.34,1.56,.64,1),
+        top 280ms cubic-bezier(.34,1.56,.64,1),
+        bottom 280ms cubic-bezier(.34,1.56,.64,1);
+}
+
+.content-admin-workbench__save-float--raised {
+    bottom: 6rem;
+}
+
+.content-admin-workbench__save-float--dragging {
+    transition: none;
+    user-select: none;
+}
+
+.content-admin-workbench__save-float--bouncing {
+    animation: content-admin-workbench-save-bar-bounce 420ms
+        cubic-bezier(.34,1.56,.64,1);
+}
+
+@keyframes content-admin-workbench-save-bar-bounce {
+    0% {
+        transform: scale(1);
+    }
+
+    55% {
+        transform: scale(1.025);
+    }
+
+    78% {
+        transform: scale(.988);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.content-admin-workbench__save-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4.25rem;
+    border: 1px solid #d8e2ef;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 18px 34px -24px rgba(15, 23, 42, 0.38);
+    padding: 0.55rem 0.75rem 0.55rem 1rem;
+    backdrop-filter: blur(14px);
+}
+
+.content-admin-workbench__save-drag-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    border-radius: 0.5rem;
+    color: #94a3b8;
+    cursor: grab;
+    touch-action: none;
+    transition:
+        background-color 160ms ease,
+        color 160ms ease;
+}
+
+.content-admin-workbench__save-drag-grip:hover {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.content-admin-workbench__save-float--dragging .content-admin-workbench__save-drag-grip {
+    cursor: grabbing;
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.content-admin-workbench__save-drag-grip svg {
+    width: 0.75rem;
+    height: 1.125rem;
+    fill: currentColor;
+}
+
+.content-admin-workbench__discard-changes {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 auto;
+    border: 1px solid #fecaca;
+    border-radius: 0.55rem;
+    background: #fff;
+    color: #dc2626;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease,
+        color 160ms ease;
+}
+
+.content-admin-workbench__discard-control {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.content-admin-workbench__discard-changes:hover:not(:disabled),
+.content-admin-workbench__discard-changes:focus-visible {
+    border-color: #fca5a5;
+    background: #fff1f2;
+    color: #be123c;
+    outline: none;
+}
+
+.content-admin-workbench__discard-changes:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.content-admin-workbench__discard-changes svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.content-admin-workbench__discard-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.65rem);
+    z-index: 1;
+    width: 15rem;
+    border: 1px solid #fecaca;
+    border-radius: 0.8rem;
+    background: #ffffff;
+    box-shadow: 0 16px 32px -18px rgba(15, 23, 42, 0.45);
+    padding: 0.8rem;
+    color: #1e293b;
+}
+
+.content-admin-workbench__discard-popover strong {
+    display: block;
+    color: #991b1b;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.content-admin-workbench__discard-popover p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.74rem;
+    line-height: 1.35;
+}
+
+.content-admin-workbench__discard-popover-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    margin-top: 0.7rem;
+}
+
+.content-admin-workbench__discard-popover-actions button {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.4rem;
+    background: #ffffff;
+    color: #475569;
+    padding: 0.3rem 0.45rem;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.content-admin-workbench__discard-popover-actions button:last-child {
+    border-color: #dc2626;
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.content-admin-workbench__discard-popover-actions button:hover,
+.content-admin-workbench__discard-popover-actions button:focus-visible {
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.content-admin-workbench__save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.875rem;
+    font-weight: 750;
+    line-height: 1.3;
+    cursor: help;
+    outline: none;
+}
+
+.content-admin-workbench__save-status:focus-visible {
+    border-radius: 0.4rem;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.content-admin-workbench__save-status-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #10b981;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.11);
+}
+
+.content-admin-workbench__save-status-dot.is-pending {
+    background: #f7931a;
+    box-shadow: 0 0 0 4px rgba(247, 147, 26, 0.14);
+}
+
+@media (max-width: 640px) {
+    .content-admin-workbench__save-float {
+        right: 1rem;
+        left: 1rem;
+        bottom: 1rem;
+    }
+
+    .content-admin-workbench__save-bar {
+        min-height: 4rem;
+        padding: 0.5rem 0.65rem;
+        gap: 0.55rem;
+    }
+
+    .content-admin-workbench__save-status {
+        font-size: 0.78rem;
+    }
 }
 
 .content-admin-workbench__path-trigger {
@@ -5614,6 +6645,7 @@ defineExpose({
     max-width: 800px;
     margin-left: auto;
     margin-right: 0;
+    margin-bottom: 6rem;
     box-sizing: border-box;
     padding: 1.25rem;
 }
@@ -5635,14 +6667,15 @@ defineExpose({
 }
 
 .editor-canvas__workbench {
+    position: relative;
     border-radius: 0.75rem;
     background-color: #f9fafb;
     padding: 0;
-    min-height: 600px;
+    min-height: max(600px, calc(100dvh - 6rem));
 }
 
 .editor-canvas__workbench--full {
-    min-height: 0;
+    min-height: max(600px, calc(100dvh - 6rem));
 }
 
 .editor-canvas__preview-label {
