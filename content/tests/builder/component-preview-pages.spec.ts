@@ -33,6 +33,7 @@ describe("component preview pages", () => {
     const wrapper = mount(ComponentPreviewShell, {
       global: {
         stubs: {
+          ClientOnly: { template: "<div><slot /></div>" },
           RichTooltip: { template: "<span><slot /></span>" },
         },
       },

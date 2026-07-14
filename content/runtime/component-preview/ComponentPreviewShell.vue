@@ -59,7 +59,12 @@ onBeforeUnmount(() => observer?.disconnect());
         <code>{{ componentId }}</code>
       </div>
       <div class="component-preview-actions">
-        <PreviewDeviceToggle v-model="device" />
+        <ClientOnly>
+          <PreviewDeviceToggle v-model="device" />
+          <template #fallback>
+            <span class="component-preview-device-placeholder" aria-hidden="true" />
+          </template>
+        </ClientOnly>
         <button
           type="button"
           class="component-preview-refresh"
@@ -130,6 +135,11 @@ onBeforeUnmount(() => observer?.disconnect());
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.component-preview-device-placeholder {
+  width: 5rem;
+  height: 2.5rem;
 }
 
 .component-preview-refresh {
