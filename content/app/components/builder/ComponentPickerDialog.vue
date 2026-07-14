@@ -32,48 +32,7 @@
                     >
                         {{ manageCategoriesOpen ? "Picker" : "Categories" }}
                     </button>
-                    <div class="component-picker-view-toggle" aria-label="Preview device">
-                        <RichTooltip
-                            title="Desktop preview"
-                            description="Show component thumbnails at desktop width."
-                        >
-                            <template #default="{ describedby }">
-                                <button
-                                    type="button"
-                                    class="component-picker-view-toggle__button"
-                                    aria-label="Desktop preview"
-                                    :aria-describedby="describedby"
-                                    :class="{ 'is-active': previewDevice === 'desktop' }"
-                                    @click="previewDevice = 'desktop'"
-                                >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <rect x="3" y="4" width="18" height="12" rx="2" />
-                                        <path d="M8 20h8M12 16v4" />
-                                    </svg>
-                                </button>
-                            </template>
-                        </RichTooltip>
-                        <RichTooltip
-                            title="Mobile preview"
-                            description="Show component thumbnails at mobile width."
-                        >
-                            <template #default="{ describedby }">
-                                <button
-                                    type="button"
-                                    class="component-picker-view-toggle__button"
-                                    aria-label="Mobile preview"
-                                    :aria-describedby="describedby"
-                                    :class="{ 'is-active': previewDevice === 'mobile' }"
-                                    @click="previewDevice = 'mobile'"
-                                >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <rect x="7" y="2.5" width="10" height="19" rx="2" />
-                                        <path d="M11.8 18h.4" />
-                                    </svg>
-                                </button>
-                            </template>
-                        </RichTooltip>
-                    </div>
+                    <PreviewDeviceToggle v-model="previewDevice" />
                     <div class="component-picker-sort-control" aria-label="Sort components">
                         <div class="component-picker-view-toggle" aria-label="Sort components">
                             <RichTooltip
@@ -375,29 +334,7 @@
                 <header class="expanded-header">
                     <h3>Preview: {{ expandedComp.label }}</h3>
                     <div class="expanded-controls">
-                        <div class="device-toggles">
-                            <button
-                                :class="{ active: expandedDevice === 'desktop' }"
-                                @click="expandedDevice = 'desktop'"
-                                title="Desktop View"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                                    <line x1="8" y1="21" x2="16" y2="21" />
-                                    <line x1="12" y1="17" x2="12" y2="21" />
-                                </svg>
-                            </button>
-                            <button
-                                :class="{ active: expandedDevice === 'mobile' }"
-                                @click="expandedDevice = 'mobile'"
-                                title="Mobile View"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                                    <line x1="12" y1="18" x2="12" y2="18" />
-                                </svg>
-                            </button>
-                        </div>
+                        <PreviewDeviceToggle v-model="expandedDevice" />
                         <div class="action-buttons">
                             <button class="select-btn" @click="select(expandedComp.id)">
                                 Select and Close
@@ -436,8 +373,10 @@ import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue"
 import type { CSSProperties } from "vue";
 import type { ComponentDefinition, BuilderValue } from "~/types/builder";
 import PreviewFrame from "./PreviewFrame.vue";
+import PreviewDeviceToggle from "./PreviewDeviceToggle.vue";
 import LazyLoader from "./LazyLoader.vue";
 import RichTooltip from "../ui/RichTooltip.vue";
+import { declaredPreviewDefaults } from "#content/app/utils/component-preview";
 import { useComponentPickerCategories } from "#content/app/composables/useComponentPickerCategories";
 import {
     buildComponentPickerCategoryTabs,
@@ -855,36 +794,34 @@ const handlePreviewThumbnailWheel = (event: WheelEvent) => {
 };
 
 const getDefaultProps = (def: ComponentDefinition) => {
-    const defaults: Record<string, BuilderValue> = {};
+    const defaults: Record<string, BuilderValue> = declaredPreviewDefaults(def);
     if (!def.props) return defaults;
 
     for (const prop of def.props) {
-        if (prop.default !== undefined) {
-            defaults[prop.key] = prop.default;
-        } else {
+        if (prop.default === undefined) {
             // Generate mock data based on type if no default is provided
             switch (prop.type) {
-                case 'text':
-                case 'textarea':
+                case "text":
+                case "textarea":
                     defaults[prop.key] = `[${prop.label}]`;
                     break;
-                case 'boolean':
+                case "boolean":
                     defaults[prop.key] = false;
                     break;
-                case 'number':
+                case "number":
                     defaults[prop.key] = 0;
                     break;
-                case 'select':
+                case "select":
                     if (prop.options && prop.options.length > 0) {
                         defaults[prop.key] = prop.options[0].value;
                     }
                     break;
-                case 'jsonarray':
-                case 'stringarray':
+                case "jsonarray":
+                case "stringarray":
                     defaults[prop.key] = [];
                     break;
-                case 'json':
-                case 'jsonobject':
+                case "json":
+                case "jsonobject":
                     defaults[prop.key] = {};
                     break;
             }
