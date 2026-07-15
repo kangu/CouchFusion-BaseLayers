@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { createRegistryRecord, writeRegistryPair } from './registry-output.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -911,14 +912,54 @@ const determineControlType = (prop) => {
   return convertTypeToControl(prop.type)
 }
 
+const IMAGE_FIELD_KEYWORDS = [
+  'image',
+  'thumbnail',
+  'thumb',
+  'avatar',
+  'logo',
+  'logos',
+  'photo',
+  'picture',
+  'cover',
+  'banner',
+  'illustration'
+]
+
+const normalizeKey = (key) => key.replace(/[\s_-]+/g, '').toLowerCase()
+
+const looksLikeImageField = (key) => {
+  const normalized = normalizeKey(key)
+
+  return IMAGE_FIELD_KEYWORDS.some((keyword) => {
+    if (normalized === keyword) return true
+    if (normalized.endsWith(keyword)) return true
+    if (normalized.startsWith(keyword)) return true
+    return normalized.includes(keyword) && keyword.length >= 4
+  })
+}
+
+const applyImageFieldUi = (schema, key) => {
+  if (schema.ui || !looksLikeImageField(key)) {
+    return schema
+  }
+
+  if (schema.type === 'text' || schema.type === 'stringarray') {
+    schema.ui = { component: 'ContentImageField' }
+  }
+
+  return schema
+}
+
 const applySchemaUiHints = (schema, key, ui) => {
   if (ui?.widget === 'textarea' && schema.type === 'text') {
     schema.type = 'textarea'
   }
   if (ui) {
     schema.ui = ui
+    return schema
   }
-  return schema
+  return applyImageFieldUi(schema, key)
 }
 
 const buildPropSchema = (prop) => {
@@ -1490,8 +1531,8 @@ const extractProps = (scriptContent, helpers) => {
   return mergeProps(typedProps, runtimeProps, defaults)
 }
 
-const generateDefinitions = async (vueFiles, helpers) => {
-  const definitions = []
+const generateRecords = async (vueFiles, helpers) => {
+  const records = []
 
   for (const file of vueFiles) {
     const source = await fs.readFile(file, 'utf8')
@@ -1588,10 +1629,10 @@ const generateDefinitions = async (vueFiles, helpers) => {
       applyBuilderComponentMeta(definition, builderComponentMeta)
     }
 
-    definitions.push(definition)
+    records.push(createRegistryRecord(definition, file, appRoot))
   }
 
-  return definitions.sort((a, b) => a.label.localeCompare(b.label))
+  return records.sort((a, b) => a.manifest.id.localeCompare(b.manifest.id))
 }
 
 const extractBuilderNamedMeta = (scriptContent, helpers, exportName) => {
@@ -1711,73 +1752,24 @@ const applyBuilderComponentMeta = (definition, meta) => {
     definition.description = meta.description.trim()
   }
   if (Array.isArray(meta.previewSections)) {
-    definition.previewSections = meta.previewSections
-      .filter((section) => section && typeof section.id === 'string' && typeof section.label === 'string')
-      .map((section) => ({ id: section.id.trim(), label: section.label.trim() }))
-      .filter((section) => section.id && section.label)
-  }
-}
+    const previewSections = meta.previewSections
+      .filter((section) => (
+        section &&
+        typeof section === 'object' &&
+        typeof section.id === 'string' &&
+        section.id.trim().length > 0 &&
+        typeof section.label === 'string' &&
+        section.label.trim().length > 0
+      ))
+      .map((section) => ({
+        id: section.id.trim(),
+        label: section.label.trim()
+      }))
 
-const escapeString = (value) =>
-  value
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
-
-const formatValue = (value, level = 0) => {
-  const indent = '  '.repeat(level)
-  const nextIndent = '  '.repeat(level + 1)
-
-  if (value === null) {
-    return 'null'
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return '[]'
+    if (previewSections.length > 0) {
+      definition.previewSections = previewSections
     }
-    const lines = value
-      .map((item, index) => {
-        const suffix = index < value.length - 1 ? ',' : ''
-        return `${nextIndent}${formatValue(item, level + 1)}${suffix}`
-      })
-      .join('\n')
-    return `[\n${lines}\n${indent}]`
   }
-
-  if (typeof value === 'object') {
-    const entries = Object.entries(value)
-    if (entries.length === 0) {
-      return '{}'
-    }
-    const lines = entries
-      .map(([key, val], index) => {
-        const suffix = index < entries.length - 1 ? ',' : ''
-        return `${nextIndent}${key}: ${formatValue(val, level + 1)}${suffix}`
-      })
-      .join('\n')
-    return `{
-${lines}
-${indent}}`
-  }
-
-  if (typeof value === 'string') {
-    return `'${escapeString(value)}'`
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value)
-  }
-
-  return 'undefined'
-}
-
-const writeDefinitionsFile = async (definitions) => {
-  const formatted = formatValue(definitions)
-  const content = `import type { ComponentDefinition } from '#content/types/builder'\n\nconst definitions: ComponentDefinition[] = ${formatted}\n\nexport default definitions\n`
-  await fs.mkdir(path.dirname(outputFile), { recursive: true })
-  await fs.writeFile(outputFile, content)
 }
 
 const run = async () => {
@@ -1808,10 +1800,10 @@ const run = async () => {
     )
   }
 
-  const definitions = await generateDefinitions(vueFiles, helpers)
-  await writeDefinitionsFile(definitions)
+  const records = await generateRecords(vueFiles, helpers)
+  await writeRegistryPair({ outputFile, records })
 
-  console.log(`Generated ${definitions.length} component definitions for ${appName}.`)
+  console.log(`Generated ${records.length} component definitions for ${appName}.`)
 }
 
 run().catch((error) => {
