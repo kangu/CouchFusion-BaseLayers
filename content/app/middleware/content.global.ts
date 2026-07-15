@@ -20,6 +20,14 @@ import {
   resolveContentI18nConfig,
   resolveContentLocalePath,
 } from "#content/utils/i18n";
+import {
+  buildContentRouteAccessCookieName,
+  canResolveContentRouteAccessForPath,
+  hasContentRouteAccessSessionCookie,
+  isContentRouteAccessEditorPreview,
+  parseContentRouteAccessPolicy,
+  resolveContentRouteAccessAction,
+} from "#content/utils/route-access";
 
 interface RoutePrefixConfig {
   ignoredPrefixes: string[];
@@ -156,7 +164,17 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     );
   }
 
-  if (!isContentRoute(contentPath, ignoredPrefixes, allowedPrefixes)) {
+  const handlesContentRoute = isContentRoute(
+    contentPath,
+    ignoredPrefixes,
+    allowedPrefixes,
+  );
+  const accessPolicyOnlyRoute = !handlesContentRoute;
+
+  if (
+    accessPolicyOnlyRoute &&
+    !canResolveContentRouteAccessForPath(contentPath)
+  ) {
     return;
   }
 
@@ -179,6 +197,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const store = useContentPagesStore();
 
   if (
+    handlesContentRoute &&
     import.meta.server &&
     contentI18nConfig.enabled &&
     contentI18nConfig.prefixedLocales.length > 0
@@ -255,7 +274,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     await store.fetchPage(contentPath, false, { locale: localizedPath.locale });
   } catch (error: any) {
     if (error?.statusCode === 404) {
-      if (import.meta.client) {
+      if (accessPolicyOnlyRoute || import.meta.client) {
         // On client navigation, allow the normal route handling to continue for ignored or non-content pages.
         return;
       }
@@ -270,5 +289,79 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     }
 
     console.error("Content middleware fetch error:", error);
+  }
+
+  // The authenticated /builder and /k editors render the public page in an
+  // iframe carrying this marker. Route-access policies must remain editable,
+  // including when a persisted policy is invalid and would otherwise fail closed.
+  if (isContentRouteAccessEditorPreview(to.query)) {
+    return;
+  }
+
+  const summary = store.getPage(contentPath, localizedPath.locale);
+  const routeAccess = parseContentRouteAccessPolicy(
+    summary?.document?.meta ?? summary?.meta,
+    contentPath,
+  );
+
+  if (routeAccess.status === "invalid") {
+    console.warn(
+      `[content-layer] Invalid route access policy for ${contentPath}: ${routeAccess.reason}`,
+    );
+    return abortNavigation(
+      createError({
+        statusCode: 404,
+        statusMessage: "Content page route access is misconfigured",
+      }),
+    );
+  }
+
+  if (routeAccess.status === "valid") {
+    const localizedTargetPath = buildLocalizedPath(
+      contentPath,
+      localizedPath.locale,
+      contentI18nConfig,
+    );
+    const accessCookieName = buildContentRouteAccessCookieName(
+      contentPath,
+      routeAccess.policy,
+    );
+    const accessCookie = useCookie<string | null>(
+      accessCookieName,
+      {
+        path: localizedTargetPath,
+        sameSite: "lax",
+      },
+    );
+    const fromPath = from?.path
+      ? resolveContentLocalePath(from.path, contentI18nConfig).basePath
+      : null;
+    const rawServerCookieHeader = serverRequestEvent?.node.req.headers.cookie;
+    const serverCookieHeader = Array.isArray(rawServerCookieHeader)
+      ? rawServerCookieHeader[0]
+      : rawServerCookieHeader;
+    const hasSession = import.meta.server
+      ? hasContentRouteAccessSessionCookie(
+          serverCookieHeader,
+          accessCookieName,
+        )
+      : accessCookie.value === "1";
+    const action = resolveContentRouteAccessAction({
+      policy: routeAccess.policy,
+      fromPath,
+      hasSession,
+    });
+    if (action.type === "redirect") {
+      const localizedRedirectPath = buildLocalizedPath(
+        action.to,
+        localizedPath.locale,
+        contentI18nConfig,
+      );
+      return navigateTo(localizedRedirectPath, { redirectCode: 302 });
+    }
+
+    if (action.grantSession) {
+      accessCookie.value = "1";
+    }
   }
 });

@@ -114,6 +114,74 @@ describe('content pages API handlers', () => {
     expect(response.page.title).toBe('Welcome')
   })
 
+  it('inherits route access metadata from the master page for localized reads', async () => {
+    const i18n = {
+      defaultLocale: 'en',
+      locales: ['en', 'ro'],
+    }
+    ;(runtimeConfig as any).content = { i18n }
+    runtimeConfig.public.content = { i18n }
+    appConfig.content = { i18n }
+
+    try {
+      const master = buildContentPageDocument({
+        path: '/gated',
+        title: 'Gated',
+        meta: {
+          routeAccess: {
+            mode: 'entry-session',
+            allowedFrom: ['/landing'],
+            redirectTo: '/landing',
+          },
+        },
+      })
+      master.meta = {
+        ...master.meta,
+        contentI18n: {
+          version: 1,
+          masterId: master._id,
+          locale: 'en',
+          basePath: '/gated',
+          defaultLocale: 'en',
+          fixedBodyPaths: [],
+          updatedAtByLocale: { en: master.updatedAt, ro: master.updatedAt },
+        },
+      }
+      const ro = {
+        ...buildContentPageDocument({
+          path: '/ro/gated',
+          title: 'Gated RO',
+          meta: {},
+        }),
+        _id: `${master._id}::ro`,
+        meta: {
+          contentI18n: {
+            version: 1,
+            masterId: master._id,
+            locale: 'ro',
+            basePath: '/gated',
+            defaultLocale: 'en',
+            fixedBodyPaths: [],
+            updatedAtByLocale: { en: master.updatedAt, ro: master.updatedAt },
+          },
+        },
+      }
+      await contentHarness.seedDocuments([master, ro])
+
+      const handler = (await import('../server/api/content/pages.get')).default
+      const response = await handler(createMockEvent({
+        query: { path: '/ro/gated' },
+      }))
+
+      expect(response.page.doc.meta.routeAccess).toEqual(master.meta.routeAccess)
+      expect(response.page.meta.routeAccess).toEqual(master.meta.routeAccess)
+    } finally {
+      delete (runtimeConfig as any).content
+      runtimeConfig.public.content = {}
+      appConfig.content = {}
+    }
+  })
+
   it('normalizes legacy pages without publication state as published', async () => {
     await seedContentPages(contentHarness, { path: '/legacy-public', title: 'Legacy Public' })
 
