@@ -3447,8 +3447,43 @@ const applyTextValue = () => {
 }
 
 .node-panel :deep(.node-panel__field.is-row) {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    gap: 12px;
+    min-height: 58px;
+    padding: 10px 12px;
+    border: 1px solid #dbe1ea;
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+    transition:
+        border-color 140ms ease,
+        background-color 140ms ease,
+        box-shadow 140ms ease;
+}
+
+.node-panel :deep(.node-panel__field.is-row:hover) {
+    border-color: #b9c4d3;
+    background: #f8fafc;
+}
+
+.node-panel :deep(.node-panel__field.is-row:has(input:focus-visible)) {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.node-panel :deep(.node-panel__field-copy) {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.node-panel :deep(.node-panel__field-description) {
+    color: #8a93a2;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.35;
 }
 
 :deep(.node-panel__input-wrap) {
@@ -3492,6 +3527,7 @@ const applyTextValue = () => {
     padding: 6px 8px;
     border-radius: 4px;
     border: 1px solid #cbd5f5;
+    background: #ffffff;
     width: 100%;
 }
 
@@ -3865,61 +3901,6 @@ const applyTextValue = () => {
 .node-panel :deep(.node-panel__array-item--drag-over) {
     border-color: #2563eb;
     background: #eff6ff;
-}
-
-.node-panel :deep(.node-panel__checkbox) {
-    position: relative;
-    display: inline-flex;
-    width: 1.5rem;
-    height: 1.5rem;
-    order: -1;
-}
-
-.node-panel :deep(.node-panel__checkbox-input) {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    opacity: 0;
-    cursor: pointer;
-}
-
-.node-panel :deep(.node-panel__checkbox-box) {
-    width: 100%;
-    height: 100%;
-    border-radius: 0.4rem;
-    border: 1.5px solid #94a3b8;
-    background: #ffffff;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: transparent;
-    transition:
-        background 140ms ease,
-        border-color 140ms ease,
-        color 140ms ease,
-        box-shadow 140ms ease;
-}
-
-.node-panel :deep(.node-panel__checkbox svg) {
-    width: 0.9rem;
-    height: 0.9rem;
-}
-
-.node-panel :deep(.node-panel__checkbox:hover .node-panel__checkbox-box) {
-    border-color: #2563eb;
-}
-
-.node-panel :deep(.node-panel__checkbox-input:focus-visible + .node-panel__checkbox-box) {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
-    border-color: #2563eb;
-}
-
-.node-panel :deep(.node-panel__checkbox-input:checked + .node-panel__checkbox-box) {
-    background: #2563eb;
-    border-color: #2563eb;
-    color: #ffffff;
 }
 
 .node-panel :deep(.node-panel__array-add) {

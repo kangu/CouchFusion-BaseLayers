@@ -159,48 +159,23 @@
                         </div>
                     </template>
                     <template v-else-if="field.type === 'boolean'">
-                        <span class="node-panel__checkbox">
-                            <input
-                                type="checkbox"
-                                class="node-panel__checkbox-input"
-                                :checked="
-                                    Boolean(
-                                        arrayItemEntry.value?.[
-                                            field.key
-                                        ],
+                        <NodeBooleanToggle
+                            :model-value="
+                                Boolean(
+                                    arrayItemEntry.value?.[field.key],
+                                )
+                            "
+                            :label="field.label"
+                            @update:model-value="
+                                (value) =>
+                                    handleArrayItemFieldChange(
+                                        prop.key,
+                                        arrayItemEntry.index,
+                                        field,
+                                        value,
                                     )
-                                "
-                                @change="
-                                    (event: Event) =>
-                                        handleArrayItemFieldChange(
-                                            prop.key,
-                                            arrayItemEntry.index,
-                                            field,
-                                            (
-                                                event.target as HTMLInputElement
-                                            ).checked,
-                                        )
-                                "
-                            />
-                            <span
-                                class="node-panel__checkbox-box"
-                                aria-hidden="true"
-                            >
-                                <svg
-                                    viewBox="0 0 20 20"
-                                    fill="none"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        d="M5 10.5L8.5 14L15 6"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                    />
-                                </svg>
-                            </span>
-                        </span>
+                            "
+                        />
                     </template>
                     <template v-else-if="field.type === 'number'">
                         <input
@@ -932,54 +907,27 @@
                                                 'boolean'
                                             "
                                         >
-                                            <span
-                                                class="node-panel__checkbox"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    class="node-panel__checkbox-input"
-                                                    :checked="
-                                                        Boolean(
-                                                            nestedItem[
-                                                                nestedField.key
-                                                            ],
+                                            <NodeBooleanToggle
+                                                :model-value="
+                                                    Boolean(
+                                                        nestedItem[
+                                                            nestedField.key
+                                                        ],
+                                                    )
+                                                "
+                                                :label="nestedField.label"
+                                                @update:model-value="
+                                                    (value) =>
+                                                        updateNestedArrayItemField(
+                                                            prop.key,
+                                                            arrayItemEntry.index,
+                                                            field,
+                                                            nestedIndex,
+                                                            nestedField,
+                                                            value,
                                                         )
-                                                    "
-                                                    @change="
-                                                        (
-                                                            event: Event,
-                                                        ) =>
-                                                            updateNestedArrayItemField(
-                                                                prop.key,
-                                                                arrayItemEntry.index,
-                                                                field,
-                                                                nestedIndex,
-                                                                nestedField,
-                                                                (
-                                                                    event.target as HTMLInputElement
-                                                                ).checked,
-                                                            )
-                                                    "
-                                                />
-                                                <span
-                                                    class="node-panel__checkbox-box"
-                                                    aria-hidden="true"
-                                                >
-                                                    <svg
-                                                        viewBox="0 0 20 20"
-                                                        fill="none"
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                    >
-                                                        <path
-                                                            d="M5 10.5L8.5 14L15 6"
-                                                            stroke="currentColor"
-                                                            stroke-width="2"
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                        />
-                                                    </svg>
-                                                </span>
-                                            </span>
+                                                "
+                                            />
                                         </template>
                                         <template
                                             v-else-if="
@@ -2141,6 +2089,7 @@
 import { computed } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import { summarizeArrayValue } from "../../../utils/node-editor-summary";
+import NodeBooleanToggle from "./NodeBooleanToggle.vue";
 import NodeObjectField from "./NodeObjectField.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeTranslateInline from "./NodeTranslateInline.vue";
