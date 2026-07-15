@@ -38,6 +38,7 @@ import type {
 } from "~/types/builder";
 import {
     createDocumentFromTree,
+    normalizeBuilderComponentProps,
     type MinimalContentDocument,
     type PageConfigInput,
     type SpacingPresetId,
@@ -956,7 +957,14 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
                 processedProps[key] = value;
             }
         }
-        node.props = normalizeJsonProps(component, processedProps);
+        node.props = normalizeJsonProps(
+            component,
+            normalizeBuilderComponentProps(
+                component,
+                processedProps,
+                registry.lookup,
+            ),
+        );
 
         if (component === "p") {
             const alignFromProp = normaliseParagraphAlignment(node.props.align);

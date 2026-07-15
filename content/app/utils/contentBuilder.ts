@@ -5,7 +5,8 @@ import type {
   BuilderMarginBreakpoint,
   BuilderResponsiveMargin,
   BuilderTextNode,
-  BuilderTree
+  BuilderTree,
+  ComponentDefinition
 } from '~/types/builder'
 
 export type MinimalContentNode = [string, Record<string, any>, ...MinimalContentEntry[]]
@@ -142,6 +143,73 @@ const normalizeComponentId = (component: string): string => {
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
     .toLowerCase()
+}
+
+const parseBoundBuilderPropValue = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'undefined') {
+    return undefined
+  }
+
+  const first = trimmed[0]
+  const looksLikeJson =
+    first === '{' ||
+    first === '[' ||
+    first === '"' ||
+    trimmed === 'true' ||
+    trimmed === 'false' ||
+    trimmed === 'null' ||
+    /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+
+  if (!looksLikeJson) {
+    return value
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+/**
+ * Converts Vue-style bound keys into the canonical prop keys used by the
+ * builder editor while preserving colon-prefixed JSON storage keys.
+ */
+export const normalizeBuilderComponentProps = (
+  component: string,
+  props: Record<string, unknown>,
+  definitionLookup: Record<string, ComponentDefinition>
+): Record<string, unknown> => {
+  const definition = definitionLookup[component]
+  if (!definition?.props?.length) {
+    return props
+  }
+
+  for (const schema of definition.props) {
+    const storageKey =
+      schema.type === 'stringarray' ||
+      schema.type === 'jsonarray' ||
+      schema.type === 'jsonobject'
+        ? `:${schema.key}`
+        : schema.key
+    const boundKey = `:${schema.key}`
+
+    if (boundKey === storageKey || !(boundKey in props)) {
+      continue
+    }
+
+    if (!(schema.key in props)) {
+      props[schema.key] = parseBoundBuilderPropValue(props[boundKey])
+    }
+    delete props[boundKey]
+  }
+
+  return props
 }
 
 const serializeProps = (node: BuilderNode, componentName: string): Record<string, any> => {
