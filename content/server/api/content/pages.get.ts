@@ -77,6 +77,27 @@ const mapRowsById = (rows: Array<{ id?: string; doc?: Record<string, any> }>): M
     return result
 }
 
+/** Keeps route access owned by the master document for every localized response. */
+const inheritMasterRouteAccess = (
+    responseDocument: Record<string, any>,
+    masterDocument: Record<string, any>,
+): void => {
+    const responseMeta = responseDocument.meta && typeof responseDocument.meta === 'object'
+        ? { ...responseDocument.meta }
+        : {}
+    const masterMeta = masterDocument.meta && typeof masterDocument.meta === 'object'
+        ? masterDocument.meta
+        : {}
+
+    if (Object.prototype.hasOwnProperty.call(masterMeta, 'routeAccess')) {
+        responseMeta.routeAccess = structuredClone(masterMeta.routeAccess)
+    } else {
+        delete responseMeta.routeAccess
+    }
+
+    responseDocument.meta = responseMeta
+}
+
 const buildRootLegacyDocumentIds = (
     normalizedPath: string,
     locale: string,
@@ -195,6 +216,7 @@ export default defineEventHandler(async (event) => {
             )
             responseDocument.path = responsePath
             responseDocument.publicationState = normalizePublicationState(masterDocument.publicationState)
+            inheritMasterRouteAccess(responseDocument, masterDocument)
 
             if (hasLocaleDocument && localeDocument) {
                 const mergedBodyValue = buildLocalizedBodyForRead(

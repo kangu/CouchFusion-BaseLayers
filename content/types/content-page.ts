@@ -1,5 +1,11 @@
 export type ContentPagePublicationState = 'published' | 'draft'
 
+export interface ContentRouteAccessPolicy {
+    mode: 'entry-session'
+    allowedFrom: string[]
+    redirectTo: string
+}
+
 export interface ContentPageDocument {
     _id: string
     title: string | null

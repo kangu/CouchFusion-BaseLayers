@@ -61,6 +61,12 @@ import {
     applyGlobalAliasDefaultsToNode,
     applyGlobalAliasDefaultsToTree,
 } from "#content/app/utils/global-alias-defaults";
+import {
+    applyRouteAccessDraft,
+    createRouteAccessDraft,
+    isRouteAccessEditorReadOnly,
+    validateRouteAccessDraft,
+} from "#content/app/utils/route-access-editor";
 
 const ContentImageField = defineAsyncComponent(
     () => import("../admin/ContentImageField.vue"),
@@ -551,8 +557,18 @@ const seoDraft = reactive({
     seoDescription: pageConfig.seoDescription,
     seoImage: pageConfig.seoImage,
     assistiveSectionSnap: getAssistiveSectionSnap(),
+    routeAccess: createRouteAccessDraft(pageConfig.meta, pageConfig.path),
 });
 const isSeoCardExpanded = ref(false);
+const routeAccessEditorReadOnly = computed(() =>
+    isRouteAccessEditorReadOnly(
+        resolvedBuilderLocale.value,
+        resolvedDefaultLocale.value,
+    ),
+);
+const routeAccessValidation = computed(() =>
+    validateRouteAccessDraft(seoDraft.routeAccess, seoDraft.path || "/"),
+);
 
 const syncSeoDraftFromPageConfig = () => {
     seoDraft.path = pageConfig.path;
@@ -561,7 +577,20 @@ const syncSeoDraftFromPageConfig = () => {
     seoDraft.seoDescription = pageConfig.seoDescription;
     seoDraft.seoImage = pageConfig.seoImage;
     seoDraft.assistiveSectionSnap = getAssistiveSectionSnap();
+    seoDraft.routeAccess = createRouteAccessDraft(
+        pageConfig.meta,
+        pageConfig.path,
+    );
 };
+
+const hasRouteAccessDraftChanges = computed(() => {
+    const persisted = createRouteAccessDraft(pageConfig.meta, pageConfig.path);
+    return (
+        seoDraft.routeAccess.mode !== persisted.mode ||
+        seoDraft.routeAccess.allowedFromText !== persisted.allowedFromText ||
+        seoDraft.routeAccess.redirectTo !== persisted.redirectTo
+    );
+});
 
 const hasSeoDraftChanges = computed(
     () =>
@@ -570,6 +599,7 @@ const hasSeoDraftChanges = computed(
         seoDraft.seoTitle !== pageConfig.seoTitle ||
         seoDraft.seoDescription !== pageConfig.seoDescription ||
         seoDraft.seoImage !== pageConfig.seoImage ||
+        hasRouteAccessDraftChanges.value ||
         (isAssistiveSectionSnapToggleEnabled.value &&
             seoDraft.assistiveSectionSnap !== getAssistiveSectionSnap()),
 );
@@ -580,6 +610,18 @@ const openSeoCardEditor = () => {
 };
 
 const applySeoDraft = () => {
+    if (!routeAccessEditorReadOnly.value) {
+        const routeAccessResult = applyRouteAccessDraft(
+            pageConfig.meta,
+            seoDraft.path || "/",
+            seoDraft.routeAccess,
+        );
+        if (!routeAccessResult.valid) {
+            return;
+        }
+        pageConfig.meta = routeAccessResult.meta;
+    }
+
     pageConfig.path = seoDraft.path;
     pageConfig.title = seoDraft.title;
     pageConfig.seoTitle = seoDraft.seoTitle;
@@ -3387,7 +3429,7 @@ const handleSaveDebugClick = () => {
             >
                 <div class="builder-seo-card__content">
                     <div class="builder-seo-card__main">
-                        <div class="builder-seo-card__eyebrow">SEO</div>
+                        <div class="builder-seo-card__eyebrow">Page meta</div>
                         <div class="builder-seo-card__title">
                             {{ pageConfig.seoTitle || "SEO title" }}
                         </div>
@@ -3398,9 +3440,14 @@ const handleSaveDebugClick = () => {
                             }}
                         </div>
                         <div class="builder-seo-card__meta">
-                            <span>Path: {{ pageConfig.path || "/" }}</span>
                             <span>
-                                Internal: {{ pageConfig.title || "Page title" }}
+                                Access:
+                                {{
+                                    createRouteAccessDraft(pageConfig.meta, pageConfig.path).mode ===
+                                    "entry-session"
+                                        ? "Entry page required"
+                                        : "Public"
+                                }}
                             </span>
                         </div>
                     </div>
@@ -3518,6 +3565,55 @@ const handleSaveDebugClick = () => {
                         "
                     />
                 </div>
+                <fieldset class="builder-config__route-access builder-config__full">
+                    <legend>Route access</legend>
+                    <p class="builder-config__hint">
+                        Controls the page journey only. It does not protect the public content API.
+                    </p>
+                    <label>
+                        <span>Access mode</span>
+                        <select
+                            v-model="seoDraft.routeAccess.mode"
+                            :disabled="routeAccessEditorReadOnly"
+                        >
+                            <option value="public">Public</option>
+                            <option value="entry-session">Entry page required</option>
+                        </select>
+                    </label>
+                    <template v-if="seoDraft.routeAccess.mode === 'entry-session'">
+                        <label>
+                            <span>Allowed source routes</span>
+                            <textarea
+                                v-model="seoDraft.routeAccess.allowedFromText"
+                                rows="3"
+                                placeholder="/landing-page&#10;/campaign"
+                                :readonly="routeAccessEditorReadOnly"
+                            />
+                            <small>One internal route per line.</small>
+                        </label>
+                        <label>
+                            <span>Redirect route</span>
+                            <input
+                                v-model="seoDraft.routeAccess.redirectTo"
+                                type="text"
+                                placeholder="/landing-page"
+                                :readonly="routeAccessEditorReadOnly"
+                            />
+                        </label>
+                    </template>
+                    <p v-if="routeAccessEditorReadOnly" class="builder-config__hint">
+                        Route access is inherited from the default locale and is read-only here.
+                    </p>
+                    <ul
+                        v-else-if="!routeAccessValidation.valid"
+                        class="builder-config__errors"
+                        aria-live="polite"
+                    >
+                        <li v-for="error in routeAccessValidation.errors" :key="error">
+                            {{ error }}
+                        </li>
+                    </ul>
+                </fieldset>
                 <label
                     v-if="isAssistiveSectionSnapToggleEnabled"
                     class="builder-config__checkbox builder-config__full"
@@ -3536,7 +3632,12 @@ const handleSaveDebugClick = () => {
                     >
                         Cancel
                     </button>
-                    <button type="button" class="builder-config__ok" @click="applySeoDraft">
+                    <button
+                        type="button"
+                        class="builder-config__ok"
+                        :disabled="!routeAccessEditorReadOnly && !routeAccessValidation.valid"
+                        @click="applySeoDraft"
+                    >
                         OK
                     </button>
                 </div>
@@ -4795,11 +4896,43 @@ const handleSaveDebugClick = () => {
 }
 
 .builder-config input,
-.builder-config textarea {
+.builder-config textarea,
+.builder-config select {
     padding: 8px;
     border-radius: 4px;
     border: 1px solid #cbd5f5;
     font: inherit;
+}
+
+.builder-config__route-access {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+}
+
+.builder-config__route-access legend {
+    padding: 0 6px;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.builder-config__hint,
+.builder-config__route-access small {
+    margin: 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.builder-config__errors {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 20px;
+    color: #b91c1c;
+    font-size: 12px;
 }
 
 .builder-config__full {
@@ -4882,6 +5015,12 @@ const handleSaveDebugClick = () => {
 
 .builder-config__ok:hover {
     background: #1d4ed8;
+}
+
+.builder-config__ok:disabled {
+    border-color: #94a3b8;
+    background: #94a3b8;
+    cursor: not-allowed;
 }
 
 .builder-config__image-label {

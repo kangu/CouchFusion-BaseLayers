@@ -25,4 +25,25 @@ describe("content builder document metadata", () => {
             publicationState: "draft",
         });
     });
+
+    it("preserves route access metadata when serializing the builder document", () => {
+        const config: PageConfigInput = {
+            path: "/assessment",
+            title: "Assessment",
+            seoTitle: "Assessment",
+            seoDescription: "Assessment flow",
+            navigation: false,
+            extension: "md",
+            meta: {
+                category: "journey",
+                routeAccess: {
+                    mode: "entry-session",
+                    allowedFrom: ["/landing"],
+                    redirectTo: "/landing",
+                },
+            },
+        };
+
+        expect(createDocumentFromTree([], config).meta).toEqual(config.meta);
+    });
 });
