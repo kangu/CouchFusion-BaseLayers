@@ -64,36 +64,13 @@
                 </div>
             </template>
             <template v-else-if="prop.type === 'boolean'">
-                <span class="node-panel__checkbox">
-                    <input
-                        type="checkbox"
-                        class="node-panel__checkbox-input"
-                        :checked="Boolean(propDraft[prop.key])"
-                        @change="
-                            (event: Event) =>
-                                applyProp(
-                                    prop.key,
-                                    (event.target as HTMLInputElement).checked,
-                                    prop.type,
-                                )
-                        "
-                    />
-                    <span class="node-panel__checkbox-box" aria-hidden="true">
-                        <svg
-                            viewBox="0 0 20 20"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <path
-                                d="M5 10.5L8.5 14L15 6"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-                        </svg>
-                    </span>
-                </span>
+                <NodeBooleanToggle
+                    :model-value="Boolean(propDraft[prop.key])"
+                    :label="prop.label"
+                    @update:model-value="
+                        (value) => applyProp(prop.key, value, prop.type)
+                    "
+                />
             </template>
             <template v-else-if="prop.type === 'select'">
                 <NodeRemoteSelect
@@ -454,6 +431,7 @@
 <script setup lang="ts">
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
 import NodeArrayField from "./NodeArrayField.vue";
+import NodeBooleanToggle from "./NodeBooleanToggle.vue";
 import NodeField from "./NodeField.vue";
 import NodeObjectField from "./NodeObjectField.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
@@ -558,7 +536,8 @@ const props = defineProps<{
     isTranslateSelected?: (propPath: Array<string | number>) => boolean;
 }>();
 
-const fieldWrapperTag = (_schema: ComponentPropSchema) => "div";
+const fieldWrapperTag = (schema: ComponentPropSchema) =>
+    schema.type === "boolean" ? "label" : "div";
 
 const resolvePrimitiveInputType = (schema: ComponentPropSchema) => {
     if (schema.type !== "number") {
@@ -598,7 +577,8 @@ const formatRangeDisplayValue = (value: unknown) => {
     return "0";
 };
 
-const fieldWrapperRole = (_schema: ComponentPropSchema) => "group";
+const fieldWrapperRole = (schema: ComponentPropSchema) =>
+    schema.type === "boolean" ? undefined : "group";
 
 const preventFieldWrapperActivation = (event: Event) => {
     event.stopPropagation();

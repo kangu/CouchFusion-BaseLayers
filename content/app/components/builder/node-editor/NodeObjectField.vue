@@ -88,38 +88,13 @@
                     </div>
                 </template>
                 <template v-else-if="field.type === 'boolean'">
-                    <span class="node-panel__checkbox">
-                        <input
-                            type="checkbox"
-                            class="node-panel__checkbox-input"
-                            :checked="Boolean(objectValue?.[field.key])"
-                            @change="
-                                (event: Event) =>
-                                    applyFieldChange(
-                                        field,
-                                        (event.target as HTMLInputElement).checked,
-                                    )
-                            "
-                        />
-                        <span
-                            class="node-panel__checkbox-box"
-                            aria-hidden="true"
-                        >
-                            <svg
-                                viewBox="0 0 20 20"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path
-                                    d="M5 10.5L8.5 14L15 6"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                        </span>
-                    </span>
+                    <NodeBooleanToggle
+                        :model-value="Boolean(objectValue?.[field.key])"
+                        :label="field.label"
+                        @update:model-value="
+                            (value) => applyFieldChange(field, value)
+                        "
+                    />
                 </template>
                 <template v-else-if="field.type === 'number'">
                     <input
@@ -416,48 +391,23 @@
                                             arrayField.type === 'boolean'
                                         "
                                     >
-                                        <span class="node-panel__checkbox">
-                                            <input
-                                                type="checkbox"
-                                                class="node-panel__checkbox-input"
-                                                :checked="
-                                                    Boolean(
-                                                        arrayItem?.[
-                                                            arrayField.key
-                                                        ],
+                                        <NodeBooleanToggle
+                                            :model-value="
+                                                Boolean(
+                                                    arrayItem?.[arrayField.key],
+                                                )
+                                            "
+                                            :label="arrayField.label"
+                                            @update:model-value="
+                                                (value) =>
+                                                    updateArrayField(
+                                                        field,
+                                                        index,
+                                                        arrayField,
+                                                        value,
                                                     )
-                                                "
-                                                @change="
-                                                    (event: Event) =>
-                                                        updateArrayField(
-                                                            field,
-                                                            index,
-                                                            arrayField,
-                                                            (
-                                                                event.target as HTMLInputElement
-                                                            ).checked,
-                                                        )
-                                                "
-                                            />
-                                            <span
-                                                class="node-panel__checkbox-box"
-                                                aria-hidden="true"
-                                            >
-                                                <svg
-                                                    viewBox="0 0 20 20"
-                                                    fill="none"
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                >
-                                                    <path
-                                                        d="M5 10.5L8.5 14L15 6"
-                                                        stroke="currentColor"
-                                                        stroke-width="2"
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                    />
-                                                </svg>
-                                            </span>
-                                        </span>
+                                            "
+                                        />
                                     </template>
                                     <template
                                         v-else-if="
@@ -885,6 +835,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import type { ComponentArrayItemField, ComponentPropSchema } from "~/types/builder";
+import NodeBooleanToggle from "./NodeBooleanToggle.vue";
 import NodeRemoteSelect from "./NodeRemoteSelect.vue";
 import NodeReorderDialog from "./NodeReorderDialog.vue";
 import NodeTranslateInline from "./NodeTranslateInline.vue";

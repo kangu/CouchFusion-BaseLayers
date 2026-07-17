@@ -10,10 +10,19 @@
         :role="role"
         v-on="listeners"
     >
-        <span>{{ label }}</span>
+        <span v-if="isRow" class="node-panel__field-copy">
+            <span>{{ label }}</span>
+            <small
+                v-if="description"
+                class="node-panel__field-description"
+            >
+                {{ description }}
+            </small>
+        </span>
+        <span v-else>{{ label }}</span>
         <slot />
         <small v-if="error" class="node-panel__error">{{ error }}</small>
-        <small v-if="description">{{ description }}</small>
+        <small v-if="description && !isRow">{{ description }}</small>
     </component>
 </template>
 
