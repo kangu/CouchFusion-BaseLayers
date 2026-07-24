@@ -24,7 +24,7 @@ type InvisibleFormShieldFailureReason =
   | "stale"
   | "honeypot";
 
-const DEFAULT_MIN_AGE_MS = 2_000;
+const DEFAULT_MIN_AGE_MS = 1_000;
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const rejectInvisibleFormShield = (
