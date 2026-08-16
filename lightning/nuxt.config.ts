@@ -5,7 +5,7 @@ export default defineNuxtConfig({
         '#lightning': fileURLToPath(new URL('.', import.meta.url))
     },
 // Expose this layer's resources
-    extends: ['../database'],
+    extends: ['../database', '../email'],
 
 
     modules: [
