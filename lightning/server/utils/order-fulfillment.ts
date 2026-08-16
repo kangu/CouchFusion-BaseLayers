@@ -1,4 +1,5 @@
 import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+import { queueTemplateEmail } from "#email/server/utils/template-queue";
 
 interface FulfillmentProductConfig {
   invoiceField: string;
@@ -23,6 +24,12 @@ interface FulfillmentResult {
   invoiceDoc?: CouchDBDocument;
 }
 
+interface MembershipNotificationConfig {
+  customerTemplateName: string;
+  adminTemplateName: string;
+  product?: "pow_lab_lite";
+}
+
 const PRODUCT_FULFILLMENT: Record<string, FulfillmentProductConfig> = {
   pow_lab: {
     invoiceField: "pow_lab_invoice",
@@ -30,6 +37,7 @@ const PRODUCT_FULFILLMENT: Record<string, FulfillmentProductConfig> = {
     orderIdField: "pow_lab_order_id",
     statusField: "pow_lab_status",
     validUntilField: "pow_lab_valid_until",
+    createdStatus: "pending_payment",
     paidStatus: "active",
   },
   pow_lab_lite: {
@@ -38,6 +46,7 @@ const PRODUCT_FULFILLMENT: Record<string, FulfillmentProductConfig> = {
     orderIdField: "pow_lab_lite_order_id",
     statusField: "pow_lab_lite_status",
     validUntilField: "pow_lab_lite_valid_until",
+    createdStatus: "pending_payment",
     paidStatus: "active",
   },
   conference_submission: {
@@ -47,6 +56,18 @@ const PRODUCT_FULFILLMENT: Record<string, FulfillmentProductConfig> = {
     statusField: "conference_submission_status",
     createdStatus: "pending_payment",
     paidStatus: "paid",
+  },
+};
+
+const MEMBERSHIP_NOTIFICATIONS: Record<string, MembershipNotificationConfig> = {
+  pow_lab: {
+    customerTemplateName: "welcome_to_pow_lab",
+    adminTemplateName: "admin_order",
+  },
+  pow_lab_lite: {
+    customerTemplateName: "welcome_to_pow_lab_lite",
+    adminTemplateName: "admin_order_lite",
+    product: "pow_lab_lite",
   },
 };
 
@@ -71,6 +92,131 @@ const resolvePaymentRequest = (invoiceDoc: CouchDBDocument): string => {
 const resolveProviderInvoiceId = (invoiceDoc: CouchDBDocument): string => {
   const invoiceId = invoiceDoc?.invoiceData?.id || invoiceDoc?.invoiceData?.invoiceId;
   return typeof invoiceId === "string" ? invoiceId.trim() : "";
+};
+
+const resolveRequiredString = (value: unknown, fieldName: string): string => {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  throw new Error(`${fieldName} is required to queue membership notifications`);
+};
+
+const wasNotificationQueued = (
+  invoiceDoc: CouchDBDocument,
+  notificationKey: "customer" | "admin",
+): boolean => invoiceDoc?.fulfillment?.notifications?.[notificationKey]?.status === "queued";
+
+const markNotificationQueued = async (
+  ordersDatabase: string,
+  invoiceDoc: CouchDBDocument,
+  notificationKey: "customer" | "admin",
+  templateName: string,
+): Promise<CouchDBDocument> => {
+  const updatedInvoiceDoc = {
+    ...invoiceDoc,
+    fulfillment: {
+      ...(invoiceDoc.fulfillment || {}),
+      notifications: {
+        ...(invoiceDoc.fulfillment?.notifications || {}),
+        [notificationKey]: {
+          status: "queued",
+          templateName,
+          queuedAt: new Date().toISOString(),
+        },
+      },
+    },
+  };
+  const result = await putDocument(ordersDatabase, updatedInvoiceDoc);
+
+  return {
+    ...updatedInvoiceDoc,
+    _rev: result.rev,
+  };
+};
+
+const queueMembershipNotifications = async ({
+  ordersDatabase,
+  invoiceDoc,
+  orderDoc,
+  userDoc,
+  product,
+  validUntil,
+}: {
+  ordersDatabase: string;
+  invoiceDoc: CouchDBDocument;
+  orderDoc: CouchDBDocument;
+  userDoc: CouchDBDocument;
+  product: string;
+  validUntil: string | undefined;
+}): Promise<CouchDBDocument> => {
+  const notificationConfig = MEMBERSHIP_NOTIFICATIONS[product];
+  if (!notificationConfig) {
+    return invoiceDoc;
+  }
+
+  const userEmail = resolveRequiredString(userDoc.email, "Member email");
+  const subscriptionEndDate = resolveRequiredString(validUntil, "Subscription end date");
+  const notificationProduct = notificationConfig.product
+    ? { product: notificationConfig.product }
+    : {};
+  let nextInvoiceDoc = invoiceDoc;
+
+  if (!wasNotificationQueued(nextInvoiceDoc, "customer")) {
+    const customerResult = await queueTemplateEmail({
+      templateName: notificationConfig.customerTemplateName,
+      to: userEmail,
+      payload: {
+        user_email: userEmail,
+        subscription_end_date: subscriptionEndDate,
+        ...notificationProduct,
+      },
+    });
+    if (!customerResult.ok) {
+      throw new Error(
+        `Failed to queue ${notificationConfig.customerTemplateName}: ${customerResult.errorMessage || "unknown error"}`,
+      );
+    }
+    nextInvoiceDoc = await markNotificationQueued(
+      ordersDatabase,
+      nextInvoiceDoc,
+      "customer",
+      notificationConfig.customerTemplateName,
+    );
+  }
+
+  if (!wasNotificationQueued(nextInvoiceDoc, "admin")) {
+    const settingsDoc = await getDocument<CouchDBDocument>(ordersDatabase, "settings");
+    const adminEmail = resolveRequiredString(
+      settingsDoc?.orderNotifications?.recipientEmail,
+      "Order notification recipient email",
+    );
+    const adminResult = await queueTemplateEmail({
+      templateName: notificationConfig.adminTemplateName,
+      to: adminEmail,
+      payload: {
+        user_email: userEmail,
+        amount: orderDoc?.content?.sats,
+        referrer: orderDoc?.content?.referralSource,
+        telegram: orderDoc?.content?.telegram,
+        timestamp: invoiceDoc.timestamp,
+        ...notificationProduct,
+      },
+    });
+    if (!adminResult.ok) {
+      throw new Error(
+        `Failed to queue ${notificationConfig.adminTemplateName}: ${adminResult.errorMessage || "unknown error"}`,
+      );
+    }
+    nextInvoiceDoc = await markNotificationQueued(
+      ordersDatabase,
+      nextInvoiceDoc,
+      "admin",
+      notificationConfig.adminTemplateName,
+    );
+  }
+
+  return nextInvoiceDoc;
 };
 
 /**
@@ -257,11 +403,19 @@ export const applyInvoicePaidFulfillment = async (
   }
 
   await putDocument("_users", updatedUserDoc);
+  const invoiceWithNotifications = await queueMembershipNotifications({
+    ordersDatabase: options.ordersDatabase,
+    invoiceDoc: options.invoiceDoc,
+    orderDoc: options.orderDoc,
+    userDoc,
+    product,
+    validUntil,
+  });
   const fulfilledInvoiceDoc = {
-    ...options.invoiceDoc,
+    ...invoiceWithNotifications,
     lastEvent: "done",
     fulfillment: {
-      ...(options.invoiceDoc.fulfillment || {}),
+      ...(invoiceWithNotifications.fulfillment || {}),
       status: "fulfilled",
       product,
       fulfilledAt: new Date().toISOString(),

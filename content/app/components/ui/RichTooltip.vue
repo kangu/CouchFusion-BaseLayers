@@ -31,12 +31,8 @@
     </Teleport>
 </template>
 
-<script lang="ts">
-let tooltipCounter = 0;
-</script>
-
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue";
 import type { CSSProperties } from "vue";
 
 defineOptions({
@@ -61,7 +57,7 @@ const props = withDefaults(
     },
 );
 
-const tooltipId = `rich-tooltip-${++tooltipCounter}`;
+const tooltipId = `rich-tooltip-${useId()}`;
 const triggerRef = ref<HTMLElement | null>(null);
 const tooltipRef = ref<HTMLElement | null>(null);
 const isOpen = ref(false);

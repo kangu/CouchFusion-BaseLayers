@@ -98,6 +98,26 @@ const normalizeSelectedScopePointers = (value: unknown): string[] => {
   ).sort()
 }
 
+/**
+ * Resolves the historical root-page document ids so translation remains
+ * compatible with content created before locale-aware root ids were added.
+ */
+const buildRootLegacyDocumentIds = (
+  basePath: string,
+  locale: string,
+  defaultLocale: string,
+): { masterId: string | null; localeId: string | null } => {
+  if (basePath !== '/') {
+    return { masterId: null, localeId: null }
+  }
+
+  const masterId = 'page-/'
+  return {
+    masterId,
+    localeId: locale === defaultLocale ? masterId : `${masterId}::${locale}`,
+  }
+}
+
 const filterEntriesBySelectedPointers = (
   entries: TranslationTextEntry[],
   selectedPointers: string[],
@@ -439,6 +459,17 @@ export default defineEventHandler(async (event) => {
 
   const databaseName = getContentDatabaseName()
   const documentIds = buildLocaleDocumentIds(basePath, i18nConfig)
+  const legacyIds = buildRootLegacyDocumentIds(
+    basePath,
+    sourceLocale,
+    i18nConfig.defaultLocale,
+  )
+  if (legacyIds.masterId && !documentIds.includes(legacyIds.masterId)) {
+    documentIds.push(legacyIds.masterId)
+  }
+  if (legacyIds.localeId && !documentIds.includes(legacyIds.localeId)) {
+    documentIds.push(legacyIds.localeId)
+  }
   const allDocs = await getAllDocs(databaseName, {
     keys: documentIds,
     include_docs: true,
@@ -447,7 +478,9 @@ export default defineEventHandler(async (event) => {
   const docsById = toRowsById(rows as Array<{ doc?: Record<string, any> }>)
 
   const masterId = getLocaleDocumentId(basePath, i18nConfig.defaultLocale, i18nConfig)
-  const masterDocument = docsById.get(masterId)
+  const masterDocument = docsById.get(masterId) ?? (
+    legacyIds.masterId ? docsById.get(legacyIds.masterId) : undefined
+  )
 
   if (!masterDocument) {
     throw createError({
@@ -511,7 +544,14 @@ export default defineEventHandler(async (event) => {
   for (const targetLocale of targetLocales) {
     try {
       const localeId = getLocaleDocumentId(basePath, targetLocale, i18nConfig)
-      const localeDocument = docsById.get(localeId)
+      const legacyLocaleIds = buildRootLegacyDocumentIds(
+        basePath,
+        targetLocale,
+        i18nConfig.defaultLocale,
+      )
+      const localeDocument = docsById.get(localeId) ?? (
+        legacyLocaleIds.localeId ? docsById.get(legacyLocaleIds.localeId) : undefined
+      )
 
       const baseMinimal = localeDocument
         ? contentToMinimalDocument(localeDocument as any)

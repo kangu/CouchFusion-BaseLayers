@@ -9,6 +9,7 @@ const processWebhookMock = vi.fn();
 const validateWebhookMock = vi.fn();
 const publishMock = vi.fn();
 const readCouchConfigValuesMock = vi.fn();
+const queueTemplateEmailMock = vi.fn();
 
 vi.mock("#database/utils/couchdb", () => ({
   getDocument: getDocumentMock,
@@ -32,6 +33,10 @@ vi.mock("../server/utils/payment-event-bus", () => ({
   paymentEventBus: {
     publish: publishMock,
   },
+}));
+
+vi.mock("#email/server/utils/template-queue", () => ({
+  queueTemplateEmail: (...args: unknown[]) => queueTemplateEmailMock(...args),
 }));
 
 interface CreateEventOptions {
@@ -69,6 +74,7 @@ describe("strike webhook route", () => {
     validateWebhookMock.mockReset();
     publishMock.mockReset();
     readCouchConfigValuesMock.mockReset();
+    queueTemplateEmailMock.mockReset();
     readCouchConfigValuesMock.mockResolvedValue({
       lightning_default_provider: "strike",
       strike_api_key: "strike_key",
@@ -76,6 +82,11 @@ describe("strike webhook route", () => {
     });
 
     validateWebhookMock.mockReturnValue(true);
+    queueTemplateEmailMock.mockResolvedValue({
+      ok: true,
+      providerMessageId: "queued-message-id",
+      errorMessage: null,
+    });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -136,8 +147,13 @@ describe("strike webhook route", () => {
       .mockResolvedValueOnce({
         _id: "org.couchdb.user:alice",
         name: "alice",
+        email: "alice@example.com",
         pow_lab_invoice: "lnbc123",
         pow_lab_status: "pending_payment",
+      })
+      .mockResolvedValueOnce({
+        _id: "settings",
+        orderNotifications: { recipientEmail: "orders@example.com" },
       });
     putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
 
@@ -193,6 +209,14 @@ describe("strike webhook route", () => {
         status: "fulfilled",
         product: "pow_lab",
       }),
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "welcome_to_pow_lab",
+      to: "alice@example.com",
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "admin_order",
+      to: "orders@example.com",
     }));
   });
 
@@ -269,8 +293,13 @@ describe("strike webhook route", () => {
       .mockResolvedValueOnce({
         _id: "org.couchdb.user:alice",
         name: "alice",
+        email: "alice@example.com",
         pow_lab_invoice: "lnbc123",
         pow_lab_status: "pending_payment",
+      })
+      .mockResolvedValueOnce({
+        _id: "settings",
+        orderNotifications: { recipientEmail: "orders@example.com" },
       });
     putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
 
@@ -299,6 +328,58 @@ describe("strike webhook route", () => {
       id: "strike:evt_paid_without_correlation:invoice.paid",
       orderId: "purchase_123",
       userName: "alice",
+    }));
+  });
+
+  it("records a paid event as failed when a required membership notification cannot be queued", async () => {
+    processWebhookMock.mockResolvedValue({
+      eventId: "evt_notification_failure",
+      invoiceId: "inv_123",
+      status: "paid",
+      timestamp: "2026-06-26T20:00:00.000Z",
+      metadata: { correlationId: "purchase_123" },
+    });
+    queueTemplateEmailMock.mockResolvedValue({
+      ok: false,
+      providerMessageId: null,
+      errorMessage: "email sender unavailable",
+    });
+    getDocumentMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        _id: "invoice-inv_123",
+        orderId: "purchase_123",
+        userName: "alice",
+        invoiceData: { invoiceId: "inv_123", status: "pending" },
+      })
+      .mockResolvedValueOnce({
+        _id: "purchase_123",
+        userName: "alice",
+        content: { product: "pow_lab", validUntil: "2026-12-26T00:00:00.000Z" },
+      })
+      .mockResolvedValueOnce({
+        _id: "org.couchdb.user:alice",
+        name: "alice",
+        email: "alice@example.com",
+      });
+    putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
+
+    const handler = (await import("../server/api/webhooks/strike.post")).default;
+    const response = await handler(createMockEvent({
+      body: { eventType: "invoice.updated", id: "evt_notification_failure" },
+      headers: { "x-webhook-signature": "valid" },
+    }));
+
+    expect(response).toEqual({
+      success: true,
+      processed: true,
+      invoiceId: "inv_123",
+      status: "paid",
+    });
+    expect(putDocumentMock).toHaveBeenCalledWith("bv-orders", expect.objectContaining({
+      _id: "payment-event:strike:evt_notification_failure",
+      processingStatus: "failed",
+      error: expect.stringContaining("email sender unavailable"),
     }));
   });
 

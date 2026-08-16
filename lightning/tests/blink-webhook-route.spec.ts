@@ -10,6 +10,7 @@ const processWebhookMock = vi.fn();
 const publishMock = vi.fn();
 const readCouchConfigValuesMock = vi.fn();
 const updateLinkedInvoiceDocumentsMock = vi.fn();
+const queueTemplateEmailMock = vi.fn();
 
 vi.mock("#database/utils/couchdb", () => ({
   getDocument: getDocumentMock,
@@ -37,6 +38,10 @@ vi.mock("../server/utils/payment-event-bus", () => ({
   paymentEventBus: {
     publish: publishMock,
   },
+}));
+
+vi.mock("#email/server/utils/template-queue", () => ({
+  queueTemplateEmail: (...args: unknown[]) => queueTemplateEmailMock(...args),
 }));
 
 interface CreateEventOptions {
@@ -83,11 +88,17 @@ describe("blink webhook route", () => {
     putDocumentMock.mockReset();
     readCouchConfigValuesMock.mockReset();
     updateLinkedInvoiceDocumentsMock.mockReset();
+    queueTemplateEmailMock.mockReset();
     readCouchConfigValuesMock.mockResolvedValue({
       lightning_default_provider: "blink",
       blink_api_key: "blink_key",
     });
     updateLinkedInvoiceDocumentsMock.mockResolvedValue({ updated: 0, skipped: 0 });
+    queueTemplateEmailMock.mockResolvedValue({
+      ok: true,
+      providerMessageId: "queued-message-id",
+      errorMessage: null,
+    });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -203,8 +214,13 @@ describe("blink webhook route", () => {
       .mockResolvedValueOnce({
         _id: "org.couchdb.user:alice",
         name: "alice",
+        email: "alice@example.com",
         pow_lab_lite_invoice: "lnbcblink",
         pow_lab_lite_status: "pending_payment",
+      })
+      .mockResolvedValueOnce({
+        _id: "settings",
+        orderNotifications: { recipientEmail: "orders@example.com" },
       });
     putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
 
@@ -253,6 +269,14 @@ describe("blink webhook route", () => {
         status: "fulfilled",
         product: "pow_lab_lite",
       }),
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "welcome_to_pow_lab_lite",
+      to: "alice@example.com",
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "admin_order_lite",
+      to: "orders@example.com",
     }));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({
       id: "blink:blink_tx_123:invoice.paid",
