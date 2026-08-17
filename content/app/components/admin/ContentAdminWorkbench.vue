@@ -478,6 +478,7 @@ const createPageError = ref<string | null>(null);
 const isDuplicateModalOpen = ref(false);
 const isDuplicatePending = ref(false);
 const duplicatePageError = ref<string | null>(null);
+const isRenameUrlPending = ref(false);
 
 const newPageForm = reactive({
     path: "/",
@@ -561,6 +562,13 @@ const selectedSummary = computed<ContentPageSummary | null>(() => {
     }
     return contentStore.getPage(selectedPath.value, activeLocale.value);
 });
+const canRenameSelectedUrl = computed(
+    () =>
+        Boolean(selectedSummary.value) &&
+        !hasUnsavedChanges.value &&
+        !isRenameUrlPending.value &&
+        activeLocale.value === contentI18nConfig.value.defaultLocale,
+);
 const toBasePath = (path: string): string =>
     resolveContentLocalePath(path, contentI18nConfig.value).basePath;
 const currentEditedPath = computed(
@@ -1541,6 +1549,34 @@ async function openPageForEditing(path: string, force = false): Promise<boolean>
         return false;
     } finally {
         isSelectingPage.value = false;
+    }
+}
+
+async function handleRenameUrlFromActionsMenu(): Promise<void> {
+    const sourcePath = selectedSummary.value?.path;
+    if (!sourcePath || !canRenameSelectedUrl.value || typeof window === "undefined") {
+        return;
+    }
+
+    const targetPath = window.prompt("New page URL", sourcePath);
+    if (!targetPath || targetPath.trim() === sourcePath) {
+        return;
+    }
+
+    isRenameUrlPending.value = true;
+    saveError.value = null;
+    try {
+        const result = await contentStore.renamePageUrl({
+            sourcePath,
+            targetPath: targetPath.trim(),
+            keepRedirect: false,
+        });
+        await openPageForEditing(result.page.path, true);
+        closeActionsMenu();
+    } catch (error: any) {
+        saveError.value = error?.message || "Failed to rename page URL.";
+    } finally {
+        isRenameUrlPending.value = false;
     }
 }
 
@@ -3680,6 +3716,15 @@ defineExpose({
                                 @click="handleDuplicateFromActionsMenu"
                             >
                                 Duplicate
+                            </button>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="content-admin-workbench__actions-item"
+                                :disabled="!canRenameSelectedUrl"
+                                @click="handleRenameUrlFromActionsMenu"
+                            >
+                                {{ isRenameUrlPending ? "Renaming..." : "Rename URL" }}
                             </button>
                             <button
                                 type="button"
