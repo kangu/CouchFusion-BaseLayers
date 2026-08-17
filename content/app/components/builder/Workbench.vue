@@ -1257,6 +1257,10 @@ const confirmRootComponentWithName = () => {
     }
     pendingSectionNameDraft.value = sectionName;
     isSectionNamePromptOpen.value = false;
+    if (pendingRootInsertIndex.value !== null) {
+        confirmRootSectionPlacement(pendingRootInsertIndex.value);
+        return;
+    }
     isSectionPlacementDialogOpen.value = true;
 };
 
