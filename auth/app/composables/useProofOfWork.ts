@@ -1,4 +1,4 @@
-type ProofOfWorkPurpose = "login" | "contact";
+type ProofOfWorkPurpose = "login" | "contact" | "career_hub_checkout";
 
 interface ProofOfWorkChallengeResponse {
   required?: boolean;

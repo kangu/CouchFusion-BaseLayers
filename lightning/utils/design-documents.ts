@@ -149,6 +149,17 @@ export const lightningDesignDocument: CouchDBDesignDocument = {
     },
 
     /**
+     * Resolves a guest checkout through its stored capability-token hash.
+     */
+    by_guest_checkout_token_hash: {
+      map: `function(doc) {
+        if (doc.type === 'lightning_invoice' && doc.guestCheckoutTokenHash) {
+          emit(doc.guestCheckoutTokenHash, doc);
+        }
+      }`
+    },
+
+    /**
      * Statistics view - count orders by status
      * Key: status, Value: 1 (for counting with reduce)
      */

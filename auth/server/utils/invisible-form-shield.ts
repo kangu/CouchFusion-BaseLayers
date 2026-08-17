@@ -1,6 +1,6 @@
 import { createError } from "h3";
 
-type InvisibleFormShieldPurpose = "login" | "contact";
+type InvisibleFormShieldPurpose = "login" | "contact" | "career_hub_checkout";
 
 export interface InvisibleFormShieldPayload {
   startedAt?: number | string;

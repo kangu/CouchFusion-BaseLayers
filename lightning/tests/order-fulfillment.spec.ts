@@ -2,28 +2,90 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getDocumentMock = vi.fn();
 const putDocumentMock = vi.fn();
+const getViewMock = vi.fn();
+const createUserMock = vi.fn();
 const queueTemplateEmailMock = vi.fn();
+const createLoginTokenMock = vi.fn();
 
 vi.mock("#database/utils/couchdb", () => ({
   getDocument: getDocumentMock,
   putDocument: putDocumentMock,
+  getView: getViewMock,
+  createUser: createUserMock,
 }));
 
 vi.mock("#email/server/utils/template-queue", () => ({
   queueTemplateEmail: (...args: unknown[]) => queueTemplateEmailMock(...args),
 }));
 
+vi.mock("#auth/server/utils/login-token", () => ({
+  createLoginToken: (...args: unknown[]) => createLoginTokenMock(...args),
+}));
+
 describe("embedded order fulfillment", () => {
   beforeEach(() => {
+    (globalThis as any).useRuntimeConfig = () => ({
+      dbLoginPrefix: "bv",
+      public: { siteUrl: "https://bitvocation.com" },
+    });
     vi.useRealTimers();
     getDocumentMock.mockReset();
     putDocumentMock.mockReset();
     queueTemplateEmailMock.mockReset();
+    getViewMock.mockReset();
+    createUserMock.mockReset();
+    createLoginTokenMock.mockReset();
     putDocumentMock.mockResolvedValue({ ok: true, id: "updated", rev: "2-updated" });
     queueTemplateEmailMock.mockResolvedValue({
       ok: true,
       providerMessageId: "queued-message-id",
       errorMessage: null,
+    });
+    createLoginTokenMock.mockResolvedValue({
+      email: "member@example.com",
+      code: "ABCDEF",
+      expires: "2026-08-17T11:00:00.000Z",
+    });
+  });
+
+  it("creates and activates a Career Hub guest account after payment", async () => {
+    const { applyInvoicePaidFulfillment } = await import("../server/utils/order-fulfillment");
+    getViewMock.mockResolvedValue({ rows: [] });
+    createUserMock.mockResolvedValue({ ok: true });
+    getDocumentMock
+      .mockResolvedValueOnce({
+        _id: "org.couchdb.user:bvguest", name: "bvguest", email: "member@example.com",
+      })
+      .mockResolvedValueOnce({
+        _id: "settings", orderNotifications: { recipientEmail: "orders@example.com" },
+      });
+
+    await applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: {
+        _id: "invoice-guest", orderId: "purchase-guest", status: "paid",
+        payment: { paidAt: "2026-08-17T10:00:00.000Z" },
+      },
+      orderDoc: {
+        _id: "purchase-guest", guestEmail: "member@example.com",
+        content: { product: "pow_lab_lite", checkoutType: "career_hub_guest", valid_days: 30, sats: 100 },
+      },
+    });
+
+    expect(createUserMock).toHaveBeenCalledOnce();
+    expect(putDocumentMock).toHaveBeenCalledWith("_users", expect.objectContaining({
+      email: "member@example.com", pow_lab_lite_status: "active",
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "welcome_to_pow_lab_lite", to: "member@example.com",
+    }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith({
+      templateName: "login",
+      to: "member@example.com",
+      payload: {
+        user_email: "member@example.com",
+        magic_link_url: expect.stringContaining("/confirm-login/member%40example.com/ABCDEF"),
+      },
     });
   });
 

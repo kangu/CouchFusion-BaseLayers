@@ -1,4 +1,6 @@
-import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+import { randomBytes } from "node:crypto";
+import { createUser, getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+import { createLoginToken } from "#auth/server/utils/login-token";
 import { queueTemplateEmail } from "#email/server/utils/template-queue";
 
 interface FulfillmentProductConfig {
@@ -104,13 +106,13 @@ const resolveRequiredString = (value: unknown, fieldName: string): string => {
 
 const wasNotificationQueued = (
   invoiceDoc: CouchDBDocument,
-  notificationKey: "customer" | "admin",
+  notificationKey: "customer" | "admin" | "login",
 ): boolean => invoiceDoc?.fulfillment?.notifications?.[notificationKey]?.status === "queued";
 
 const markNotificationQueued = async (
   ordersDatabase: string,
   invoiceDoc: CouchDBDocument,
-  notificationKey: "customer" | "admin",
+  notificationKey: "customer" | "admin" | "login",
   templateName: string,
 ): Promise<CouchDBDocument> => {
   const updatedInvoiceDoc = {
@@ -322,6 +324,73 @@ const loadUserDocument = async (
 };
 
 /**
+ * Resolves or creates the account that receives a paid Career Hub guest order.
+ */
+const resolveGuestUserDocument = async (email: string): Promise<CouchDBDocument> => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const config = useRuntimeConfig();
+  const existingUsers = await getView("_users", "auth", "has_account_case_insensitive", {
+    key: normalizedEmail,
+  });
+  const existingUser = existingUsers?.rows?.[0]?.value as CouchDBDocument | undefined;
+  if (existingUser) {
+    return existingUser;
+  }
+
+  const userName = `${config.dbLoginPrefix}${randomBytes(8).toString("hex")}`;
+  const created = await createUser(userName, randomBytes(24).toString("hex"), {
+    email: normalizedEmail,
+    funnel: "pow_lab_lite",
+    allow_affiliate: true,
+    created_date: new Date().toISOString(),
+  });
+  if (!created.ok) {
+    throw new Error("Failed to create Career Hub guest account.");
+  }
+
+  const userDoc = await getDocument<CouchDBDocument>("_users", `org.couchdb.user:${userName}`);
+  if (!userDoc) {
+    throw new Error("Created Career Hub guest account could not be loaded.");
+  }
+  return userDoc;
+};
+
+/**
+ * Queues the existing login template for a paid guest account only once.
+ */
+const queueGuestLoginNotification = async ({
+  ordersDatabase,
+  invoiceDoc,
+  userEmail,
+}: {
+  ordersDatabase: string;
+  invoiceDoc: CouchDBDocument;
+  userEmail: string;
+}): Promise<CouchDBDocument> => {
+  if (wasNotificationQueued(invoiceDoc, "login")) {
+    return invoiceDoc;
+  }
+
+  const token = await createLoginToken({ email: userEmail, funnel: "pow_lab_lite" });
+  const siteUrl = String(useRuntimeConfig().public?.siteUrl || process.env.NUXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+  if (!siteUrl) {
+    throw new Error("Public site URL is required to queue a magic login link.");
+  }
+  const result = await queueTemplateEmail({
+    templateName: "login",
+    to: userEmail,
+    payload: {
+      user_email: userEmail,
+      magic_link_url: `${siteUrl}/confirm-login/${encodeURIComponent(token.email)}/${token.code}`,
+    },
+  });
+  if (!result.ok) {
+    throw new Error(`Failed to queue login: ${result.errorMessage || "unknown error"}`);
+  }
+  return markNotificationQueued(ordersDatabase, invoiceDoc, "login", "login");
+};
+
+/**
  * Applies invoice-created side effects that were previously handled by the orders monitor.
  */
 export const applyInvoiceCreatedFulfillment = async (
@@ -380,7 +449,25 @@ export const applyInvoicePaidFulfillment = async (
     return { applied: false, product };
   }
 
-  const userDoc = await loadUserDocument(options.invoiceDoc, options.orderDoc);
+  const guestEmail = typeof options.orderDoc?.guestEmail === "string"
+    ? options.orderDoc.guestEmail.trim().toLowerCase()
+    : "";
+  const isCareerHubGuest = options.orderDoc?.content?.checkoutType === "career_hub_guest";
+  const userDoc = isCareerHubGuest
+    ? await resolveGuestUserDocument(guestEmail)
+    : await loadUserDocument(options.invoiceDoc, options.orderDoc);
+  const userName = String(userDoc.name || "");
+  const orderDoc = isCareerHubGuest
+    ? { ...options.orderDoc, userName, status: "active" }
+    : options.orderDoc;
+  const invoiceDoc = isCareerHubGuest
+    ? { ...options.invoiceDoc, userName, email: userDoc.email }
+    : options.invoiceDoc;
+
+  if (isCareerHubGuest) {
+    await putDocument(options.ordersDatabase, orderDoc);
+    await putDocument(options.ordersDatabase, invoiceDoc);
+  }
   const updatedUserDoc = {
     ...userDoc,
     [config.invoiceField]: "",
@@ -393,8 +480,8 @@ export const applyInvoicePaidFulfillment = async (
   }
 
   const validUntil = resolvePaidSubscriptionValidUntil(
-    options.invoiceDoc,
-    options.orderDoc,
+    invoiceDoc,
+    orderDoc,
     userDoc,
     config,
   );
@@ -405,17 +492,24 @@ export const applyInvoicePaidFulfillment = async (
   await putDocument("_users", updatedUserDoc);
   const invoiceWithNotifications = await queueMembershipNotifications({
     ordersDatabase: options.ordersDatabase,
-    invoiceDoc: options.invoiceDoc,
-    orderDoc: options.orderDoc,
+    invoiceDoc,
+    orderDoc,
     userDoc,
     product,
     validUntil,
   });
+  const invoiceWithLoginNotification = isCareerHubGuest
+    ? await queueGuestLoginNotification({
+      ordersDatabase: options.ordersDatabase,
+      invoiceDoc: invoiceWithNotifications,
+      userEmail: String(userDoc.email || guestEmail),
+    })
+    : invoiceWithNotifications;
   const fulfilledInvoiceDoc = {
-    ...invoiceWithNotifications,
+    ...invoiceWithLoginNotification,
     lastEvent: "done",
     fulfillment: {
-      ...(invoiceWithNotifications.fulfillment || {}),
+      ...(invoiceWithLoginNotification.fulfillment || {}),
       status: "fulfilled",
       product,
       fulfilledAt: new Date().toISOString(),
@@ -427,7 +521,7 @@ export const applyInvoicePaidFulfillment = async (
   return {
     applied: true,
     product,
-    userName: resolveUserName(options.invoiceDoc, options.orderDoc),
+    userName: resolveUserName(invoiceDoc, orderDoc),
     invoiceDoc: {
       ...fulfilledInvoiceDoc,
       _rev: invoiceResult.rev,

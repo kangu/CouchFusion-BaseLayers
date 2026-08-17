@@ -11,9 +11,6 @@ import {
 interface ConferenceListResponse {
   conferences: ConferenceDocument[];
   total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
   unfilteredCounts: {
     total: number;
     inProgress: number;
@@ -31,14 +28,6 @@ interface ConferenceListResponse {
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-const parsePositiveInt = (value: unknown, fallback: number, max: number) => {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return Math.min(parsed, max);
-};
 const parseYearFilter = (
   value: unknown,
 ): number | "tba" | null => {
@@ -128,9 +117,6 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
   const includePast = parseBoolean(query.includePast, false);
   const yearFilter = parseYearFilter(query.year);
 
-  const page = parsePositiveInt(query.page, 1, 10_000);
-  const pageSize = parsePositiveInt(query.pageSize, 24, 200);
-
   const view = await getView(databaseName, "conferences", "by_start_date", {
     include_docs: true,
     descending: false,
@@ -194,9 +180,6 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
   });
 
   const total = conferences.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pageStart = (page - 1) * pageSize;
-  const paginatedConferences = conferences.slice(pageStart, pageStart + pageSize);
 
   const yearOptions = Array.from(
     new Set(
@@ -211,11 +194,8 @@ export default defineEventHandler(async (event): Promise<ConferenceListResponse>
   );
 
   return {
-    conferences: paginatedConferences,
+    conferences,
     total,
-    page,
-    pageSize,
-    totalPages,
     unfilteredCounts: {
       total: normalizedBaseConferences.length,
       inProgress: normalizedBaseConferences.filter(

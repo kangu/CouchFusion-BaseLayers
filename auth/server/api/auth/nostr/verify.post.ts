@@ -154,7 +154,7 @@ export default defineEventHandler(async (event) => {
 
     await createUser(username, randomPassword(), {
       email: profileSeed?.email || null,
-      allow_affiliate: false,
+      allow_affiliate: true,
       created_date: nowIso,
       conference_prefs: {
         favorites: [],
