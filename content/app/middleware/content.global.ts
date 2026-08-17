@@ -28,6 +28,7 @@ import {
   parseContentRouteAccessPolicy,
   resolveContentRouteAccessAction,
 } from "#content/utils/route-access";
+import { parseContentPageRedirect } from "#content/utils/page-redirect";
 
 interface RoutePrefixConfig {
   ignoredPrefixes: string[];
@@ -299,6 +300,31 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   const summary = store.getPage(contentPath, localizedPath.locale);
+  const redirect = parseContentPageRedirect(
+    summary?.document?.meta ?? summary?.meta,
+    contentPath,
+  );
+
+  if (redirect.status === "invalid") {
+    return abortNavigation(
+      createError({
+        statusCode: 404,
+        statusMessage: "Content page redirect is misconfigured",
+      }),
+    );
+  }
+
+  if (redirect.status === "valid") {
+    return navigateTo(
+      buildLocalizedPath(
+        redirect.targetPath,
+        localizedPath.locale,
+        contentI18nConfig,
+      ),
+      { redirectCode: 308 },
+    );
+  }
+
   const routeAccess = parseContentRouteAccessPolicy(
     summary?.document?.meta ?? summary?.meta,
     contentPath,

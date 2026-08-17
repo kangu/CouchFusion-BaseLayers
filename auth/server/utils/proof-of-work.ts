@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export type ProofOfWorkPurpose = "login" | "contact";
+export type ProofOfWorkPurpose = "login" | "contact" | "career_hub_checkout";
 
 export interface ProofOfWorkSolution {
   token: string;
@@ -126,7 +126,7 @@ const parseToken = (token: string, secret: string): ProofOfWorkPayload | null =>
   try {
     const payload = JSON.parse(decodeBase64Url(encodedPayload)) as ProofOfWorkPayload;
     if (
-      (payload.purpose !== "login" && payload.purpose !== "contact") ||
+      (payload.purpose !== "login" && payload.purpose !== "contact" && payload.purpose !== "career_hub_checkout") ||
       !Number.isInteger(payload.difficulty) ||
       payload.difficulty < 1 ||
       !Number.isInteger(payload.difficultyBits) ||

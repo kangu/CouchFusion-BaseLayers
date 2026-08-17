@@ -459,6 +459,29 @@ export const useContentPagesStore = defineStore('content-pages', {
             return summary
         },
 
+        async renamePageUrl(input: {
+            sourcePath: string
+            targetPath: string
+            keepRedirect: boolean
+        }): Promise<any> {
+            const $f = useRequestFetch()
+            const response: any = await $f('/api/content/pages/rename-url', {
+                method: 'POST',
+                body: input,
+            })
+            const runtimeConfig = useRuntimeConfig()
+            const i18nConfig = resolveContentI18nConfig(
+                runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+            )
+            for (const locale of i18nConfig.locales) {
+                const key = buildLocalizedPath(input.sourcePath, locale, i18nConfig)
+                delete this.pages[key]
+                delete this.history[key]
+            }
+            await this.fetchIndex(true)
+            return response
+        },
+
         applyLiveDocument(
             document: MinimalContentDocument,
             options: { locale?: string | null } = {},

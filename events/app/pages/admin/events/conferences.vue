@@ -348,11 +348,7 @@ const createForm = reactive({
 
 // == computed ==
 const listQuery = computed(() => {
-  const query: Record<string, string | number> = {
-    page: 1,
-    pageSize: 120,
-    includePast: "true",
-  };
+  const query: Record<string, string | number> = { includePast: "true" };
 
   if (queryState.search.trim()) query.search = queryState.search.trim();
   if (queryState.status !== "all") query.status = queryState.status;

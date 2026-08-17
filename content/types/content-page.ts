@@ -27,6 +27,7 @@ export interface ContentPageDocument {
     stem: string | null
     _rev?: string
     meta?: Record<string, any>
+    redirectTo?: string
     extension?: string
     navigation?: boolean
     publicationState?: ContentPagePublicationState

@@ -9,7 +9,7 @@ interface ProofOfWorkChallengeRequest {
 }
 
 const isProofOfWorkPurpose = (value: unknown): value is ProofOfWorkPurpose =>
-  value === "login" || value === "contact";
+  value === "login" || value === "contact" || value === "career_hub_checkout";
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<ProofOfWorkChallengeRequest>(event);
