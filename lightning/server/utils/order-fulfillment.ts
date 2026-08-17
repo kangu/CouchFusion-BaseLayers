@@ -341,7 +341,7 @@ const resolveGuestUserDocument = async (email: string): Promise<CouchDBDocument>
   const created = await createUser(userName, randomBytes(24).toString("hex"), {
     email: normalizedEmail,
     funnel: "pow_lab_lite",
-    allow_affiliate: false,
+    allow_affiliate: true,
     created_date: new Date().toISOString(),
   });
   if (!created.ok) {

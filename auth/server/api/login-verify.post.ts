@@ -134,7 +134,7 @@ export default defineEventHandler(async (event) => {
       const userPayload: Record<string, unknown> = {
         email: body.email,
         funnel: resp.funnel,
-        allow_affiliate: false,
+        allow_affiliate: true,
         created_date: new Date().toISOString(),
       };
 
