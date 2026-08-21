@@ -1,5 +1,13 @@
-export type LightningProviderName = 'strike' | 'alby' | 'blink' | 'nwc'
+export type LightningProviderName = 'strike' | 'alby' | 'blink' | 'nwc' | 'blink_nc'
 export type LightningInvoiceStatus = 'pending' | 'paid' | 'expired' | 'cancelled' | 'failed'
+
+export interface InvoiceLookupContext {
+  paymentRequest?: string
+  amount?: number
+  currency?: string
+  expiresAt?: Date | string
+  paymentContext?: Record<string, unknown>
+}
 
 export interface InvoiceRequest {
   amount: number
@@ -41,7 +49,7 @@ export interface WebhookEvent {
 
 export type LightningProvider = {
   createInvoice: (request: InvoiceRequest) => Promise<InvoiceResponse>
-  getInvoiceStatus: (invoiceId: string) => Promise<InvoiceResponse>
+  getInvoiceStatus: (invoiceId: string, context?: InvoiceLookupContext) => Promise<InvoiceResponse>
   validateWebhook: (rawBody: string | undefined, signature?: string) => boolean
   processWebhook: (payload: any) => Promise<WebhookEvent | null>
   setupWebhookSubscription?: (webhookUrl: string) => Promise<any>
@@ -76,6 +84,13 @@ export interface NwcConfig {
   reconcileIntervalMs?: number
 }
 
+export interface BlinkNcConfig {
+  lightningAddress: string
+  reconcileIntervalMs: number
+  settlementGraceMs: number
+  maxConcurrency: number
+}
+
 export interface LightningConfig {
   defaultProvider: LightningProviderName
   providers: {
@@ -83,5 +98,6 @@ export interface LightningConfig {
     alby?: AlbyConfig
     blink?: BlinkConfig
     nwc?: NwcConfig
+    blink_nc?: BlinkNcConfig
   }
 }

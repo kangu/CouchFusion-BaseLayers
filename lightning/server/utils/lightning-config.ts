@@ -6,6 +6,7 @@ import {
 import type {
   AlbyConfig,
   BlinkConfig,
+  BlinkNcConfig,
   LightningConfig,
   NwcConfig,
   StrikeConfig,
@@ -42,9 +43,13 @@ const CONFIG_KEYS = [
   "alby_webhook_secret",
   "nwc_connection_uri",
   "nwc_reconcile_interval_ms",
+  "blink_nc_lightning_address",
+  "blink_nc_reconcile_interval_ms",
+  "blink_nc_settlement_grace_ms",
+  "blink_nc_max_concurrency",
 ];
 
-const PROVIDERS = ["strike", "alby", "blink", "nwc"] as const;
+const PROVIDERS = ["strike", "alby", "blink", "nwc", "blink_nc"] as const;
 
 const PROVIDER_SOURCE_PATHS: Record<LightningConfig["defaultProvider"], string[]> = {
   strike: [
@@ -70,6 +75,12 @@ const PROVIDER_SOURCE_PATHS: Record<LightningConfig["defaultProvider"], string[]
     "providers.nwc.connectionUri",
     "providers.nwc.reconcileIntervalMs",
   ],
+  blink_nc: [
+    "providers.blink_nc.lightningAddress",
+    "providers.blink_nc.reconcileIntervalMs",
+    "providers.blink_nc.settlementGraceMs",
+    "providers.blink_nc.maxConcurrency",
+  ],
 };
 
 const parseOptional = (value: unknown): string | null => {
@@ -82,7 +93,7 @@ const parseOptional = (value: unknown): string | null => {
 };
 
 const normalizeProvider = (value: string | null): LightningConfig["defaultProvider"] | null => {
-  if (value === "strike" || value === "alby" || value === "blink" || value === "nwc") {
+  if (value === "strike" || value === "alby" || value === "blink" || value === "nwc" || value === "blink_nc") {
     return value;
   }
 
@@ -127,6 +138,31 @@ const shouldIncludeProvider = (provider: Record<string, unknown> | undefined): b
 const parsePositiveInteger = (value: unknown): number | undefined => {
   const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const parseBoundedInteger = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(String(value));
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`Lightning configuration integer must be between ${min} and ${max}`);
+  }
+  return parsed;
+};
+
+const normalizeBlinkNcAddress = (value: string): string => {
+  const match = /^([a-z0-9._+-]+)@blink\.sv$/i.exec(value.trim());
+  if (!match) {
+    throw new Error("blink_nc_lightning_address must be username@blink.sv");
+  }
+  return `${match[1].toLowerCase()}@blink.sv`;
 };
 
 /**
@@ -231,6 +267,44 @@ export const resolveLightningConfigWithSources = async (
     source: nwc.reconcileIntervalMs ? "couchdb" : "missing",
   };
 
+  const blinkNcAddress = resolveValue(
+    "providers.blink_nc.lightningAddress",
+    "blink_nc_lightning_address",
+  );
+  const blinkNc: BlinkNcConfig = {
+    lightningAddress: blinkNcAddress ? normalizeBlinkNcAddress(blinkNcAddress) : "",
+    reconcileIntervalMs: parseBoundedInteger(
+      couchValues.blink_nc_reconcile_interval_ms,
+      3_000,
+      1_000,
+      60_000,
+    ),
+    settlementGraceMs: parseBoundedInteger(
+      couchValues.blink_nc_settlement_grace_ms,
+      120_000,
+      0,
+      600_000,
+    ),
+    maxConcurrency: parseBoundedInteger(
+      couchValues.blink_nc_max_concurrency,
+      5,
+      1,
+      20,
+    ),
+  };
+  for (const [path, key] of [
+    ["providers.blink_nc.reconcileIntervalMs", "blink_nc_reconcile_interval_ms"],
+    ["providers.blink_nc.settlementGraceMs", "blink_nc_settlement_grace_ms"],
+    ["providers.blink_nc.maxConcurrency", "blink_nc_max_concurrency"],
+  ] as const) {
+    const present = Boolean(parseOptional(couchValues[key]));
+    sources[path] = {
+      key,
+      present,
+      source: present ? "couchdb" : "missing",
+    };
+  }
+
   const resolvedProviders: LightningConfig["providers"] = {};
   if (shouldIncludeProvider(strike) || defaultProvider === "strike") {
     resolvedProviders.strike = strike;
@@ -243,6 +317,9 @@ export const resolveLightningConfigWithSources = async (
   }
   if (shouldIncludeProvider(nwc) || defaultProvider === "nwc") {
     resolvedProviders.nwc = nwc;
+  }
+  if (blinkNc.lightningAddress || defaultProvider === "blink_nc") {
+    resolvedProviders.blink_nc = blinkNc;
   }
 
   for (const provider of PROVIDERS) {
@@ -293,6 +370,10 @@ const getRequiredCouchKeys = (
 
   if (provider === "nwc" && !resolved.sources["providers.nwc.connectionUri"]?.present) {
     missing.push("nwc_connection_uri");
+  }
+
+  if (provider === "blink_nc" && !resolved.sources["providers.blink_nc.lightningAddress"]?.present) {
+    missing.push("blink_nc_lightning_address");
   }
 
   return missing;
