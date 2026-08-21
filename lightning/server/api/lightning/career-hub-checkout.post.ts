@@ -8,6 +8,7 @@ import { getProductPrice, replaceMemoTemplate } from "../../../utils/orders";
 import { createInvoicePaymentState } from "../../utils/payment-state";
 import { createGuestCheckoutToken, hashGuestCheckoutToken } from "../../../utils/guest-checkout";
 import { resolveLightningConfig } from "../../utils/lightning-config";
+import { toPublicPaymentInfo } from "../../../utils/public-payment";
 
 interface CareerHubCheckoutBody {
   email?: string;
@@ -91,12 +92,6 @@ export default defineEventHandler(async (event) => {
   return {
     success: true,
     checkoutToken,
-    invoice: {
-      id: invoice.id,
-      paymentRequest: invoice.paymentRequest,
-      amount: invoice.amount,
-      expiresAt: invoice.expiresAt || null,
-      status: invoice.status || "pending",
-    },
+    invoice: toPublicPaymentInfo(invoice),
   };
 });

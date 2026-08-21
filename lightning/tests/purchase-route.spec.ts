@@ -111,10 +111,15 @@ describe("lightning purchase route", () => {
     replaceMemoTemplateMock.mockReturnValue("PoW Lab");
     createPaymentMock.mockResolvedValue({
       id: "inv_123",
+      invoiceId: "inv_123",
       paymentRequest: "lnbc123",
       status: "pending",
       amount: 1000,
       currency: "sats",
+      provider: "blink_nc",
+      expiresAt: new Date("2026-08-21T19:00:00.000Z"),
+      paymentContext: { verifyUrl: "https://lnurl.blink.sv/verify/inv_123" },
+      payment: { proof: { preimage: "11".repeat(32) } },
     });
     saveInvoiceToDatabaseMock.mockResolvedValue("invoice-inv_123");
     getDocumentMock
@@ -143,8 +148,17 @@ describe("lightning purchase route", () => {
       success: true,
       invoice: {
         id: "inv_123",
+        invoiceId: "inv_123",
+        provider: "blink_nc",
       },
     });
+    expect(JSON.stringify(response)).not.toContain("verifyUrl");
+    expect(JSON.stringify(response)).not.toContain("preimage");
+    expect(saveInvoiceToDatabaseMock).toHaveBeenCalledWith(expect.objectContaining({
+      invoiceData: expect.objectContaining({
+        paymentContext: { verifyUrl: "https://lnurl.blink.sv/verify/inv_123" },
+      }),
+    }));
     expect(createOrderMock).toHaveBeenCalledWith(expect.objectContaining({
       payload: expect.objectContaining({
         product: "pow_lab",

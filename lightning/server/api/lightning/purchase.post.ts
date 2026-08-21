@@ -4,6 +4,7 @@ import { createOrder, getProductPrice, saveInvoiceToDatabase, replaceMemoTemplat
 import { getDocument, getSession } from '#database/utils/couchdb'
 import { applyInvoiceCreatedFulfillment } from '../../utils/order-fulfillment'
 import { resolveLightningConfig } from '../../utils/lightning-config'
+import { toPublicPaymentInfo } from '../../../utils/public-payment'
 
 function extractAuthSessionCookie(cookieHeader: string | undefined): string | null {
     if (!cookieHeader) {
@@ -234,7 +235,7 @@ export default defineEventHandler(async (event) => {
 
         return {
             success: true,
-            invoice: payment
+            invoice: toPublicPaymentInfo(payment)
         }
     } catch (e: any) {
         console.error('Purchase processing error:', e)

@@ -28,7 +28,7 @@ vi.mock("../server/composables/useLightning", () => ({
   useLightning: () => ({ initialize: initializeMock, createPayment: createPaymentMock }),
 }));
 vi.mock("../server/utils/lightning-config", () => ({
-  resolveLightningConfig: async () => ({ defaultProvider: "strike" }),
+  resolveLightningConfig: async () => ({ defaultProvider: "blink_nc" }),
 }));
 
 const createMockEvent = (body: Record<string, unknown>) => {
@@ -51,7 +51,9 @@ describe("Career Hub guest checkout route", () => {
     getProductPriceMock.mockResolvedValue({ memo: "Career Hub", sats: 100, valid_days: 30 });
     replaceMemoTemplateMock.mockReturnValue("Career Hub");
     createPaymentMock.mockResolvedValue({
-      id: "invoice-123", paymentRequest: "lnbc123", amount: 100, status: "pending", expiresAt: "2026-08-17T10:00:00.000Z",
+      id: "invoice-123", invoiceId: "invoice-123", paymentRequest: "lnbc123", amount: 100,
+      currency: "sats", provider: "blink_nc", status: "pending", expiresAt: "2026-08-21T19:00:00.000Z",
+      paymentContext: { verifyUrl: "https://lnurl.blink.sv/verify/invoice-123" },
     });
     putDocumentMock.mockResolvedValue({ ok: true, rev: "1-test" });
   });
@@ -67,12 +69,17 @@ describe("Career Hub guest checkout route", () => {
     expect(assertInvisibleFormShieldMock).toHaveBeenCalledWith(expect.anything(), { purpose: "career_hub_checkout" });
     expect(assertProofOfWorkMock).toHaveBeenCalledWith(expect.anything(), "career_hub_checkout");
     expect(response).toMatchObject({ success: true, checkoutToken: expect.stringMatching(/^[a-f0-9]{64}$/), invoice: { paymentRequest: "lnbc123" } });
+    expect(response.invoice).toMatchObject({ invoiceId: "invoice-123", provider: "blink_nc", currency: "sats" });
+    expect(JSON.stringify(response)).not.toContain("verifyUrl");
     expect(putDocumentMock).toHaveBeenCalledWith("bv-orders", expect.objectContaining({
       guestEmail: "member@example.com",
       content: expect.objectContaining({ product: "pow_lab_lite", checkoutType: "career_hub_guest", sats: 100, valid_days: 30 }),
     }));
     expect(putDocumentMock).toHaveBeenCalledWith("bv-orders", expect.objectContaining({
       type: "lightning_invoice", orderId: expect.any(String), guestCheckoutTokenHash: expect.any(String),
+      payment: expect.objectContaining({
+        providerContext: { verifyUrl: "https://lnurl.blink.sv/verify/invoice-123" },
+      }),
     }));
   });
 });

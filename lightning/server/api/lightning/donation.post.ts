@@ -5,6 +5,7 @@ import {useRuntimeConfig} from '#imports'
 import {saveInvoiceToDatabase} from '../../../utils/orders'
 import { resolveLightningConfig } from '../../utils/lightning-config'
 import type { LightningProviderName } from '../../../types/lightning'
+import { toPublicPaymentInfo } from '../../../utils/public-payment'
 
 export default defineEventHandler(async (event) => {
     const body = await readBody<{ amount?: number; memo?: string; provider?: LightningProviderName }>(event)
@@ -35,6 +36,10 @@ export default defineEventHandler(async (event) => {
             }
         })
 
+        if (!payment) {
+            throw new Error('Payment creation failed on server')
+        }
+
         // Try to persist invoice + invoice code to the orders database (best-effort)
         const dbLoginPrefix = (config as any).dbLoginPrefix
         if (dbLoginPrefix) {
@@ -53,7 +58,7 @@ export default defineEventHandler(async (event) => {
             console.warn('[donation] dbLoginPrefix not configured; skipping invoice persistence')
         }
 
-        return payment
+        return toPublicPaymentInfo(payment)
     } catch (error: any) {
         console.error('[donation] invoice creation failed', error)
         throw createError({
