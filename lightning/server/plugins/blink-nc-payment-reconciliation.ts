@@ -42,7 +42,9 @@ export default defineNitroPlugin(async () => {
     getInvoiceStatus: (invoiceId: string, context: any) => service.getInvoiceStatus(invoiceId, "blink_nc", context),
     getDocument,
     putDocument,
-    beginEvent: beginPaymentEventProcessing,
+    beginEvent: (options: Record<string, unknown>) => beginPaymentEventProcessing(
+      options as unknown as Parameters<typeof beginPaymentEventProcessing>[0],
+    ),
     markEventProcessed: markPaymentEventProcessed,
     markEventFailed: markPaymentEventFailed,
     updateLinks: (options: Record<string, unknown>) => updateLinkedInvoiceDocuments({
@@ -94,6 +96,6 @@ export default defineNitroPlugin(async () => {
   }
 
   state.timer = setInterval(reconcile, providerConfig.reconcileIntervalMs);
-  state.timer.unref?.();
+  (state.timer as unknown as { unref?: () => void }).unref?.();
   void reconcile();
 });

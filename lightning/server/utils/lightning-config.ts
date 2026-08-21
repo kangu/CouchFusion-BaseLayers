@@ -127,7 +127,7 @@ const createValueResolver = (
   };
 };
 
-const shouldIncludeProvider = (provider: Record<string, unknown> | undefined): boolean => {
+const shouldIncludeProvider = (provider: object | undefined): boolean => {
   if (!provider) {
     return false;
   }
@@ -162,7 +162,7 @@ const normalizeBlinkNcAddress = (value: string): string => {
   if (!match) {
     throw new Error("blink_nc_lightning_address must be username@blink.sv");
   }
-  return `${match[1].toLowerCase()}@blink.sv`;
+  return `${match[1]!.toLowerCase()}@blink.sv`;
 };
 
 /**

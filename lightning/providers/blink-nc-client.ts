@@ -86,7 +86,7 @@ const normalizeLightningAddress = (value: string): string => {
       "Blink non-custodial Lightning address must be username@blink.sv",
     );
   }
-  return `${match[1].toLowerCase()}@blink.sv`;
+  return `${match[1]!.toLowerCase()}@blink.sv`;
 };
 
 const isBlinkHostname = (hostname: string): boolean => {
