@@ -1,6 +1,6 @@
 import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
 import { createLightningService } from "../../services/lightning";
-import { updateLinkedInvoiceDocuments } from "../utils/invoice-links.mjs";
+import { updateLinkedInvoiceDocuments } from "../utils/invoice-links";
 import { applyInvoicePaidFulfillment } from "../utils/order-fulfillment";
 import { paymentEventBus } from "../utils/payment-event-bus";
 import {

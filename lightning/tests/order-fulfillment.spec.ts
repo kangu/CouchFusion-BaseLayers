@@ -89,6 +89,67 @@ describe("embedded order fulfillment", () => {
     });
   });
 
+  it("carries the latest guest invoice revision through notification fulfillment", async () => {
+    const { applyInvoicePaidFulfillment } = await import("../server/utils/order-fulfillment");
+    getViewMock.mockResolvedValue({
+      rows: [{
+        value: {
+          _id: "org.couchdb.user:bvguest",
+          _rev: "7-user",
+          name: "bvguest",
+          email: "member@example.com",
+        },
+      }],
+    });
+    getDocumentMock.mockResolvedValue({
+      _id: "settings",
+      orderNotifications: { recipientEmail: "orders@example.com" },
+    });
+
+    let currentInvoiceRev = "2-paid";
+    let invoiceRevisionNumber = 2;
+    putDocumentMock.mockImplementation(async (database: string, doc: Record<string, any>) => {
+      if (database === "bv-orders" && doc._id === "invoice-guest") {
+        if (doc._rev !== currentInvoiceRev) {
+          throw Object.assign(new Error("Document update conflict"), { statusCode: 409 });
+        }
+        invoiceRevisionNumber += 1;
+        currentInvoiceRev = `${invoiceRevisionNumber}-invoice`;
+        return { ok: true, id: doc._id, rev: currentInvoiceRev };
+      }
+      return { ok: true, id: doc._id, rev: doc._rev || "2-updated" };
+    });
+
+    await expect(applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: {
+        _id: "invoice-guest",
+        _rev: "2-paid",
+        orderId: "purchase-guest",
+        status: "paid",
+        payment: { paidAt: "2026-08-17T10:00:00.000Z" },
+      },
+      orderDoc: {
+        _id: "purchase-guest",
+        _rev: "1-order",
+        guestEmail: "member@example.com",
+        content: {
+          product: "pow_lab_lite",
+          checkoutType: "career_hub_guest",
+          valid_days: 30,
+          sats: 100,
+        },
+      },
+    })).resolves.toMatchObject({
+      applied: true,
+      invoiceDoc: {
+        _rev: "7-invoice",
+        fulfillment: { status: "fulfilled" },
+      },
+    });
+    expect(queueTemplateEmailMock).toHaveBeenCalledTimes(3);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

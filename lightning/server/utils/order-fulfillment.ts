@@ -460,13 +460,17 @@ export const applyInvoicePaidFulfillment = async (
   const orderDoc = isCareerHubGuest
     ? { ...options.orderDoc, userName, status: "active" }
     : options.orderDoc;
-  const invoiceDoc = isCareerHubGuest
+  let invoiceDoc = isCareerHubGuest
     ? { ...options.invoiceDoc, userName, email: userDoc.email }
     : options.invoiceDoc;
 
   if (isCareerHubGuest) {
     await putDocument(options.ordersDatabase, orderDoc);
-    await putDocument(options.ordersDatabase, invoiceDoc);
+    const invoiceResult = await putDocument(options.ordersDatabase, invoiceDoc);
+    invoiceDoc = {
+      ...invoiceDoc,
+      _rev: invoiceResult.rev || invoiceDoc._rev,
+    };
   }
   const updatedUserDoc = {
     ...userDoc,
