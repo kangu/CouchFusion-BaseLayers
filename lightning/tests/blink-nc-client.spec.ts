@@ -89,6 +89,17 @@ describe("Blink non-custodial LNURL client", () => {
     expect(result.verifyUrl).toBe(`https://lnurl.blink.sv/verify/${PAYMENT_HASH}`);
   });
 
+  it("recovers a legacy verification URL from fresh validated metadata without creating an invoice", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(metadataResponse({
+      callback: "https://lnurl.blink.sv/callback?tag=payRequest",
+    })));
+
+    await expect(createClient(fetchMock).recoverVerifyUrl(PAYMENT_HASH)).resolves.toBe(
+      `https://lnurl.blink.sv/verify/${PAYMENT_HASH}`,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an unsafe server-provided verification URL", async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(metadataResponse()))

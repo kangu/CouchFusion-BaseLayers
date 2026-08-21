@@ -377,9 +377,21 @@ export const createBlinkNcClient = ({
     };
   };
 
+  const recoverVerifyUrl = async (paymentHash: string): Promise<string> => {
+    if (!/^[0-9a-f]{64}$/i.test(paymentHash)) {
+      throw new BlinkNcProtocolError("invoice_invalid", "Persisted payment hash is invalid");
+    }
+    const metadata = await fetchMetadata();
+    return validateRemoteUrl(
+      new URL(`/verify/${paymentHash.toLowerCase()}`, metadata.callback.origin),
+      "verification",
+    ).toString();
+  };
+
   return {
     createInvoice,
     verifyInvoice,
+    recoverVerifyUrl,
     probeConnection,
   };
 };

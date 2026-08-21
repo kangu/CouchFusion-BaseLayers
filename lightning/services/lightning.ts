@@ -1,13 +1,14 @@
-import type { LightningProvider, LightningConfig, InvoiceRequest, InvoiceResponse } from '../types/lightning'
+import type { LightningProvider, LightningConfig, InvoiceLookupContext, InvoiceRequest, InvoiceResponse, LightningProviderName } from '../types/lightning'
 import { createStrikeProvider } from '../providers/strike'
 import { createAlbyProvider } from '../providers/alby'
 import { createBlinkProvider } from '../providers/blink'
 import { createNwcProvider } from '../providers/nwc'
+import { createBlinkNcProvider } from '../providers/blink-nc'
 
 export function createLightningService(config: LightningConfig) {
   const providerInstances = new Map<string, LightningProvider>()
   
-  const getProvider = (providerName?: string): LightningProvider => {
+  const getProvider = (providerName?: LightningProviderName): LightningProvider => {
     const name = providerName || config.defaultProvider
     
     // Return cached instance if available
@@ -46,6 +47,13 @@ export function createLightningService(config: LightningConfig) {
         }
         provider = createNwcProvider(config.providers.nwc)
         break
+
+      case 'blink_nc':
+        if (!config.providers.blink_nc) {
+          throw new Error('Blink non-custodial provider not configured')
+        }
+        provider = createBlinkNcProvider(config.providers.blink_nc)
+        break
         
       default:
         throw new Error(`Unknown Lightning provider: ${name}`)
@@ -58,7 +66,7 @@ export function createLightningService(config: LightningConfig) {
   
   const createInvoice = async (
     request: InvoiceRequest, 
-    providerName?: string
+    providerName?: LightningProviderName
   ): Promise<InvoiceResponse> => {
     const provider = getProvider(providerName)
     return await provider.createInvoice(request)
@@ -66,22 +74,23 @@ export function createLightningService(config: LightningConfig) {
   
   const getInvoiceStatus = async (
     invoiceId: string, 
-    providerName?: string
+    providerName?: LightningProviderName,
+    context?: InvoiceLookupContext,
   ): Promise<InvoiceResponse> => {
     const provider = getProvider(providerName)
-    return await provider.getInvoiceStatus(invoiceId)
+    return await provider.getInvoiceStatus(invoiceId, context)
   }
   
   const validateWebhook = (
     rawBody: string | undefined, 
     signature: string | undefined, 
-    providerName?: string
+    providerName?: LightningProviderName
   ): boolean => {
     const provider = getProvider(providerName)
     return provider.validateWebhook(rawBody, signature)
   }
   
-  const processWebhook = async (payload: any, providerName?: string) => {
+  const processWebhook = async (payload: any, providerName?: LightningProviderName) => {
     const provider = getProvider(providerName)
     return await provider.processWebhook(payload)
   }
@@ -90,8 +99,8 @@ export function createLightningService(config: LightningConfig) {
     return Object.keys(config.providers)
   }
   
-  const isProviderConfigured = (providerName: string): boolean => {
-    return !!config.providers[providerName as keyof typeof config.providers]
+  const isProviderConfigured = (providerName: LightningProviderName): boolean => {
+    return !!config.providers[providerName]
   }
   
   return {

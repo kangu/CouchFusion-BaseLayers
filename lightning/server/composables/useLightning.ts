@@ -117,7 +117,20 @@ export function useLightning() {
     }
 
     try {
-      const response = await checkLightningInvoiceStatus(config, paymentId)
+      const response = await checkLightningInvoiceStatus(
+        config,
+        paymentId,
+        currentPayment?.provider,
+        currentPayment?.id === paymentId
+          ? {
+              paymentRequest: currentPayment.paymentRequest,
+              amount: currentPayment.amount,
+              currency: currentPayment.currency,
+              expiresAt: currentPayment.expiresAt,
+              paymentContext: currentPayment.paymentContext,
+            }
+          : undefined,
+      )
 
       paymentStatus = response.status
 
