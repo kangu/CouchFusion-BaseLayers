@@ -39,6 +39,47 @@ export interface BlinkNcBatchResult {
   failed: number;
 }
 
+interface LoadReconciliationDocsOptions {
+  ordersDatabase: string;
+  getView: (
+    database: string,
+    designDocument: string,
+    viewName: string,
+    options: Record<string, unknown>,
+  ) => Promise<{ rows?: Array<{ doc?: CouchDBDocument }> }>;
+}
+
+/**
+ * Loads unsettled invoices plus paid invoices whose downstream fulfillment did
+ * not finish, allowing transient side-effect failures to recover automatically.
+ */
+export const loadBlinkNcReconciliationDocs = async (
+  options: LoadReconciliationDocsOptions,
+): Promise<CouchDBDocument[]> => {
+  const pendingView = await options.getView(
+    options.ordersDatabase,
+    "lightning",
+    "by_provider_and_status",
+    { key: ["blink_nc", "pending"], include_docs: true },
+  );
+  const paidView = await options.getView(
+    options.ordersDatabase,
+    "lightning",
+    "by_provider_and_status",
+    { key: ["blink_nc", "paid"], include_docs: true },
+  );
+  const pendingDocs = (pendingView?.rows || []).map((row) => row.doc).filter(Boolean) as CouchDBDocument[];
+  const incompletePaidDocs = (paidView?.rows || [])
+    .map((row) => row.doc)
+    .filter((doc): doc is CouchDBDocument => Boolean(
+      doc
+      && doc.fulfillment
+      && doc.fulfillment.status !== "fulfilled",
+    ));
+
+  return [...pendingDocs, ...incompletePaidDocs];
+};
+
 const dateMs = (value: unknown): number => {
   if (value instanceof Date) return value.getTime();
   if (typeof value !== "string") return Number.NaN;

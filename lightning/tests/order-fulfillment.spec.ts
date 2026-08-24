@@ -58,6 +58,9 @@ describe("embedded order fulfillment", () => {
       })
       .mockResolvedValueOnce({
         _id: "settings", orderNotifications: { recipientEmail: "orders@example.com" },
+      })
+      .mockResolvedValueOnce({
+        _id: "settings", orderNotifications: { recipientEmail: "orders@example.com" },
       });
 
     await applyInvoicePaidFulfillment({
@@ -79,12 +82,24 @@ describe("embedded order fulfillment", () => {
     expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
       templateName: "welcome_to_pow_lab_lite", to: "member@example.com",
     }));
+    expect(queueTemplateEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      templateName: "admin_order_lite",
+      to: "orders@example.com",
+      payload: expect.objectContaining({
+        referrer: "Not provided",
+        telegram: "Not provided",
+        timestamp: "2026-08-17T10:00:00.000Z",
+      }),
+    }));
     expect(queueTemplateEmailMock).toHaveBeenCalledWith({
       templateName: "login",
       to: "member@example.com",
       payload: {
         user_email: "member@example.com",
         magic_link_url: expect.stringContaining("/confirm-login/member%40example.com/ABCDEF"),
+        privacy_url: "https://bitvocation.com/privacy",
+        support_url: "https://bitvocation.com/contact",
+        unsubscribe_url: "mailto:orders@example.com?subject=Unsubscribe",
       },
     });
   });
@@ -143,11 +158,243 @@ describe("embedded order fulfillment", () => {
     })).resolves.toMatchObject({
       applied: true,
       invoiceDoc: {
-        _rev: "7-invoice",
+        _rev: "8-invoice",
         fulfillment: { status: "fulfilled" },
       },
     });
     expect(queueTemplateEmailMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a notification marker conflict without queueing any of the three emails twice", async () => {
+    const { applyInvoicePaidFulfillment } = await import("../server/utils/order-fulfillment");
+    getViewMock.mockResolvedValue({
+      rows: [{
+        value: {
+          _id: "org.couchdb.user:bvguest",
+          _rev: "7-user",
+          name: "bvguest",
+          email: "member@example.com",
+        },
+      }],
+    });
+
+    let currentInvoice: Record<string, any> = {
+      _id: "invoice-guest",
+      _rev: "2-paid",
+      orderId: "purchase-guest",
+      status: "paid",
+      payment: { paidAt: "2026-08-17T10:00:00.000Z" },
+    };
+    let invoiceRevisionNumber = 2;
+    let forcedMarkerConflict = false;
+
+    getDocumentMock.mockImplementation(async (database: string, id: string) => {
+      if (database === "bv-orders" && id === "invoice-guest") {
+        return { ...currentInvoice };
+      }
+      if (database === "bv-orders" && id === "settings") {
+        return { _id: "settings", orderNotifications: { recipientEmail: "orders@example.com" } };
+      }
+      return null;
+    });
+    putDocumentMock.mockImplementation(async (database: string, doc: Record<string, any>) => {
+      if (database !== "bv-orders" || doc._id !== "invoice-guest") {
+        return { ok: true, id: doc._id, rev: doc._rev || "2-updated" };
+      }
+
+      const isCustomerMarker = doc.fulfillment?.notifications?.customer?.status === "queued";
+      if (isCustomerMarker && !forcedMarkerConflict) {
+        forcedMarkerConflict = true;
+        invoiceRevisionNumber += 1;
+        currentInvoice = { ...currentInvoice, _rev: `${invoiceRevisionNumber}-external` };
+        throw Object.assign(new Error("Document update conflict"), { statusCode: 409 });
+      }
+      if (doc._rev !== currentInvoice._rev) {
+        throw Object.assign(new Error("Document update conflict"), { statusCode: 409 });
+      }
+
+      invoiceRevisionNumber += 1;
+      currentInvoice = { ...doc, _rev: `${invoiceRevisionNumber}-invoice` };
+      return { ok: true, id: doc._id, rev: currentInvoice._rev };
+    });
+
+    await expect(applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: currentInvoice,
+      orderDoc: {
+        _id: "purchase-guest",
+        _rev: "1-order",
+        guestEmail: "member@example.com",
+        content: {
+          product: "pow_lab_lite",
+          checkoutType: "career_hub_guest",
+          valid_days: 30,
+          sats: 100,
+        },
+      },
+    })).resolves.toMatchObject({
+      applied: true,
+      invoiceDoc: {
+        fulfillment: {
+          status: "fulfilled",
+          notifications: {
+            customer: { status: "queued" },
+            admin: { status: "queued" },
+            login: { status: "queued" },
+          },
+        },
+      },
+    });
+    expect(forcedMarkerConflict).toBe(true);
+    expect(queueTemplateEmailMock).toHaveBeenCalledTimes(3);
+    expect(queueTemplateEmailMock.mock.calls.map(([input]) => input.templateName)).toEqual([
+      "welcome_to_pow_lab_lite",
+      "admin_order_lite",
+      "login",
+    ]);
+  });
+
+  it("persists a processing marker before queueing guest emails so a failed queue can retry later", async () => {
+    const { applyInvoicePaidFulfillment } = await import("../server/utils/order-fulfillment");
+    getViewMock.mockResolvedValue({
+      rows: [{
+        value: {
+          _id: "org.couchdb.user:bvguest",
+          _rev: "7-user",
+          name: "bvguest",
+          email: "member@example.com",
+        },
+      }],
+    });
+    queueTemplateEmailMock.mockResolvedValueOnce({
+      ok: false,
+      providerMessageId: null,
+      errorMessage: "email queue temporarily unavailable",
+    });
+
+    let currentInvoice: Record<string, any> = {
+      _id: "invoice-guest",
+      _rev: "2-paid",
+      orderId: "purchase-guest",
+      status: "paid",
+      payment: { paidAt: "2026-08-17T10:00:00.000Z" },
+    };
+    let invoiceRevisionNumber = 2;
+    putDocumentMock.mockImplementation(async (database: string, doc: Record<string, any>) => {
+      if (database === "bv-orders" && doc._id === "invoice-guest") {
+        if (doc._rev !== currentInvoice._rev) {
+          throw Object.assign(new Error("Document update conflict"), { statusCode: 409 });
+        }
+        invoiceRevisionNumber += 1;
+        currentInvoice = { ...doc, _rev: `${invoiceRevisionNumber}-invoice` };
+        return { ok: true, id: doc._id, rev: currentInvoice._rev };
+      }
+      return { ok: true, id: doc._id, rev: doc._rev || "2-updated" };
+    });
+
+    await expect(applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: currentInvoice,
+      orderDoc: {
+        _id: "purchase-guest",
+        _rev: "1-order",
+        guestEmail: "member@example.com",
+        content: {
+          product: "pow_lab_lite",
+          checkoutType: "career_hub_guest",
+          valid_days: 30,
+          sats: 100,
+        },
+      },
+    })).rejects.toThrow("email queue temporarily unavailable");
+
+    expect(currentInvoice.fulfillment).toMatchObject({
+      status: "processing",
+      product: "pow_lab_lite",
+    });
+    expect(queueTemplateEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the guest order validity date when incomplete fulfillment retries", async () => {
+    const { applyInvoicePaidFulfillment } = await import("../server/utils/order-fulfillment");
+    let currentUser: Record<string, any> = {
+      _id: "org.couchdb.user:bvguest",
+      _rev: "7-user",
+      name: "bvguest",
+      email: "member@example.com",
+      pow_lab_lite_valid_until: "2026-09-01T00:00:00.000Z",
+    };
+    let currentOrder: Record<string, any> = {
+      _id: "purchase-guest",
+      _rev: "1-order",
+      guestEmail: "member@example.com",
+      content: {
+        product: "pow_lab_lite",
+        checkoutType: "career_hub_guest",
+        valid_days: 30,
+        sats: 100,
+      },
+    };
+    let currentInvoice: Record<string, any> = {
+      _id: "invoice-guest",
+      _rev: "2-paid",
+      orderId: "purchase-guest",
+      status: "paid",
+      payment: { paidAt: "2026-08-17T10:00:00.000Z" },
+    };
+    let invoiceRevisionNumber = 2;
+    let orderRevisionNumber = 1;
+
+    getViewMock.mockImplementation(async () => ({ rows: [{ value: { ...currentUser } }] }));
+    getDocumentMock.mockImplementation(async (database: string, id: string) => {
+      if (database === "bv-orders" && id === "invoice-guest") return { ...currentInvoice };
+      if (database === "bv-orders" && id === "settings") {
+        return { _id: "settings", orderNotifications: { recipientEmail: "orders@example.com" } };
+      }
+      return null;
+    });
+    putDocumentMock.mockImplementation(async (database: string, doc: Record<string, any>) => {
+      if (database === "_users") {
+        currentUser = { ...doc, _rev: "8-user" };
+        return { ok: true, id: doc._id, rev: currentUser._rev };
+      }
+      if (database === "bv-orders" && doc._id === "purchase-guest") {
+        orderRevisionNumber += 1;
+        currentOrder = { ...doc, _rev: `${orderRevisionNumber}-order` };
+        return { ok: true, id: doc._id, rev: currentOrder._rev };
+      }
+      if (database === "bv-orders" && doc._id === "invoice-guest") {
+        if (doc._rev !== currentInvoice._rev) {
+          throw Object.assign(new Error("Document update conflict"), { statusCode: 409 });
+        }
+        invoiceRevisionNumber += 1;
+        currentInvoice = { ...doc, _rev: `${invoiceRevisionNumber}-invoice` };
+        return { ok: true, id: doc._id, rev: currentInvoice._rev };
+      }
+      return { ok: true, id: doc._id, rev: doc._rev || "2-updated" };
+    });
+    queueTemplateEmailMock
+      .mockResolvedValueOnce({
+        ok: false,
+        providerMessageId: null,
+        errorMessage: "email queue temporarily unavailable",
+      });
+
+    await expect(applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: currentInvoice,
+      orderDoc: currentOrder,
+    })).rejects.toThrow("email queue temporarily unavailable");
+
+    await expect(applyInvoicePaidFulfillment({
+      ordersDatabase: "bv-orders",
+      invoiceDoc: currentInvoice,
+      orderDoc: currentOrder,
+    })).resolves.toMatchObject({ applied: true });
+
+    expect(currentOrder.content.validUntil).toBe("2026-10-01T00:00:00.000Z");
+    expect(currentUser.pow_lab_lite_valid_until).toBe("2026-10-01T00:00:00.000Z");
+    expect(queueTemplateEmailMock).toHaveBeenCalledTimes(4);
   });
 
   afterEach(() => {

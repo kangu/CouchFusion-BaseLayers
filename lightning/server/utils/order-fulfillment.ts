@@ -104,10 +104,32 @@ const resolveRequiredString = (value: unknown, fieldName: string): string => {
   throw new Error(`${fieldName} is required to queue membership notifications`);
 };
 
+/**
+ * Produces display-safe text for optional order details required by email
+ * templates, avoiding omitted JSON fields that make queue validation fail.
+ */
+const resolveNotificationText = (value: unknown): string => {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "Not provided";
+};
+
 const wasNotificationQueued = (
   invoiceDoc: CouchDBDocument,
   notificationKey: "customer" | "admin" | "login",
 ): boolean => invoiceDoc?.fulfillment?.notifications?.[notificationKey]?.status === "queued";
+
+/**
+ * Identifies CouchDB optimistic-concurrency failures that are safe to retry
+ * after reloading the latest invoice revision.
+ */
+const isDocumentConflict = (error: unknown): boolean =>
+  Boolean(
+    (error as { statusCode?: number })?.statusCode === 409
+    || (error as { status?: number })?.status === 409
+    || (error as { error?: string })?.error === "conflict",
+  );
 
 const markNotificationQueued = async (
   ordersDatabase: string,
@@ -115,26 +137,94 @@ const markNotificationQueued = async (
   notificationKey: "customer" | "admin" | "login",
   templateName: string,
 ): Promise<CouchDBDocument> => {
-  const updatedInvoiceDoc = {
-    ...invoiceDoc,
-    fulfillment: {
-      ...(invoiceDoc.fulfillment || {}),
-      notifications: {
-        ...(invoiceDoc.fulfillment?.notifications || {}),
-        [notificationKey]: {
-          status: "queued",
-          templateName,
-          queuedAt: new Date().toISOString(),
+  let currentInvoiceDoc = invoiceDoc;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (wasNotificationQueued(currentInvoiceDoc, notificationKey)) {
+      return currentInvoiceDoc;
+    }
+
+    const updatedInvoiceDoc = {
+      ...currentInvoiceDoc,
+      fulfillment: {
+        ...(currentInvoiceDoc.fulfillment || {}),
+        notifications: {
+          ...(currentInvoiceDoc.fulfillment?.notifications || {}),
+          [notificationKey]: {
+            status: "queued",
+            templateName,
+            queuedAt: new Date().toISOString(),
+          },
         },
       },
-    },
-  };
-  const result = await putDocument(ordersDatabase, updatedInvoiceDoc);
+    };
 
-  return {
-    ...updatedInvoiceDoc,
-    _rev: result.rev,
-  };
+    try {
+      const result = await putDocument(ordersDatabase, updatedInvoiceDoc);
+      return {
+        ...updatedInvoiceDoc,
+        _rev: result.rev,
+      };
+    } catch (error) {
+      if (!isDocumentConflict(error) || attempt === 2) {
+        throw error;
+      }
+
+      const documentId = resolveRequiredString(invoiceDoc._id, "Invoice document ID");
+      const reloadedInvoiceDoc = await getDocument<CouchDBDocument>(ordersDatabase, documentId);
+      if (!reloadedInvoiceDoc) {
+        throw error;
+      }
+      currentInvoiceDoc = reloadedInvoiceDoc;
+    }
+  }
+
+  throw new Error("Unreachable notification marker retry state");
+};
+
+/**
+ * Persists a recoverable fulfillment boundary before any email side effect.
+ * Paid-invoice reconciliation can later resume documents left in this state.
+ */
+const markFulfillmentProcessing = async (
+  ordersDatabase: string,
+  invoiceDoc: CouchDBDocument,
+  product: string,
+): Promise<CouchDBDocument> => {
+  let currentInvoiceDoc = invoiceDoc;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const processingInvoiceDoc = {
+      ...currentInvoiceDoc,
+      fulfillment: {
+        ...(currentInvoiceDoc.fulfillment || {}),
+        status: "processing",
+        product,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    try {
+      const result = await putDocument(ordersDatabase, processingInvoiceDoc);
+      return {
+        ...processingInvoiceDoc,
+        _rev: result.rev || processingInvoiceDoc._rev,
+      };
+    } catch (error) {
+      if (!isDocumentConflict(error) || attempt === 2) {
+        throw error;
+      }
+
+      const documentId = resolveRequiredString(invoiceDoc._id, "Invoice document ID");
+      const reloadedInvoiceDoc = await getDocument<CouchDBDocument>(ordersDatabase, documentId);
+      if (!reloadedInvoiceDoc) {
+        throw error;
+      }
+      currentInvoiceDoc = reloadedInvoiceDoc;
+    }
+  }
+
+  throw new Error("Unreachable fulfillment processing retry state");
 };
 
 const queueMembershipNotifications = async ({
@@ -199,9 +289,9 @@ const queueMembershipNotifications = async ({
       payload: {
         user_email: userEmail,
         amount: orderDoc?.content?.sats,
-        referrer: orderDoc?.content?.referralSource,
-        telegram: orderDoc?.content?.telegram,
-        timestamp: invoiceDoc.timestamp,
+        referrer: resolveNotificationText(orderDoc?.content?.referralSource),
+        telegram: resolveNotificationText(orderDoc?.content?.telegram),
+        timestamp: invoiceDoc.timestamp || invoiceDoc?.payment?.paidAt || new Date().toISOString(),
         ...notificationProduct,
       },
     });
@@ -376,12 +466,20 @@ const queueGuestLoginNotification = async ({
   if (!siteUrl) {
     throw new Error("Public site URL is required to queue a magic login link.");
   }
+  const settingsDoc = await getDocument<CouchDBDocument>(ordersDatabase, "settings");
+  const supportEmail = resolveRequiredString(
+    settingsDoc?.orderNotifications?.recipientEmail,
+    "Order notification recipient email",
+  );
   const result = await queueTemplateEmail({
     templateName: "login",
     to: userEmail,
     payload: {
       user_email: userEmail,
       magic_link_url: `${siteUrl}/confirm-login/${encodeURIComponent(token.email)}/${token.code}`,
+      privacy_url: `${siteUrl}/privacy`,
+      support_url: `${siteUrl}/contact`,
+      unsubscribe_url: `mailto:${supportEmail}?subject=Unsubscribe`,
     },
   });
   if (!result.ok) {
@@ -457,7 +555,7 @@ export const applyInvoicePaidFulfillment = async (
     ? await resolveGuestUserDocument(guestEmail)
     : await loadUserDocument(options.invoiceDoc, options.orderDoc);
   const userName = String(userDoc.name || "");
-  const orderDoc = isCareerHubGuest
+  let orderDoc = isCareerHubGuest
     ? { ...options.orderDoc, userName, status: "active" }
     : options.orderDoc;
   let invoiceDoc = isCareerHubGuest
@@ -465,7 +563,6 @@ export const applyInvoicePaidFulfillment = async (
     : options.invoiceDoc;
 
   if (isCareerHubGuest) {
-    await putDocument(options.ordersDatabase, orderDoc);
     const invoiceResult = await putDocument(options.ordersDatabase, invoiceDoc);
     invoiceDoc = {
       ...invoiceDoc,
@@ -493,7 +590,23 @@ export const applyInvoicePaidFulfillment = async (
     updatedUserDoc[config.validUntilField] = validUntil;
   }
 
+  if (isCareerHubGuest) {
+    orderDoc = {
+      ...orderDoc,
+      content: {
+        ...(orderDoc.content || {}),
+        ...(validUntil ? { validUntil } : {}),
+      },
+    };
+    const orderResult = await putDocument(options.ordersDatabase, orderDoc);
+    orderDoc = {
+      ...orderDoc,
+      _rev: orderResult.rev || orderDoc._rev,
+    };
+  }
+
   await putDocument("_users", updatedUserDoc);
+  invoiceDoc = await markFulfillmentProcessing(options.ordersDatabase, invoiceDoc, product);
   const invoiceWithNotifications = await queueMembershipNotifications({
     ordersDatabase: options.ordersDatabase,
     invoiceDoc,

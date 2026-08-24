@@ -9,7 +9,11 @@ import {
   markPaymentEventProcessed,
 } from "../utils/payment-event-log";
 import { expireUnsettledBlinkNcInvoice, refreshBlinkNcInvoice } from "../utils/blink-nc-payment-refresh";
-import { reconcileBlinkNcBatch, type BlinkNcAttemptState } from "../utils/blink-nc-reconciliation";
+import {
+  loadBlinkNcReconciliationDocs,
+  reconcileBlinkNcBatch,
+  type BlinkNcAttemptState,
+} from "../utils/blink-nc-reconciliation";
 import { resolveLightningConfig } from "../utils/lightning-config";
 
 const STATE_KEY = Symbol.for("couchfusion.lightning.blink_nc.reconciliation");
@@ -60,11 +64,10 @@ export default defineNitroPlugin(async () => {
   const reconcile = async () => {
     if (state.running) return;
     try {
-      const view = await getView(ordersDatabase, "lightning", "by_provider_and_status", {
-        key: ["blink_nc", "pending"],
-        include_docs: true,
+      const invoiceDocs = await loadBlinkNcReconciliationDocs({
+        ordersDatabase,
+        getView,
       });
-      const invoiceDocs = (view?.rows || []).map((row: any) => row.doc).filter(Boolean) as CouchDBDocument[];
       const result = await reconcileBlinkNcBatch({
         invoiceDocs,
         attempts: state.attempts,
