@@ -164,6 +164,8 @@ async function initializeLightningLayer(): Promise<void> {
       await initializeStrikeWebhook(lightningConfig);
     } else if (lightningConfig.defaultProvider === "blink") {
       await initializeBlinkWebhook(lightningConfig);
+    } else if (lightningConfig.defaultProvider === "blink_nc") {
+      console.info("[lightning] blink_nc reconciliation performs the redacted connection probe; no webhook is registered");
     }
   } catch (error) {
     console.error("💥 CouchDB lightning layer initialization failed:", error);

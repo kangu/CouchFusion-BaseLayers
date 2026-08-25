@@ -84,7 +84,7 @@ export const isStalePendingInvoice = (
   now: Date,
   maxPendingMs = DEFAULT_MAX_PENDING_MS,
 ): boolean => {
-  if (resolveInvoiceProvider(invoiceDoc) === "nwc") {
+  if (["nwc", "blink_nc"].includes(resolveInvoiceProvider(invoiceDoc))) {
     return false;
   }
   if (resolveInvoiceStatus(invoiceDoc) !== PENDING_STATUS) {

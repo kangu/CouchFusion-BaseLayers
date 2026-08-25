@@ -1,5 +1,5 @@
 import { createLightningService } from '../services/lightning'
-import type { LightningConfig, InvoiceRequest, InvoiceResponse, LightningProviderName } from '../types/lightning'
+import type { LightningConfig, InvoiceLookupContext, InvoiceRequest, InvoiceResponse, LightningProviderName } from '../types/lightning'
 
 export interface CreateInvoiceOptions {
   amount: number
@@ -28,8 +28,9 @@ export async function createLightningInvoice(
 export async function checkLightningInvoiceStatus(
   config: LightningConfig,
   invoiceId: string,
-  provider?: LightningProviderName
+  provider?: LightningProviderName,
+  context?: InvoiceLookupContext,
 ): Promise<InvoiceResponse> {
   const lightningService = createLightningService(config)
-  return await lightningService.getInvoiceStatus(invoiceId, provider)
+  return await lightningService.getInvoiceStatus(invoiceId, provider, context)
 }

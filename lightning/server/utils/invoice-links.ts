@@ -1,4 +1,13 @@
-export const buildLightningInvoiceLinkDocument = (options) => ({
+type DocumentRecord = Record<string, any>
+
+interface LinkedDocumentUpdateResult {
+  invoiceId: string
+  matched: number
+  updated: number
+  updates: DocumentRecord[]
+}
+
+export const buildLightningInvoiceLinkDocument = (options: DocumentRecord): DocumentRecord => ({
   _id: `lightning-invoice-link:${options.invoiceId}:${options.purpose}:${options.documentId}`,
   type: 'lightning_invoice_link',
   invoiceId: options.invoiceId,
@@ -13,15 +22,20 @@ export const buildLightningInvoiceLinkDocument = (options) => ({
   updatedAt: options.updatedAt || options.createdAt || new Date().toISOString()
 })
 
-export const saveLightningInvoiceLink = async (options) => {
+export const saveLightningInvoiceLink = async (options: DocumentRecord): Promise<DocumentRecord> => {
   const doc = buildLightningInvoiceLinkDocument(options)
   await options.putDocument(options.registryDatabaseName, doc)
   return doc
 }
 
-export const applyWebhookStatusToLinkedDocument = (doc, link, webhookEvent, now = new Date()) => {
+export const applyWebhookStatusToLinkedDocument = (
+  doc: DocumentRecord,
+  link: DocumentRecord,
+  webhookEvent: DocumentRecord,
+  now = new Date(),
+): DocumentRecord => {
   const status = webhookEvent.status
-  const updated = {
+  const updated: DocumentRecord = {
     ...doc,
     [link.statusField || 'status']: status,
     updatedAt: now.toISOString(),
@@ -42,13 +56,22 @@ export const applyWebhookStatusToLinkedDocument = (doc, link, webhookEvent, now 
   return updated
 }
 
-export const updateLinkedInvoiceDocuments = async (options) => {
-  const view = await options.getView(options.registryDatabaseName, 'lightning', 'invoice_links_by_invoice_id', {
-    key: options.webhookEvent.invoiceId,
-    include_docs: true
-  })
-  const links = (view?.rows || []).map((row) => row.doc).filter(Boolean)
-  const updates = []
+export const updateLinkedInvoiceDocuments = async (
+  options: DocumentRecord,
+): Promise<LinkedDocumentUpdateResult> => {
+  const view = await options.getView(
+    options.registryDatabaseName,
+    'lightning',
+    'invoice_links_by_invoice_id',
+    {
+      key: options.webhookEvent.invoiceId,
+      include_docs: true
+    },
+  )
+  const links: DocumentRecord[] = (view?.rows || [])
+    .map((row: DocumentRecord) => row.doc)
+    .filter(Boolean)
+  const updates: DocumentRecord[] = []
 
   for (const link of links) {
     const doc = await options.getDocument(link.databaseName, link.documentId)

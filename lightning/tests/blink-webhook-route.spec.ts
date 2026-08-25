@@ -24,7 +24,7 @@ vi.mock("#database/utils/couch-config", () => ({
   resolveRuntimeAppSlug: (runtimeConfig: any) => runtimeConfig?.public?.appSlug || "bitvocation",
 }));
 
-vi.mock("#lightning/server/utils/invoice-links.mjs", () => ({
+vi.mock("#lightning/server/utils/invoice-links", () => ({
   updateLinkedInvoiceDocuments: updateLinkedInvoiceDocumentsMock,
 }));
 

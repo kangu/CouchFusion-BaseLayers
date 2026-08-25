@@ -25,6 +25,27 @@ const resolvePaymentRequest = (invoiceDoc: CouchDBDocument): string => {
   return String(invoiceData.paymentRequest || invoiceDoc?.payment?.paymentRequest || "");
 };
 
+const resolveInvoiceProviderData = (invoiceDoc: CouchDBDocument) => {
+  const invoiceData = invoiceDoc?.invoiceData || {};
+  const expiresAtValue = invoiceData.expiresAt;
+  const expiresAt = expiresAtValue instanceof Date
+    ? expiresAtValue.toISOString()
+    : typeof expiresAtValue === "string" && expiresAtValue
+      ? new Date(expiresAtValue).toISOString()
+      : undefined;
+  const providerContext = invoiceData.paymentContext && typeof invoiceData.paymentContext === "object"
+    ? { ...invoiceData.paymentContext }
+    : undefined;
+
+  return {
+    ...(invoiceData.provider ? { provider: invoiceData.provider } : {}),
+    ...(Number.isFinite(invoiceData.amount) ? { amount: invoiceData.amount } : {}),
+    ...(invoiceData.currency ? { currency: invoiceData.currency } : {}),
+    ...(expiresAt ? { expiresAt } : {}),
+    ...(providerContext ? { providerContext } : {}),
+  };
+};
+
 const toLegacyLastEvent = (status: NormalizedPaymentStatus): string => {
   if (status === "pending") {
     return "created";
@@ -75,6 +96,7 @@ export const createInvoicePaymentState = (
       status,
       providerInvoiceId: resolveProviderInvoiceId(invoiceDoc),
       paymentRequest: resolvePaymentRequest(invoiceDoc),
+      ...resolveInvoiceProviderData(invoiceDoc),
       createdAt,
     },
     invoiceData: {
@@ -98,6 +120,7 @@ export const applyInvoicePaymentStatus = (
     status: options.status,
     providerInvoiceId: resolveProviderInvoiceId(options.invoiceDoc),
     paymentRequest: resolvePaymentRequest(options.invoiceDoc),
+    ...resolveInvoiceProviderData(options.invoiceDoc),
     ...transitionTimestamp,
   };
 

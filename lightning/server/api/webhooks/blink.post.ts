@@ -4,7 +4,7 @@ import { createLightningService } from "../../../services/lightning";
 import type { WebhookEvent } from "../../../types/lightning";
 import { paymentEventBus } from "../../utils/payment-event-bus";
 import type { PaymentEvent, PaymentEventType } from "../../../types/payment-events";
-import { updateLinkedInvoiceDocuments } from "#lightning/server/utils/invoice-links.mjs";
+import { updateLinkedInvoiceDocuments } from "#lightning/server/utils/invoice-links";
 import { applyInvoicePaidFulfillment } from "../../utils/order-fulfillment";
 import {
   beginPaymentEventProcessing,

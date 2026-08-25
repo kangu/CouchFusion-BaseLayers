@@ -2,16 +2,16 @@
 
 `Runtime: nuxt 4.x, vue 3.5.x`
 
-Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, status polling, webhook handling, and provider abstraction (Strike / Alby / Blink) over a CouchDB-backed persistence model. Consumed by `apps/bitvocation`, `apps/couchfusioncom`, `apps/kangu`, `apps/tulin-delivery` (see each app's `nuxt.config.ts` extends array).
+Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, status polling, webhook handling, and provider abstraction (Strike / Alby / Blink / NWC / Blink non-custodial) over a CouchDB-backed persistence model. Consumed by `apps/bitvocation`, `apps/couchfusioncom`, `apps/kangu`, `apps/tulin-delivery` (see each app's `nuxt.config.ts` extends array).
 
 ## Folder map
 - `composables/` — empty placeholder; client composables intentionally not exposed.
-- `providers/` — provider factories: `alby.ts`, `blink.ts`, `strike.ts`. Each exports `create<Name>Provider`.
+- `providers/` — provider factories including `blink-nc.ts`; `blink-nc-client.ts` owns bounded LNURL/LUD-21 transport and strict proof validation.
 - `services/lightning.ts` — `createLightningService(config)` provider router/cache.
 - `server/api/lightning/` — endpoints: `donation.post.ts`, `purchase.post.ts`, `events.get.ts`, `invoice/[invoiceId].get.ts`.
 - `server/api/webhooks/` — `blink.post.ts`, `strike.post.ts` (no Alby webhook route yet).
 - `server/composables/useLightning.ts` — server composable wrapping invoice lifecycle.
-- `server/plugins/` — `init.ts`, `pending-invoice-expiration.ts`.
+- `server/plugins/` — initialization, generic expiry, NWC reconciliation, and `blink-nc-payment-reconciliation.ts`.
 - `server/utils/` — `lightning-config.ts`, `payment-event-bus.ts`, `payment-event-log.ts`, `payment-state.ts`, `order-fulfillment.ts`, `pending-invoice-expiration.ts`.
 - `types/` — `lightning.ts`, `payment-events.ts`.
 - `utils/` — `lightning.ts` (entry helpers), `design-documents.ts`, `orders.ts`.
@@ -26,7 +26,7 @@ Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, stat
 - Server composable: `useLightning()` (from `server/composables/useLightning.ts`).
 - Utils (import via `#lightning/utils/...`): `createLightningInvoice`, `checkLightningInvoiceStatus` (`utils/lightning.ts`).
 - Service: `createLightningService` (`services/lightning.ts`).
-- Providers: `createStrikeProvider`, `createAlbyProvider`, `createBlinkProvider`.
+- Providers: `createStrikeProvider`, `createAlbyProvider`, `createBlinkProvider`, `createNwcProvider`, `createBlinkNcProvider`.
 - HTTP endpoints (all under `/api`):
   - `POST /api/lightning/donation`
   - `POST /api/lightning/purchase`
@@ -38,7 +38,7 @@ Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, stat
 ## Conventions
 - Route rules force `cors: true` on `/api/**` and `x-powered-by: btc` header — do not strip.
 - All provider implementations must satisfy the `LightningProvider` interface in `types/lightning.ts`.
-- Provider names are the lowercase string keys `'strike' | 'alby' | 'blink' | 'nwc'`; never invent new keys without updating `LightningConfig` and `services/lightning.ts` switch.
+- Provider names are the lowercase string keys `'strike' | 'alby' | 'blink' | 'nwc' | 'blink_nc'`; never invent new keys without updating `LightningConfig` and `services/lightning.ts` switch.
 - Invoice currency defaults to `sats`; BTC conversion lives in `providers/strike.ts` (`satsToBtc`) — keep precision at 8 decimals.
 - Webhook routes must be idempotent; status transitions go through `server/utils/payment-state.ts`.
 - Persisted docs use `type: 'lightning_invoice'` (and related) prefixes; design docs live in `utils/design-documents.ts`.
@@ -48,8 +48,9 @@ Bitcoin Lightning payment layer for Nuxt 4 apps. Provides invoice creation, stat
 - Peer: `nuxt ^4.0.0`.
 - Extends layer: `../database` (uses `#database/utils/couchdb` — `getDocument`, `getView`, `bulkDocs`, `putDocument`, `validateCouchDBEnvironment`).
 - No other layers imported.
-- Consuming app must provide `runtimeConfig.lightning` with `defaultProvider` and `providers.{strike,alby,blink}` (see `README_alby.md`).
+- Provider configuration is resolved from app-scoped CouchDB `_config`; runtime config is used only to discover the app slug.
 - NWC configuration is server-only in CouchDB `_config`: `lightning_default_provider=nwc`, `nwc_connection_uri`, and optional `nwc_reconcile_interval_ms`. The URI is secret material and must never be logged or exposed.
+- Blink non-custodial configuration uses `lightning_default_provider=blink_nc`, `blink_nc_lightning_address`, and optional reconcile/grace/concurrency keys documented in `README_blink_nc.md`.
 - `crypto` (node builtin) used by Strike provider signature verification.
 
 ## Build / Test commands
@@ -75,6 +76,7 @@ cd apps/bitvocation && nuxt typecheck
 - Alby has no webhook route file (`server/api/webhooks/alby.post.ts` missing) despite the provider existing.
 - `covenant-service/` is a vendored node_modules bundle — do not edit.
 - Polling intervals (`pending-invoice-expiration.ts`) assume single-instance Nitro; multi-instance needs external lock.
+- `blink_nc` is receive-only and mainnet-only. Its verification URL and proof are server-only; its reconciler owns expiry and the generic heartbeat must skip it.
 
 ## Cross-references
 - Root: `/Users/radu/Projects/nuxt-apps/AGENTS.md`

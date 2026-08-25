@@ -1,4 +1,4 @@
-export type PaymentProvider = "strike" | "blink" | "alby" | "nwc";
+export type PaymentProvider = "strike" | "blink" | "alby" | "nwc" | "blink_nc";
 
 export type PaymentEventType =
   | "invoice.created"

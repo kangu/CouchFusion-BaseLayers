@@ -184,6 +184,103 @@ describe("lightning config resolver", () => {
     );
   });
 
+  it("resolves a normalized blink_nc address with bounded defaults without logging the address", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "blink_nc",
+      blink_nc_lightning_address: "Merchant@blink.sv",
+    });
+
+    const { formatLightningConfigSourceLog, resolveLightningConfigWithSources } = await import("../server/utils/lightning-config");
+    const resolved = await resolveLightningConfigWithSources();
+
+    expect(resolved.config.defaultProvider).toBe("blink_nc");
+    expect(resolved.config.providers.blink_nc).toEqual({
+      lightningAddress: "merchant@blink.sv",
+      reconcileIntervalMs: 3_000,
+      settlementGraceMs: 120_000,
+      maxConcurrency: 5,
+    });
+    const output = formatLightningConfigSourceLog(resolved).join("\n");
+    expect(output).toContain("providers.blink_nc.lightningAddress: present from CouchDB key blink_nc_lightning_address");
+    expect(output).not.toContain("merchant@blink.sv");
+  });
+
+  it("requires a blink_nc Lightning address only when blink_nc is selected", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "blink_nc",
+    });
+
+    const { resolveLightningConfig } = await import("../server/utils/lightning-config");
+
+    await expect(resolveLightningConfig()).rejects.toThrow(
+      "Missing required Lightning CouchDB config values in cf_env_bitvocation: blink_nc_lightning_address",
+    );
+  });
+
+  it.each([
+    "merchant@example.com",
+    "merchant@blink.sv.evil.example",
+    "https://blink.sv/.well-known/lnurlp/merchant",
+    "merchant@blink.sv:443",
+    "merchant @blink.sv",
+  ])("rejects invalid blink_nc address %s", async (lightningAddress) => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "blink_nc",
+      blink_nc_lightning_address: lightningAddress,
+    });
+
+    const { resolveLightningConfigWithSources } = await import("../server/utils/lightning-config");
+
+    await expect(resolveLightningConfigWithSources()).rejects.toThrow(
+      "blink_nc_lightning_address must be username@blink.sv",
+    );
+  });
+
+  it.each([
+    ["blink_nc_reconcile_interval_ms", "999"],
+    ["blink_nc_reconcile_interval_ms", "60001"],
+    ["blink_nc_settlement_grace_ms", "-1"],
+    ["blink_nc_settlement_grace_ms", "600001"],
+    ["blink_nc_max_concurrency", "0"],
+    ["blink_nc_max_concurrency", "21"],
+    ["blink_nc_max_concurrency", "1.5"],
+  ])("rejects out-of-range blink_nc numeric value %s=%s", async (key, value) => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "blink_nc",
+      blink_nc_lightning_address: "merchant@blink.sv",
+      [key]: value,
+    });
+
+    const { resolveLightningConfigWithSources } = await import("../server/utils/lightning-config");
+
+    await expect(resolveLightningConfigWithSources()).rejects.toThrow(
+      "Lightning configuration integer must be between",
+    );
+  });
+
+  it("keeps configured blink_nc available when another provider creates new invoices", async () => {
+    readCouchConfigValuesMock.mockResolvedValueOnce({
+      lightning_default_provider: "strike",
+      strike_api_key: "couch-strike-key",
+      strike_webhook_secret: "couch-strike-secret",
+      blink_nc_lightning_address: "Merchant@blink.sv",
+      blink_nc_reconcile_interval_ms: "5000",
+      blink_nc_settlement_grace_ms: "0",
+      blink_nc_max_concurrency: "2",
+    });
+
+    const { resolveLightningConfig } = await import("../server/utils/lightning-config");
+    const resolved = await resolveLightningConfig();
+
+    expect(resolved.defaultProvider).toBe("strike");
+    expect(resolved.providers.blink_nc).toEqual({
+      lightningAddress: "merchant@blink.sv",
+      reconcileIntervalMs: 5_000,
+      settlementGraceMs: 0,
+      maxConcurrency: 2,
+    });
+  });
+
   it("formats source notices without leaking credential values", async () => {
     readCouchConfigValuesMock.mockResolvedValueOnce({
       lightning_default_provider: "strike",
