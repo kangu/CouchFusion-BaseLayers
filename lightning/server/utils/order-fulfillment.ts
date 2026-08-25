@@ -590,20 +590,23 @@ export const applyInvoicePaidFulfillment = async (
     updatedUserDoc[config.validUntilField] = validUntil;
   }
 
-  if (isCareerHubGuest) {
-    orderDoc = {
-      ...orderDoc,
-      content: {
-        ...(orderDoc.content || {}),
-        ...(validUntil ? { validUntil } : {}),
-      },
-    };
-    const orderResult = await putDocument(options.ordersDatabase, orderDoc);
-    orderDoc = {
-      ...orderDoc,
-      _rev: orderResult.rev || orderDoc._rev,
-    };
-  }
+  orderDoc = {
+    ...orderDoc,
+    status: "active",
+    ...(isCareerHubGuest
+      ? {
+          content: {
+            ...(orderDoc.content || {}),
+            ...(validUntil ? { validUntil } : {}),
+          },
+        }
+      : {}),
+  };
+  const orderResult = await putDocument(options.ordersDatabase, orderDoc);
+  orderDoc = {
+    ...orderDoc,
+    _rev: orderResult.rev || orderDoc._rev,
+  };
 
   await putDocument("_users", updatedUserDoc);
   invoiceDoc = await markFulfillmentProcessing(options.ordersDatabase, invoiceDoc, product);

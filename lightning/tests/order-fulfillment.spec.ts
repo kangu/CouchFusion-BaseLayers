@@ -633,6 +633,10 @@ describe("embedded order fulfillment", () => {
         timestamp: "2026-06-26T20:00:00.000Z",
       },
     });
+    expect(putDocumentMock).toHaveBeenCalledWith("bv--orders", expect.objectContaining({
+      _id: "purchase_123",
+      status: "active",
+    }));
   });
 
   it("marks PoW Lab Lite users active with the order validity window when invoices are paid", async () => {
