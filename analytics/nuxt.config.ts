@@ -7,6 +7,11 @@ export default defineNuxtConfig({
     "#analytics": fileURLToPath(layerDir),
   },
 
+  // The Umami website id is resolved from the app's CouchDB _config section, so
+  // this layer depends on the database layer's #database alias -- declared the
+  // same way the lightning layer declares it.
+  extends: ["../database"],
+
   imports: {
     dirs: [fileURLToPath(new URL("./composables", import.meta.url))],
   },
@@ -20,7 +25,6 @@ export default defineNuxtConfig({
     analytics: {
       umami: {
         proxyHost: "https://cloud.umami.is",
-        couchEnvSlug: "",
       },
     },
     content: {
@@ -31,7 +35,6 @@ export default defineNuxtConfig({
         endpoint: "/api/stats",
         umami: {
           websiteId: "",
-          couchEnvSlug: "",
           hostUrl: "/",
           scriptPath: "/script.js",
           dataDomains: "",

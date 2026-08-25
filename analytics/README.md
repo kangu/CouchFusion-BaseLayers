@@ -20,25 +20,31 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
    });
    ```
 
-2. Provide Umami runtime config (env variables or inline):
+2. Provide a deterministic application slug and any browser-side behavior:
    ```ts
    export default defineNuxtConfig({
      runtimeConfig: {
-       analytics: {
-         umami: {
-           websiteId: process.env.UMAMI_WEBSITE_ID,
-           excludedPaths: process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS
-            ? process.env.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS.split(',')
-                  .map((path) => path.trim())
-                  .filter(Boolean)
-            : []
+       public: {
+         appSlug: 'my-app',
+         analytics: {
+           umami: {
+             includeTitle: true,
+             sendReferrer: true,
+             debug: false
+           }
          },
        },
      },
    });
    ```
 
-3. Use the composable:
+3. Configure the server proxy in CouchDB `_config`. Values are flat strings in
+   the `cf_env_[appSlug]` section:
+
+   - `umami_website_id` — required; the authoritative Umami website ID.
+   - `umami_excluded_paths` — optional comma-separated exact paths or `*` suffix patterns.
+
+4. Use the composable:
    ```vue
    <script setup lang="ts">
    const analytics = useAnalytics();
@@ -49,7 +55,7 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
    </script>
    ```
 
-4. Or use the directive:
+5. Or use the directive:
    ```vue
    <template>
      <button v-analytics="{ event: 'cta-click', data: { location: 'hero' } }">
@@ -59,36 +65,24 @@ Reusable Nuxt layer that wires up [Umami](https://umami.is) analytics with a com
    ```
 
 ## Runtime Config Notes
-- `websiteId` **must** be supplied; otherwise the layer warns and exits quietly.
-- Provide `excludedPaths` (array or CSV string) to skip tracking for sensitive routes such as `/login` or `/admin/*`. When exclusions are set, the layer disables Umami's auto-tracking and manually emits page views for allowed routes.
+- `runtimeConfig.public.appSlug` **must** be deterministic. It selects the CouchDB section `cf_env_[appSlug]` and should normally match the app folder name.
+- The proxy accepts `websiteId` only from CouchDB. It rejects requests while `umami_website_id` is missing and always overwrites any client-supplied `payload.website` value.
+- Provide `umami_excluded_paths` in CouchDB to skip sensitive routes such as `/login` or `/admin/*`. Exact matches and suffix `*` prefix patterns are supported.
 - Override `public.analytics.endpoint` if your frontend should post analytics to a different proxy route than `/api/stats`.
 - Toggle `includeTitle`, `sendReferrer`, or `debug` under `public.analytics.umami` to adjust payload metadata without touching code.
-- Server-side analytics fallback can read from CouchDB `_config` using section `cf_env_[slug]` (default slug is the app folder name). Set `runtimeConfig.analytics.umami.couchEnvSlug` to override.
-- `_config` keys currently read by the analytics proxy fallback:
-  - `UMAMI_WEBSITE_ID` (or `NUXT_PUBLIC_UMAMI_WEBSITE_ID`)
-  - `NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS`
+- The legacy CouchDB key `NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS` remains a compatibility fallback. Migrate it to `umami_excluded_paths`; when both exist, the canonical lower-case key wins.
+- Ready config is cached for the server process lifetime. Missing required config is cached for 30 seconds, after which the layer retries CouchDB; concurrent requests share one read.
 
-### Environment Examples
-Create a `.env` (auto-loaded by Nuxt/bun dev server) with a development website ID:
-```env
-# .env
-NUXT_PUBLIC_UMAMI_WEBSITE_ID=dev-site-id
-NUXT_PUBLIC_UMAMI_HOST_URL=https://analytics.umami.is
-NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS=/login,/auth/*
-```
+## Migration from environment-backed server config
 
-For production, prefer `.env.production` or environment variables provided by your host:
-```env
-# .env.production
-NUXT_PUBLIC_UMAMI_WEBSITE_ID=prod-site-id
-NUXT_PUBLIC_UMAMI_HOST_URL=https://analytics.yourdomain.com
-NUXT_PUBLIC_UMAMI_SCRIPT_PATH=/umami.js
-NUXT_PUBLIC_UMAMI_DATA_DOMAINS=app.yourdomain.com,www.yourdomain.com
-NUXT_PUBLIC_UMAMI_AUTO_TRACK=true
-NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS=/internal-preview/*,/admin/*
-```
+1. Upgrade the Analytics layer together with its shared Database layer dependency.
+2. Add an explicit `runtimeConfig.public.appSlug` to the consuming app before deployment.
+3. Before switching traffic, create `cf_env_[appSlug].umami_website_id` in CouchDB.
+4. Move exclusions to `cf_env_[appSlug].umami_excluded_paths`. The legacy uppercase exclusion key can remain during a staged rollout.
+5. Keep any existing public Umami environment variables during the first rollout if older clients still emit them. The upgraded proxy does not trust them, so they can be removed after all instances are upgraded.
+6. Confirm the redacted startup notices report the expected section, a present website ID, and the intended exclusion source.
 
-When running locally, `bun run dev` automatically reads `.env`. For production builds (e.g., `bun run build` on deploy), ensure these variables are present in the environment before starting the server.
+The server-side migration is intentionally strict: deploy the CouchDB keys before or with the new layer. If the required website ID is absent, `/api/stats` returns an error instead of attributing events to a client-selected website.
 
 ## Directive API
 `v-analytics`

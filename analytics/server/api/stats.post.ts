@@ -7,23 +7,8 @@ import {
   getRequestHeader,
   createError,
 } from "h3";
-import { basename } from "node:path";
 
-const DEFAULT_COUCHDB_URL = "http://localhost:5984";
-
-function normalizeExcludedPaths(
-  value: string | string[] | undefined,
-): string[] {
-  if (!value) {
-    return [];
-  }
-
-  const list = Array.isArray(value)
-    ? value
-    : value.split(",").map((entry) => entry.trim());
-
-  return list.filter((entry) => entry.length > 0);
-}
+import { resolveUmamiConfig } from "../utils/umami-config";
 
 function createExclusionMatcher(patterns: string[]) {
   if (patterns.length === 0) {
@@ -44,122 +29,10 @@ function createExclusionMatcher(patterns: string[]) {
   };
 }
 
-function parseConfigString(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "string" && parsed.trim()) {
-        return parsed.trim();
-      }
-    } catch {
-      return trimmed.slice(1, -1).trim() || null;
-    }
-  }
-
-  return trimmed;
-}
-
-function normalizeSlug(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function resolveAnalyticsSection(runtimeConfig: Record<string, any>): string {
-  const explicitSlug = normalizeSlug(
-    runtimeConfig.analytics?.umami?.couchEnvSlug ??
-      runtimeConfig.public?.analytics?.umami?.couchEnvSlug,
-  );
-
-  if (explicitSlug) {
-    return `cf_env_${explicitSlug}`;
-  }
-
-  const fallbackSlug = normalizeSlug(basename(process.cwd()));
-  if (!fallbackSlug) {
-    return "";
-  }
-
-  return `cf_env_${fallbackSlug}`;
-}
-
-async function readCouchConfigValue(
-  section: string,
-  key: string,
-): Promise<string | null> {
-  if (!section || !key) {
-    return null;
-  }
-
-  const baseUrl = (process.env.COUCHDB_URL || DEFAULT_COUCHDB_URL).replace(
-    /\/+$/,
-    "",
-  );
-  const url = `${baseUrl}/_node/_local/_config/${encodeURIComponent(section)}/${encodeURIComponent(key)}`;
-  const auth = process.env.COUCHDB_ADMIN_AUTH;
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: auth ? { Authorization: `Basic ${auth}` } : undefined,
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const raw = await response.text();
-    return parseConfigString(raw);
-  } catch (error) {
-    console.warn(
-      `[analytics] failed to read CouchDB _config ${section}.${key}`,
-      error,
-    );
-    return null;
-  }
-}
-
-async function resolveAnalyticsCouchConfig(runtimeConfig: Record<string, any>) {
-  const section = resolveAnalyticsSection(runtimeConfig);
-  if (!section) {
-    return {};
-  }
-
-  const [websiteId, publicWebsiteId, excludedPaths] = await Promise.all([
-    readCouchConfigValue(section, "UMAMI_WEBSITE_ID"),
-    readCouchConfigValue(section, "NUXT_PUBLIC_UMAMI_WEBSITE_ID"),
-    readCouchConfigValue(section, "NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS"),
-  ]);
-
-  return {
-    websiteId: websiteId || publicWebsiteId || undefined,
-    excludedPaths: excludedPaths || undefined,
-  };
-}
-
 export default defineEventHandler(async (event) => {
   const runtimeConfig = useRuntimeConfig();
-  const couchConfig = await resolveAnalyticsCouchConfig(runtimeConfig);
   const umamiBase = runtimeConfig.analytics?.umami?.proxyHost;
-  const runtimeWebsiteId =
-    typeof runtimeConfig.analytics?.umami?.websiteId === "string"
-      ? runtimeConfig.analytics?.umami?.websiteId.trim()
-      : "";
-  const websiteId = runtimeWebsiteId || couchConfig.websiteId;
-  const excludedPaths = normalizeExcludedPaths(
-    runtimeConfig.analytics?.umami?.excludedPaths ?? couchConfig.excludedPaths,
-  );
+  const { excludedPaths, websiteId } = await resolveUmamiConfig(runtimeConfig);
   const isExcludedPath = createExclusionMatcher(excludedPaths);
 
   if (!umamiBase) {
@@ -188,19 +61,9 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const normalizedPayload =
-    typeof websiteId === "string" && websiteId.length > 0
-      ? { ...payload, website: websiteId }
-      : { ...payload };
+  const normalizedPayload = { ...payload, website: websiteId };
 
   // handle exclusions
-  if (!normalizedPayload.website) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "Analytics websiteId missing",
-    });
-  }
-
   const pathForExclusion =
     typeof normalizedPayload.pathname === "string" &&
     normalizedPayload.pathname.length > 0
@@ -222,12 +85,6 @@ export default defineEventHandler(async (event) => {
   const xff = getRequestHeader(event, "x-forwarded-for");
   const xffFirst = xff ? xff.split(",")[0].trim() : undefined;
   const clientIp = cfIp || xRealIp || xffFirst;
-  // console.log(
-  //   "Sending analytics payload from backend",
-  //   umamiBase,
-  //   clientIp,
-  //   normalizedPayload,
-  // );
 
   const res = await fetch(new URL("/api/send", umamiBase).toString(), {
     method: "POST",
@@ -241,7 +98,6 @@ export default defineEventHandler(async (event) => {
   });
 
   const text = await res.text();
-  // console.log("Analytics result", text);
 
   if (!res.ok) {
     throw createError({
