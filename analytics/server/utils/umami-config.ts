@@ -13,6 +13,7 @@ export interface UmamiConfigValueSource {
 }
 
 export interface UmamiConfig {
+  excludedPaths: string[];
   websiteId: string;
 }
 
@@ -22,7 +23,12 @@ export interface ResolvedUmamiConfig {
   sources: Record<string, UmamiConfigValueSource>;
 }
 
-const CONFIG_KEYS = ["umami_website_id"];
+const CONFIG_KEYS = [
+  "umami_website_id",
+  "umami_excluded_paths",
+  "NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS",
+];
+const MISSING_CONFIG_CACHE_TTL_MS = 30_000;
 
 const parseOptional = (value: unknown): string | null => {
   if (typeof value !== "string") {
@@ -31,6 +37,18 @@ const parseOptional = (value: unknown): string | null => {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const parseExcludedPaths = (value: unknown): string[] => {
+  const parsed = parseOptional(value);
+  if (!parsed) {
+    return [];
+  }
+
+  return parsed
+    .split(",")
+    .map((path) => path.trim())
+    .filter(Boolean);
 };
 
 /**
@@ -59,8 +77,30 @@ export const resolveUmamiConfigWithSources = async (
     source: websiteId ? "couchdb" : "missing",
   };
 
+  const canonicalExcludedPaths = parseOptional(
+    couchValues.umami_excluded_paths,
+  );
+  const legacyExcludedPaths = parseOptional(
+    couchValues.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS,
+  );
+  const excludedPathsValue = canonicalExcludedPaths || legacyExcludedPaths;
+  const excludedPathsKey = canonicalExcludedPaths
+    ? "umami_excluded_paths"
+    : legacyExcludedPaths
+      ? "NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS"
+      : "umami_excluded_paths";
+
+  sources.excludedPaths = {
+    key: excludedPathsKey,
+    present: Boolean(excludedPathsValue),
+    source: excludedPathsValue ? "couchdb" : "missing",
+  };
+
   return {
-    config: { websiteId: websiteId || "" },
+    config: {
+      excludedPaths: parseExcludedPaths(excludedPathsValue),
+      websiteId: websiteId || "",
+    },
     section,
     sources,
   };
@@ -102,6 +142,13 @@ export const formatUmamiConfigSourceLog = (
     );
   }
 
+  const excludedPathsSource = resolved.sources.excludedPaths;
+  if (excludedPathsSource) {
+    lines.push(
+      `[analytics] excludedPaths: ${excludedPathsSource.present ? "present" : "not configured"} from ${formatSource(excludedPathsSource)}`,
+    );
+  }
+
   return lines;
 };
 
@@ -116,38 +163,67 @@ export const logUmamiConfigSourceNotices = (
   }
 };
 
-let cached: UmamiConfig | null = null;
+interface UmamiConfigCacheEntry {
+  expiresAt: number | null;
+  resolved: ResolvedUmamiConfig;
+}
+
+let cached: UmamiConfigCacheEntry | null = null;
+let inFlight: Promise<ResolvedUmamiConfig> | null = null;
+
+const isCacheEntryUsable = (entry: UmamiConfigCacheEntry): boolean => {
+  return entry.expiresAt === null || Date.now() < entry.expiresAt;
+};
+
+const resolveCachedUmamiConfigWithSources = async (
+  runtimeConfig: Record<string, any>,
+): Promise<ResolvedUmamiConfig> => {
+  if (cached && isCacheEntryUsable(cached)) {
+    return cached.resolved;
+  }
+
+  if (inFlight) {
+    return inFlight;
+  }
+
+  inFlight = resolveUmamiConfigWithSources(runtimeConfig);
+
+  try {
+    const resolved = await inFlight;
+    cached = {
+      expiresAt: resolved.config.websiteId
+        ? null
+        : Date.now() + MISSING_CONFIG_CACHE_TTL_MS,
+      resolved,
+    };
+    return resolved;
+  } finally {
+    inFlight = null;
+  }
+};
 
 /**
- * Resolves the config for request handlers, reading CouchDB at most once per
- * process.
+ * Resolves ready config for request handlers. Successful config is cached for
+ * the process lifetime; missing required config is cached briefly so a broken
+ * deployment cannot issue a CouchDB read for every tracked event.
  *
  * The one deliberate difference from the lightning layer, which re-reads on every
  * call: lightning resolves per checkout, this resolves per *tracked event*. A
  * CouchDB round trip on every pageview is a cost lightning never pays.
  *
- * Only a resolved value is memoized. A missing one is a misconfiguration someone
- * is about to fix, and re-reading lets the fix land without a restart.
- * ponytail: that means one CouchDB read per event while broken -- acceptable
- * because the startup notices make the state loud and short-lived. Add a backoff
- * if it ever stops being either.
+ * Concurrent callers share the same in-flight read. A missing required value is
+ * retried after 30 seconds so an operator can repair CouchDB without restarting.
  */
 export const resolveUmamiConfig = async (
   runtimeConfig: Record<string, any> = useRuntimeConfig(),
 ): Promise<UmamiConfig> => {
-  if (cached) {
-    return cached;
-  }
-
-  const resolved = await resolveUmamiConfigWithSources(runtimeConfig);
-  if (resolved.config.websiteId) {
-    cached = resolved.config;
-  }
-
+  const resolved = await resolveCachedUmamiConfigWithSources(runtimeConfig);
+  assertUmamiConfigReady(resolved);
   return resolved.config;
 };
 
 /** Test seam: drops the memoized value. */
 export const resetUmamiConfigCache = (): void => {
   cached = null;
+  inFlight = null;
 };

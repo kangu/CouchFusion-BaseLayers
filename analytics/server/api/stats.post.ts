@@ -10,20 +10,6 @@ import {
 
 import { resolveUmamiConfig } from "../utils/umami-config";
 
-function normalizeExcludedPaths(
-  value: string | string[] | undefined,
-): string[] {
-  if (!value) {
-    return [];
-  }
-
-  const list = Array.isArray(value)
-    ? value
-    : value.split(",").map((entry) => entry.trim());
-
-  return list.filter((entry) => entry.length > 0);
-}
-
 function createExclusionMatcher(patterns: string[]) {
   if (patterns.length === 0) {
     return () => false;
@@ -46,10 +32,7 @@ function createExclusionMatcher(patterns: string[]) {
 export default defineEventHandler(async (event) => {
   const runtimeConfig = useRuntimeConfig();
   const umamiBase = runtimeConfig.analytics?.umami?.proxyHost;
-  const { websiteId } = await resolveUmamiConfig(runtimeConfig);
-  const excludedPaths = normalizeExcludedPaths(
-    runtimeConfig.analytics?.umami?.excludedPaths,
-  );
+  const { excludedPaths, websiteId } = await resolveUmamiConfig(runtimeConfig);
   const isExcludedPath = createExclusionMatcher(excludedPaths);
 
   if (!umamiBase) {
@@ -78,19 +61,9 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const normalizedPayload =
-    websiteId.length > 0
-      ? { ...payload, website: websiteId }
-      : { ...payload };
+  const normalizedPayload = { ...payload, website: websiteId };
 
   // handle exclusions
-  if (!normalizedPayload.website) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "Analytics websiteId missing",
-    });
-  }
-
   const pathForExclusion =
     typeof normalizedPayload.pathname === "string" &&
     normalizedPayload.pathname.length > 0

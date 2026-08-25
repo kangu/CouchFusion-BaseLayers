@@ -5,7 +5,7 @@ Runtime: nuxt 4.x, vue 3.5.x
 Reusable Nuxt layer that wires [Umami](https://umami.is)-style analytics into apps: a `useAnalytics()` composable, an auto-loaded tracker via two plugins (client + server), a `v-analytics` directive for declarative event tracking, and a `POST /api/stats` proxy endpoint that forwards to Umami Cloud (or CouchDB-configured host).
 
 Consuming apps (extend this layer):
-- `apps/bitvocation`, `apps/couchfusioncom`, `apps/forest-cabin`, `apps/kangu`, `apps/kids-store`, `apps/nuxt-app-starter`, `apps/radustanciu`, `apps/smart-lead`, `apps/testing-1`
+- `apps/bitvocation`, `apps/couchfusioncom`, `apps/forest-cabin`, `apps/kangu`, `apps/kids-store`, `apps/lovable-gifts-sdd`, `apps/lovable-test`, `apps/nuxt-app-starter`, `apps/radustanciu`, `apps/smart-lead`, `apps/testing-1`
 
 ## Folder map
 
@@ -24,23 +24,24 @@ Consuming apps (extend this layer):
 - Plugin-injected: `nuxtApp.$analytics` (client-side).
 - Directive: `v-analytics` (client only) — binding value is string (event name) or `{ event, data?, trigger? }`; `arg` overrides the trigger (default `click`).
 - Server endpoint: `POST /api/stats` — accepts `{ type, payload, sentAt }`; forwards to Umami `proxyHost`.
-- Runtime config (public): `runtimeConfig.public.analytics.{endpoint, umami.{websiteId, hostUrl, scriptPath, dataDomains, autoTrack, excludedPaths, includeTitle, sendReferrer, debug, appName, couchEnvSlug}}`.
-- Runtime config (private): `runtimeConfig.analytics.umami.{proxyHost, couchEnvSlug}`.
+- Runtime config (public): `runtimeConfig.public.{appSlug, analytics.{endpoint, umami.{websiteId, hostUrl, scriptPath, dataDomains, autoTrack, excludedPaths, includeTitle, sendReferrer, debug, appName}}}`.
+- Runtime config (private): `runtimeConfig.analytics.umami.proxyHost`.
+- Server authority: CouchDB `_config` section `cf_env_[appSlug]`, required key `umami_website_id`, optional key `umami_excluded_paths`.
 
 ## Conventions
 
 - All layer imports go through the `#analytics` alias.
 - Composables live in `composables/` (NOT `app/composables/`) — this layer predates the Nuxt 4 `app/` convention; preserve the existing path or update `imports.dirs` in `nuxt.config.ts` if moving.
 - Track via `v-analytics="'event-name'"` in templates; avoid inline `addEventListener` for analytics.
-- Excluded paths are configured in `runtimeConfig.public.analytics.umami.excludedPaths` (array or CSV); glob suffix `*` is supported.
+- Browser-side exclusions may still be configured in `runtimeConfig.public.analytics.umami.excludedPaths`; the server proxy independently enforces CouchDB `umami_excluded_paths`. Glob suffix `*` is supported.
 - Browser dispatch prefers `navigator.sendBeacon`, then `fetch(..., { keepalive: true })` — do not replace with plain `fetch` without keepalive.
 - The `component-analytics.client.ts` plugin dedupes component-view tracking per session via `sessionStorage["component-analytics-seen"]`.
 
 ## Dependencies
 
 - Runtime deps assumed from consuming app: `nuxt` (4.x), `vue` (3.5.x). No extra npm packages.
-- Optional: reads CouchDB `_config` section `cf_env_[slug]` for `couchEnvSlug`-based host resolution (see root AGENTS.md "Environment Configuration Standard").
-- No layer-level `extends`; composes standalone (does not depend on `auth`, `database`, or `content`).
+- Required: reads CouchDB `_config` section `cf_env_[appSlug]` through the Database layer (see root AGENTS.md "Environment Configuration Standard").
+- The layer extends `../database`; consuming apps do not need to order the Database layer before Analytics solely for this dependency.
 - Forwarding target: Umami Cloud at `runtimeConfig.analytics.umami.proxyHost` (default `https://cloud.umami.is`).
 
 ## Build / Test commands
@@ -54,8 +55,9 @@ No standalone test config or `package.json` for this layer.
 ## Gotchas / Pitfalls
 
 - `useAnalytics()` returns a fallback client if `$analytics` is unset on SSR — guard server-side calls or check `import.meta.client`.
-- Empty `websiteId` still sends payloads; events will be dropped by Umami. Always set `UMAMI_WEBSITE_ID` in the consumer.
-- `excludedPaths` accepts `string | string[]`; misconfiguring as an object silently disables all filtering.
+- Missing CouchDB `umami_website_id` makes `/api/stats` fail closed; the proxy never accepts the client payload's website as a fallback.
+- Missing required config is negative-cached for 30 seconds, and concurrent config reads are deduplicated.
+- `NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS` is accepted only as a legacy CouchDB exclusion key; migrate to `umami_excluded_paths`.
 - `v-analytics` is registered only on the client; SSR-rendered bindings are no-ops — do not gate critical UI on directive side effects.
 - `analytics.server.ts` may attempt to load the Umami script proxy; ensure `proxyHost` is reachable or events queue silently.
 - Two config trees (`runtimeConfig.analytics` vs `runtimeConfig.public.analytics`) — public is for the browser, private for server forwarding. Don't mix them.
