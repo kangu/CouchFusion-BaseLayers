@@ -1,12 +1,11 @@
 import { resolveImageKitUrl, withImageKitTransformations } from '#imagekit/utils/transform'
-import { useRuntimeConfig } from '#imports'
 
 const PLACEHOLDER_SRC = 'data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=' as const
 const TRANSFORM_ATTR = 'ikTransforms'
 const ENDPOINT_ATTR = 'ikEndpoint'
 const IMAGEKIT_EVENT = 'imagekit:transformed'
 
-export default defineNuxtPlugin((nuxtApp) => {
+export default defineNuxtPlugin(async (nuxtApp) => {
   if (nuxtApp.vueApp.directive('lazy')) {
     return
   }
@@ -15,9 +14,9 @@ export default defineNuxtPlugin((nuxtApp) => {
   const SOURCE_KEY = Symbol('lazySource')
   const IMAGEKIT_HANDLER_KEY = Symbol('lazyImageKitHandler')
   const isClient = typeof window !== 'undefined'
-  const runtimeConfig = useRuntimeConfig()
-  const defaultEndpoint =
-    runtimeConfig.public?.imagekit?.urlEndpoint || runtimeConfig.imagekit?.urlEndpoint
+  const { config, load } = useImageKitPublicConfig()
+  await load()
+  const defaultEndpoint = config.value?.urlEndpoint
 
   const computeTargetSrc = (el: HTMLImageElement, rawSrc?: string | null): string | null => {
     if (!rawSrc) {

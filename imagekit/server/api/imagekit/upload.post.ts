@@ -1,7 +1,7 @@
 import { createError, defineEventHandler, readMultipartFormData } from 'h3'
-import { useRuntimeConfig } from '#imports'
 import { assertImagekitSession } from '../../utils/assert-imagekit-session'
-import imageKitService from '#imagekit/utils/imagekit'
+import { getImageKitService } from '#imagekit/utils/imagekit'
+import { assertImageKitConfig } from '../../utils/imagekit-config'
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024 // 200MB ceiling for uploads
 
@@ -15,10 +15,7 @@ const normalizeFolderName = (value?: string | null): string | undefined => {
 
 export default defineEventHandler(async (event) => {
   await assertImagekitSession(event)
-  const runtimeConfig = useRuntimeConfig()
-  const defaultFolder =
-    normalizeFolderName(runtimeConfig.imagekit?.folder) ??
-    normalizeFolderName(runtimeConfig.public?.imagekit?.folder)
+  const defaultFolder = normalizeFolderName(assertImageKitConfig().folder)
 
   const formData = await readMultipartFormData(event)
 
@@ -68,7 +65,7 @@ export default defineEventHandler(async (event) => {
   const safeFileName = (requestedFileName || filePart.filename).replace(/[^a-zA-Z0-9._-]/g, '_')
   const folder = normalizeFolderName(requestedFolder) ?? defaultFolder ?? 'content-editor'
 
-  const result = await imageKitService.uploadFile(filePart.data, safeFileName, folder)
+  const result = await getImageKitService().uploadFile(filePart.data, safeFileName, folder)
 
   if (!result.success) {
     return {

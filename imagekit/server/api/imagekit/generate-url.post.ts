@@ -1,6 +1,6 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 import { assertImagekitSession } from '../../utils/assert-imagekit-session'
-import imageKitService from '#imagekit/utils/imagekit'
+import { getImageKitService } from '#imagekit/utils/imagekit'
 
 interface GenerateUrlPayload {
   filePath?: string
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const result = imageKitService.generateUrl(body.filePath, body.transformations ?? {})
+  const result = getImageKitService().generateUrl(body.filePath, body.transformations ?? {})
 
   if (!result.success) {
     return {

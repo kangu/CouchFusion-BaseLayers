@@ -1,4 +1,5 @@
 import ImageKit from 'imagekit'
+import { assertImageKitConfig } from '#imagekit/server/utils/imagekit-config'
 
 type UploadableFile = string | Buffer | NodeJS.ReadableStream
 
@@ -87,22 +88,6 @@ export type ImageKitServiceResponse<T> =
 
 type ImageKitTransformation = Record<string, string | number | boolean>
 
-function resolveImageKitConfig(): ImageKitClientConfig | null {
-  const publicKey = process.env.IMAGEKIT_PUBLIC_KEY
-  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY
-  const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT
-
-  if (!publicKey || !privateKey || !urlEndpoint) {
-    return null
-  }
-
-  return {
-    publicKey,
-    privateKey,
-    urlEndpoint,
-  }
-}
-
 function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message
@@ -134,17 +119,11 @@ function extractErrorMessage(error: unknown): string {
   return 'Unknown ImageKit error'
 }
 
-class ImageKitService {
-  private readonly client: ImageKit | null
+export class ImageKitService {
+  private readonly client: ImageKit
   private static readonly FALLBACK_SEARCH_LIMIT = 1000
 
-  constructor(config: ImageKitClientConfig | null) {
-    if (!config) {
-      console.warn('⚠️ ImageKit configuration missing - ImageKit features will be disabled')
-      this.client = null
-      return
-    }
-
+  constructor(config: ImageKitClientConfig) {
     console.log('ImageKit config loaded:', {
       publicKey: config.publicKey ? '✓' : '✗',
       privateKey: config.privateKey ? '✓' : '✗',
@@ -164,13 +143,6 @@ class ImageKitService {
     folder = 'bucket',
     options: { useUniqueFileName?: boolean } = {},
   ): Promise<ImageKitServiceResponse<ImageKitUploadResult>> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     try {
       const uploadResponse = await this.client.upload({
         file,
@@ -206,13 +178,6 @@ class ImageKitService {
   }
 
   generateUrl(filePath: string, transformations: ImageKitTransformations = {}): ImageKitServiceResponse<string> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     try {
       const url = this.client.url({
         path: filePath,
@@ -327,13 +292,6 @@ class ImageKitService {
   }
 
   async getFileDetails(fileId: string): Promise<ImageKitServiceResponse<ImageKitFile>> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     try {
       const fileDetails = await this.client.getFileDetails(fileId)
       return {
@@ -350,13 +308,6 @@ class ImageKitService {
   }
 
   async deleteFile(fileId: string): Promise<ImageKitServiceResponse<void>> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     try {
       await this.client.deleteFile(fileId)
       return {
@@ -373,13 +324,6 @@ class ImageKitService {
   }
 
   async listFiles(options: ImageKitListOptions = {}): Promise<ImageKitServiceResponse<ImageKitFileListResult>> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     const rawSearch = typeof options.searchQuery === 'string' ? options.searchQuery.trim() : ''
     const searchQuery = this.buildSearchQuery(rawSearch)
     const keywords = rawSearch ? this.tokenizeKeywords(rawSearch) : []
@@ -468,13 +412,6 @@ class ImageKitService {
   }
 
   getAuthenticationParameters(): ImageKitServiceResponse<ImageKitAuthenticationParameters> {
-    if (!this.client) {
-      return {
-        success: false,
-        error: 'ImageKit service is not configured',
-      }
-    }
-
     try {
       const authenticationParameters = this.client.getAuthenticationParameters() as ImageKitAuthenticationParameters
       return {
@@ -579,7 +516,14 @@ class ImageKitService {
   }
 }
 
-const imageKitConfig = resolveImageKitConfig()
+let imageKitService: ImageKitService | null = null
 
-export const imageKitService = new ImageKitService(imageKitConfig)
-export default imageKitService
+/** Returns the ImageKit SDK client initialized from the process startup cache. */
+export const getImageKitService = (): ImageKitService => {
+  if (!imageKitService) {
+    const config = assertImageKitConfig()
+    imageKitService = new ImageKitService(config)
+  }
+
+  return imageKitService
+}

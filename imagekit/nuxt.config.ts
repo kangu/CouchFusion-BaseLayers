@@ -19,21 +19,6 @@ export default defineNuxtConfig({
     fileURLToPath(new URL("./plugins/lazy-background", import.meta.url)),
   ],
 
-  runtimeConfig: {
-    imagekit: {
-      publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
-      privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
-      urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
-      folder: process.env.NUXT_IMAGEKIT_FOLDER,
-    },
-    public: {
-      imagekit: {
-        publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
-        urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
-        folder: process.env.NUXT_IMAGEKIT_FOLDER,
-      },
-    },
-  },
 
   typescript: {
     strict: true,

@@ -1,7 +1,7 @@
 import { defineEventHandler, getQuery, setResponseHeader } from 'h3'
-import { useRuntimeConfig } from '#imports'
 import { assertImagekitSession } from '../../utils/assert-imagekit-session'
-import imageKitService from '#imagekit/utils/imagekit'
+import { getImageKitService } from '#imagekit/utils/imagekit'
+import { assertImageKitConfig } from '../../utils/imagekit-config'
 
 const normalizeFolderName = (value?: string | null): string | undefined => {
   if (!value) {
@@ -13,10 +13,7 @@ const normalizeFolderName = (value?: string | null): string | undefined => {
 
 export default defineEventHandler(async (event) => {
   await assertImagekitSession(event)
-  const runtimeConfig = useRuntimeConfig()
-  const defaultPath =
-    normalizeFolderName(runtimeConfig.imagekit?.folder) ??
-    normalizeFolderName(runtimeConfig.public?.imagekit?.folder)
+  const defaultPath = normalizeFolderName(assertImageKitConfig().folder)
 
   setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   setResponseHeader(event, 'Pragma', 'no-cache')
@@ -47,7 +44,7 @@ export default defineEventHandler(async (event) => {
           .filter(Boolean)
       : undefined
 
-  const result = await imageKitService.listFiles({
+  const result = await getImageKitService().listFiles({
     skip,
     limit,
     searchQuery,

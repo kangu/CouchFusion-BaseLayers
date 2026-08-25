@@ -1,6 +1,6 @@
 import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { assertImagekitSession } from '../../../utils/assert-imagekit-session'
-import imageKitService from '#imagekit/utils/imagekit'
+import { getImageKitService } from '#imagekit/utils/imagekit'
 
 export default defineEventHandler(async (event) => {
   await assertImagekitSession(event)
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const result = await imageKitService.deleteFile(fileId)
+  const result = await getImageKitService().deleteFile(fileId)
 
   if (!result.success) {
     return {

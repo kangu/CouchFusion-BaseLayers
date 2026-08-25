@@ -1,10 +1,9 @@
 import { resolveImageKitUrl, withImageKitTransformations } from '#imagekit/utils/transform'
-import { useRuntimeConfig } from '#imports'
 
 const TRANSFORM_ATTR = 'ikTransforms'
 const ENDPOINT_ATTR = 'ikEndpoint'
 
-export default defineNuxtPlugin((nuxtApp) => {
+export default defineNuxtPlugin(async (nuxtApp) => {
   if (nuxtApp.vueApp.directive('lazy-bg')) {
     return
   }
@@ -12,9 +11,9 @@ export default defineNuxtPlugin((nuxtApp) => {
   const OBSERVER_KEY = Symbol('lazyBgObserver')
   const SOURCE_KEY = Symbol('lazyBgSource')
   const isClient = typeof window !== 'undefined'
-  const runtimeConfig = useRuntimeConfig()
-  const defaultEndpoint =
-    runtimeConfig.public?.imagekit?.urlEndpoint || runtimeConfig.imagekit?.urlEndpoint
+  const { config, load } = useImageKitPublicConfig()
+  await load()
+  const defaultEndpoint = config.value?.urlEndpoint
 
   const setBackground = (el: HTMLElement, url: string) => {
     el.style.backgroundImage = `url("${url}")`
