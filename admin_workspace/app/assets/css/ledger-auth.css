@@ -1,0 +1,128 @@
+/*
+  Ledger theme for the auth layer's /login page. Scoped under the
+  `aw-theme-ledger-auth` class that plugins/ledger-auth-theme.ts puts on <html>
+  for the login route only, so apps without this layer are never matched.
+*/
+html.aw-theme-ledger-auth .login-page {
+  --aw-ink: #0f1319;
+  --aw-muted: #67707d;
+  --aw-line: #e5e8ed;
+  --aw-line-strong: #d3d8df;
+  background: #eceef2;
+  color: var(--aw-ink);
+  font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.aw-theme-ledger-auth .login-card {
+  background: #fff;
+  border: 1px solid var(--aw-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgb(15 19 25 / 0.06);
+  gap: 1.5rem;
+  padding: 2rem;
+  width: min(400px, 100%);
+}
+
+/* Brand mark and name above the heading, fed by CSS variables from the plugin. */
+html.aw-theme-ledger-auth .login-header {
+  display: grid;
+  gap: 0.375rem;
+}
+
+html.aw-theme-ledger-auth .login-header::before {
+  align-items: center;
+  background: var(--aw-ink);
+  border-radius: 8px;
+  color: #fff;
+  content: var(--aw-brand-initial, "");
+  display: flex;
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  height: 2rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+  width: 2rem;
+}
+
+html.aw-theme-ledger-auth .login-header h1 {
+  color: var(--aw-ink);
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.625rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+html.aw-theme-ledger-auth .login-header p {
+  color: var(--aw-muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+html.aw-theme-ledger-auth .input-group {
+  color: var(--aw-ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  gap: 0.375rem;
+}
+
+html.aw-theme-ledger-auth .input-group input {
+  background: #fff;
+  border-color: var(--aw-line-strong);
+  border-radius: 8px;
+  color: var(--aw-ink);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  padding: 0.625rem 0.75rem;
+}
+
+html.aw-theme-ledger-auth .input-group input::placeholder {
+  color: #a3a6ad;
+}
+
+html.aw-theme-ledger-auth .input-group input:focus {
+  border-color: var(--aw-ink);
+  box-shadow: 0 0 0 3px rgb(15 19 25 / 0.1);
+}
+
+html.aw-theme-ledger-auth .input-group input:disabled {
+  background: #f1f3f6;
+}
+
+html.aw-theme-ledger-auth .login-button,
+html.aw-theme-ledger-auth .login-button:hover:enabled {
+  background: var(--aw-ink);
+  border-radius: 8px;
+  box-shadow: none;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  padding: 0.6875rem 0.875rem;
+  transform: none;
+}
+
+html.aw-theme-ledger-auth .login-button:hover:enabled {
+  background: #252b36;
+}
+
+html.aw-theme-ledger-auth .feedback {
+  border-color: transparent;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+html.aw-theme-ledger-auth .feedback.error {
+  background: #fde8e6;
+  color: #b42318;
+}
+
+html.aw-theme-ledger-auth .feedback.success {
+  background: #e3f4e8;
+  color: #15803d;
+}

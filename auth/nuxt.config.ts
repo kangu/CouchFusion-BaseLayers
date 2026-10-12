@@ -148,30 +148,8 @@ COUCHDB_ADMIN_AUTH=YWRtaW46cGFzc3dvcmQ=
         );
       }
 
-      if (
-        !process.env.NUXT_COUCHDB_COOKIE_SECRET &&
-        !process.env.COUCHDB_COOKIE_SECRET
-      ) {
-        throw new Error(
-          `
-🚨 Auth Layer Environment Error:
-The auth layer requires 'COUCHDB_COOKIE_SECRET' environment variable to be set.
-
-For development: COUCHDB_COOKIE_SECRET=your-secret
-For production deployment: NUXT_COUCHDB_COOKIE_SECRET=your-secret
-
-Production Note: When using 'nuxt build' and deploying with runtime environment override,
-use the NUXT_ prefixed version. The NUXT_ prefix allows runtime override of build-time values.
-
-Example:
-# Development
-COUCHDB_COOKIE_SECRET=45213e7a8ec395d1ddec4f78cc011672
-
-# Production deployment
-NUXT_COUCHDB_COOKIE_SECRET=production-secret-override
-                `.trim(),
-        );
-      }
+      // Passwordless session creation validates couchdbCookieSecret at request time.
+      // Building or using CouchDB password sessions does not require that secret.
 
       // Validate base64 format
       try {

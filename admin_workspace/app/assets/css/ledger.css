@@ -1,0 +1,729 @@
+/*
+  Admin workspace theme ("Sheet" look; the class keeps its original `ledger` name).
+  Every rule is scoped under `.aw-shell.aw-theme-ledger`, the class the
+  admin-workspace layout adds when the theme is active. Apps that render layer
+  admin pages inside their own layout (no `.aw-shell`) are never matched.
+  The double-class prefix also outranks scoped page styles and Tailwind utilities.
+*/
+.aw-shell.aw-theme-ledger {
+  --aw-canvas: #eceef2;
+  --aw-surface: #ffffff;
+  --aw-sunken: #f1f3f6;
+  --aw-hover: #e2e5ea;
+  --aw-ink: #0f1319;
+  --aw-ink-2: #39404b;
+  --aw-muted: #67707d;
+  --aw-line: #e5e8ed;
+  --aw-line-strong: #d3d8df;
+  --aw-accent: #2f5af5;
+  --aw-accent-text: #2447d6;
+  --aw-accent-soft: #e7edff;
+  --aw-good: #12905a;
+  --aw-good-soft: #e0f4ea;
+  --aw-warn: #8a5a00;
+  --aw-warn-soft: #fff1d6;
+  --aw-bad: #b42318;
+  --aw-bad-soft: #fde8e6;
+  --aw-font-ui: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --aw-font-display: var(--aw-font-ui);
+  --aw-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --aw-font-label: var(--aw-font-mono);
+  --aw-display-weight: 600;
+  --aw-display-tracking: -0.025em;
+  --aw-title-size: 1.625rem;
+  --aw-heading-size: 0.90625rem;
+  --aw-figure-size: 1.6875rem;
+  --aw-radius: 12px;
+  --aw-radius-sm: 8px;
+
+  background: var(--aw-canvas);
+  color: var(--aw-ink);
+  font-family: var(--aw-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.aw-shell.aw-theme-ledger :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+/* ---------- Shell ---------- */
+.aw-shell.aw-theme-ledger .aw-sidebar-surface,
+.aw-shell.aw-theme-ledger .aw-mobile-panel {
+  background: var(--aw-canvas);
+  border-color: var(--aw-line);
+  box-shadow: none;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand,
+.aw-shell.aw-theme-ledger .aw-mobile-panel-brand,
+.aw-shell.aw-theme-ledger .aw-sidebar-footer,
+.aw-shell.aw-theme-ledger .aw-mobile-footer {
+  border-color: var(--aw-line);
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand-text,
+.aw-shell.aw-theme-ledger .aw-mobile-panel-brand span {
+  color: var(--aw-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-footer-text,
+.aw-shell.aw-theme-ledger .aw-mobile-footer-text {
+  color: var(--aw-muted);
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-collapse-toggle {
+  background: var(--aw-surface);
+  border-color: var(--aw-line);
+  color: var(--aw-muted);
+  box-shadow: 0 1px 2px rgb(15 19 25 / 0.08);
+  backdrop-filter: none;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-collapse-toggle:hover,
+.aw-shell.aw-theme-ledger .aw-sidebar-collapse-toggle:focus-visible {
+  border-color: var(--aw-line-strong);
+  color: var(--aw-ink);
+  box-shadow: 0 1px 2px rgb(15 19 25 / 0.08);
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-section {
+  margin-bottom: 1.25rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-section-title {
+  color: var(--aw-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.375rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link {
+  color: var(--aw-ink-2);
+  font-weight: 400;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link-desktop:not(.aw-nav-link-collapsed) {
+  border-radius: 6px;
+  font-size: 0.84375rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link-collapsed {
+  border-radius: 8px;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link:hover {
+  background: var(--aw-hover);
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link.aw-nav-link-active {
+  background: var(--aw-surface);
+  border-right: 0;
+  box-shadow: 0 1px 2px rgb(15 19 25 / 0.1);
+  color: var(--aw-ink);
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-icon {
+  color: var(--aw-muted);
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link-desktop:not(.aw-nav-link-collapsed) .aw-nav-icon {
+  height: 1.125rem;
+  width: 1.125rem;
+  margin-right: 0.625rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link:hover .aw-nav-icon,
+.aw-shell.aw-theme-ledger .aw-nav-link-active .aw-nav-icon {
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .aw-header {
+  background: var(--aw-surface);
+  border-color: var(--aw-line);
+  box-shadow: none;
+}
+
+.aw-shell.aw-theme-ledger .aw-header-profile-trigger > div {
+  background: var(--aw-accent-soft);
+  background-image: none;
+  box-shadow: none;
+  color: var(--aw-accent-text);
+  font-size: 0.8125rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-header-profile-menu {
+  border-color: var(--aw-line);
+  border-radius: var(--aw-radius);
+  box-shadow: 0 8px 24px -12px rgb(15 19 25 / 0.25);
+}
+
+.aw-shell.aw-theme-ledger .aw-main,
+.aw-shell.aw-theme-ledger .aw-content {
+  background: var(--aw-surface);
+}
+
+/* ---------- Analytics layer (`.cfa`) ---------- */
+.aw-shell.aw-theme-ledger .cfa {
+  --cfa-page: var(--aw-surface);
+  --cfa-surface: var(--aw-surface);
+  --cfa-surface-2: var(--aw-sunken);
+  --cfa-border: var(--aw-line);
+  --cfa-text: var(--aw-ink);
+  --cfa-muted: var(--aw-muted);
+  --cfa-accent: var(--aw-accent);
+  --cfa-accent-soft: var(--aw-accent-soft);
+  --cfa-good: var(--aw-good);
+  --cfa-bad: var(--aw-bad);
+  --cfa-bar: var(--aw-accent-soft);
+  --cfa-chart-1: #2f5af5;
+  --cfa-chart-2: #a9b1be;
+  --cfa-chart-3: #d3d8df;
+  --cfa-chart-grid: #e5e8ed;
+  --cfa-radius: var(--aw-radius);
+  color-scheme: light;
+  font-family: var(--aw-font-ui);
+  font-size: 13.5px;
+}
+
+.aw-shell.aw-theme-ledger .cfa-title,
+.aw-shell.aw-theme-ledger .content-admin-pages__title {
+  color: var(--aw-ink);
+  font-family: var(--aw-font-display);
+  font-size: var(--aw-title-size);
+  font-variant-numeric: lining-nums;
+  font-weight: var(--aw-display-weight);
+  letter-spacing: var(--aw-display-tracking);
+  line-height: 1.1;
+}
+
+.aw-shell.aw-theme-ledger .cfa-card,
+.aw-shell.aw-theme-ledger .cfa-kpi {
+  box-shadow: none;
+}
+
+.aw-shell.aw-theme-ledger .cfa-card h2,
+.aw-shell.aw-theme-ledger .cfa-card h3,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__header h2 {
+  color: var(--aw-ink);
+  font-family: var(--aw-font-display);
+  font-size: var(--aw-heading-size);
+  font-weight: var(--aw-display-weight);
+  letter-spacing: -0.01em;
+}
+
+/* KPI cards become one joined strip with hairline dividers. */
+.aw-shell.aw-theme-ledger .cfa-kpis {
+  background: var(--aw-line);
+  border: 1px solid var(--aw-line);
+  border-radius: var(--aw-radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.aw-shell.aw-theme-ledger .cfa-kpi {
+  border: 0;
+  border-radius: 0;
+  flex: 1 1 140px;
+  padding: 14px 16px;
+}
+
+.aw-shell.aw-theme-ledger .cfa-kpi-label,
+.aw-shell.aw-theme-ledger .cfa-table th,
+.aw-shell.aw-theme-ledger .pages-table th {
+  color: var(--aw-muted);
+  font-family: var(--aw-font-label);
+  font-size: 0.65625rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aw-shell.aw-theme-ledger .cfa-kpi-value {
+  font-family: var(--aw-font-display);
+  font-size: var(--aw-figure-size);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: var(--aw-display-weight);
+  letter-spacing: var(--aw-display-tracking);
+  line-height: 1.15;
+}
+
+.aw-shell.aw-theme-ledger .cfa-btn,
+.aw-shell.aw-theme-ledger .cfa-input,
+.aw-shell.aw-theme-ledger .cfa-select,
+.aw-shell.aw-theme-ledger .cfa-textarea {
+  border-radius: var(--aw-radius-sm);
+}
+
+.aw-shell.aw-theme-ledger .cfa-btn-primary,
+.aw-shell.aw-theme-ledger .cfa-btn-primary:hover {
+  background: var(--aw-ink);
+  border-color: var(--aw-ink);
+  color: #fff;
+}
+
+.aw-shell.aw-theme-ledger .cfa-tab[aria-selected="true"] {
+  border-bottom-color: var(--aw-ink);
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .cfa-site-name {
+  font-weight: 600;
+}
+
+/* ---------- Content layer (`/admin/pages`) ---------- */
+.aw-shell.aw-theme-ledger .content-admin-pages__eyebrow {
+  display: none;
+}
+
+.aw-shell.aw-theme-ledger .content-admin-pages__description,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__header p,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__section-hint,
+.aw-shell.aw-theme-ledger .pages-summary,
+.aw-shell.aw-theme-ledger .pagination p,
+.aw-shell.aw-theme-ledger .locale-single-note,
+.aw-shell.aw-theme-ledger .empty-cell {
+  color: var(--aw-muted);
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel__hint,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__section h3 {
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__section,
+.aw-shell.aw-theme-ledger .pages-table-wrap {
+  background: var(--aw-surface);
+  border-color: var(--aw-line);
+  border-radius: var(--aw-radius);
+}
+
+.aw-shell.aw-theme-ledger .pages-field span {
+  color: var(--aw-muted);
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .pages-field input,
+.aw-shell.aw-theme-ledger .pages-field select,
+.aw-shell.aw-theme-ledger .publication-select,
+.aw-shell.aw-theme-ledger .i18n-locale-add input,
+.aw-shell.aw-theme-ledger .i18n-locale-toggle {
+  background: var(--aw-surface);
+  border-color: var(--aw-line-strong);
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .pages-field input,
+.aw-shell.aw-theme-ledger .pages-field select,
+.aw-shell.aw-theme-ledger .publication-select,
+.aw-shell.aw-theme-ledger .i18n-locale-add input,
+.aw-shell.aw-theme-ledger .pages-button,
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link) {
+  border-radius: var(--aw-radius-sm);
+}
+
+.aw-shell.aw-theme-ledger .publication-select {
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .pages-button,
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link) {
+  background: var(--aw-surface);
+  border-color: var(--aw-line-strong);
+  color: var(--aw-ink);
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .pages-button:hover:not(:disabled),
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link):hover:not(:disabled) {
+  background: var(--aw-hover);
+}
+
+.aw-shell.aw-theme-ledger .pages-button.pages-button--primary,
+.aw-shell.aw-theme-ledger .pages-button.pages-button--primary:hover:not(:disabled) {
+  background: var(--aw-ink);
+  border-color: var(--aw-ink);
+  color: #fff;
+}
+
+.aw-shell.aw-theme-ledger .row-action-button.row-action-button--danger {
+  color: var(--aw-bad);
+}
+
+.aw-shell.aw-theme-ledger .pages-table th {
+  background: var(--aw-canvas);
+  border-color: var(--aw-line);
+}
+
+.aw-shell.aw-theme-ledger .pages-table td {
+  border-color: var(--aw-line);
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .mono {
+  color: var(--aw-ink-2);
+  font-family: var(--aw-font-mono);
+}
+
+.aw-shell.aw-theme-ledger .status-pill,
+.aw-shell.aw-theme-ledger .locale-badge {
+  font-weight: 500;
+}
+
+.aw-shell.aw-theme-ledger .status-pill--ok,
+.aw-shell.aw-theme-ledger .locale-badge--ok {
+  background: var(--aw-good-soft);
+  color: var(--aw-good);
+}
+
+.aw-shell.aw-theme-ledger .status-pill--warn {
+  background: var(--aw-warn-soft);
+  color: var(--aw-warn);
+}
+
+.aw-shell.aw-theme-ledger .status-pill--muted {
+  background: var(--aw-sunken);
+  color: var(--aw-ink-2);
+}
+
+.aw-shell.aw-theme-ledger .locale-badge--missing,
+.aw-shell.aw-theme-ledger .pages-error,
+.aw-shell.aw-theme-ledger .i18n-admin-panel__error {
+  background: var(--aw-bad-soft);
+  border-color: transparent;
+  color: var(--aw-bad);
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel__notice {
+  background: var(--aw-good-soft);
+  border-color: transparent;
+  color: var(--aw-good);
+}
+
+.aw-shell.aw-theme-ledger .pages-summary__notice {
+  color: var(--aw-good);
+}
+
+/* ---------- Shell structure: brand mark, breadcrumb, section tabs ---------- */
+.aw-shell.aw-theme-ledger .aw-brand {
+  gap: 0.5625rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-brand-mark {
+  align-items: center;
+  background: var(--aw-ink);
+  border-radius: 6px;
+  color: #fff;
+  display: inline-flex;
+  flex: none;
+  font-family: var(--aw-font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  height: 1.5rem;
+  justify-content: center;
+  width: 1.5rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand {
+  border-color: transparent;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand:not(.justify-center) {
+  padding-left: 1.125rem;
+  padding-right: 1.125rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-nav:not(.overflow-visible) {
+  padding: 0.5rem 0.625rem 1rem;
+}
+
+/* The header carries the page title; pages hide their own. */
+.aw-shell.aw-theme-ledger .aw-header-title {
+  color: var(--aw-ink);
+  font-family: var(--aw-font-display);
+  font-size: var(--aw-title-size);
+  font-weight: var(--aw-display-weight);
+  letter-spacing: var(--aw-display-tracking);
+  line-height: 1.2;
+  margin: 0;
+}
+
+@media (max-width: 639px) {
+  .aw-shell.aw-theme-ledger .aw-header-title {
+    font-size: 1.375rem;
+  }
+}
+
+.aw-shell.aw-theme-ledger .aw-header-actions {
+  align-items: center;
+  display: none;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .aw-shell.aw-theme-ledger .aw-header-actions {
+    display: flex;
+  }
+}
+
+.aw-shell.aw-theme-ledger .cfa-title,
+.aw-shell.aw-theme-ledger .cfa-subtitle,
+.aw-shell.aw-theme-ledger .content-admin-pages__header {
+  display: none;
+}
+
+.aw-shell.aw-theme-ledger .cfa-head {
+  margin: 0;
+}
+
+.aw-shell.aw-theme-ledger .cfa-head:has(.cfa-head-actions > :not([href$="/analytics/realtime"])) {
+  margin-bottom: 0.75rem;
+}
+
+.aw-shell.aw-theme-ledger .content-admin-pages {
+  padding-top: 0;
+}
+
+.aw-shell.aw-theme-ledger .aw-header > div,
+.aw-shell.aw-theme-ledger .aw-content-container {
+  max-width: none;
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-section-tabs {
+  background: var(--aw-surface);
+  border-bottom: 1px solid var(--aw-line);
+  display: flex;
+  gap: 1.25rem;
+  overflow-x: auto;
+  padding: 0 1.75rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-section-tab {
+  border-bottom: 2px solid transparent;
+  color: var(--aw-muted);
+  font-size: 0.84375rem;
+  margin-bottom: -1px;
+  padding: 0.625rem 0;
+  white-space: nowrap;
+}
+
+.aw-shell.aw-theme-ledger .aw-section-tab:hover {
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .aw-section-tab.aw-section-tab-active {
+  border-bottom-color: var(--aw-ink);
+  color: var(--aw-ink);
+  font-weight: 500;
+}
+
+/* ---------- Analytics: straight daily lines with point markers, no duplicate nav ---------- */
+.aw-shell.aw-theme-ledger .cfa {
+  --cfa-chart-curve: straight;
+  --cfa-chart-marker-size: 3;
+  max-width: none;
+  padding: 0 0 48px;
+}
+
+.aw-shell.aw-theme-ledger .cfa-head-actions a[href$="/analytics/realtime"] {
+  display: none;
+}
+
+/* ---------- Pages: slim language bar, quiet secondary row actions ---------- */
+.aw-shell.aw-theme-ledger .content-admin-pages__description {
+  display: none;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel__header p {
+  display: none;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel {
+  padding: 0.625rem 0.875rem;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel__header h2 {
+  font-family: var(--aw-font-ui);
+  font-size: 0.84375rem;
+  font-weight: 600;
+}
+
+.aw-shell.aw-theme-ledger .row-actions {
+  flex-wrap: nowrap;
+}
+
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link) {
+  white-space: nowrap;
+}
+
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link):not(:first-child) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--aw-muted);
+  font-weight: 400;
+}
+
+.aw-shell.aw-theme-ledger :is(.row-action-button, .row-action-link):not(:first-child):hover:not(:disabled) {
+  background: var(--aw-hover);
+  color: var(--aw-ink);
+}
+
+.aw-shell.aw-theme-ledger .row-action-button.row-action-button--danger:hover:not(:disabled) {
+  background: var(--aw-bad-soft);
+  color: var(--aw-bad);
+}
+
+.aw-shell.aw-theme-ledger .pages-table td {
+  font-size: 0.84375rem;
+  vertical-align: middle;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel:not(.is-expanded) {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel:not(.is-expanded) .i18n-admin-panel__header {
+  display: contents;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel:not(.is-expanded) .i18n-admin-panel__toggle {
+  margin-left: auto;
+  order: 3;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel:not(.is-expanded) .i18n-admin-panel__hint {
+  color: var(--aw-muted);
+  margin: 0;
+}
+
+.aw-shell.aw-theme-ledger .i18n-admin-panel:not(.is-expanded) .i18n-admin-panel__compact {
+  display: none;
+}
+
+/* Align header, tabs and page content on one left edge. */
+.aw-shell.aw-theme-ledger .aw-header .px-2 {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+@media (max-width: 1023px) {
+  .aw-shell.aw-theme-ledger .aw-header .px-2 {
+    justify-content: flex-start;
+    padding-left: 3rem;
+  }
+}
+
+.aw-shell.aw-theme-ledger .content-admin-pages {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* The actions cell is a flex <td> in the page styles, which breaks the row border. */
+.aw-shell.aw-theme-ledger .pages-table td.row-actions {
+  display: table-cell;
+  white-space: nowrap;
+}
+
+.aw-shell.aw-theme-ledger .pages-table td.row-actions > * + * {
+  margin-left: 0.25rem;
+}
+
+.aw-shell.aw-theme-ledger .pages-table td:nth-child(4) {
+  color: var(--aw-muted);
+  white-space: nowrap;
+}
+
+.aw-shell.aw-theme-ledger .locale-cell {
+  align-items: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.aw-shell.aw-theme-ledger .locale-single-note {
+  display: none;
+}
+
+/* ---------- Sidebar sizes to its content; slightly larger nav type and icons ---------- */
+.aw-shell.aw-theme-ledger .aw-nav-link-desktop:not(.aw-nav-link-collapsed) {
+  font-size: 0.9375rem;
+  padding: 0.4375rem 1.25rem 0.4375rem 0.625rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-nav-link-desktop:not(.aw-nav-link-collapsed) .aw-nav-icon {
+  height: 1.3125rem;
+  margin-right: 0.6875rem;
+  width: 1.3125rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand-text {
+  font-size: 1rem;
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-brand:not(.justify-center) {
+  padding-right: 2rem;
+}
+
+@media (min-width: 1024px) {
+  .aw-shell.aw-theme-ledger {
+    align-items: flex-start;
+    display: flex;
+  }
+
+  .aw-shell.aw-theme-ledger > .aw-sidebar.aw-sidebar {
+    flex: none;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+
+  .aw-shell.aw-theme-ledger:not(.aw-sidebar-collapsed) > .aw-sidebar.aw-sidebar {
+    max-width: 16rem;
+    min-width: 10rem;
+    width: max-content;
+  }
+
+  .aw-shell.aw-theme-ledger > .aw-main.aw-main {
+    flex: 1 1 0;
+    margin-left: 0;
+    min-width: 0;
+  }
+}
+
+/* ---------- Sheet: the content is a white panel inset from a grey frame shared with the sidebar ---------- */
+.aw-shell.aw-theme-ledger .aw-sidebar-surface {
+  border-right-color: transparent;
+}
+
+.aw-shell.aw-theme-ledger .aw-header {
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+@media (min-width: 1024px) {
+  .aw-shell.aw-theme-ledger > .aw-main.aw-main {
+    border: 1px solid var(--aw-line-strong);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgb(15 19 25 / 0.06);
+    margin: 10px 10px 10px 0;
+    min-height: calc(100vh - 20px);
+    overflow: clip;
+  }
+}
+
+.aw-shell.aw-theme-ledger .aw-sidebar-footer {
+  border-color: transparent;
+}

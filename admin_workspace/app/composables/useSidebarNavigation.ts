@@ -3,6 +3,8 @@ export interface SidebarNavigationItem {
   route: string;
   icon: string;
   requiresRoles?: string[];
+  /** Extra routes that keep this item highlighted (used when a section is folded into one link). */
+  activeRoutes?: string[];
 }
 
 export interface SidebarNavigationSection {

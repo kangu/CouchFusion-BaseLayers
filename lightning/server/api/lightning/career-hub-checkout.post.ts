@@ -12,6 +12,7 @@ import { toPublicPaymentInfo } from "../../../utils/public-payment";
 
 interface CareerHubCheckoutBody {
   email?: string;
+  product?: "pow_lab_lite" | "pow_lab";
   invisibleShield?: InvisibleFormShieldPayload;
   proofOfWork?: ProofOfWorkSolution;
 }
@@ -39,7 +40,9 @@ export default defineEventHandler(async (event) => {
 
   const ordersDatabase = `${runtimeConfig.dbLoginPrefix}-orders`;
   const email = body.email.trim().toLowerCase();
-  const product = await getProductPrice("pow_lab_lite", ordersDatabase);
+  const productName = body.product === "pow_lab" ? "pow_lab" : "pow_lab_lite";
+  const checkoutType = productName === "pow_lab" ? "pow_lab_guest" : "career_hub_guest";
+  const product = await getProductPrice(productName, ordersDatabase);
   const orderId = `purchase-${randomBytes(8).toString("hex")}`;
   const checkoutToken = createGuestCheckoutToken();
   const orderResult = await putDocument(ordersDatabase, {
@@ -49,8 +52,8 @@ export default defineEventHandler(async (event) => {
     timestamp: new Date().toISOString(),
     guestEmail: email,
     content: {
-      product: "pow_lab_lite",
-      checkoutType: "career_hub_guest",
+      product: productName,
+      checkoutType,
       sats: product.sats,
       valid_days: product.valid_days,
     },
@@ -66,7 +69,7 @@ export default defineEventHandler(async (event) => {
   const invoice = await createPayment(product.sats, {
     description: replaceMemoTemplate(product.memo, {}),
     provider: lightningConfig.defaultProvider,
-    metadata: { orderId, checkoutType: "career_hub_guest" },
+    metadata: { orderId, checkoutType },
   });
 
   if (!invoice) {

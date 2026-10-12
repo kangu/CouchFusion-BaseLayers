@@ -29,7 +29,7 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - API groups: `/api/login*`, `/api/logout`, `/api/users`, `/api/auth/nostr/*`, `/api/proof-of-work/challenge`.
 - Websocket route: `/api/routes/live-events`.
 - Public runtime config: `authLoginPath`, `authDefaultRedirectPath`, `authLoginHeading`.
-- Required consumer config/env: `runtimeConfig.dbLoginPrefix`, `COUCHDB_ADMIN_AUTH`, and `COUCHDB_COOKIE_SECRET` or `NUXT_COUCHDB_COOKIE_SECRET`.
+- Required consumer config/env: `runtimeConfig.dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. Passwordless email/Nostr session creation additionally requires `COUCHDB_COOKIE_SECRET` or `NUXT_COUCHDB_COOKIE_SECRET` at runtime.
 
 ## Conventions
 
@@ -50,7 +50,7 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 
 ## Gotchas
 
-- Nuxt startup fails if `dbLoginPrefix`, `COUCHDB_ADMIN_AUTH`, or a cookie secret is missing or malformed.
+- Nuxt startup validates `dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. A cookie secret is optional at startup/build time; passwordless session endpoints enforce it at request time.
 - `COUCHDB_ADMIN_AUTH` must be base64 of `username:password`.
 - `userSession.global.ts` runs on every server-rendered navigation; keep it light.
 - `/api/routes/live-events` requires websocket-capable reverse proxies.

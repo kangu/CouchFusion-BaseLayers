@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics Layer Guide</title>
+<style>
+  :root {
+    --bg: #f9fafb; --surface: #ffffff; --surface-2: #f3f4f6; --border: #e5e7eb;
+    --text: #111827; --muted: #6b7280; --accent: #ea580c; --accent-soft: #fff7ed;
+    --good: #15803d; --code-bg: #111827; --code-text: #e5e7eb;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 28px 16px 28px 20px; border-right: 1px solid var(--border); }
+  nav .brand { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  nav .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  nav ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; }
+  nav li { counter-increment: toc; }
+  nav a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: 14px; }
+  nav a::before { content: counter(toc) ". "; color: var(--muted); }
+  nav a:hover { background: var(--surface-2); }
+  main { padding: 36px 32px 96px; min-width: 0; }
+  h1 { font-size: 34px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .lead { font-size: 18px; color: #374151; max-width: 62ch; margin: 0 0 18px; }
+  h2 { font-size: 24px; letter-spacing: -0.01em; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  p, li { max-width: 72ch; }
+  a { color: var(--accent); }
+  code { font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 14px 16px; border-radius: 10px; overflow-x: auto; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 12px 0; }
+  pre code { background: none; padding: 0; color: inherit; font: inherit; }
+  .table-wrap { overflow-x: auto; margin: 12px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .card strong { display: block; margin-bottom: 2px; }
+  .card span { color: var(--muted); font-size: 14.5px; }
+  .note { background: var(--accent-soft); border: 1px solid #fed7aa; border-radius: 10px; padding: 12px 16px; margin: 14px 0; max-width: 78ch; }
+  .steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  .steps > li { counter-increment: step; position: relative; padding: 0 0 18px 46px; max-width: none; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+  .steps > li > strong { display: block; font-size: 16.5px; margin-bottom: 4px; }
+  figure { margin: 18px 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; overflow-x: auto; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 16px; }
+    nav ol { display: flex; flex-wrap: wrap; gap: 2px; }
+    main { padding: 24px 16px 64px; }
+    h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="Contents">
+  <div class="brand">Analytics Layer</div>
+  <div class="sub">CouchFusion · layers/analytics</div>
+  <ol>
+    <li><a href="#what">What you get</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#setup">Setup</a></li>
+    <li><a href="#tracking">Tracking</a></li>
+    <li><a href="#dashboard">The dashboard</a></li>
+    <li><a href="#config">Configuration</a></li>
+    <li><a href="#privacy">Privacy model</a></li>
+    <li><a href="#extras">Sharing, API, pixels, import</a></li>
+    <li><a href="#ops">Operations</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#dev">Development</a></li>
+    <li><a href="#legacy">Legacy: Umami</a></li>
+  </ol>
+</nav>
+
+<main>
+<h1>Analytics Layer Guide</h1>
+<p class="lead">Privacy-friendly, self-hosted web analytics for CouchFusion apps. Each app tracks one website: its own. It collects pageviews and events, stores them in CouchDB, and gives you a dashboard with realtime, reports, sessions, sharing and an API.</p>
+<div class="cards">
+  <div class="card"><strong>No cookies</strong><span>Visitors are counted with a hash that resets every day.</span></div>
+  <div class="card"><strong>No third party</strong><span>Everything runs in your app and your CouchDB.</span></div>
+  <div class="card"><strong>No stored IPs</strong><span>Only coarse details like browser and country are kept.</span></div>
+</div>
+
+<h2 id="what">What you get</h2>
+<div class="table-wrap"><table>
+  <tr><th>Feature</th><th>What it does</th></tr>
+  <tr><td>Dashboard</td><td>Visitors, visits, pageviews, bounce rate, visit duration, events and revenue, with a time chart and comparison to the previous period.</td></tr>
+  <tr><td>Breakdowns</td><td>Pages, entry and exit pages, titles, hosts, referrers, channels, UTM parameters, countries, regions, cities, languages, browsers, OS, devices, screens, events, event properties, tags. Click a row to filter by it.</td></tr>
+  <tr><td>World map</td><td>A dotted map on the overview with visiting countries highlighted. Hover for numbers, click a continent to zoom in for a more detailed view. When zoomed, click a highlighted country to filter by it, or click elsewhere to zoom out.</td></tr>
+  <tr><td>Realtime</td><td>Activity in the last 30 minutes, refreshed every 10 seconds.</td></tr>
+  <tr><td>Reports</td><td>Goals, funnels, journeys, retention, UTM, attribution, revenue, multi-dimension breakdowns.</td></tr>
+  <tr><td>Sessions</td><td>Every visit with its full event timeline.</td></tr>
+  <tr><td>Sharing and access</td><td>A public read-only link, viewer roles, API keys with a REST API.</td></tr>
+  <tr><td>Extras</td><td>Tracking pixels for emails, tracked short links, CSV export, import from Umami and Fathom Lite.</td></tr>
+</table></div>
+
+<h2 id="how">How it works</h2>
+<figure>
+<svg viewBox="0 0 880 400" role="img" aria-label="Data flow from the browser through the app to CouchDB and back to the dashboard" width="100%" style="min-width:680px">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6b7280"/></marker>
+  </defs>
+  <!-- browser -->
+  <rect x="10" y="30" width="190" height="130" rx="12" fill="#fff" stroke="#e5e7eb"/>
+  <text x="26" y="56" font-size="14" font-weight="700" fill="#111827">Browser</text>
+  <text x="26" y="82" font-size="13" fill="#374151">Nuxt tracker (automatic)</text>
+  <text x="26" y="104" font-size="13" fill="#374151">v-analytics, trackEvent()</text>
+  <text x="26" y="126" font-size="13" fill="#374151">/a.js on other sites</text>
+  <text x="26" y="148" font-size="13" fill="#374151">pixels and short links</text>
+  <!-- app ingest -->
+  <rect x="290" y="20" width="270" height="150" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="306" y="46" font-size="14" font-weight="700" fill="#111827">Your app: POST /api/stats</text>
+  <text x="306" y="72" font-size="13" fill="#374151">1. Drop bots, DNT, ignored IPs,</text>
+  <text x="324" y="90" font-size="13" fill="#374151">excluded paths</text>
+  <text x="306" y="112" font-size="13" fill="#374151">2. Add browser, country, referrer, UTM</text>
+  <text x="306" y="134" font-size="13" fill="#374151">3. Hash the visitor with today's salt</text>
+  <text x="306" y="156" font-size="13" fill="#374151">4. Write in batches (every second)</text>
+  <!-- raw db -->
+  <rect x="650" y="30" width="220" height="130" rx="12" fill="#fff" stroke="#e5e7eb"/>
+  <text x="666" y="56" font-size="14" font-weight="700" fill="#111827">CouchDB: raw hits</text>
+  <text x="666" y="82" font-size="12.5" fill="#374151">analytics_&lt;slug&gt;_raw_YYYY_MM</text>
+  <text x="666" y="104" font-size="13" fill="#6b7280">one document per hit</text>
+  <text x="666" y="126" font-size="13" fill="#6b7280">one database per month</text>
+  <!-- main db -->
+  <rect x="650" y="240" width="220" height="140" rx="12" fill="#fff" stroke="#e5e7eb"/>
+  <text x="666" y="266" font-size="14" font-weight="700" fill="#111827">CouchDB: main</text>
+  <text x="666" y="292" font-size="12.5" fill="#374151">analytics_&lt;slug&gt;</text>
+  <text x="666" y="314" font-size="13" fill="#6b7280">daily rollups per website</text>
+  <text x="666" y="336" font-size="13" fill="#6b7280">websites, salts, segments,</text>
+  <text x="666" y="356" font-size="13" fill="#6b7280">API keys, pixels, links</text>
+  <!-- api -->
+  <rect x="290" y="240" width="270" height="140" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="306" y="266" font-size="14" font-weight="700" fill="#111827">Your app: query API</text>
+  <text x="306" y="292" font-size="13" fill="#374151">Totals and tables read rollups (fast)</text>
+  <text x="306" y="314" font-size="13" fill="#374151">Filters, reports, sessions and</text>
+  <text x="306" y="332" font-size="13" fill="#374151">realtime read raw hits</text>
+  <text x="306" y="358" font-size="13" fill="#6b7280">admin, share links, API keys</text>
+  <!-- dashboard -->
+  <rect x="10" y="250" width="190" height="120" rx="12" fill="#fff" stroke="#e5e7eb"/>
+  <text x="26" y="276" font-size="14" font-weight="700" fill="#111827">Dashboard</text>
+  <text x="26" y="302" font-size="13" fill="#374151">/admin/analytics</text>
+  <text x="26" y="324" font-size="13" fill="#374151">shared read-only links</text>
+  <text x="26" y="346" font-size="13" fill="#374151">REST API clients</text>
+  <!-- arrows -->
+  <line x1="200" y1="95" x2="286" y2="95" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="243" y="86" font-size="12" fill="#6b7280" text-anchor="middle">hits</text>
+  <line x1="560" y1="95" x2="646" y2="95" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="603" y="86" font-size="12" fill="#6b7280" text-anchor="middle">store</text>
+  <line x1="760" y1="160" x2="760" y2="236" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="772" y="196" font-size="12" fill="#ea580c">aggregator,</text>
+  <text x="772" y="212" font-size="12" fill="#ea580c">every 60 s</text>
+  <line x1="646" y1="310" x2="564" y2="310" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="690" y1="160" x2="540" y2="238" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <line x1="286" y1="310" x2="204" y2="310" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="245" y="301" font-size="12" fill="#6b7280" text-anchor="middle">JSON</text>
+</svg>
+<figcaption>Hits flow left to right into monthly raw databases. A background job summarises them into daily rollups. The dashboard reads rollups, and reads raw hits (dashed) only when it has to.</figcaption>
+</figure>
+<ol>
+  <li><strong>Collect.</strong> The browser sends each pageview and event to <code>POST /api/stats</code>.</li>
+  <li><strong>Filter and enrich.</strong> The server drops bots, Do-Not-Track visitors, ignored IPs and excluded paths. It then works out browser, OS, device, country (from CDN headers), referrer, channel and UTM parameters.</li>
+  <li><strong>Anonymise.</strong> The visitor becomes a hash of a daily random salt, the site, the IP and the user agent. The IP and user agent are never stored.</li>
+  <li><strong>Store.</strong> Hits are written in batches to a raw-event database, one per month.</li>
+  <li><strong>Aggregate.</strong> Every 60 seconds a background job turns raw hits into one rollup document per website per day.</li>
+  <li><strong>Query.</strong> Unfiltered dashboard views read rollups. Filters, reports, sessions and realtime read raw hits, limited to 31 days by default.</li>
+</ol>
+
+<h2 id="setup">Setup</h2>
+<ol class="steps">
+  <li><strong>Add the layers</strong>
+<pre><code>// apps/&lt;app&gt;/nuxt.config.ts
+export default defineNuxtConfig({
+  extends: [
+    "../../layers/database",
+    "../../layers/auth",
+    "../../layers/analytics",
+    "../../layers/admin_workspace", // admin layout + sidebar
+  ],
+  runtimeConfig: {
+    public: {
+      appSlug: "my-app", // selects the CouchDB section cf_env_my-app
+      analytics: {
+        admin: { enabled: true }, // adds /admin/analytics/** and the sidebar section
+      },
+    },
+  },
+});</code></pre></li>
+  <li><strong>Install the dashboard packages in the app</strong>
+<pre><code>bun add apexcharts @iconify/vue</code></pre></li>
+  <li><strong>Let Tailwind see the admin layout</strong> (Tailwind v4 apps)
+<pre><code>/* app/assets/css/main.css */
+@source "../../../../../layers/admin_workspace/**/*.{vue,ts}";
+@source "../../../../../layers/auth/app/**/*.{vue,ts}";</code></pre></li>
+  <li><strong>Turn the engine on in CouchDB</strong>
+    Add these keys to the <code>_config</code> section <code>cf_env_&lt;appSlug&gt;</code>:
+<pre><code>analytics_mode = self_hosted</code></pre>
+    That's all the engine needs. On first start it creates the app's website record by itself, named after the app slug.</li>
+  <li><strong>Review the website settings</strong>
+    Log in as a user with the <code>admin</code> role and open <code>/admin/analytics/settings</code>. Set the display name and timezone, list the site's domains (while the list is empty, any hostname is accepted), and keep <code>/admin*</code> and <code>/login</code> in <em>Excluded paths</em>.</li>
+  <li><strong>Check it</strong>
+    Open a public page of the site, then look at <em>Realtime</em>. The hit appears immediately. Overview totals follow within about a minute.</li>
+</ol>
+<div class="note">If the app has no <code>/admin</code> page yet, add one that uses the <code>admin-workspace</code> layout. <code>apps/kangu/app/pages/admin/index.vue</code> is a working example.</div>
+
+<h2 id="tracking">Tracking</h2>
+<h3>Automatic</h3>
+<p>Once the layer is extended, every route change in the Nuxt app is tracked as a pageview. Nothing else is needed.</p>
+<h3>Custom events</h3>
+<pre><code>&lt;script setup lang="ts"&gt;
+const analytics = useAnalytics();
+const onSignup = () =&gt; analytics.trackEvent("signup", { plan: "pro" });
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;button v-analytics="'cta-click'"&gt;Start&lt;/button&gt;
+  &lt;button v-analytics="{ event: 'cta-click', data: { location: 'hero' } }"&gt;Try it&lt;/button&gt;
+  &lt;a v-analytics:mouseover="'pricing-hover'" href="/pricing"&gt;Pricing&lt;/a&gt;
+&lt;/template&gt;</code></pre>
+<p>Event data must be flat: up to 20 properties, values up to 200 characters.</p>
+<h3>Revenue</h3>
+<pre><code>analytics.trackEvent("purchase", { revenue: 49, currency: "EUR", plan: "pro" });</code></pre>
+<h3>Identifying logged-in users</h3>
+<pre><code>analytics.identify(user.id, { plan: "pro" });</code></pre>
+<p>Later hits carry that id. Retention and multi-day attribution need it, because anonymous visitors get a new hash every day.</p>
+<h3>Composable API</h3>
+<div class="table-wrap"><table>
+  <tr><th>Method</th><th>Purpose</th></tr>
+  <tr><td><code>trackEvent(name, data?, extra?)</code>, <code>track(...)</code></td><td>Custom event</td></tr>
+  <tr><td><code>trackPageview(extra?)</code>, <code>trackView(url?, referrer?)</code></td><td>Manual pageview</td></tr>
+  <tr><td><code>identify(id?, data?)</code></td><td>Attach an app user id and session properties</td></tr>
+  <tr><td><code>trackRouterNavigation(to, from)</code></td><td>Used by the router hook</td></tr>
+</table></div>
+<h3>Optional client settings</h3>
+<p>Under <code>runtimeConfig.public.analytics</code>:</p>
+<div class="table-wrap"><table>
+  <tr><th>Key</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code>admin.enabled</code></td><td><code>false</code></td><td>Register the admin pages and sidebar section</td></tr>
+  <tr><td><code>autoCapture.outbound</code></td><td><code>false</code></td><td>Send <code>outbound-link-click</code> for links to other hosts</td></tr>
+  <tr><td><code>autoCapture.downloads</code></td><td><code>false</code></td><td>Send <code>file-download</code> for links to files</td></tr>
+  <tr><td><code>autoCapture.downloadExtensions</code></td><td>pdf, zip, csv, …</td><td>Comma-separated list of extensions</td></tr>
+  <tr><td><code>persistentId</code></td><td><code>false</code></td><td>Opt-in localStorage visitor id. Needs consent, and <code>analytics_persistent_id=true</code> on the server.</td></tr>
+  <tr><td><code>umami.tag</code></td><td>—</td><td>Tag attached to every hit, for A/B variants or deploys</td></tr>
+  <tr><td><code>endpoint</code></td><td><code>/api/stats</code></td><td>Where the client posts hits</td></tr>
+</table></div>
+<h3>Pages outside the Nuxt app</h3>
+<p>If part of the website is served elsewhere (a static landing page, a docs site on a subdomain), list that domain under <em>Settings → Domains</em> and add this to those pages:</p>
+<pre><code>&lt;script defer src="https://your-app.example/a.js"&gt;&lt;/script&gt;</code></pre>
+<p>No website id is needed: every hit goes to the app's one website.</p>
+<p>Supported attributes: <code>data-auto-track="false"</code>, <code>data-domains</code>, <code>data-tag</code>, <code>data-exclude-search</code>, <code>data-exclude-hash</code>, <code>data-do-not-track</code>, <code>data-before-send</code>, <code>data-host-url</code>.</p>
+<p>In page scripts use <code>umami.track("event", { key: "value" })</code> and <code>umami.identify("user-id")</code>; the same functions exist as <code>cfa.track</code> and <code>cfa.identify</code>. In HTML use <code>&lt;a data-umami-event="cta" data-umami-event-plan="pro"&gt;</code>.</p>
+
+<h2 id="dashboard">The dashboard</h2>
+<div class="table-wrap"><table>
+  <tr><th>Page</th><th>Path</th><th>Who</th></tr>
+  <tr><td>Overview</td><td><code>/admin/analytics</code></td><td>admin, viewers</td></tr>
+  <tr><td>Realtime</td><td><code>/admin/analytics/realtime</code></td><td>admin, viewers</td></tr>
+  <tr><td>Events</td><td><code>/admin/analytics/events</code></td><td>admin, viewers</td></tr>
+  <tr><td>Sessions</td><td><code>/admin/analytics/sessions</code></td><td>admin, viewers</td></tr>
+  <tr><td>Reports</td><td><code>/admin/analytics/reports</code></td><td>admin, viewers</td></tr>
+  <tr><td>Settings</td><td><code>/admin/analytics/settings</code></td><td>admin</td></tr>
+  <tr><td>Pixels, links &amp; import</td><td><code>/admin/analytics/tools</code></td><td>admin</td></tr>
+  <tr><td>API keys</td><td><code>/admin/analytics/api-keys</code></td><td>admin</td></tr>
+  <tr><td>Shared dashboard</td><td><code>/admin/analytics/share/&lt;token&gt;</code></td><td>anyone with the link</td></tr>
+</table></div>
+<p><strong>Roles.</strong> Users with the CouchDB role <code>admin</code> see and manage everything. For read-only access, give a user the <code>analytics_viewer</code> role and add that role under <em>Settings → Viewer roles</em>.</p>
+<p><strong>Filters.</strong> Click a row in any table to filter by it. Filters combine, live in the URL, and can be saved as segments.</p>
+<p><strong>Theme.</strong> The dashboard follows the admin workspace and is light by default. It turns dark only when a parent element has a <code>dark</code> class or <code>data-theme="dark"</code>.</p>
+
+<h2 id="config">Configuration reference</h2>
+<p>All keys live in CouchDB <code>_config</code>, section <code>cf_env_&lt;appSlug&gt;</code>, as flat strings. Most can be edited under <em>Settings → Engine</em>. Changes apply within about a minute, with no restart.</p>
+<div class="table-wrap"><table>
+  <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>analytics_mode</code></td><td><code>umami_cloud</code></td><td><code>self_hosted</code> is the built-in engine. <code>dual</code> and <code>umami_cloud</code> are legacy modes.</td></tr>
+  <tr><td><code>analytics_default_site_id</code></td><td>app slug</td><td>Id of the app's website record. Rarely needs setting.</td></tr>
+  <tr><td><code>analytics_db_prefix</code></td><td><code>analytics_&lt;slug&gt;</code></td><td>Database name prefix</td></tr>
+  <tr><td><code>analytics_raw_retention_months</code></td><td><code>13</code></td><td>Raw hits older than this are deleted. Rollups are kept.</td></tr>
+  <tr><td><code>analytics_respect_dnt</code></td><td><code>true</code></td><td>Drop hits with <code>DNT: 1</code> or <code>Sec-GPC: 1</code></td></tr>
+  <tr><td><code>analytics_ignore_ips</code></td><td>—</td><td>Comma-separated IPs or CIDRs to ignore</td></tr>
+  <tr><td><code>analytics_geo_source</code></td><td><code>header</code></td><td><code>header</code> reads Cloudflare, CloudFront or Vercel headers. <code>none</code> disables geo.</td></tr>
+  <tr><td><code>analytics_aggregator_enabled</code></td><td><code>true</code></td><td>Set <code>false</code> on instances that shouldn't aggregate</td></tr>
+  <tr><td><code>analytics_persistent_id</code></td><td><code>false</code></td><td>Accept the opt-in persistent visitor id</td></tr>
+  <tr><td><code>analytics_max_scan_days</code></td><td><code>31</code></td><td>Longest range for filters, reports and sessions</td></tr>
+</table></div>
+<p>Website settings (name, domains, timezone, excluded paths, goals, viewer roles, share link) are edited on the <em>Settings</em> page.</p>
+
+<h3 id="geo">Country detection</h3>
+<p>The engine reads the visitor's country from a header the CDN adds to every request. Nothing is looked up, no IP database is installed, and the IP is not stored.</p>
+<ul>
+  <li><strong>Cloudflare</strong> sends <code>CF-IPCountry</code> when the site is proxied (orange cloud) and <em>Network → IP Geolocation</em> is on, which is the default. For region and city, enable the managed transform <em>Add visitor location headers</em>.</li>
+  <li><strong>A reverse proxy between Cloudflare and the app</strong> (Caddy, nginx) is fine as long as it forwards request headers. Caddy's <code>reverse_proxy</code> does this by default; don't strip <code>CF-IPCountry</code> or <code>CF-Connecting-IP</code> with <code>header_up -...</code>.</li>
+  <li>CloudFront (<code>CloudFront-Viewer-Country</code>) and Vercel (<code>X-Vercel-IP-Country</code>) headers are read too.</li>
+  <li><strong>Check it:</strong> <em>Settings → Engine</em> shows how many hits since the last server start carried a country.</li>
+  <li>Local development has no CDN in front, so no countries are recorded there.</li>
+</ul>
+<div class="note">The headers are trusted as sent. If the app can be reached directly, bypassing Cloudflare, a client could fake its country. Restrict the origin to Cloudflare if that matters.</div>
+
+<h2 id="privacy">Privacy model</h2>
+<ul>
+  <li><strong>No cookies and no local storage</strong> by default.</li>
+  <li><strong>Visitor id</strong> = <code>sha256(daily salt | site | IP | user agent)</code>, shortened to 64 bits. The salt is random, changes every day in the site's timezone, and is deleted after two days. After that the hash can't be linked back to anyone.</li>
+  <li><strong>Never stored:</strong> IP address, full user agent, and query strings other than UTM parameters (unless you enable "Keep query strings").</li>
+  <li><strong>Stored per hit:</strong> path, title, host, referrer domain and path, channel, UTM values, browser, OS, device type, screen size, language, country (plus region and city when the CDN provides them), event name and properties.</li>
+  <li><strong>Unique visitors are per day.</strong> A range total is the sum of daily uniques, like Fathom and Plausible. Someone who visits on three days counts three times.</li>
+  <li><strong>Bots</strong> are dropped on the server: crawlers, link previewers, headless browsers and scripts.</li>
+</ul>
+
+<h2 id="extras">Sharing, API keys, pixels, links, import</h2>
+<h3>Share link</h3>
+<p><em>Settings → Public share link.</em> Anyone with the link gets a read-only dashboard. Rotate or revoke it at any time.</p>
+<h3>API keys and REST API</h3>
+<p>Create keys on the <em>API keys</em> page. A key is shown once. Use it as a bearer token:</p>
+<pre><code>curl -H "Authorization: Bearer cfa_…" \
+  "https://your-app.example/api/analytics/v1/stats?range=30d&amp;compare=1"</code></pre>
+<div class="table-wrap"><table>
+  <tr><th>Endpoint</th><th>Returns</th></tr>
+  <tr><td><code>GET /api/analytics/v1/site</code></td><td>The website's name, domains and timezone</td></tr>
+  <tr><td><code>GET /api/analytics/v1/stats</code></td><td>Totals and time series</td></tr>
+  <tr><td><code>GET /api/analytics/v1/metrics/:dimension</code></td><td>Top rows for a dimension, such as <code>page</code> or <code>country</code></td></tr>
+  <tr><td><code>GET /api/analytics/v1/realtime</code></td><td>Last 30 minutes</td></tr>
+  <tr><td><code>GET /api/analytics/v1/sessions</code></td><td>Visits, newest first</td></tr>
+  <tr><td><code>POST /api/analytics/v1/reports/:type</code></td><td><code>goals</code>, <code>funnel</code>, <code>journey</code>, <code>retention</code>, <code>utm</code>, <code>attribution</code>, <code>revenue</code>, <code>breakdown</code></td></tr>
+</table></div>
+<p>Query parameters: <code>range</code> (<code>today</code>, <code>yesterday</code>, <code>24h</code>, <code>7d</code>, <code>30d</code>, <code>90d</code>, <code>12m</code>, <code>this_month</code>, <code>last_month</code>, <code>this_year</code>) or <code>from</code>/<code>to</code> as <code>YYYY-MM-DD</code>; <code>filters</code> as a JSON array of <code>{ dim, op, value }</code>; <code>limit</code>; <code>offset</code>.</p>
+<h3>Tracking pixels and links</h3>
+<p>Both are on the <em>Pixels, links &amp; import</em> page. A pixel is an invisible image for emails or external pages; each load is a <code>pixel-view</code> event. A tracked link, <code>/l/&lt;slug&gt;</code>, records a <code>link-click</code> event and redirects.</p>
+<h3>Export and import</h3>
+<ul>
+  <li><strong>CSV export:</strong> the CSV link on each dashboard table.</li>
+  <li><strong>Umami import:</strong> upload the <code>website_event</code> CSV and optionally the <code>session</code> CSV. Rows become raw hits, so filters and reports include them.</li>
+  <li><strong>Fathom Lite import:</strong> upload hourly <code>site_stats</code>, <code>page_stats</code> and <code>referrer_stats</code> CSVs. They appear in dashboards but not in filtered views or reports.</li>
+</ul>
+
+<h2 id="ops">Operations</h2>
+<div class="table-wrap"><table>
+  <tr><th>Database</th><th>Contents</th></tr>
+  <tr><td><code>analytics_&lt;slug&gt;</code></td><td>The website record, day rollups, salts, segments, saved reports, API keys, pixels, links, aggregator lease</td></tr>
+  <tr><td><code>analytics_&lt;slug&gt;_raw_&lt;yyyy&gt;_&lt;mm&gt;</code></td><td>Raw hits for that month</td></tr>
+</table></div>
+<p>Both are readable by CouchDB admins only.</p>
+<ul>
+  <li><strong>Aggregator.</strong> Runs inside the app every 60 seconds. With several instances, a lease in CouchDB makes sure only one aggregates. An instance that is killed hard can hold the lease for up to three minutes.</li>
+  <li><strong>Retention.</strong> Whole monthly raw databases are dropped once they are older than <code>analytics_raw_retention_months</code>.</li>
+  <li><strong>Rebuild.</strong> <em>Settings → Data → Rebuild</em> recomputes rollups for a date range from raw hits.</li>
+  <li><strong>Reset.</strong> <em>Settings → Data</em> deletes all collected data after you type the website id.</li>
+  <li><strong>Capacity.</strong> Today's hits are kept in memory for aggregation. Plan for roughly 100–200k hits per day per app.</li>
+  <li><strong>Backups.</strong> Back up <code>analytics_&lt;slug&gt;</code>. Raw month databases replicate like any CouchDB database.</li>
+</ul>
+
+<h2 id="trouble">Troubleshooting</h2>
+<div class="table-wrap"><table>
+  <tr><th>Symptom</th><th>Likely cause</th></tr>
+  <tr><td>My own visits don't show</td><td>You only visited <code>/admin*</code> or <code>/login</code>, which are excluded. Open a public page.</td></tr>
+  <tr><td>Hits appear in Realtime but not in Overview</td><td>Rollups refresh every 60 seconds.</td></tr>
+  <tr><td>Nothing is recorded at all</td><td><code>analytics_mode</code> isn't <code>self_hosted</code> (the server log prints the mode at startup), or "Collecting" is switched off in Settings.</td></tr>
+  <tr><td>A browser never shows up</td><td>It sends Do-Not-Track or Global Privacy Control (Brave does by default), or its IP is in <code>analytics_ignore_ips</code>. <em>Settings → Engine</em> lists how many hits were dropped and why since the server started.</td></tr>
+  <tr><td>Hits from another domain are dropped</td><td>The domain isn't listed under <em>Settings → Domains</em>.</td></tr>
+  <tr><td>No countries</td><td>The app isn't behind a CDN that sends country headers, or a proxy in between strips them. See Country detection.</td></tr>
+  <tr><td>Automated tests aren't counted</td><td>Headless browsers are treated as bots.</td></tr>
+  <tr><td>"Filtered queries are limited to 31 days"</td><td>Raise <code>analytics_max_scan_days</code>, or remove the filter.</td></tr>
+  <tr><td><code>/admin</code> shows "Page not found"</td><td>The app has no <code>/admin</code> page. Add one with the <code>admin-workspace</code> layout.</td></tr>
+  <tr><td>Admin sidebar is unstyled</td><td>Tailwind isn't scanning <code>layers/admin_workspace</code>. See setup step 3.</td></tr>
+</table></div>
+
+<h2 id="dev">Development and tests</h2>
+<pre><code>cd layers
+npx vitest run --config vitest.config.ts analytics</code></pre>
+<p>Integration test against a real CouchDB. It uses a throwaway database prefix and cleans up:</p>
+<pre><code>ANALYTICS_IT=1 COUCHDB_ADMIN_AUTH=&lt;base64 user:pass&gt; \
+  npx vitest run --config vitest.config.ts analytics/server/engine/integration</code></pre>
+<div class="table-wrap"><table>
+  <tr><th>Path</th><th>What</th></tr>
+  <tr><td><code>composables/</code>, <code>plugins/</code></td><td>Browser tracker, <code>v-analytics</code>, auto-capture</td></tr>
+  <tr><td><code>server/api/stats.post.ts</code></td><td>Ingestion endpoint</td></tr>
+  <tr><td><code>server/engine/</code></td><td>Collector, rollups, aggregator, queries, reports, imports, access control</td></tr>
+  <tr><td><code>server/api/analytics/**</code>, <code>server/routes/</code></td><td>Admin, share and v1 APIs; <code>/a.js</code>; <code>/l/:slug</code>; pixel</td></tr>
+  <tr><td><code>admin/</code></td><td>Dashboard pages and components</td></tr>
+  <tr><td><code>modules/admin.ts</code></td><td>Registers pages and sidebar when enabled</td></tr>
+</table></div>
+<p>More detail: <code>docs/self-hosted-analytics.md</code> and the design spec in <code>docs/specs/</code>.</p>
+
+<h2 id="legacy">Legacy: Umami Cloud forwarding <span class="pill">legacy</span></h2>
+<p>The layer started as a proxy to Umami Cloud. That still works and is the default while <code>analytics_mode</code> is unset, so existing apps keep behaving as before:</p>
+<ul>
+  <li><code>umami_cloud</code>: forward only, nothing stored locally.</li>
+  <li><code>dual</code>: store locally and forward. Useful for comparing numbers during a migration.</li>
+</ul>
+<p>New work should use <code>self_hosted</code>. Setup notes for forwarding are in <code>docs/umami-cloud-forwarding.md</code>.</p>
+</main>
+</div>
+</body>
+</html>

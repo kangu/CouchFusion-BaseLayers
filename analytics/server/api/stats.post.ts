@@ -1,6 +1,5 @@
-// Currently working only with Umami
-// could be extended to support other analytics providers
-//
+// Ingestion endpoint. Depending on CouchDB `analytics_mode` it forwards to
+// Umami Cloud (default), stores locally (self_hosted), or does both (dual).
 import {
   defineEventHandler,
   readBody,
@@ -9,27 +8,12 @@ import {
 } from "h3";
 
 import { resolveUmamiConfig } from "../utils/umami-config";
+import { collectHit } from "../engine/collector";
+import { applyCollectCors } from "../engine/cors";
+import { forwardsToUmami, resolveEngineConfig, storesLocally } from "../engine/config";
+import { createExclusionMatcher } from "../engine/exclusions";
 
-function createExclusionMatcher(patterns: string[]) {
-  if (patterns.length === 0) {
-    return () => false;
-  }
-
-  const normalized = patterns.map((pattern) => pattern.trim());
-
-  return (path: string) => {
-    return normalized.some((pattern) => {
-      if (!pattern) return false;
-      if (pattern.endsWith("*")) {
-        const prefix = pattern.slice(0, -1);
-        return path.startsWith(prefix);
-      }
-      return path === pattern;
-    });
-  };
-}
-
-export default defineEventHandler(async (event) => {
+const forwardToUmami = async (event: any, payload: Record<string, any>) => {
   const runtimeConfig = useRuntimeConfig();
   const umamiBase = runtimeConfig.analytics?.umami?.proxyHost;
   const { excludedPaths, websiteId } = await resolveUmamiConfig(runtimeConfig);
@@ -39,25 +23,6 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 500,
       statusMessage: "Missing runtimeConfig.analytics.umami.proxyHost",
-    });
-  }
-
-  const body = await readBody(event).catch(() => null);
-  if (!body || typeof body !== "object") {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Invalid payload: expected JSON body",
-    });
-  }
-
-  const { payload } = body as {
-    payload?: Record<string, any>;
-  };
-
-  if (!payload || typeof payload !== "object") {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Invalid payload: payload object is required",
     });
   }
 
@@ -72,7 +37,7 @@ export default defineEventHandler(async (event) => {
 
   if (pathForExclusion && isExcludedPath(pathForExclusion)) {
     // still return success to not give away that the route is ignored
-    return { ok: true };
+    return;
   }
 
   // Preserve client signals
@@ -104,6 +69,57 @@ export default defineEventHandler(async (event) => {
       statusCode: 502,
       statusMessage: `Upstream Umami error`,
       data: { status: res.status, body: text },
+    });
+  }
+};
+
+export default defineEventHandler(async (event) => {
+  const engine = await resolveEngineConfig(useRuntimeConfig());
+  if (storesLocally(engine)) {
+    await applyCollectCors(event, engine);
+  }
+
+  // The standalone tracker sends text/plain (no CORS preflight); parse it too.
+  let body = await readBody(event).catch(() => null);
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = null;
+    }
+  }
+  if (!body || typeof body !== "object") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid payload: expected JSON body",
+    });
+  }
+
+  const { payload } = body as {
+    payload?: Record<string, any>;
+  };
+
+  if (!payload || typeof payload !== "object") {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid payload: payload object is required",
+    });
+  }
+
+  if (storesLocally(engine)) {
+    try {
+      await collectHit(event, body, engine);
+    } catch (error) {
+      console.error("[analytics] local collection failed:", error);
+    }
+  }
+
+  if (engine.mode === "umami_cloud") {
+    await forwardToUmami(event, payload);
+  } else if (forwardsToUmami(engine)) {
+    // dual: local storage is authoritative, Umami Cloud is best-effort.
+    await forwardToUmami(event, payload).catch((error) => {
+      console.warn("[analytics] dual-mode Umami forward failed:", error?.statusMessage ?? error);
     });
   }
 

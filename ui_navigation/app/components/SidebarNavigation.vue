@@ -57,7 +57,22 @@ const handleNavigate = () => {
               'transition-delay': `${(sectionIndex * section.items.length + itemIndex) * 50}ms`,
             }"
           >
+            <a
+              v-if="item.external"
+              :href="item.route"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="handleNavigate"
+              class="group flex items-center px-3 py-3 text-base font-medium rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100 transition-colors min-h-[44px]"
+            >
+              <Icon
+                :name="item.icon"
+                class="mr-4 h-6 w-6 flex-shrink-0 text-gray-400 group-hover:text-gray-600 transition-colors"
+              />
+              {{ item.label }}
+            </a>
             <NuxtLink
+              v-else
               :to="item.route"
               @click="handleNavigate"
               class="group flex items-center px-3 py-3 text-base font-medium rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100 transition-colors min-h-[44px]"
@@ -70,6 +85,19 @@ const handleNavigate = () => {
               {{ item.label }}
             </NuxtLink>
           </Transition>
+          <a
+            v-else-if="item.external"
+            :href="item.route"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+          >
+            <Icon
+              :name="item.icon"
+              class="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-600 transition-colors"
+            />
+            {{ item.label }}
+          </a>
           <NuxtLink
             v-else
             :to="item.route"

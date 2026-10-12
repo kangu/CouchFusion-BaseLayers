@@ -166,7 +166,8 @@ const timingSafeEqual = (
 
   let result = 0;
   for (let index = 0; index < a.length; index += 1) {
-    result |= a[index] ^ b[index];
+    // Equal lengths and the loop bound guarantee both indexed bytes exist.
+    result |= a[index]! ^ b[index]!;
   }
 
   return result === 0;
@@ -1128,11 +1129,11 @@ export async function getSession(
  * Generate a CouchDB AuthSession cookie value.
  */
 export function generateAuthSessionCookie(
-  username,
-  couchSecret,
-  userSalt,
+  username: string,
+  couchSecret: string,
+  userSalt: string,
   timeoutSeconds = 600,
-) {
+): string {
   // Calculate expiration timestamp
   const expirationTime = Math.floor(Date.now() / 1000) + timeoutSeconds;
   const hexExpiration = expirationTime.toString(16).toUpperCase();
@@ -1170,13 +1171,22 @@ export function generateAuthSessionCookie(
   return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
 }
 
+export interface VerifyAuthSessionOptions {
+  value?: string | null;
+  serverSecret: string;
+  userSaltHex: string;
+  hmacAlgos?: string[];
+  now?: number | Date;
+}
+
+/** Verify a session signature and expiration, using milliseconds or a Date. */
 export function verifyAuthSessionValue({
   value,
   serverSecret,
   userSaltHex,
   hmacAlgos = ["sha256", "sha1"], // try your list in order
   now = Date.now(),
-}) {
+}: VerifyAuthSessionOptions) {
   if (!value) return { ok: false, reason: "missing value" };
   const b = value.replace(/-/g, "+").replace(/_/g, "/");
   const raw = Buffer.from(b + "=".repeat((4 - (b.length % 4)) % 4), "base64");
@@ -1285,7 +1295,9 @@ export async function putAttachment(
           "Content-Type": contentType,
           Authorization: `Basic ${getCouchDBConfig(config).adminAuth}`,
         },
-        body: attachmentData,
+        // Copy only the view bytes into an ArrayBuffer-backed body accepted by fetch.
+        // This also supports Buffer slices and SharedArrayBuffer-backed inputs.
+        body: new Uint8Array(attachmentData),
       },
       config,
     );

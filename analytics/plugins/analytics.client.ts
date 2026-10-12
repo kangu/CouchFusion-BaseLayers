@@ -101,6 +101,8 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         ? umamiConfig.sendReferrer
         : true,
     debug: Boolean(umamiConfig.debug),
+    persistentId: publicAnalytics.persistentId === true,
+    tag: typeof umamiConfig.tag === "string" && umamiConfig.tag ? umamiConfig.tag : undefined,
   });
   nuxtApp.provide("analytics", tracker);
   nuxtApp.provide("umami", tracker);
@@ -117,6 +119,35 @@ export default defineNuxtPlugin(async (nuxtApp) => {
       cleanupDirective(el as AnalyticsElement);
     },
   });
+
+  // Opt-in auto-capture of outbound links and file downloads.
+  const autoCapture = publicAnalytics.autoCapture ?? {};
+  if (autoCapture.outbound || autoCapture.downloads) {
+    const downloadPattern = new RegExp(
+      `\\.(${String(autoCapture.downloadExtensions || "pdf,zip,dmg,exe,csv,xlsx,docx,pptx,mp3,mp4,gz,7z,rar,txt,json").split(",").map((ext: string) => ext.trim()).filter(Boolean).join("|")})$`,
+      "i",
+    );
+    document.addEventListener(
+      "click",
+      (event) => {
+        const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+        if (!anchor) return;
+        let url: URL;
+        try {
+          url = new URL(anchor.href, window.location.href);
+        } catch {
+          return;
+        }
+        if (!/^https?:$/.test(url.protocol)) return;
+        if (autoCapture.downloads && downloadPattern.test(url.pathname)) {
+          void tracker.trackEvent("file-download", { url: url.href.slice(0, 200), file: url.pathname.split("/").pop() });
+        } else if (autoCapture.outbound && url.hostname !== window.location.hostname) {
+          void tracker.trackEvent("outbound-link-click", { url: url.href.slice(0, 200), domain: url.hostname });
+        }
+      },
+      true,
+    );
+  }
 
   router.afterEach(async (to, from) => {
     void tracker.trackRouterNavigation(to, from).catch((err) => {

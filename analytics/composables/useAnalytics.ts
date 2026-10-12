@@ -8,6 +8,10 @@ export interface AnalyticsClientConfig {
   includeTitle: boolean;
   sendReferrer: boolean;
   debug: boolean;
+  /** Opt-in first-party persistent id (localStorage); consent required. */
+  persistentId: boolean;
+  /** Optional tag attached to every hit (A/B variant, deploy, ...). */
+  tag?: string;
 }
 
 const DEFAULT_CONFIG: AnalyticsClientConfig = {
@@ -17,7 +21,26 @@ const DEFAULT_CONFIG: AnalyticsClientConfig = {
   includeTitle: true,
   sendReferrer: true,
   debug: false,
+  persistentId: false,
+  tag: undefined,
 };
+
+const PERSISTENT_ID_KEY = "cfa.pid";
+
+/** Reads (or creates) the opt-in first-party persistent id. */
+function getPersistentId(): string | undefined {
+  try {
+    let id = localStorage.getItem(PERSISTENT_ID_KEY);
+    if (!id) {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      id = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem(PERSISTENT_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
 
 
 function nowIso() {
@@ -55,8 +78,8 @@ function normalizeEndpoint(value?: string) {
 /**
  * Builds the analytics POST body once so multiple transports can reuse it.
  */
-function buildRequestBody(payload: Record<string, any>) {
-  return JSON.stringify({ type: "event", payload, sentAt: nowIso() });
+function buildRequestBody(payload: Record<string, any>, type = "event") {
+  return JSON.stringify({ type, payload, sentAt: nowIso() });
 }
 
 /**
@@ -112,9 +135,10 @@ export function createAnalyticsClient(
     endpoint: normalizeEndpoint(initialConfig.endpoint),
   };
   const isLoaded = ref(true);
+  let distinctId: string | undefined;
 
-  async function sendPayload(payload: Record<string, any>) {
-    const body = buildRequestBody(payload);
+  async function sendPayload(payload: Record<string, any>, type = "event") {
+    const body = buildRequestBody(payload, type);
 
     if (typeof window !== "undefined") {
       const dispatched = dispatchBrowserPayload(config.endpoint, body, config.debug);
@@ -161,6 +185,12 @@ export function createAnalyticsClient(
     if (config.includeTitle && c.title) payload.title = c.title;
     if (config.appName) payload.appName = config.appName;
     if (config.websiteId) payload.website = config.websiteId;
+    if (config.tag) payload.tag = config.tag;
+    if (distinctId) payload.id = distinctId;
+    if (config.persistentId) {
+      const pid = getPersistentId();
+      if (pid) payload.pid = pid;
+    }
 
     return { ...payload, ...overrides };
   }
@@ -186,6 +216,19 @@ export function createAnalyticsClient(
     return trackEvent(name, data, extra);
   }
 
+  /**
+   * Associates subsequent hits with an app-level id (e.g. logged-in user) and
+   * stores optional session properties. Mirrors `umami.identify()`.
+   */
+  async function identify(id?: string | Record<string, any>, data: Record<string, any> = {}) {
+    if (id && typeof id === "object") {
+      data = id;
+      id = undefined;
+    }
+    if (typeof id === "string" && id.trim()) distinctId = id.trim();
+    await sendPayload(buildBasePayload({ data }), "identify");
+  }
+
   async function trackView(url?: string, referrer?: string) {
     const overrides: Record<string, any> = {};
     if (url) overrides.url = url;
@@ -208,6 +251,7 @@ export function createAnalyticsClient(
     trackRouterNavigation,
     track,
     trackView,
+    identify,
     isLoaded,
     getInstance: () => null,
   };

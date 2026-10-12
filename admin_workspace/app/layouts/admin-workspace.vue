@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SidebarNavigation from "#admin-workspace/app/components/SidebarNavigation.vue";
 import { useSidebarNavigation } from "#admin-workspace/app/composables/useSidebarNavigation";
+import "#admin-workspace/app/assets/css/ledger.css";
 
 const appConfig = useAppConfig();
 const nuxtApp = useNuxtApp();
@@ -13,6 +14,7 @@ const themeClass = computed(() =>
     ? adminWorkspaceConfig.value.themeClass
     : "",
 );
+const { isLedgerTheme } = useAdminWorkspaceTheme();
 const brandName = computed(() => adminWorkspaceConfig.value.brandName ?? "Admin Workspace");
 const siteName = computed(() => adminWorkspaceConfig.value.siteName ?? brandName.value);
 const footerText = computed(
@@ -78,6 +80,9 @@ useHead({
   ],
 });
 
+useHead(() => ({ link: isLedgerTheme.value ? LEDGER_FONT_LINKS : [] }));
+
+
 const {
   sections: navigationSections,
   mobileMenuOpen,
@@ -86,6 +91,56 @@ const {
 } = useSidebarNavigation({
   hasRole: (role) => authStore.hasRole(role),
 });
+
+const route = useRoute();
+const FOLD_SECTION_MIN_ITEMS = 4;
+
+/** Ledger folds long sections into one sidebar link and shows their pages as tabs. */
+const sidebarSections = computed(() => {
+  if (!isLedgerTheme.value) {
+    return navigationSections.value;
+  }
+
+  const items = navigationSections.value.flatMap((section) => {
+    const first = section.items[0];
+    if (section.items.length < FOLD_SECTION_MIN_ITEMS || !first) {
+      return section.items;
+    }
+    return [{ ...first, label: section.title, activeRoutes: section.items.map((item) => item.route) }];
+  });
+
+  return items.length ? [{ id: "aw-main", title: "", items }] : [];
+});
+
+/** Section and item owning the current route (longest matching item route wins). */
+const currentNavigation = computed(() => {
+  let match: { section: (typeof navigationSections.value)[number]; item: (typeof navigationSections.value)[number]["items"][number] } | null = null;
+  for (const section of navigationSections.value) {
+    for (const item of section.items) {
+      const matches = route.path === item.route || route.path.startsWith(`${item.route}/`);
+      if (matches && (!match || item.route.length > match.item.route.length)) {
+        match = { section, item };
+      }
+    }
+  }
+  return match;
+});
+const sectionTabs = computed(() => {
+  const section = currentNavigation.value?.section;
+  return isLedgerTheme.value && section && section.items.length >= FOLD_SECTION_MIN_ITEMS ? section.items : [];
+});
+const headerTitleOverride = useAdminWorkspaceHeaderState();
+/** Page-provided title, else the folded section title, else the navigation label. */
+const headerTitle = computed(() => {
+  if (headerTitleOverride.value?.path === route.path && headerTitleOverride.value.title) {
+    return headerTitleOverride.value.title;
+  }
+  if (!currentNavigation.value) {
+    return "";
+  }
+  return sectionTabs.value.length ? currentNavigation.value.section.title : currentNavigation.value.item.label;
+});
+const brandInitial = computed(() => brandName.value.trim().charAt(0).toUpperCase());
 
 const profileMenuOpen = ref(false);
 const profileMenuRef = ref<HTMLElement | null>(null);
@@ -169,7 +224,7 @@ onMounted(async () => {
 <template>
   <div
     class="aw-shell min-h-screen bg-gray-50"
-    :class="[themeClass, { 'aw-sidebar-collapsed': sidebarCollapsed }]"
+    :class="[themeClass, { 'aw-theme-ledger': isLedgerTheme, 'aw-sidebar-collapsed': sidebarCollapsed }]"
   >
     <aside
       class="aw-sidebar relative z-40 hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:flex-col transition-[width] duration-300 ease-out"
@@ -210,6 +265,13 @@ onMounted(async () => {
                 :site-name="siteName"
               />
               <span
+                v-else-if="isLedgerTheme"
+                class="aw-brand flex min-w-0 items-center"
+              >
+                <span class="aw-brand-mark" aria-hidden="true">{{ brandInitial }}</span>
+                <span class="aw-sidebar-brand-text truncate">{{ brandName }}</span>
+              </span>
+              <span
                 v-else
                 class="aw-sidebar-brand-text truncate text-sm font-semibold text-gray-800 transition-all duration-200"
                 :class="sidebarCollapsed ? 'w-0 opacity-0' : 'opacity-100'"
@@ -225,7 +287,7 @@ onMounted(async () => {
           :class="sidebarCollapsed ? 'overflow-visible px-3 py-5' : 'overflow-y-auto px-4 py-6'"
         >
           <SidebarNavigation
-            :sections="navigationSections"
+            :sections="sidebarSections"
             :collapsed="sidebarCollapsed"
           />
         </nav>
@@ -307,7 +369,7 @@ onMounted(async () => {
 
             <nav class="aw-mobile-nav flex-1 px-6 py-6 overflow-y-auto">
               <SidebarNavigation
-                :sections="navigationSections"
+                :sections="sidebarSections"
                 variant="mobile"
                 @navigate="closeMobileMenu"
               />
@@ -353,10 +415,21 @@ onMounted(async () => {
             </div>
 
             <div class="flex-1 flex items-center justify-center px-2 sm:ml-2 lg:justify-start">
-              <div class="max-w-[calc(100vw-10rem)] w-full lg:max-w-md" />
+              <div class="max-w-[calc(100vw-10rem)] w-full lg:max-w-md">
+                <h1
+                  v-if="isLedgerTheme && headerTitle"
+                  class="aw-header-title truncate"
+                >
+                  {{ headerTitle }}
+                </h1>
+              </div>
             </div>
 
             <div class="absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0">
+              <div
+                id="aw-header-actions"
+                class="aw-header-actions"
+              />
               <div
                 ref="profileMenuRef"
                 class="relative ml-3"
@@ -422,6 +495,23 @@ onMounted(async () => {
           </div>
         </div>
       </header>
+
+      <nav
+        v-if="sectionTabs.length"
+        class="aw-section-tabs"
+        :aria-label="`${currentNavigation?.section.title} pages`"
+      >
+        <NuxtLink
+          v-for="tab in sectionTabs"
+          :key="tab.route"
+          :to="tab.route"
+          class="aw-section-tab"
+          :class="{ 'aw-section-tab-active': tab.route === currentNavigation?.item.route }"
+          :aria-current="tab.route === currentNavigation?.item.route ? 'page' : undefined"
+        >
+          {{ tab.label }}
+        </NuxtLink>
+      </nav>
 
       <main class="aw-content flex-1 overflow-y-auto focus:outline-none bg-gray-50">
         <div class="aw-content-inner py-6">

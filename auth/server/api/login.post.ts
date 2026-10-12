@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, createError } from "h3";
-import { getDocument, putDocument } from "#database/utils/couchdb";
+import { getDocument, getView, putDocument } from "#database/utils/couchdb";
 import {
   type ProofOfWorkSolution,
 } from "#auth/server/utils/proof-of-work";
@@ -52,6 +52,18 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const email = body.email.trim().toLowerCase();
+  const existingAccount = await getView("_users", "auth", "has_account_case_insensitive", {
+    key: email,
+    limit: 1,
+  });
+
+  // Keep the response the same for existing and unknown addresses while only
+  // issuing login tokens to accounts that already exist.
+  if (!existingAccount?.rows?.length) {
+    return { success: true, message: "If you have an account with us, you'll receive an email" };
+  }
+
   // record timestamp with expiration of 60 minutes
   const timestamp = new Date();
   const expireTimestamp = new Date(timestamp);
@@ -68,11 +80,11 @@ export default defineEventHandler(async (event) => {
         affiliateDocumentId,
       );
 
-      if (affiliateDocument?.allow_affiliate === true) {
+      if (affiliateDocument && !affiliateDocument._deleted) {
         validatedAffiliateCode = affiliateCode;
       } else {
         console.warn(
-          `Affiliate code rejected: ${affiliateCode} (user not found or not opted in)`,
+          `Affiliate code rejected: ${affiliateCode} (user not found)`,
         );
       }
     } catch (error) {
@@ -88,13 +100,13 @@ export default defineEventHandler(async (event) => {
     .map(() => String.fromCharCode((65 + Math.random() * 26) | 0))
     .join("");
   const doc: Record<string, unknown> = {
-    _id: body.email + "--" + uniqueCode,
+    _id: email + "--" + uniqueCode,
     funnel: body.funnel,
     timestamp: timestamp.toISOString(),
     expires: expireTimestamp.toISOString(),
     used: false,
     /* these are used by the cli watcher to ensure it can build up the email template request */
-    email: body.email,
+    email,
     code: uniqueCode,
   };
 
@@ -108,5 +120,5 @@ export default defineEventHandler(async (event) => {
   // send out the corresponding email
   // email is now sent through couchdb-monitor watching login tokens being created
 
-  return { success: true /*, doc, resp*/ };
+  return { success: true, message: "If you have an account with us, you'll receive an email" };
 });

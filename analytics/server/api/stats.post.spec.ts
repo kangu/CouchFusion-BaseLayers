@@ -11,6 +11,11 @@ vi.mock("../utils/umami-config", () => ({
   resolveUmamiConfig: resolveUmamiConfigMock,
 }));
 
+vi.mock("../engine/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../engine/config")>()),
+  resolveEngineConfig: vi.fn().mockResolvedValue({ mode: "umami_cloud" }),
+}));
+
 const createPostEvent = (body: Record<string, any>) => {
   const socket = new Socket();
   const req = new IncomingMessage(socket);

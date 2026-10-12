@@ -1,13 +1,10 @@
 // Checks to see if the provided login token is valid
 
 import { defineEventHandler, readBody, createError, setHeader } from "h3";
-import useIds from "../../app/composables/useIds";
 import {
   getDocument,
   putDocument,
   getView,
-  createUser,
-  authenticate,
   getSession,
   generateAuthSessionCookie,
 } from "#database/utils/couchdb";
@@ -59,7 +56,6 @@ export default defineEventHandler(async (event) => {
   // get couch
   const config = useRuntimeConfig();
   const dbLoginPrefix = config.dbLoginPrefix;
-  const { randomId } = useIds();
   const DB = `${dbLoginPrefix}-logins`;
 
   try {
@@ -95,62 +91,13 @@ export default defineEventHandler(async (event) => {
         key: body.email.toLowerCase(),
       },
     );
-    console.log("Existing docs for", body.email, ": ", existingDocs.rows);
-
-    let affiliateFriendCode =
-      typeof resp.affiliate_friend_code === "string"
-        ? resp.affiliate_friend_code
-        : undefined;
-    let affiliateAllowed = false;
-
-    if (affiliateFriendCode) {
-      const affiliateDocumentId = `org.couchdb.user:${config.dbLoginPrefix}${affiliateFriendCode}`;
-
-      try {
-        const affiliateDoc = await getDocument<Record<string, unknown>>(
-          "_users",
-          affiliateDocumentId,
-        );
-        if (affiliateDoc?.allow_affiliate === true) {
-          affiliateAllowed = true;
-        } else {
-          affiliateFriendCode = undefined;
-        }
-      } catch (error) {
-        console.warn(
-          `Failed to verify affiliate code "${affiliateFriendCode}":`,
-          error,
-        );
-        affiliateFriendCode = undefined;
-      }
+    const existingUser = existingDocs?.rows?.[0]?.value;
+    if (!existingUser) {
+      throw createError({ statusCode: 404, statusMessage: "Invalid login" });
     }
 
-    let userDoc = {};
-    let newCookie = "";
-    // new user
-    if (existingDocs.rows.length === 0) {
-      // create _users document with random id and body.email
-      const userName = config.dbLoginPrefix + randomId(8);
-      const userPayload: Record<string, unknown> = {
-        email: body.email,
-        funnel: resp.funnel,
-        allow_affiliate: true,
-        created_date: new Date().toISOString(),
-      };
-
-      if (affiliateAllowed && affiliateFriendCode) {
-        userPayload.referred_by = affiliateFriendCode;
-      }
-
-      const userResult = await createUser(userName, randomId(), userPayload);
-      if (userResult.ok) {
-        userDoc = await getDocument("_users", "org.couchdb.user:" + userName);
-      }
-    } else {
-      // existing user
-      userDoc = existingDocs.rows[0].value;
-    }
-    newCookie = generateAuthSessionCookie(
+    const userDoc = existingUser;
+    const newCookie = generateAuthSessionCookie(
       userDoc.name,
       runtimeConfig.couchdbCookieSecret,
       userDoc.salt,

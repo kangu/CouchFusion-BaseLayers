@@ -416,7 +416,7 @@ const loadUserDocument = async (
 /**
  * Resolves or creates the account that receives a paid Career Hub guest order.
  */
-const resolveGuestUserDocument = async (email: string): Promise<CouchDBDocument> => {
+const resolveGuestUserDocument = async (email: string, product: string): Promise<CouchDBDocument> => {
   const normalizedEmail = email.trim().toLowerCase();
   const config = useRuntimeConfig();
   const existingUsers = await getView("_users", "auth", "has_account_case_insensitive", {
@@ -430,7 +430,7 @@ const resolveGuestUserDocument = async (email: string): Promise<CouchDBDocument>
   const userName = `${config.dbLoginPrefix}${randomBytes(8).toString("hex")}`;
   const created = await createUser(userName, randomBytes(24).toString("hex"), {
     email: normalizedEmail,
-    funnel: "pow_lab_lite",
+    funnel: product,
     allow_affiliate: true,
     created_date: new Date().toISOString(),
   });
@@ -452,16 +452,19 @@ const queueGuestLoginNotification = async ({
   ordersDatabase,
   invoiceDoc,
   userEmail,
+  orderDoc,
 }: {
   ordersDatabase: string;
   invoiceDoc: CouchDBDocument;
   userEmail: string;
+  orderDoc: CouchDBDocument;
 }): Promise<CouchDBDocument> => {
   if (wasNotificationQueued(invoiceDoc, "login")) {
     return invoiceDoc;
   }
 
-  const token = await createLoginToken({ email: userEmail, funnel: "pow_lab_lite" });
+  const funnel = resolveProduct(orderDoc) === "pow_lab" ? "pow_lab" : "pow_lab_lite";
+  const token = await createLoginToken({ email: userEmail, funnel });
   const siteUrl = String(useRuntimeConfig().public?.siteUrl || process.env.NUXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
   if (!siteUrl) {
     throw new Error("Public site URL is required to queue a magic login link.");
@@ -550,19 +553,19 @@ export const applyInvoicePaidFulfillment = async (
   const guestEmail = typeof options.orderDoc?.guestEmail === "string"
     ? options.orderDoc.guestEmail.trim().toLowerCase()
     : "";
-  const isCareerHubGuest = options.orderDoc?.content?.checkoutType === "career_hub_guest";
-  const userDoc = isCareerHubGuest
-    ? await resolveGuestUserDocument(guestEmail)
+  const isGuestCheckout = ["career_hub_guest", "pow_lab_guest"].includes(String(options.orderDoc?.content?.checkoutType));
+  const userDoc = isGuestCheckout
+    ? await resolveGuestUserDocument(guestEmail, product)
     : await loadUserDocument(options.invoiceDoc, options.orderDoc);
   const userName = String(userDoc.name || "");
-  let orderDoc = isCareerHubGuest
+  let orderDoc = isGuestCheckout
     ? { ...options.orderDoc, userName, status: "active" }
     : options.orderDoc;
-  let invoiceDoc = isCareerHubGuest
+  let invoiceDoc = isGuestCheckout
     ? { ...options.invoiceDoc, userName, email: userDoc.email }
     : options.invoiceDoc;
 
-  if (isCareerHubGuest) {
+  if (isGuestCheckout) {
     const invoiceResult = await putDocument(options.ordersDatabase, invoiceDoc);
     invoiceDoc = {
       ...invoiceDoc,
@@ -593,7 +596,7 @@ export const applyInvoicePaidFulfillment = async (
   orderDoc = {
     ...orderDoc,
     status: "active",
-    ...(isCareerHubGuest
+    ...(isGuestCheckout
       ? {
           content: {
             ...(orderDoc.content || {}),
@@ -618,11 +621,12 @@ export const applyInvoicePaidFulfillment = async (
     product,
     validUntil,
   });
-  const invoiceWithLoginNotification = isCareerHubGuest
+  const invoiceWithLoginNotification = isGuestCheckout
     ? await queueGuestLoginNotification({
       ordersDatabase: options.ordersDatabase,
       invoiceDoc: invoiceWithNotifications,
       userEmail: String(userDoc.email || guestEmail),
+      orderDoc,
     })
     : invoiceWithNotifications;
   const fulfilledInvoiceDoc = {

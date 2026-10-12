@@ -23,6 +23,12 @@ const activeTooltip = ref<{
   top: number;
 } | null>(null);
 
+const route = useRoute();
+
+/** True when the current path sits under one of the item's folded routes. */
+const isFoldedActive = (item: { activeRoutes?: string[] }) =>
+  Boolean(item.activeRoutes?.some((path) => route.path === path || route.path.startsWith(`${path}/`)));
+
 const handleNavigate = () => {
   emit("navigate");
 };
@@ -52,6 +58,7 @@ const hideTooltip = () => {
       class="aw-nav-section mb-8"
     >
       <h3
+        v-if="section.title"
         class="aw-nav-section-title px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider"
         :class="[
           isMobile ? 'mb-4' : 'mb-3',
@@ -83,6 +90,7 @@ const hideTooltip = () => {
               :to="item.route"
               @click="handleNavigate"
               class="aw-nav-link aw-nav-link-mobile group flex items-center px-3 py-3 text-base font-medium rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100 transition-colors min-h-[44px]"
+              :class="{ 'aw-nav-link-active': isFoldedActive(item) }"
               active-class="aw-nav-link-active bg-orange-50 text-orange-600 border-r-2 border-orange-600"
             >
               <Icon
@@ -96,7 +104,7 @@ const hideTooltip = () => {
             v-else
             :to="item.route"
             class="aw-nav-link aw-nav-link-desktop group relative flex items-center text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-gray-50 hover:text-gray-900"
-            :class="isCollapsed ? 'aw-nav-link-collapsed justify-center rounded-2xl px-0 py-3' : 'rounded-md px-2 py-2'"
+            :class="[isCollapsed ? 'aw-nav-link-collapsed justify-center rounded-2xl px-0 py-3' : 'rounded-md px-2 py-2', { 'aw-nav-link-active': isFoldedActive(item) }]"
             :aria-label="isCollapsed ? item.label : undefined"
             active-class="aw-nav-link-active bg-gray-100 text-gray-900"
             @mouseenter="showTooltip(item, $event)"

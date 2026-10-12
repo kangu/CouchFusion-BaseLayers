@@ -25,6 +25,7 @@ Consuming apps (extend this layer in `nuxt.config.ts`):
 - Composable (auto-imported): `useSidebarNavigation(options?)` → `{ sections, mobileMenuOpen, toggleMobileMenu, closeMobileMenu }`.
 - Types: `SidebarNavigationItem`, `SidebarNavigationSection`, `SidebarNavigationOptions` (exported from `useSidebarNavigation.ts`).
 - App config keys (read by the composable): `appConfig.adminWorkspace.sections`, `appConfig.adminWorkspace.iconOverrides`, `appConfig.adminWorkspace.themeClass`, `appConfig.adminWorkspace.brandName`, `appConfig.adminWorkspace.siteName`, `appConfig.adminWorkspace.footerText`. Legacy fallback: `appConfig.uiNavigation.sections`.
+- Theme: `appConfig.adminWorkspace.theme` (`"ledger" | "classic"`). Ledger is the default unless the app sets a `themeClass`. Styles live in `app/assets/css/ledger.css`, scoped under `.aw-shell.aw-theme-ledger`; restyle other layers' admin pages there, never in the pages themselves, so apps without this shell (bitvocation) stay unchanged. See `docs/2026-10-11T00-00-00Z_ledger-admin-theme.md`.
 - Optional host-app components probed at runtime: global `SiteLogo` and `ToastNotification` Vue components.
 
 ## Conventions

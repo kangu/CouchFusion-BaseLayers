@@ -2,7 +2,10 @@ export interface SidebarNavigationItem {
     label: string;
     route: string;
     icon: string;
+    external?: boolean;
     requiresRoles?: string[];
+    requiresActiveMembership?: boolean;
+    requiresActivePowLab?: boolean;
 }
 
 export interface SidebarNavigationSection {
@@ -14,6 +17,8 @@ export interface SidebarNavigationSection {
 
 export interface SidebarNavigationOptions {
     hasRole?: (role: string) => boolean;
+    hasActiveMembership?: () => boolean;
+    hasActivePowLab?: () => boolean;
     navItems?: SidebarNavigationSection[]
 }
 
@@ -24,6 +29,8 @@ export interface SidebarNavigationOptions {
 export const useSidebarNavigation = (options: SidebarNavigationOptions = {}) => {
     const appConfig = useAppConfig();
     const hasRole = options.hasRole ?? (() => false);
+    const hasActiveMembership = options.hasActiveMembership ?? (() => false);
+    const hasActivePowLab = options.hasActivePowLab ?? (() => false);
     const navItems = options.navItems ?? [];
     const mobileMenuOpen = ref(false)
 
@@ -34,7 +41,7 @@ export const useSidebarNavigation = (options: SidebarNavigationOptions = {}) => 
         );
         const mergedSections = dedupeSections([...baseSections, ...configuredSections]);
 
-        return filterSectionsByRole(mergedSections, hasRole);
+        return filterSectionsByRole(mergedSections, hasRole, hasActiveMembership, hasActivePowLab);
     });
 
     const toggleMobileMenu = () => {
@@ -85,31 +92,33 @@ const buildBaseSections = (
             ],
         },
         {
-            id: "members",
-            title: "Members",
+            id: "career-hub",
+            title: "Career Hub",
             items: [
                 {
                     label: "Jobs Feed",
                     route: "/members/jobs",
                     icon: "mdi:magnify",
+                    requiresActiveMembership: true,
                 },
                 {
                     label: "Community Offers",
                     route: "/members/community-offerings",
                     icon: "mdi:briefcase-check-outline",
+                    requiresActiveMembership: true,
+                },
+                {
+                    label: "CV Doctor",
+                    route: "/members/cv-doctor",
+                    icon: "mdi:stethoscope",
+                    requiresActiveMembership: true,
                 },
             ],
         },
         {
             id: "resources",
             title: "Resources",
-            items: [
-                {
-                    label: "CV Doctor",
-                    route: "/members/cv-doctor",
-                    icon: "mdi:stethoscope",
-                },
-            ],
+            items: [],
         },
     ];
 
@@ -204,6 +213,8 @@ const normalizeConfiguredSections = (
 const filterSectionsByRole = (
     sections: SidebarNavigationSection[],
     hasRole: (role: string) => boolean,
+    hasActiveMembership: () => boolean,
+    hasActivePowLab: () => boolean,
 ): SidebarNavigationSection[] => {
     return sections
         .map((section) => {
@@ -215,6 +226,12 @@ const filterSectionsByRole = (
             }
 
             const filteredItems = section.items.filter((item) => {
+                if (item.requiresActivePowLab && !hasActivePowLab()) {
+                    return false;
+                }
+                if (item.requiresActiveMembership && !hasActiveMembership()) {
+                    return false;
+                }
                 if (!item.requiresRoles?.length) {
                     return true;
                 }
