@@ -287,6 +287,8 @@ const queueMembershipNotifications = async ({
       templateName: notificationConfig.adminTemplateName,
       to: adminEmail,
       payload: {
+        // The queue handler copies this field to the outgoing email's Reply-To.
+        replyTo: userEmail,
         user_email: userEmail,
         amount: orderDoc?.content?.sats,
         referrer: resolveNotificationText(orderDoc?.content?.referralSource),
@@ -511,7 +513,18 @@ export const applyInvoiceCreatedFulfillment = async (
     [config.orderIdField]: String(options.orderDoc._id || options.invoiceDoc.orderId || ""),
   };
 
-  if (config.createdStatus && config.statusField) {
+  // A renewal invoice must not revoke access already paid for by this member.
+  const currentExpiry = config.validUntilField
+    ? Date.parse(String(userDoc[config.validUntilField] || ""))
+    : NaN;
+  const hasUnexpiredMembership = Boolean(
+    config.statusField &&
+    userDoc[config.statusField] === "active" &&
+    Number.isFinite(currentExpiry) &&
+    currentExpiry > Date.now(),
+  );
+
+  if (config.createdStatus && config.statusField && !hasUnexpiredMembership) {
     updatedUserDoc[config.statusField] = config.createdStatus;
   }
 

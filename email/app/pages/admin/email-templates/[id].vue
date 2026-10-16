@@ -50,6 +50,7 @@ interface EditableMjmlTextEntry {
   placeholder: string
   originalText: string
   value: string
+  format: 'single' | 'multiline' | 'bullets'
   hrefPlaceholder: string | null
   hrefOriginal: string | null
   hrefValue: string
@@ -216,6 +217,9 @@ function sanitizeEditableMjmlEntries (value: unknown): EditableMjmlTextEntry[] {
       placeholder,
       originalText,
       value: entryValue,
+      format: ['multiline', 'bullets'].includes((candidate as any).format)
+        ? (candidate as any).format
+        : (entryValue.includes('\n') ? 'multiline' : 'single'),
       hrefPlaceholder,
       hrefOriginal,
       hrefValue,
@@ -228,6 +232,18 @@ function sanitizeEditableMjmlEntries (value: unknown): EditableMjmlTextEntry[] {
   return entries
 }
 
+/** Renders multiline body copy as email-compatible breaks or a semantic bullet list. */
+const renderEditableText = (entry: EditableMjmlTextEntry): string => {
+  if (entry.format === 'single' || entry.hrefPlaceholder || entry.priorityTag) return entry.value
+  const escapeText = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const lines = entry.value.replace(/\r\n?/g, '\n').split('\n')
+  if (entry.format === 'bullets') {
+    const items = lines.map(line => line.trim().replace(/^[•·*-]\s*/, '')).filter(Boolean)
+    return `<ul style="margin:0;padding-left:20px;">${items.map(line => `<li>${escapeText(line)}</li>`).join('')}</ul>`
+  }
+  return lines.map(escapeText).join('<br />')
+}
+
 function renderMjmlFromEntries (baseMjml: string, entries: EditableMjmlTextEntry[]): string {
   if (!baseMjml || entries.length === 0) {
     return baseMjml
@@ -236,7 +252,7 @@ function renderMjmlFromEntries (baseMjml: string, entries: EditableMjmlTextEntry
   let nextMjml = baseMjml
   for (const entry of entries) {
     const token = `[${entry.placeholder}]`
-    nextMjml = nextMjml.split(token).join(entry.value)
+    nextMjml = nextMjml.split(token).join(renderEditableText(entry))
 
     if (entry.hrefPlaceholder) {
       const hrefToken = `[${entry.hrefPlaceholder}]`
@@ -572,6 +588,13 @@ const saveTemplate = async () => {
   isSaving.value = true
 
   try {
+    // Flush pending text edits so the persisted HTML matches the saved textarea values.
+    if (renderDetectedInputsDebounceTimer) {
+      clearTimeout(renderDetectedInputsDebounceTimer)
+      renderDetectedInputsDebounceTimer = null
+      renderMjmlFromDetectedInputs()
+      await compileMjml(editorState.mjml)
+    }
     const response = await $fetch<{ success: boolean; template: EmailTemplateDocument }>(
       `/api/email-templates/${encodeURIComponent(editorState._id)}`,
       {
@@ -698,6 +721,7 @@ const buildEditableEntries = (placeholders: string[], texts: string[]): Editable
       placeholder,
       originalText,
       value: originalText,
+      format: 'single',
       hrefPlaceholder: null,
       hrefOriginal: null,
       hrefValue: '',
@@ -812,7 +836,11 @@ watch(
       return
     }
 
-    // Schedule auto-detect when MJML changes
+    // Editing a detected value must not re-extract its generated HTML and discard its format.
+    if (transformedMjmlBase.value && newValue === renderMjmlFromEntries(transformedMjmlBase.value, editableMjmlTextEntries.value)) {
+      return
+    }
+    // Re-detect only when the source itself is edited.
     scheduleAutoDetect()
   }
 )
@@ -1009,7 +1037,28 @@ onBeforeUnmount(() => {
                 <label class="block text-[11px] font-mono text-gray-500">
                   [{{ entry.placeholder }}]
                 </label>
+                <select
+                  v-if="!entry.hrefPlaceholder && !entry.priorityTag"
+                  v-model="entry.format"
+                  :aria-label="`Text format for ${entry.placeholder}`"
+                  class="mt-2 block rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:border-blue-500 focus:ring-blue-500"
+                  @change="scheduleRenderMjmlFromDetectedInputs"
+                >
+                  <option value="single">Single line</option>
+                  <option value="multiline">Multiline</option>
+                  <option value="bullets">Bullet list (one item per line)</option>
+                </select>
+                <textarea
+                  v-if="entry.format !== 'single' && !entry.hrefPlaceholder && !entry.priorityTag"
+                  v-model="entry.value"
+                  rows="4"
+                  :aria-label="`Edit ${entry.placeholder}`"
+                  class="mt-1 block w-full resize-y rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  :placeholder="entry.originalText"
+                  @input="scheduleRenderMjmlFromDetectedInputs"
+                />
                 <input
+                  v-else
                   v-model="entry.value"
                   type="text"
                   class="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

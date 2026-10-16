@@ -5,9 +5,12 @@ import {
   getDocument,
   putDocument,
   getView,
-  getSession,
   generateAuthSessionCookie,
 } from "#database/utils/couchdb";
+import { sanitizeUserDoc } from "../utils/sanitizeUserDoc";
+
+// Issued cookies are stamped this far ahead, extending CouchDB's own timeout (~69 days).
+const SESSION_STAMP_OFFSET_SECONDS = 6000000;
 
 // Helper function so not to import anything external
 function isValidEmail(email) {
@@ -40,7 +43,7 @@ export default defineEventHandler(async (event) => {
   //
   // Validation
   //
-  if (!body || !isValidEmail(body.email)) {
+  if (!body || typeof body.email !== "string" || !isValidEmail(body.email.trim())) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Invalid input: "email" must be an email address',
@@ -53,76 +56,66 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // Token documents are created with a normalized email and an uppercase code.
+  const email = body.email.trim().toLowerCase();
+  const token = body.token.trim().toUpperCase();
+
   // get couch
-  const config = useRuntimeConfig();
-  const dbLoginPrefix = config.dbLoginPrefix;
+  const dbLoginPrefix = runtimeConfig.dbLoginPrefix;
   const DB = `${dbLoginPrefix}-logins`;
 
   try {
     // Get the login token document using authenticated CouchDB request
-    const tokenDocId = `${body.email}--${body.token}`;
+    const tokenDocId = `${email}--${token}`;
     const resp = await getDocument(DB, tokenDocId);
 
     // if resp is null, document doesn't exist (invalid token)
-    if (!resp) {
+    // if it exists, check expiration and usage
+    if (!resp || !isNotExpired(resp)) {
       throw createError({
         statusCode: 404,
         statusMessage: "Invalid login",
       });
     }
 
-    // if resp is valid, it means we get the document
-    // check expiration and usage
-    if (!isNotExpired(resp)) {
-      throw createError({
-        statusCode: 404,
-        statusMessage: "Invalid login",
-      });
-    }
-
-    // check to see if email is new or existing
-    // use design document
-    // generate random id for new users
     const existingDocs = await getView(
       "_users",
       "auth",
       "has_account_case_insensitive",
       {
-        key: body.email.toLowerCase(),
+        key: email,
       },
     );
-    const existingUser = existingDocs?.rows?.[0]?.value;
-    if (!existingUser) {
+    const userDoc = existingDocs?.rows?.[0]?.value;
+    if (!userDoc) {
       throw createError({ statusCode: 404, statusMessage: "Invalid login" });
     }
 
-    const userDoc = existingUser;
+    // Consume the token before issuing a session. putDocument sends the fetched
+    // _rev, so a concurrent second use fails with a conflict and is rejected below.
+    await putDocument(DB, { ...resp, used: true });
+
     const newCookie = generateAuthSessionCookie(
       userDoc.name,
       runtimeConfig.couchdbCookieSecret,
       userDoc.salt,
-      6000000,
+      SESSION_STAMP_OFFSET_SECONDS,
     );
-    setHeader(event, "Set-Cookie", newCookie);
-    const sessionDoc = await getSession({ authSessionCookie: newCookie });
-    // console.log('Session doc', sessionDoc)
+    setHeader(event, "Set-Cookie", `${newCookie}; SameSite=Lax`);
 
-    // mark token as used
-    resp.used = true;
-    const tokenUpdateResp = await putDocument(DB, resp);
-    // console.log("Token update", tokenUpdateResp);
-
+    // Only non-secret data goes back to the browser: never password-hash fields
+    // or the token document. `resp.funnel` and `doc` keep the existing response shape.
     return {
-      resp,
-      doc: userDoc,
-      // cookie: newCookie
+      success: true,
+      resp: { funnel: resp.funnel },
+      doc: sanitizeUserDoc(userDoc),
     };
   } catch (e) {
     // Re-throw if it's already a createError
     if (e.statusCode) {
       throw e;
     }
-    // Otherwise, treat as invalid login
+    // Otherwise (including a token-consumption conflict), treat as invalid login
     throw createError({
       statusCode: 404,
       statusMessage: "Invalid login",

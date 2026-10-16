@@ -86,6 +86,7 @@ describe("embedded order fulfillment", () => {
       templateName: "admin_order_lite",
       to: "orders@example.com",
       payload: expect.objectContaining({
+        replyTo: "member@example.com",
         referrer: "Not provided",
         telegram: "Not provided",
         timestamp: "2026-08-17T10:00:00.000Z",
@@ -475,6 +476,27 @@ describe("embedded order fulfillment", () => {
     }));
   });
 
+  it.each(["pow_lab", "pow_lab_lite"])("preserves active access for an unpaid %s renewal", async (product) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-16T10:00:00Z"));
+    const { applyInvoiceCreatedFulfillment } = await import("../server/utils/order-fulfillment");
+    getDocumentMock.mockResolvedValue({
+      _id: "org.couchdb.user:alice", name: "alice",
+      [`${product}_status`]: "active",
+      [`${product}_valid_until`]: "2026-11-01T00:00:00Z",
+    });
+    await applyInvoiceCreatedFulfillment({
+      ordersDatabase: "bv--orders",
+      invoiceDoc: { _id: "invoice-renewal", userName: "alice", invoiceData: { id: "renewal", paymentRequest: "lnbc-renewal" } },
+      orderDoc: { _id: "purchase-renewal", userName: "alice", content: { product } },
+    });
+    expect(putDocumentMock).toHaveBeenCalledWith("_users", expect.objectContaining({
+      [`${product}_status`]: "active",
+      [`${product}_valid_until`]: "2026-11-01T00:00:00Z",
+      [`${product}_invoice`]: "lnbc-renewal",
+    }));
+  });
+
   it("stores pending conference submissions on the user document when invoices are created", async () => {
     const { applyInvoiceCreatedFulfillment } = await import("../server/utils/order-fulfillment");
     getDocumentMock.mockResolvedValue({
@@ -626,6 +648,7 @@ describe("embedded order fulfillment", () => {
       templateName: "admin_order",
       to: "orders@example.com",
       payload: {
+        replyTo: "alice@example.com",
         user_email: "alice@example.com",
         amount: 21000,
         referrer: "telegram",
@@ -747,6 +770,7 @@ describe("embedded order fulfillment", () => {
       templateName: "admin_order_lite",
       to: "orders@example.com",
       payload: {
+        replyTo: "alice@example.com",
         user_email: "alice@example.com",
         amount: 10000,
         referrer: "website",

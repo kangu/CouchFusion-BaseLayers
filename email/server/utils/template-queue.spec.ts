@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("queueTemplateEmail", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal("useRuntimeConfig", () => ({
@@ -23,6 +27,7 @@ describe("queueTemplateEmail", () => {
       to: "client@example.com",
       payload: {
         clientName: "Acme SRL",
+        replyTo: "customer@example.com",
       },
     });
 
@@ -44,6 +49,7 @@ describe("queueTemplateEmail", () => {
     expect(body.to).toBe("client@example.com");
     expect(body.email).toBe("client@example.com");
     expect(body.clientName).toBe("Acme SRL");
+    expect(body.replyTo).toBe("customer@example.com");
   });
 
   it("returns failed result when queue endpoint returns non-ok", async () => {
