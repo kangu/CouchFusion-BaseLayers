@@ -3,6 +3,8 @@ import { createUser, getDocument, getView, putDocument, type CouchDBDocument } f
 import { createLoginToken } from "#auth/server/utils/login-token";
 import { queueTemplateEmail } from "#email/server/utils/template-queue";
 
+import { paidSubscriptionSats, subscriptionProducts } from "../../utils/subscription-renewal";
+
 interface FulfillmentProductConfig {
   invoiceField: string;
   invoiceIdField: string;
@@ -594,6 +596,18 @@ export const applyInvoicePaidFulfillment = async (
 
   if (config.statusField && config.paidStatus) {
     updatedUserDoc[config.statusField] = config.paidStatus;
+  }
+
+  // Lock only a successfully paid subscription, independently for each product.
+  if (subscriptionProducts.some((key) => key === product)) {
+    const paidSats = paidSubscriptionSats(invoiceDoc, orderDoc);
+    const paidAt = resolvePaymentBaseDate(invoiceDoc).toISOString();
+    const priorPaidAt = Date.parse(String(userDoc[`${product}_renewal_price_paid_at`] || ""));
+    if (paidSats !== null && (!Number.isFinite(priorPaidAt) || Date.parse(paidAt) >= priorPaidAt)) {
+      updatedUserDoc[`${product}_renewal_price`] = paidSats;
+      updatedUserDoc[`${product}_renewal_price_paid_at`] = paidAt;
+      updatedUserDoc[`${product}_renewal_price_order_id`] = orderDoc._id;
+    }
   }
 
   const validUntil = resolvePaidSubscriptionValidUntil(

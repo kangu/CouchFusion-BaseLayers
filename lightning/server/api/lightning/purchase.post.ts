@@ -5,6 +5,7 @@ import { getDocument, getSession } from '#database/utils/couchdb'
 import { applyInvoiceCreatedFulfillment } from '../../utils/order-fulfillment'
 import { resolveLightningConfig } from '../../utils/lightning-config'
 import { toPublicPaymentInfo } from '../../../utils/public-payment'
+import { subscriptionProducts, subscriptionRenewalPrice } from '../../../utils/subscription-renewal'
 
 function extractAuthSessionCookie(cookieHeader: string | undefined): string | null {
     if (!cookieHeader) {
@@ -112,6 +113,9 @@ async function resolveProductRenewalPrice(
             return null
         }
 
+        if (subscriptionProducts.some((key) => key === productKey)) {
+            return subscriptionRenewalPrice(userDoc, productKey)
+        }
         const renewalKey = `${productKey}_renewal_price`
         return resolveRenewalPrice(userDoc[renewalKey])
     } catch (error) {
