@@ -1,4 +1,6 @@
 export interface SidebarNavigationItem {
+    id?: string;
+    newTab?: boolean;
     label: string;
     route: string;
     icon: string;

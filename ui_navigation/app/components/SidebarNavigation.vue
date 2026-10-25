@@ -45,7 +45,7 @@ const handleNavigate = () => {
       <ul :class="isMobile ? 'space-y-2' : 'space-y-1'">
         <li
           v-for="(item, itemIndex) in section.items"
-          :key="item.route"
+          :key="item.id || item.route"
         >
           <Transition
             v-if="isMobile"
@@ -60,7 +60,7 @@ const handleNavigate = () => {
             <a
               v-if="item.external"
               :href="item.route"
-              target="_blank"
+              :target="item.newTab === false ? undefined : '_blank'"
               rel="noopener noreferrer"
               @click="handleNavigate"
               class="group flex items-center px-3 py-3 text-base font-medium rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100 transition-colors min-h-[44px]"
@@ -88,7 +88,7 @@ const handleNavigate = () => {
           <a
             v-else-if="item.external"
             :href="item.route"
-            target="_blank"
+            :target="item.newTab === false ? undefined : '_blank'"
             rel="noopener noreferrer"
             class="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-50 hover:text-gray-900"
           >
