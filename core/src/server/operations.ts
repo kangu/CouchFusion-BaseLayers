@@ -1,3 +1,4 @@
+import { validateProvisioningPolicy } from './provisioning-schema'
 /** Explicit-client CouchDB operations. No ambient credentials or authentication policy. */
 export interface OperationClient {
   request(path: string, options?: RequestInit): Promise<Response>
@@ -295,7 +296,8 @@ export async function createDatabase(
   db: string,
 ): Promise<boolean> {
   const response = await client.request(dbPath(db), { method: 'PUT' })
-  if (response.status !== 412) await checked(response)
+  if (response.status === 412) return false
+  await checked(response)
   return true
 }
 export const getDatabaseSecurity = (
@@ -311,6 +313,35 @@ export async function setDatabaseSecurity(
     await client.request(`${dbPath(db)}/_security`, body('PUT', security)),
   )
 }
+// Only response metadata is excluded; all application design fields remain significant.
+const designResponseMetadata = new Set([
+  '_rev',
+  '_revisions',
+  '_revs_info',
+  '_conflicts',
+  '_deleted_conflicts',
+  '_local_seq',
+])
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, entry) =>
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? Object.fromEntries(
+          Object.keys(entry)
+            .sort()
+            .map((key) => [key, entry[key]]),
+        )
+      : entry,
+  )
+}
+function designContent(doc: CouchDBDocument, id: string): string {
+  return canonicalJson(
+    Object.fromEntries(
+      Object.entries({ ...doc, _id: id }).filter(
+        ([key]) => !designResponseMetadata.has(key),
+      ),
+    ),
+  )
+}
 export async function createOrUpdateDesignDocument(
   client: OperationClient,
   db: string,
@@ -318,21 +349,24 @@ export async function createOrUpdateDesignDocument(
 ): Promise<CouchDBResponse> {
   const id = `_design/${doc._id.replace(/^_design\//, '')}`
   const existing = await getDocument(client, db, id)
+  if (existing && designContent(existing, id) === designContent(doc, id))
+    return { ok: true, id, rev: existing._rev }
   return putDocument(client, db, {
     ...doc,
     _id: id,
     ...(existing?._rev ? { _rev: existing._rev } : {}),
   })
 }
-/** Explicit provisioning only; callers must supply a deliberate security policy. */
+/** Explicit provisioning: security applies only to a database created by this call. */
 export async function initializeDatabase(
   client: OperationClient,
   db: string,
   security: CouchDBSecurityObject,
   designs: CouchDBDesignDocument[] = [],
 ): Promise<void> {
-  await createDatabase(client, db)
-  await setDatabaseSecurity(client, db, security)
+  validateProvisioningPolicy({ database: db, security, designs })
+  const created = await createDatabase(client, db)
+  if (created) await setDatabaseSecurity(client, db, security)
   for (const design of designs)
     await createOrUpdateDesignDocument(client, db, design)
 }

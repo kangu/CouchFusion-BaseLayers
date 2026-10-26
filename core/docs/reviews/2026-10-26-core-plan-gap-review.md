@@ -9,6 +9,10 @@ Core is a working first implementation of database-only composition and cf-cloud
 
 The current green tests establish less than complete legacy parity. This review reran the 53 offline tests and backend/module TypeScript check successfully on supported Node 24.22.1. It performed source comparison and offline mocked probes only: no CouchDB writes, external messages, package installation, production-code changes or application migrations.
 
+## Follow-up status: provisioning/configuration safety
+
+The safety follow-up addresses existing-security preservation, unchanged-design idempotence, structural provisioning validation before allocation, effective/default configuration validation and detached deep-frozen runtime policy. Required passwordless setting values are now validated, but feature-aware remote preflight and selected `_users` auth-design provisioning remain open. See `docs/implementation_results/2026-10-26-provisioning-configuration-safety.md` for verification. The findings below remain the historical review baseline, not a claim that fixed defects are still present.
+
 ## Highest-priority findings
 
 ### 1. Existing database initialization replaces security and is not idempotent

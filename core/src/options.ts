@@ -1,3 +1,8 @@
+import {
+  CoreConfigurationError,
+  isLocalPath,
+  validateSettings,
+} from './config-schema'
 import type {
   CouchDBModuleOptions,
   ResolvedOptions,
@@ -7,18 +12,43 @@ import type {
 } from './shared/types'
 export type { CouchDBModuleOptions } from './shared/types'
 export function safeRedirect(value: unknown, fallback = '/') {
-  return typeof value === 'string' &&
-    value.startsWith('/') &&
-    !value.startsWith('//') &&
-    !/[\\\u0000-\u001f]/.test(value)
-    ? value
-    : fallback
+  return isLocalPath(value) ? value : fallback
 }
 export function resolveOptions(
   input: CouchDBModuleOptions = {},
 ): ResolvedOptions {
+  for (const [key, value] of Object.entries({
+    auth: input.auth,
+    admin: input.admin,
+    config: input.config,
+    defaults: input.defaults,
+    'defaults.auth': input.defaults?.auth,
+    'defaults.admin': input.defaults?.admin,
+  })) {
+    if (
+      value !== undefined &&
+      (!value || typeof value !== 'object' || Array.isArray(value))
+    )
+      throw new CoreConfigurationError(`${key} must be an object`)
+  }
   const a = input.auth ?? {},
     d = input.admin ?? {}
+  for (const [key, value] of Object.entries({
+    'auth.enabled': a.enabled,
+    'auth.password': a.password,
+    'auth.email': a.email,
+    'auth.nostr': a.nostr,
+    'auth.ui': a.ui,
+    'auth.liveUsers': a.liveUsers,
+    'auth.proofOfWork': a.proofOfWork,
+    'admin.enabled': d.enabled,
+    'admin.dataSync': d.dataSync,
+    'config.enabled': input.config?.enabled,
+    'config.required': input.config?.required,
+  })) {
+    if (value !== undefined && typeof value !== 'boolean')
+      throw new CoreConfigurationError(`${key} must be a boolean`)
+  }
   const features: BuildFeatures = {
     auth: a.enabled ?? false,
     password: a.password ?? false,
@@ -58,7 +88,7 @@ export function resolveOptions(
     loginPath.startsWith('/api/')
   )
     throw new Error('[couchdb] Invalid auth.loginPath')
-  return {
+  const resolved: ResolvedOptions = {
     appSlug,
     config: {
       enabled: input.config?.enabled ?? false,
@@ -93,15 +123,26 @@ export function resolveOptions(
       },
     },
   }
+  validateSettings(
+    {
+      appSlug,
+      features,
+      auth: resolved.defaults.auth,
+      admin: resolved.defaults.admin,
+      secrets: { cookieSecret: '', senderNsec: '' },
+    },
+    false,
+  )
+  return resolved
 }
 function boolean(value: string, key: string) {
   if (value !== 'true' && value !== 'false')
-    throw new Error(`[couchdb] ${key} must be a boolean string`)
+    throw new CoreConfigurationError(`${key} must be a boolean string`)
   return value === 'true'
 }
 function integer(value: string, key: string, min: number, max: number) {
   if (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max)
-    throw new Error(`[couchdb] Invalid ${key}: expected integer ${min}..${max}`)
+    throw new CoreConfigurationError(`${key} must be an integer ${min}..${max}`)
   return Number(value)
 }
 export function resolveSettings(
@@ -111,6 +152,34 @@ export function resolveSettings(
   const auth = { ...options.defaults.auth },
     admin = { ...options.defaults.admin },
     features = { ...options.features }
+  for (const key of [
+    'auth_user_prefix',
+    'auth_token_database',
+    'auth_challenge_database',
+    'auth_heading',
+    'admin_brand_name',
+    'admin_site_name',
+    'admin_footer_text',
+    'auth_redirect_path',
+    'auth_token_ttl_seconds',
+    'auth_session_max_age_seconds',
+    'auth_pow_bits',
+    'auth_pow_ttl_seconds',
+    'auth_password_enabled',
+    'auth_email_enabled',
+    'auth_nostr_enabled',
+    'auth_live_users_enabled',
+    'admin_enabled',
+    'admin_datasync_enabled',
+    'admin_roles',
+    'admin_theme',
+    'nostr_relays',
+    'nostr_dm_mode',
+    'auth_cookie_secret',
+    'nostr_sender_nsec',
+  ])
+    if (remote[key] !== undefined && typeof remote[key] !== 'string')
+      throw new CoreConfigurationError(`${key} must be a string`)
   const strings: Record<string, [object, string]> = {
     auth_user_prefix: [auth, 'userPrefix'],
     auth_token_database: [auth, 'tokenDatabase'],
@@ -122,11 +191,8 @@ export function resolveSettings(
   }
   for (const [key, [target, field]] of Object.entries(strings))
     if (remote[key] !== undefined) (target as any)[field] = remote[key]
-  if (remote.auth_redirect_path !== undefined) {
-    if (safeRedirect(remote.auth_redirect_path, '') === '')
-      throw new Error('[couchdb] Invalid auth_redirect_path')
+  if (remote.auth_redirect_path !== undefined)
     auth.redirectPath = remote.auth_redirect_path
-  }
   const numbers: Record<string, [keyof typeof auth, number, number]> = {
     auth_token_ttl_seconds: ['tokenTtlSeconds', 60, 3600],
     auth_session_max_age_seconds: ['sessionMaxAgeSeconds', 60, 86400],
@@ -148,33 +214,25 @@ export function resolveSettings(
     if (remote[key] !== undefined)
       features[field] = boolean(remote[key], key) && features[field]
   features.dataSync = features.admin && features.dataSync
+  const hasLoginMethod = features.password || features.email || features.nostr
+  features.ui = features.ui && hasLoginMethod
+  features.proofOfWork =
+    features.proofOfWork && (features.email || features.nostr)
   if (remote.admin_roles !== undefined)
     admin.roles = remote.admin_roles
       .split(',')
       .map((r) => r.trim())
       .filter(Boolean)
-  if (features.admin && !admin.roles.length)
-    throw new Error('[couchdb] admin roles cannot be empty')
-  if (remote.admin_theme !== undefined) {
-    if (!['ledger', 'classic'].includes(remote.admin_theme))
-      throw new Error('[couchdb] Invalid admin_theme')
+  if (remote.admin_theme !== undefined)
     admin.theme = remote.admin_theme as 'ledger' | 'classic'
-  }
   if (remote.nostr_relays !== undefined)
     auth.nostrRelays = remote.nostr_relays
       .split(',')
       .map((r) => r.trim())
       .filter(Boolean)
-  if (auth.nostrRelays.some((r) => !r.startsWith('wss://')))
-    throw new Error('[couchdb] nostr_relays must use wss')
-  if (remote.nostr_dm_mode !== undefined) {
-    if (!['nip17', 'nip04', 'dual'].includes(remote.nostr_dm_mode))
-      throw new Error('[couchdb] Invalid nostr_dm_mode')
+  if (remote.nostr_dm_mode !== undefined)
     auth.nostrDmMode = remote.nostr_dm_mode as typeof auth.nostrDmMode
-  }
-  if (safeRedirect(auth.redirectPath, '') === '')
-    throw new Error('[couchdb] Invalid redirectPath')
-  return {
+  const settings: ResolvedCouchDBSettings = {
     appSlug: options.appSlug,
     features,
     auth,
@@ -184,17 +242,26 @@ export function resolveSettings(
       senderNsec: remote.nostr_sender_nsec ?? '',
     },
   }
+  validateSettings(settings)
+  return settings
 }
 export function publicSettings(
   settings: ResolvedCouchDBSettings,
 ): PublicCouchDBSettings {
-  return {
+  return structuredClone({
     features: { ...settings.features },
     auth: {
       loginPath: settings.auth.loginPath,
       redirectPath: settings.auth.redirectPath,
       heading: settings.auth.heading,
     },
-    admin: { ...settings.admin },
-  }
+    admin: {
+      roles: settings.admin.roles,
+      theme: settings.admin.theme,
+      brandName: settings.admin.brandName,
+      siteName: settings.admin.siteName,
+      footerText: settings.admin.footerText,
+      sections: settings.admin.sections,
+    },
+  })
 }

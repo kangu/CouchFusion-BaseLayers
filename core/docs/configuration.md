@@ -25,3 +25,13 @@ Only feature booleans, login presentation, admin presentation/navigation and the
 `couchdb.admin.sections` contains typed `{id,title,requiresRoles?,items:[{label,route,icon?,requiresRoles?,activeRoutes?}]}` sections. Other modules may contribute through `couchdb:admin:sections`. Route visibility is a convenience; guard each server endpoint independently with `requireUser`, `requireRoles`, or `requireAdmin` from `#core/server/auth`.
 
 The current Nostr implementation verifies NIP-07 signed challenges against existing linked users. Parsed relay/DM/sender fields are reserved compatibility inputs and are not an implemented relay or DM delivery service. Email uses a host-provided server adapter; no email-layer dependency or implicit external messaging is installed.
+
+## Validation and snapshot safety
+
+Setup validates local defaults even when remote configuration is optional. The same schema checks effective settings after CouchDB precedence: numeric ranges, enums, string types, role lists, local redirect/navigation paths, relay URL structure, and application database names. JavaScript boolean strings such as `auth.enabled: 'false'` and malformed option groups are rejected rather than treated as truthy or silently disabled.
+
+Enabled email requires `auth_token_database` and `auth_cookie_secret`; enabled Nostr requires `auth_challenge_database` and `auth_cookie_secret`; enabled proof of work requires `auth_challenge_database`. Application stores cannot name system databases such as `_users`. These are readiness checks for required values and shapes, not proof that the stores/views already exist or that the secret matches native policy. Feature-aware remote preflight and selected auth-design provisioning remain separate work. Password-only configurations do not require these passwordless settings. If remote policy disables all login methods, the installed login UI and method-dependent proof-of-work capability become effectively disabled as well.
+
+An optional missing/unreachable section may use validated defaults. Malformed present JSON, invalid sections and invalid known values fail instead of being mistaken for an outage. Configuration errors name fields without echoing secret values.
+
+Loaded settings are cloned and recursively frozen, including feature flags, role arrays, nested navigation and secrets. The freeze never affects the caller's input defaults. Public settings are independent allowlisted copies; mutating a response cannot modify worker policy. Restart workers to apply a new snapshot.
