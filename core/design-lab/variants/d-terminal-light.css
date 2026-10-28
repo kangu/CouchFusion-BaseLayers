@@ -1,0 +1,30 @@
+/* Variant D · Terminal light. Loaded after c-terminal.css: same shell (ruled T-frame), same move (every selection is
+   a 1px accent line as wide as its label), same mono figures and the same overview, on light tokens.
+   The accent darkens from #f7931a to #d27800 so a 1px line still reaches 3:1 on white; the logo keeps the brand orange.
+   Cards are white on a neutral ground, separated by a 1px edge and no shadow (shadows belong to the dark style only). */
+:root {
+  --ground: #f6f6f7; --surface: #ffffff; --raised: #f1f1f3; --active: #ececef;
+  --border: #e4e4e8; --rule: #efeff2; --control: #cfd0d5;
+  --text: #111113; --muted: #5d5f66; --faint: #686a70;
+  --accent: #d27800; --focus: #d27800; --brand: #f7931a; --warn-dot: #b7791f;
+  --primary: #111113; --primary-ink: #ffffff; --primary-hover: #2a2a2e;
+  --positive: #247b50; --negative: #c4242a; --warning: #92400e;
+  --pill-positive-bg: #dcfae5; --pill-positive-ink: #04250e;
+  --pill-negative-bg: #ffedea; --pill-negative-ink: #831c1e;
+  --pill-warning-bg: #fffbeb; --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #ececef; --pill-neutral-ink: #3a3b40;
+  --chart-1: #2f6fc4; --chart-muted: #cdd0d6; --grid: #ececef; --axis-ink: #5d5f66; --ink: #111113; --chart-span: .06;
+  --gap-track: #e4e4e8; --gap-fill: #111113; --share-fill: #f0f1f4;
+  --select-line: #d27800; --switch-on: #247b50;
+  --card-shadow: none;
+  --set-panel: #ffffff; --set-border: 1px solid #e4e4e8; --input-bg: #ffffff;
+  --page-bg: #ffffff; --canvas-bg: #ececef; --login-bg: #f4f3ef;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.pill.ink { --pill-ink-bg: #111113; --pill-ink-ink: #ffffff; }
+.tframe .topbar { background: var(--ground); }
+.tframe .top-search input { background: var(--surface); }
+.nav-item { color: #4c4e55; }
+.btn { background: var(--surface); }
+.btn.primary { background: var(--primary); color: var(--primary-ink); }
+.list-frame, .shares .share { box-shadow: none; }

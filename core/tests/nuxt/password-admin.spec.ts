@@ -131,6 +131,19 @@ it('anonymous SSR redirects before rendering protected content', async () => {
   expect((await fetch(origin + '/api/couchdb/admin/users')).status).toBe(401)
   expect((await fetch(origin + '/login')).status).toBe(200)
 })
+it('renders the colour scheme on the server: workspace default, or the person\'s cookie', async () => {
+  const plain = await (await fetch(origin + '/login')).text()
+  expect(plain).toMatch(/<html[^>]*data-cf-scheme="system"/)
+  expect(plain).toContain('aria-label="Colour scheme"')
+  const dark = await (
+    await fetch(origin + '/login', { headers: { cookie: 'couchdb_color_scheme=dark' } })
+  ).text()
+  expect(dark).toMatch(/<html[^>]*data-cf-scheme="dark"/)
+  const bogus = await (
+    await fetch(origin + '/login', { headers: { cookie: 'couchdb_color_scheme=neon' } })
+  ).text()
+  expect(bogus).toMatch(/<html[^>]*data-cf-scheme="system"/)
+})
 it('rejects missing CSRF, foreign origins and wrong passwords', async () => {
   expect(
     (
@@ -177,6 +190,22 @@ it('password login produces SSR identity, protected API access and request-isola
     (await fetch(origin + '/admin', { headers: { cookie: member.cookie } }))
       .status,
   ).toBe(403)
+  // A signed-in non-admin is not bounced from the login page into a 403.
+  const memberLogin = await fetch(origin + '/login', {
+    headers: { cookie: member.cookie },
+    redirect: 'manual',
+  })
+  expect(memberLogin.status).toBe(200)
+  const memberLoginHtml = await memberLogin.text()
+  expect(memberLoginHtml).toContain('data-testid="login-no-access"')
+  expect(memberLoginHtml).toContain('data-testid="login-switch-account"')
+  expect(memberLoginHtml).not.toContain('data-testid="login-submit"')
+  const adminLogin = await fetch(origin + '/login', {
+    headers: { cookie: a.cookie },
+    redirect: 'manual',
+  })
+  expect(adminLogin.status).toBe(302)
+  expect(adminLogin.headers.get('location')).toBe('/admin')
   expect(
     (
       await fetch(origin + '/api/couchdb/admin/users', {

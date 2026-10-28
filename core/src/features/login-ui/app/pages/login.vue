@@ -12,11 +12,18 @@ import {
   solveProofOfWork,
   type ProofChallenge,
 } from '../../../auth-client/app/utils/proof-of-work'
-import { safeRedirect } from '../../../auth-client/app/utils/redirect'
+import {
+  canOpen,
+  loginDestination,
+} from '../../../auth-client/app/utils/access'
+import { useCouchDBThemeHead } from '../../../ui-theme/useCouchDBColorScheme'
+import CouchMark from '../../../ui-theme/CouchMark.vue'
+import SchemeToggle from '../../../ui-theme/SchemeToggle.vue'
 const auth = useCouchDBAuth()
 if (!auth.initialized.value) await auth.refresh()
 if (!auth.settings.value?.features.ui)
   throw createError({ statusCode: 404, statusMessage: 'Page not found' })
+useCouchDBThemeHead()
 const route = useRoute()
 const name = ref('')
 const password = ref('')
@@ -130,209 +137,140 @@ async function emailSubmit() {
     emailBusy.value = false
   }
 }
+const destination = computed(() =>
+  auth.settings.value
+    ? loginDestination(route.query.redirect, auth.settings.value)
+    : '/admin',
+)
+// Signed in, but the destination would refuse this account (for example /admin without an admin role).
+const noAccess = computed(
+  () =>
+    !!auth.user.value &&
+    !!auth.settings.value &&
+    !canOpen(destination.value, auth.settings.value, auth.user.value),
+)
 async function redirectAfterLogin() {
-  const destination = safeRedirect(
-    route.query.redirect,
-    safeRedirect(auth.settings.value?.auth.redirectPath, '/admin'),
-  )
-  await navigateTo(destination === route.path ? '/admin' : destination)
+  if (noAccess.value) return
+  await navigateTo(destination.value)
 }
 const heading = computed(() => auth.settings.value?.auth.heading || 'Sign in')
+const brandName = computed(() => auth.settings.value?.admin.brandName || 'Workspace')
+const footer = computed(() => auth.settings.value?.admin.footerText || auth.settings.value?.admin.siteName || '')
+const methodCount = computed(() => {
+  const f = auth.settings.value?.features
+  return [f?.password, f?.email, f?.nostr].filter(Boolean).length
+})
 async function submit() {
   try {
     await auth.loginWithPassword(name.value, password.value)
-    password.value = ''
-    await redirectAfterLogin()
   } catch {
+    return
+  } finally {
     password.value = ''
+  }
+  await redirectAfterLogin()
+}
+async function switchAccount() {
+  try {
+    await auth.logout()
+    name.value = ''
+    resetEmail()
+  } catch {
+    // auth.error carries the message shown in the no-access panel.
   }
 }
 </script>
 <template>
-  <main class="login-page">
-    <section class="login-panel" aria-labelledby="login-heading">
-      <p class="eyebrow">
-        {{ auth.settings.value?.admin.brandName || 'Workspace' }}
-      </p>
+  <main class="cf-ui cf-login">
+    <header class="cf-login-top">
+      <span class="cf-login-brand"><CouchMark /><b>{{ brandName }}</b></span>
+      <SchemeToggle />
+    </header>
+    <section class="cf-login-panel" aria-labelledby="login-heading">
       <h1 id="login-heading">{{ heading }}</h1>
-      <form
-        v-if="auth.settings.value?.features.password"
-        @submit.prevent="submit"
-      >
-        <label for="couchdb-name">Username</label>
-        <input
-          id="couchdb-name"
-          v-model="name"
-          name="username"
-          autocomplete="username"
-          required
-          :disabled="auth.loading.value"
-          data-testid="login-username"
-        />
-        <label for="couchdb-password">Password</label>
-        <input
-          id="couchdb-password"
-          v-model="password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          :disabled="auth.loading.value"
-          data-testid="login-password"
-        />
-        <p v-if="auth.error.value" role="alert" data-testid="login-error">
-          {{ auth.error.value }}
+      <div v-if="noAccess" class="cf-login-block" data-testid="login-no-access">
+        <p role="alert" class="cf-login-note">
+          You are signed in as
+          <strong class="cf-num" data-testid="login-no-access-name">{{ auth.user.value?.name }}</strong>, but this
+          account does not have access to this workspace.
         </p>
-        <button
-          type="submit"
-          :disabled="auth.loading.value"
-          data-testid="login-submit"
-        >
-          {{ auth.loading.value ? 'Signing in…' : 'Sign in' }}
-        </button>
-      </form>
-      <form
-        v-if="auth.settings.value?.features.email"
-        @submit.prevent="emailSubmit"
-      >
-        <label for="couchdb-email">Email address</label>
-        <input
-          id="couchdb-email"
-          v-model="email"
-          type="email"
-          name="email"
-          autocomplete="email"
-          required
-          :disabled="emailBusy || emailSent"
-        />
-        <template v-if="emailSent">
-          <p role="status">
-            If this address can sign in, a code has been sent.
-          </p>
-          <label for="couchdb-code">Sign-in code</label>
-          <input
-            id="couchdb-code"
-            v-model="code"
-            name="code"
-            autocomplete="one-time-code"
-            required
-            :disabled="emailBusy"
-          />
-        </template>
-        <p v-if="emailError" role="alert">{{ emailError }}</p>
-        <button :disabled="emailBusy" type="submit">
-          {{
-            emailBusy
-              ? 'Please wait…'
-              : emailSent
-                ? 'Verify code'
-                : 'Email a sign-in code'
-          }}
-        </button>
-        <button
-          v-if="emailSent"
-          type="button"
-          :disabled="emailBusy"
-          @click="resetEmail"
-        >
-          Use another email
-        </button>
-      </form>
-      <div v-if="auth.settings.value?.features.nostr" class="nostr-login">
+        <p v-if="auth.error.value" role="alert" class="cf-alert">{{ auth.error.value }}</p>
         <button
           type="button"
-          :disabled="nostrBusy || emailBusy || auth.loading.value"
-          data-testid="login-nostr"
-          @click="nostrSignIn"
+          class="cf-btn cf-btn-primary cf-btn-block"
+          :disabled="auth.loading.value"
+          data-testid="login-switch-account"
+          @click="switchAccount"
         >
-          {{ nostrBusy ? 'Connecting…' : 'Sign in with Nostr' }}
+          {{ auth.loading.value ? 'Signing out…' : 'Sign out and use another account' }}
         </button>
-        <p v-if="nostrError" role="alert" data-testid="login-nostr-error">
-          {{ nostrError }}
-        </p>
       </div>
-      <p v-if="verifyingBrowser" role="status">
-        Completing browser verification…
-      </p>
-      <p
-        v-if="
-          !auth.settings.value?.features.password &&
-          !auth.settings.value?.features.email &&
-          !auth.settings.value?.features.nostr
-        "
-        role="status"
-      >
-        Sign-in is unavailable.
-      </p>
+      <template v-else>
+        <p v-if="auth.settings.value?.features.password" class="cf-login-sub">Use your CouchDB username and password.</p>
+        <form v-if="auth.settings.value?.features.password" class="cf-login-block" @submit.prevent="submit">
+          <div class="cf-field">
+            <label for="couchdb-name">Username</label>
+            <input id="couchdb-name" v-model="name" class="cf-input" name="username" autocomplete="username" required :disabled="auth.loading.value" data-testid="login-username" />
+          </div>
+          <div class="cf-field">
+            <label for="couchdb-password">Password</label>
+            <input id="couchdb-password" v-model="password" class="cf-input" name="password" type="password" autocomplete="current-password" required :disabled="auth.loading.value" data-testid="login-password" />
+          </div>
+          <p v-if="auth.error.value" role="alert" class="cf-alert" data-testid="login-error">{{ auth.error.value }}</p>
+          <button type="submit" class="cf-btn cf-btn-primary cf-btn-block" :disabled="auth.loading.value" data-testid="login-submit">
+            {{ auth.loading.value ? 'Signing in…' : 'Sign in' }}
+          </button>
+        </form>
+        <p v-if="methodCount > 1 && auth.settings.value?.features.password" class="cf-login-or"><span>or</span></p>
+        <form v-if="auth.settings.value?.features.email" class="cf-login-block" @submit.prevent="emailSubmit">
+          <div class="cf-field">
+            <label for="couchdb-email">Email address</label>
+            <input id="couchdb-email" v-model="email" class="cf-input" type="email" name="email" autocomplete="email" required :disabled="emailBusy || emailSent" />
+          </div>
+          <template v-if="emailSent">
+            <p role="status" class="cf-login-note">If this address can sign in, a code has been sent.</p>
+            <div class="cf-field">
+              <label for="couchdb-code">Sign-in code</label>
+              <input id="couchdb-code" v-model="code" class="cf-input cf-num" name="code" autocomplete="one-time-code" required :disabled="emailBusy" />
+            </div>
+          </template>
+          <p v-if="emailError" role="alert" class="cf-alert">{{ emailError }}</p>
+          <button :disabled="emailBusy" type="submit" class="cf-btn cf-btn-block">
+            {{ emailBusy ? 'Please wait…' : emailSent ? 'Verify code' : 'Email me a sign-in code' }}
+          </button>
+          <button v-if="emailSent" type="button" class="cf-link" :disabled="emailBusy" @click="resetEmail">Use another email</button>
+        </form>
+        <div v-if="auth.settings.value?.features.nostr" class="cf-login-block">
+          <button type="button" class="cf-btn cf-btn-block" :disabled="nostrBusy || emailBusy || auth.loading.value" data-testid="login-nostr" @click="nostrSignIn">
+            {{ nostrBusy ? 'Connecting…' : 'Sign in with Nostr' }}
+          </button>
+          <p v-if="nostrError" role="alert" class="cf-alert" data-testid="login-nostr-error">{{ nostrError }}</p>
+        </div>
+        <p v-if="verifyingBrowser" role="status" class="cf-login-note">Completing browser verification…</p>
+        <p v-if="!methodCount" role="status" class="cf-login-note">Sign-in is unavailable.</p>
+      </template>
     </section>
+    <footer v-if="footer" class="cf-login-foot">{{ footer }}</footer>
   </main>
 </template>
+<style src="../../../ui-theme/terminal.css"></style>
 <style scoped>
-:global(body) {
-  margin: 0;
-}
-.nostr-login button {
-  width: 100%;
-}
-.login-page {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: #f4f3ef;
-  color: #242722;
-  font-family: system-ui, sans-serif;
-  padding: 24px;
-  box-sizing: border-box;
-}
-.login-panel {
-  width: min(100%, 360px);
-}
-.eyebrow {
-  font: 11px monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: #646a60;
-}
-h1 {
-  font-size: 36px;
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  margin: 18px 0 32px;
-}
-form {
-  display: grid;
-  gap: 10px;
-}
-label {
-  font-size: 13px;
-  margin-top: 12px;
-}
-input {
-  font: inherit;
-  padding: 12px;
-  background: white;
-  border: 1px solid #c9cdc2;
-  border-radius: 3px;
-}
-button {
-  margin-top: 18px;
-  background: #273a2b;
-  color: white;
-  border: 0;
-  padding: 13px;
-  font: inherit;
-  cursor: pointer;
-}
-button:disabled {
-  opacity: 0.6;
-}
-input:focus-visible,
-button:focus-visible {
-  outline: 2px solid #657d51;
-  outline-offset: 3px;
-}
-[role='alert'] {
-  color: #9a302d;
-  font-size: 14px;
+.cf-login { display: grid; grid-template-rows: auto 1fr auto; padding: 0 24px; }
+.cf-login-top { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.cf-login-brand { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.cf-login-brand b { font-weight: 600; letter-spacing: -0.01em; }
+.cf-login-panel { align-self: center; justify-self: center; width: min(100%, 400px); margin: 24px 0 48px; padding: 32px; display: grid; gap: 20px; background: var(--cf-surface); border: 1px solid var(--cf-border); border-radius: 6px; box-shadow: var(--cf-shadow); }
+.cf-login-panel h1 { font-size: 24px; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; }
+.cf-login-sub { margin-top: -12px; color: var(--cf-muted); }
+.cf-login-block { display: grid; gap: 16px; }
+.cf-login-block .cf-link { justify-self: start; }
+.cf-login-note { color: var(--cf-muted); line-height: 21px; }
+.cf-login-note strong { color: var(--cf-text); font-weight: 500; }
+.cf-login-or { display: flex; align-items: center; gap: 12px; color: var(--cf-muted); font-size: 12px; }
+.cf-login-or::before, .cf-login-or::after { content: ""; flex: 1; height: 1px; background: var(--cf-border); }
+.cf-login-foot { padding: 0 0 24px; text-align: center; color: var(--cf-muted); font-size: 12px; }
+@media (max-width: 480px) {
+  .cf-login { padding: 0 16px; }
+  .cf-login-panel { padding: 24px 20px; margin-top: 8px; }
 }
 </style>

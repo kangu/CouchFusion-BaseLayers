@@ -16,7 +16,7 @@ Runtime policy comes from `_node/_local/_config/cf_env_<normalized appSlug>` as 
 | auth_cookie_secret | Server-only passwordless signing secret; must match native chttpd_auth secret |
 | auth_pow_bits, auth_pow_ttl_seconds | 1..24/default18, 30..3600/default600 |
 | admin_roles | Comma-separated allowed application roles, default admin; cannot be empty when enabled |
-| admin_theme | ledger or classic |
+| admin_theme | Default colour scheme of the admin and login pages: system (default), light or dark. People can switch with the toggle; their choice is kept in a cookie. Legacy ledger and classic mean system |
 | admin_brand_name, admin_site_name, admin_footer_text | Presentation strings |
 | auth_password_enabled, auth_email_enabled, auth_nostr_enabled, auth_live_users_enabled, admin_enabled, admin_datasync_enabled | Strict true/false; only disable/permit compiled features |
 

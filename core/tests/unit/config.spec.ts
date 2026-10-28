@@ -84,3 +84,25 @@ it('validates malformed known remote flags even when the feature is not compiled
     resolveSettings(resolveOptions({}), { admin_enabled: 'yes' }),
   ).toThrow(/boolean/)
 })
+describe('admin colour scheme', () => {
+  const o = () =>
+    resolveOptions({ appSlug: 'cf-cloud', auth: { enabled: true, password: true, ui: true }, admin: { enabled: true } })
+  it('defaults to the system setting and reaches the client', () => {
+    expect(o().defaults.admin.theme).toBe('system')
+    expect(publicSettings(resolveSettings(o(), {})).admin.theme).toBe('system')
+  })
+  it('accepts light and dark, and reads the retired skins as system', () => {
+    expect(resolveSettings(o(), { admin_theme: 'dark' }).admin.theme).toBe('dark')
+    expect(resolveSettings(o(), { admin_theme: 'light' }).admin.theme).toBe('light')
+    expect(resolveSettings(o(), { admin_theme: 'ledger' }).admin.theme).toBe('system')
+    expect(resolveOptions({ defaults: { admin: { theme: 'classic' as never } } }).defaults.admin.theme).toBe('system')
+  })
+  it('reads a retired skin in previously generated options as system', () => {
+    const stale = o()
+    ;(stale.defaults.admin as { theme: string }).theme = 'ledger'
+    expect(resolveSettings(stale, {}).admin.theme).toBe('system')
+  })
+  it('rejects unknown schemes', () => {
+    expect(() => resolveSettings(o(), { admin_theme: 'blue' })).toThrow(/admin_theme/)
+  })
+})

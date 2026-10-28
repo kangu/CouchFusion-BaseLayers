@@ -58,9 +58,11 @@ export interface AuthSettings {
   nostrRelays: string[]
   nostrDmMode: 'nip17' | 'nip04' | 'dual'
 }
+export type AdminColorScheme = 'system' | 'light' | 'dark'
 export interface AdminSettings {
   roles: string[]
-  theme: 'ledger' | 'classic'
+  /** Default colour scheme of the admin and login UI; people can override it with the toggle. */
+  theme: AdminColorScheme
   brandName: string
   siteName: string
   footerText: string

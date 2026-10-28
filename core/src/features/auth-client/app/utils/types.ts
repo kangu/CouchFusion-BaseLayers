@@ -30,7 +30,7 @@ export interface PublicSettings {
   auth: { loginPath: string; redirectPath: string; heading: string }
   admin: {
     roles: string[]
-    theme: 'ledger' | 'classic'
+    theme: 'system' | 'light' | 'dark'
     brandName: string
     siteName: string
     footerText: string

@@ -6,10 +6,16 @@ import {
 } from '#imports'
 import { useCouchDBAuth } from '../composables/useCouchDBAuth'
 import { safeRedirect } from '../utils/redirect'
+import {
+  canOpen,
+  hasAdminAccess,
+  isAdminPath,
+  loginDestination,
+} from '../utils/access'
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useCouchDBAuth()
   const app = useNuxtApp()
-  const adminRoute = to.path === '/admin' || to.path.startsWith('/admin/')
+  const adminRoute = isAdminPath(to.path)
   const hydratingSession =
     app.isHydrating && app.payload.serverRendered && auth.initialized.value
   if (
@@ -35,14 +41,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
         query: { redirect: to.fullPath },
       })
     }
-    if (settings.admin.roles.length && !settings.admin.roles.some(auth.hasRole))
+    if (!hasAdminAccess(settings, auth.user.value))
       throw createError({ statusCode: 403, statusMessage: 'Access denied' })
   }
   if (to.path === settings.auth.loginPath && auth.user.value) {
-    const target = safeRedirect(
-      to.query.redirect,
-      safeRedirect(settings.auth.redirectPath, '/admin'),
-    )
-    return navigateTo(target === settings.auth.loginPath ? '/admin' : target)
+    const target = loginDestination(to.query.redirect, settings)
+    // A user who cannot open the target stays here; the login page offers a sign-out.
+    if (canOpen(target, settings, auth.user.value)) return navigateTo(target)
   }
 })

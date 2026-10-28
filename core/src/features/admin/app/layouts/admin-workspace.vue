@@ -8,11 +8,19 @@ import {
   isNavigationActive,
   safeRedirect,
 } from '#core/features/admin/app/utils/navigation'
+import { useCouchDBThemeHead } from '#core/features/ui-theme/useCouchDBColorScheme'
+import CouchMark from '#core/features/ui-theme/CouchMark.vue'
+import SchemeToggle from '#core/features/ui-theme/SchemeToggle.vue'
+
 const auth = useCouchDBAuth()
 const route = useRoute()
 const mobileOpen = ref(false)
 const title = useCouchDBAdminTitle()
+useCouchDBThemeHead()
+
 const admin = computed(() => auth.settings.value?.admin)
+const brandName = computed(() => admin.value?.brandName || 'CouchFusion')
+const siteName = computed(() => admin.value?.siteName || 'Administration')
 const sections = computed(() =>
   buildAdminNavigation(
     admin.value?.sections.length
@@ -30,6 +38,12 @@ const sections = computed(() =>
 const pageTitle = computed(
   () => title.value || String(route.meta.title || 'Workspace'),
 )
+const isActive = (item: { route: string; activeRoutes?: string[] }) =>
+  isNavigationActive(item.route, route.path) ||
+  Boolean(item.activeRoutes?.some((p) => isNavigationActive(p, route.path)))
+const user = computed(() => auth.user.value)
+const roleLine = computed(() => user.value?.roles.join(', ') || 'No roles')
+
 watch(
   () => route.path,
   () => {
@@ -40,277 +54,87 @@ watch(
 async function signOut() {
   try {
     await auth.logout()
-    await navigateTo(
-      safeRedirect(auth.settings.value?.auth.loginPath, '/login'),
-    )
+    await navigateTo(safeRedirect(auth.settings.value?.auth.loginPath, '/login'))
   } catch {
-    /* The shared error is rendered below. */
+    /* The shared error is shown above the page. */
   }
 }
 </script>
 <template>
   <div
-    class="aw-shell"
-    :class="[
-      `aw-theme-${admin?.theme || 'ledger'}`,
-      { 'menu-open': mobileOpen },
-    ]"
+    class="cf-ui cf-shell"
+    :class="{ 'cf-menu-open': mobileOpen }"
     data-testid="admin-shell"
   >
-    <a class="skip-link" href="#aw-main">Skip to content</a>
-    <button
-      v-if="mobileOpen"
-      class="scrim"
-      aria-label="Close navigation"
-      @click="mobileOpen = false"
-    />
-    <aside id="aw-navigation" class="sidebar" aria-label="Workspace navigation">
-      <NuxtLink class="brand" to="/admin">{{
-        admin?.brandName || 'CouchFusion'
-      }}</NuxtLink>
-      <p class="site-name">{{ admin?.siteName || 'Administration' }}</p>
-      <nav>
-        <section v-for="section in sections" :key="section.id">
-          <h2>{{ section.title }}</h2>
+    <a class="cf-skip" href="#aw-main">Skip to content</a>
+    <header class="cf-top">
+      <button
+        type="button"
+        class="cf-icon-btn cf-menu-toggle"
+        aria-controls="aw-navigation"
+        :aria-expanded="mobileOpen"
+        aria-label="Open navigation"
+        @click="mobileOpen = true"
+      >
+        <svg class="cf-ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" /></svg>
+      </button>
+      <NuxtLink class="cf-brand" to="/admin"><CouchMark /><span>{{ brandName }}</span></NuxtLink>
+      <nav class="cf-crumbs" aria-label="Breadcrumb">
+        <span>{{ siteName }}</span>
+        <span aria-current="page" data-testid="admin-header-title">{{ pageTitle }}</span>
+      </nav>
+      <div id="aw-header-actions" class="cf-top-actions" />
+      <SchemeToggle />
+    </header>
+
+    <aside id="aw-navigation" class="cf-side" aria-label="Workspace navigation">
+      <button
+        type="button"
+        class="cf-icon-btn cf-menu-close"
+        aria-label="Close navigation"
+        @click="mobileOpen = false"
+      >
+        <svg class="cf-ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+      </button>
+      <nav aria-label="Main">
+        <div v-for="section in sections" :key="section.id" class="cf-nav-group">
+          <p class="cf-group-label">{{ section.title }}</p>
           <NuxtLink
             v-for="item in section.items"
             :key="item.route"
             :to="item.route"
-            :class="{
-              active:
-                isNavigationActive(item.route, route.path) ||
-                item.activeRoutes?.some((path) =>
-                  isNavigationActive(path, route.path),
-                ),
-            }"
+            class="cf-nav-item"
+            :aria-current="isActive(item) ? 'page' : undefined"
             @click="mobileOpen = false"
-            >{{ item.label }}</NuxtLink
+            ><span>{{ item.label }}</span></NuxtLink
           >
-        </section>
+        </div>
       </nav>
-      <div class="identity">
-        <span class="identity-label">Signed in as</span>
-        <strong data-testid="admin-user-name">{{
-          auth.user.value?.name
-        }}</strong>
-        <button
-          :disabled="auth.loading.value"
-          data-testid="admin-logout"
-          @click="signOut"
-        >
-          Sign out ↗
-        </button>
+      <div class="cf-side-bottom">
+        <SchemeToggle />
+        <div class="cf-user">
+          <span class="cf-avatar" aria-hidden="true">{{ user?.name?.[0] }}</span>
+          <span><b data-testid="admin-user-name">{{ user?.name }}</b><span>{{ roleLine }}</span></span>
+          <button
+            type="button"
+            class="cf-icon-btn"
+            :disabled="auth.loading.value"
+            aria-label="Sign out"
+            title="Sign out"
+            data-testid="admin-logout"
+            @click="signOut"
+          >
+            <svg class="cf-ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5H3.5c-.6 0-1 .4-1 1v9c0 .6.4 1 1 1H6M10.5 11 13.5 8l-3-3M13.5 8H6" /></svg>
+          </button>
+        </div>
+        <p v-if="admin?.footerText" class="cf-footer-text">{{ admin.footerText }}</p>
       </div>
-      <footer>{{ admin?.footerText }}</footer>
     </aside>
-    <div class="workspace">
-      <header class="topbar">
-        <button
-          class="menu-toggle"
-          aria-controls="aw-navigation"
-          :aria-expanded="mobileOpen"
-          @click="mobileOpen = !mobileOpen"
-        >
-          {{ mobileOpen ? 'Close menu' : 'Menu' }}
-        </button>
-        <span class="header-title" data-testid="admin-header-title">{{
-          pageTitle
-        }}</span>
-        <div id="aw-header-actions" />
-      </header>
-      <main id="aw-main" tabindex="-1">
-        <p v-if="auth.error.value" role="alert">{{ auth.error.value }}</p>
-        <slot />
-      </main>
-    </div>
+
+    <main id="aw-main" class="cf-main" tabindex="-1">
+      <p v-if="auth.error.value" role="alert" class="cf-alert">{{ auth.error.value }}</p>
+      <slot />
+    </main>
   </div>
 </template>
-<style scoped>
-:global(body) {
-  margin: 0;
-}
-.aw-shell {
-  --ink: #293028;
-  --muted: #73796f;
-  --line: #dfe2d8;
-  --paper: #f5f5ef;
-  display: flex;
-  min-height: 100vh;
-  color: var(--ink);
-  background: var(--paper);
-  font-family: system-ui, sans-serif;
-}
-.aw-theme-classic {
-  --paper: #f5f7fa;
-  --ink: #263749;
-  --line: #dde3eb;
-}
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  box-sizing: border-box;
-  width: 248px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  padding: 30px 24px;
-  background: #eeefe7;
-}
-.brand {
-  color: inherit;
-  font-size: 22px;
-  letter-spacing: -0.06em;
-  font-weight: 650;
-  text-decoration: none;
-}
-.site-name {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 8px 0 42px;
-}
-nav {
-  flex: 1;
-  overflow: auto;
-}
-nav section {
-  margin-bottom: 30px;
-}
-nav h2 {
-  font: 10px monospace;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
-nav a {
-  display: block;
-  padding: 11px 12px;
-  margin: 3px -12px;
-  color: inherit;
-  text-decoration: none;
-  border-radius: 3px;
-  font-size: 14px;
-}
-nav a:hover,
-nav a.active {
-  background: #dfe5d7;
-}
-.identity {
-  display: grid;
-  gap: 7px;
-  border-top: 1px solid var(--line);
-  padding-top: 20px;
-}
-.identity-label {
-  font-size: 11px;
-  color: var(--muted);
-}
-.identity strong {
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-.identity button {
-  justify-self: start;
-  margin-top: 8px;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  font: 12px inherit;
-  cursor: pointer;
-  color: var(--ink);
-}
-footer {
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 25px;
-}
-.workspace {
-  flex: 1;
-  min-width: 0;
-}
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  min-height: 76px;
-  padding: 0 40px;
-  border-bottom: 1px solid var(--line);
-  background: #fafbf6;
-}
-.header-title {
-  font-size: 13px;
-  font-weight: 500;
-}
-#aw-header-actions {
-  margin-left: auto;
-}
-main {
-  padding: 40px;
-  outline: none;
-}
-.menu-toggle,
-.scrim {
-  display: none;
-}
-.skip-link {
-  position: fixed;
-  top: -100px;
-  left: 12px;
-  z-index: 50;
-  background: white;
-  padding: 12px;
-  color: inherit;
-}
-.skip-link:focus {
-  top: 12px;
-}
-button:focus-visible,
-a:focus-visible {
-  outline: 2px solid #657d51;
-  outline-offset: 3px;
-}
-[role='alert'] {
-  color: #9a302d;
-}
-@media (max-width: 760px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    z-index: 30;
-    transform: translateX(-100%);
-    transition: transform 0.18s ease;
-  }
-  .menu-open .sidebar {
-    transform: translateX(0);
-  }
-  .scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-    background: #0006;
-    border: 0;
-  }
-  .menu-toggle {
-    display: block;
-    background: none;
-    border: 1px solid var(--line);
-    padding: 8px;
-    color: inherit;
-  }
-  .topbar {
-    padding: 0 20px;
-    min-height: 64px;
-  }
-  main {
-    padding: 24px 20px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sidebar {
-    transition: none;
-  }
-}
-</style>
+<style src="../../../ui-theme/terminal.css"></style>

@@ -84,6 +84,12 @@ export default defineNuxtModule<CouchDBModuleOptions>({
     if (options.config.enabled || f.auth)
       addServerPlugin(r.resolve('./src/server/bootstrap-plugin.ts'))
     if (f.auth) {
+      addImports(
+        ['useCouchDBColorScheme', 'useCouchDBThemeHead'].map((name) => ({
+          name,
+          from: r.resolve('./src/features/ui-theme/useCouchDBColorScheme'),
+        })),
+      )
       addImports({
         name: 'useCouchDBAuth',
         from: r.resolve(

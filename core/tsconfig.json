@@ -13,5 +13,5 @@
     }
   },
   "include": ["module.ts", "src/**/*.ts", "scripts/**/*.ts", "virtual.d.ts"],
-  "exclude": ["src/features/**/app/**", "src/auth.ts", "src/admin.ts"]
+  "exclude": ["src/features/**/app/**", "src/features/ui-theme/**", "src/auth.ts", "src/admin.ts"]
 }

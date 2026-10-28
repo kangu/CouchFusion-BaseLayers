@@ -9,6 +9,7 @@ import type {
   ResolvedCouchDBSettings,
   PublicCouchDBSettings,
   BuildFeatures,
+  AdminColorScheme,
 } from './shared/types'
 export type { CouchDBModuleOptions } from './shared/types'
 export function safeRedirect(value: unknown, fallback = '/') {
@@ -114,11 +115,11 @@ export function resolveOptions(
       },
       admin: {
         roles: ['admin'],
-        theme: 'ledger',
         brandName: 'CouchFusion',
         siteName: '',
         footerText: '',
         ...input.defaults?.admin,
+        theme: colorScheme(input.defaults?.admin?.theme ?? 'system'),
         sections: d.sections ?? [],
       },
     },
@@ -135,6 +136,10 @@ export function resolveOptions(
   )
   return resolved
 }
+/** Earlier skins ('ledger', 'classic') predate the light/dark pair and now follow the system setting. */
+function colorScheme(value: unknown) {
+  return (value === 'ledger' || value === 'classic' ? 'system' : value) as AdminColorScheme
+}
 function boolean(value: string, key: string) {
   if (value !== 'true' && value !== 'false')
     throw new CoreConfigurationError(`${key} must be a boolean string`)
@@ -150,7 +155,7 @@ export function resolveSettings(
   remote: Record<string, string> = {},
 ): ResolvedCouchDBSettings {
   const auth = { ...options.defaults.auth },
-    admin = { ...options.defaults.admin },
+    admin = { ...options.defaults.admin, theme: colorScheme(options.defaults.admin.theme) },
     features = { ...options.features }
   for (const key of [
     'auth_user_prefix',
@@ -224,7 +229,7 @@ export function resolveSettings(
       .map((r) => r.trim())
       .filter(Boolean)
   if (remote.admin_theme !== undefined)
-    admin.theme = remote.admin_theme as 'ledger' | 'classic'
+    admin.theme = colorScheme(remote.admin_theme)
   if (remote.nostr_relays !== undefined)
     auth.nostrRelays = remote.nostr_relays
       .split(',')

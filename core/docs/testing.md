@@ -21,3 +21,7 @@ Each run writes a secret-free ownership manifest in `.test-runs/<runId>.json` be
 Cleanup runs in `finally`, including failed tests. With `test_keep_failed_resources=true`, failed runs remain for inspection. After interruption or a crash, recover with `pnpm test:cleanup <exact-runId>` using the filename in `.test-runs`. There is no broad prefix scan or global reset. Failed cleanup keeps the manifest for retry. Do not remove manifests until resources are cleaned.
 
 Same-instance replication uses two owned scratch databases and a synchronous one-shot replication request with a per-operation deadline of `max(15000, test_ready_timeout_ms)` milliseconds. Other HTTP requests retain `test_http_timeout_ms`; there is no persistent shared replication job.
+
+## Manual smoke test in cf-cloud
+
+For a quick check of the login UI and `/admin` against a dev server, run cf-cloud with `nuxt dev` (Node 22.21+ or 24.11+) and test with two local users: one with the `admin` role and one without. The 2026-10-28 run and its findings are in `apps/cf-cloud/implementation_results/2026-10-28-login-admin-testing.md`.
