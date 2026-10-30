@@ -81,10 +81,15 @@ export const useAnalyticsState = (api: AnalyticsApi) => {
   }));
 
   // local page api
-  const addFilter = (filter: UiFilter) => {
-    const rest = filters.value.filter((f) => !(f.dim === filter.dim && f.op === filter.op));
-    filters.value = [...rest, filter];
+  /**
+   * Adds filters in one route update. Filters live in the route query, which
+   * updates asynchronously, so back-to-back single writes would drop all but the last.
+   */
+  const addFilters = (...incoming: UiFilter[]) => {
+    const rest = filters.value.filter((f) => !incoming.some((n) => n.dim === f.dim && n.op === f.op));
+    filters.value = [...rest, ...incoming];
   };
+  const addFilter = (filter: UiFilter) => addFilters(filter);
   const removeFilter = (index: number) => {
     filters.value = filters.value.filter((_, i) => i !== index);
   };
@@ -97,8 +102,7 @@ export const useAnalyticsState = (api: AnalyticsApi) => {
     siteError.value = null;
     try {
       if (!api.readonly) status.value = await api.get("status");
-      // Skip the site call while local storage is off: the gate explains why.
-      if (api.readonly || status.value?.storesLocally) sites.value = [(await api.get("site")).site];
+      sites.value = [(await api.get("site")).site];
     } catch (error) {
       siteError.value = errorMessage(error);
     } finally {
@@ -120,6 +124,7 @@ export const useAnalyticsState = (api: AnalyticsApi) => {
     loadingSites,
     siteError,
     addFilter,
+    addFilters,
     removeFilter,
     clearFilters,
     loadSites,

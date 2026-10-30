@@ -1,6 +1,6 @@
 // Public, read-only analytics for the website's share token.
 import { createError, defineEventHandler, getRouterParam } from "h3";
-import { resolveEngineConfig, storesLocally } from "../../../../engine/config";
+import { resolveEngineConfig } from "../../../../engine/config";
 import { getMetrics, getOverview, getRealtime } from "../../../../engine/query";
 import { dispatch, type Route } from "../../../../engine/router";
 import { findSiteByShareToken } from "../../../../engine/sites";
@@ -26,7 +26,7 @@ const routes: Route<ShareContext>[] = [
 export default defineEventHandler((event) =>
   dispatch(event, getRouterParam(event, "path") ?? "", routes, async () => {
     const config = await resolveEngineConfig(useRuntimeConfig());
-    const site = storesLocally(config) ? await findSiteByShareToken(config, getRouterParam(event, "token") ?? "") : null;
+    const site = await findSiteByShareToken(config, getRouterParam(event, "token") ?? "");
     if (!site) throw createError({ statusCode: 404, statusMessage: "Not found" });
     return { config, site };
   }),

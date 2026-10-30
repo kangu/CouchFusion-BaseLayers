@@ -1,44 +1,34 @@
 # Self-hosted analytics engine
 
-The analytics layer can store and analyse traffic in CouchDB itself, with feature parity targets of Fathom Lite and Umami. Spec and parity matrix: `docs/specs/2026-10-09T19-47-30Z-self-hosted-analytics-spec.md`.
+The analytics layer stores and analyses traffic in CouchDB itself, with feature parity targets of Fathom Lite and Umami. Spec and parity matrix: `docs/specs/2026-10-09T19-47-30Z-self-hosted-analytics-spec.md`.
 
-## Modes (`cf_env_[slug].analytics_mode`)
-
-| Mode | Local storage | Umami Cloud forwarding |
-|---|---|---|
-| `umami_cloud` (default) | no | yes (original behaviour, unchanged) |
-| `dual` | yes | best effort (failures logged, never break ingestion) |
-| `self_hosted` | yes | no |
-
-The mode is re-read every 60 s, so switching it needs no restart.
+Collection is always on in every app that extends the layer. There is no mode switch and no third-party forwarding; no `_config` key is required.
 
 ## Enabling it in an app
 
-1. `extends`: the app needs `../../layers/database`, `../../layers/auth`, `../../layers/analytics` and `../../layers/admin_workspace` (for the admin layout).
+1. `extends`: the app needs `../../layers/database` and `../../layers/analytics`. That alone starts collection. For the dashboard also add `../../layers/auth` and `../../layers/admin_workspace` (admin layout).
 2. Install the dashboard dependencies in the app: `bun add apexcharts @iconify/vue`.
-3. `runtimeConfig.public.analytics.admin.enabled = true`. This registers `/admin/analytics/**` and adds the "Analytics" sidebar section. Apps that don't set this get no pages.
-4. CouchDB `_config` → `cf_env_[slug]`: set `analytics_mode=self_hosted`.
-5. Open `/admin/analytics/settings` and review the website: name, timezone, domains, excluded paths.
+3. `runtimeConfig.public.analytics.admin.enabled = true`. This registers `/admin/analytics/**` and adds the "Analytics" sidebar section. Apps that don't set this get no pages (collection still runs).
+4. Open `/admin/analytics/settings` and review the website: name, timezone, domains, excluded paths.
 
 **One website per app.** Each app tracks only itself. The website record (`site:<id>`, id = `analytics_default_site_id` or the app slug) is created automatically on first start. There is no website list, no "add website", and the tracker sends no website id; a client-supplied `payload.website` is ignored. The admin and share APIs address it as `site/...`, and the v1 API has no site segment (`/v1/stats`, `/v1/metrics/:dim`, …).
 
 The Nuxt client tracker (`useAnalytics()`, `v-analytics`, router pageviews) needs no changes.
 
-## `_config` keys (flat, `cf_env_[slug]`)
+## `_config` keys (flat, `cf_env_[slug]`, all optional)
 
 | Key | Default | Meaning |
 |---|---|---|
-| `analytics_mode` | `umami_cloud` | see above |
 | `analytics_default_site_id` | app slug | id of the app's single website record; rarely needs setting |
 | `analytics_db_prefix` | `analytics_<slug>` | main DB name; raw shards are `<prefix>_raw_<yyyy>_<mm>` |
 | `analytics_raw_retention_months` | `13` | raw month shards older than this are dropped (rollups kept forever) |
 | `analytics_respect_dnt` | `true` | drop hits with `DNT: 1` or `Sec-GPC: 1` |
 | `analytics_ignore_ips` | — | comma-separated IPs/CIDRs (v4 and v6) |
-| `analytics_geo_source` | `header` | `header` (Cloudflare / CloudFront / Vercel country, region and city headers) or `none` |
+| `analytics_trust_headers` | `auto` | `auto`: Cloudflare's IP/geo headers only from a Cloudflare address (socket peer, or the local proxy's `X-Real-IP`/last XFF hop); `cloudflare`: always; `all`: every header as sent (old behaviour) |
+| `analytics_geo_source` | `auto` | `auto` (CDN header, else browser time zone → country via `server/engine/tz-country.ts`), `header` (Cloudflare / CloudFront / Vercel country, region and city headers), `timezone`, or `none` |
 | `analytics_aggregator_enabled` | `true` | set `false` on instances that shouldn't aggregate |
 | `analytics_persistent_id` | `false` | accept the opt-in first-party id (needs consent; also set `public.analytics.persistentId`) |
 | `analytics_max_scan_days` | `31` | upper bound for filtered queries, reports and sessions |
-| `umami_website_id`, `umami_excluded_paths` | — | still used for forwarding; `umami_excluded_paths` also applies locally |
 
 Most of these can be edited under Settings → Engine (not the db prefix or the site id).
 
@@ -62,7 +52,7 @@ Most of these can be edited under Settings → Engine (not the db prefix or the 
 | Route | Auth | Purpose |
 |---|---|---|
 | `POST /api/stats` (+ `OPTIONS`) | public; CORS for registered domains | ingestion (JSON or `text/plain`) |
-| `GET /a.js` | public | standalone tracker for non-Nuxt sites (Umami-compatible `data-*` attributes and `umami.track/identify`) |
+| `GET /a.js` | public | standalone tracker for non-Nuxt sites (`data-cfa-event` attributes, `cfa.track/identify`) |
 | `/api/analytics/admin/**` | CouchDB session; `admin`, or a role in `site.allowedRoles` | dashboard API |
 | `/api/analytics/share/:token/**` | share token | read-only dashboard API |
 | `/api/analytics/v1/**` | `Authorization: Bearer cfa_…` | read-only REST API |
@@ -76,16 +66,12 @@ Admin pages: `/admin/analytics` (overview), `/realtime`, `/events`, `/sessions`,
 - `useAnalytics().identify(id?, data?)`: attaches an app user id to later hits and sends session properties.
 - `runtimeConfig.public.analytics.persistentId`: opt-in localStorage id (`cfa.pid`).
 - `runtimeConfig.public.analytics.autoCapture.{outbound, downloads, downloadExtensions}`: automatic `outbound-link-click` and `file-download` events.
-- `runtimeConfig.public.analytics.umami.tag`: tag every hit (A/B variant, deploy, …).
+- `runtimeConfig.public.analytics.tag`: tag every hit (A/B variant, deploy, …). Also `includeTitle`, `sendReferrer`, `debug`.
 - Revenue: send events with `revenue` (number) and `currency` (ISO code) properties.
 
-## Rollout guide (per app)
+## Excluded paths
 
-1. Enable the admin module (above) and set `analytics_mode=dual`.
-2. Run for 14 days. Compare visitors, pageviews and bounce with Umami Cloud. Expect visitors to read higher, because uniques are daily instead of monthly.
-3. When the numbers are acceptable, switch to `analytics_mode=self_hosted` (Websites → App settings). Forwarding stops immediately.
-4. Optional: import Umami history (Tools → Import → `website_event` and `session` CSVs).
-5. Once no app uses `umami_cloud` or `dual`, remove the forwarding code (`forwardToUmami` in `server/api/stats.post.ts`, `server/utils/umami-config.ts`) and the `umami_*` keys.
+Excluded paths live only on the website record (Settings → Website → Excluded paths; defaults `/admin*` and `/login`). The old `umami_excluded_paths` `_config` key is no longer read.
 
 ## Testing
 

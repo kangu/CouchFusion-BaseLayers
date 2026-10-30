@@ -7,9 +7,9 @@ export default defineNuxtConfig({
     "#analytics": fileURLToPath(layerDir),
   },
 
-  // The Umami website id is resolved from the app's CouchDB _config section, so
-  // this layer depends on the database layer's #database alias -- declared the
-  // same way the lightning layer declares it.
+  // Analytics data lives in CouchDB and optional engine settings are read from
+  // the app's _config section, so this layer depends on the database layer's
+  // #database alias -- declared the same way the lightning layer declares it.
   extends: ["../database"],
 
   imports: {
@@ -26,11 +26,6 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
-    analytics: {
-      umami: {
-        proxyHost: "https://cloud.umami.is",
-      },
-    },
     content: {
       ignore: ["/redir"],
     },
@@ -51,18 +46,14 @@ export default defineNuxtConfig({
           downloads: false,
           downloadExtensions: "",
         },
-        umami: {
-          websiteId: "",
-          hostUrl: "/",
-          scriptPath: "/script.js",
-          dataDomains: "",
-          autoTrack: true,
-          excludedPaths: [] as string[] | string,
-          includeTitle: true,
-          sendReferrer: true,
-          debug: false,
-          appName: undefined as string | undefined,
-        },
+        // Browser tracker payload options.
+        includeTitle: true,
+        sendReferrer: true,
+        debug: false,
+        // Optional tag attached to every hit (A/B variant, deploy, ...).
+        tag: "",
+        // Count hash-only route changes (/page#a -> /page#b) as pageviews.
+        trackHashChanges: false,
       },
     },
   },

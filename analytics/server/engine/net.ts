@@ -1,16 +1,40 @@
 /**
  * Client IP extraction, CIDR matching, and CDN geo headers.
+ *
+ * Forwarding headers are only as trustworthy as whoever set them. With
+ * `analytics_trust_headers=auto` (default):
+ *  - The "edge" address is the one that actually connected: the socket
+ *    peer, or, when the peer is a local reverse proxy (loopback/private),
+ *    the address that proxy reports in X-Real-IP / X-Forwarded-For.
+ *  - Cloudflare's headers (CF-Connecting-IP, CF-IPCountry, region, city)
+ *    are used only when that edge address is a Cloudflare one. Anyone else
+ *    sending them is ignored, so visitors can't pick their IP or country.
+ *  - Other CDN geo headers (CloudFront, Vercel, X-Country-Code) are ignored.
+ * `cloudflare` always trusts Cloudflare's headers (for setups where another
+ * proxy hides Cloudflare's address); `all` trusts every header as sent (the
+ * old behaviour, for CloudFront/Vercel or a proxy that sets X-Country-Code).
  */
 import { getRequestHeader, type H3Event } from "h3";
 
-/** Best-effort client IP (Cloudflare / common proxies / socket). Never stored. */
-export const getClientIp = (event: H3Event): string => {
-  const cf = getRequestHeader(event, "cf-connecting-ip");
-  const real = getRequestHeader(event, "x-real-ip");
-  const xff = getRequestHeader(event, "x-forwarded-for");
-  const first = xff ? xff.split(",")[0]?.trim() : undefined;
-  return cf || real || first || event.node?.req?.socket?.remoteAddress || "0.0.0.0";
-};
+export type HeaderTrust = "auto" | "cloudflare" | "all";
+export const HEADER_TRUST_MODES: HeaderTrust[] = ["auto", "cloudflare", "all"];
+
+/** Which CDN geo headers may be read for a request. */
+export type GeoHeaders = "cloudflare" | "all" | "none";
+
+export interface ClientInfo {
+  /** Best-effort visitor IP. Never stored. */
+  ip: string;
+  geoHeaders: GeoHeaders;
+  /** Cloudflare headers were present but not trusted (possible forgery or misconfiguration). */
+  ignoredCloudflareHeaders: boolean;
+}
+
+const firstForwarded = (event: H3Event): string | undefined =>
+  getRequestHeader(event, "x-forwarded-for")?.split(",")[0]?.trim() || undefined;
+
+/** Best-effort client IP with the given trust mode. Never stored. */
+export const getClientIp = (event: H3Event, trust: HeaderTrust = "auto"): string => resolveClient(event, trust).ip;
 
 const parseIpv4 = (ip: string): bigint | null => {
   const parts = ip.split(".");
@@ -114,6 +138,54 @@ export interface GeoInfo {
   city: string | null;
 }
 
+// Cloudflare edge ranges (https://www.cloudflare.com/ips/, checked 2026-10-28; stable for years).
+const CLOUDFLARE_RANGES = parseCidrList(
+  [
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",
+    "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17",
+    "162.158.0.0/15", "104.16.0.0/13", "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32",
+    "2a06:98c0::/29", "2c0f:f248::/32",
+  ].join(","),
+);
+
+/** Loopback and private ranges: a peer here is a local reverse proxy. */
+const LOCAL_RANGES = parseCidrList(
+  "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10,::1/128,fc00::/7,fe80::/10",
+);
+
+const validIp = (value: string | undefined | null): string | null => {
+  const trimmed = value?.trim();
+  return trimmed && parseIp(trimmed) ? trimmed : null;
+};
+
+/** True for a Cloudflare edge address. */
+export const isCloudflareIp = (ip: string): boolean => ipMatchesCidrs(ip, CLOUDFLARE_RANGES);
+
+/** Resolves the visitor IP and which geo headers may be trusted (see the module comment). */
+export const resolveClient = (event: H3Event, trust: HeaderTrust = "auto"): ClientInfo => {
+  const cfIp = getRequestHeader(event, "cf-connecting-ip");
+  if (trust === "all") {
+    const ip = cfIp || getRequestHeader(event, "x-real-ip") || firstForwarded(event) || event.node?.req?.socket?.remoteAddress || "0.0.0.0";
+    return { ip, geoHeaders: "all", ignoredCloudflareHeaders: false };
+  }
+  const peer = validIp(event.node?.req?.socket?.remoteAddress);
+  let edge = peer;
+  if (!peer || ipMatchesCidrs(peer, LOCAL_RANGES)) {
+    // A local proxy sits in front: use the address it saw. The last
+    // X-Forwarded-For entry is the one the nearest proxy appended.
+    const forwarded = getRequestHeader(event, "x-forwarded-for")?.split(",");
+    edge = validIp(getRequestHeader(event, "x-real-ip")) ?? validIp(forwarded?.[forwarded.length - 1]) ?? peer;
+  }
+  const viaCloudflare = trust === "cloudflare" || (edge !== null && isCloudflareIp(edge));
+  const hasCloudflareHeaders = Boolean(cfIp || getRequestHeader(event, "cf-ipcountry"));
+  return {
+    ip: (viaCloudflare ? validIp(cfIp) : null) ?? edge ?? "0.0.0.0",
+    geoHeaders: viaCloudflare ? "cloudflare" : "none",
+    ignoredCloudflareHeaders: !viaCloudflare && hasCloudflareHeaders,
+  };
+};
+
 const header = (event: H3Event, name: string): string | null => {
   const value = getRequestHeader(event, name);
   if (!value) return null;
@@ -125,27 +197,26 @@ const header = (event: H3Event, name: string): string | null => {
 };
 
 /**
- * Geo from CDN headers (Cloudflare, CloudFront, Vercel). Region and city are
- * filled only when the CDN provides them.
+ * Geo from CDN headers. `cloudflare` reads only Cloudflare's; `all` also
+ * reads CloudFront, Vercel and X-Country-Code. Region and city are filled
+ * only when the CDN provides them.
  */
-export const geoFromHeaders = (event: H3Event): GeoInfo => {
+export const geoFromHeaders = (event: H3Event, which: GeoHeaders = "all"): GeoInfo => {
+  if (which === "none") return { country: null, region: null, city: null };
+  const all = which === "all";
   let country =
     header(event, "cf-ipcountry") ||
-    header(event, "cloudfront-viewer-country") ||
-    header(event, "x-vercel-ip-country") ||
-    header(event, "x-country-code");
+    (all ? header(event, "cloudfront-viewer-country") || header(event, "x-vercel-ip-country") || header(event, "x-country-code") : null);
   country = country ? country.toUpperCase().slice(0, 2) : null;
   if (!country || country === "XX" || country === "T1" || !/^[A-Z]{2}$/.test(country)) {
     country = null;
   }
   const region =
     header(event, "cf-region-code") ||
-    header(event, "cloudfront-viewer-country-region") ||
-    header(event, "x-vercel-ip-country-region");
+    (all ? header(event, "cloudfront-viewer-country-region") || header(event, "x-vercel-ip-country-region") : null);
   const city =
     header(event, "cf-ipcity") ||
-    header(event, "cloudfront-viewer-city") ||
-    header(event, "x-vercel-ip-city");
+    (all ? header(event, "cloudfront-viewer-city") || header(event, "x-vercel-ip-city") : null);
   return {
     country,
     region: country && region ? region.slice(0, 20) : null,

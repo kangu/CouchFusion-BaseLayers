@@ -11,7 +11,8 @@ definePageMeta({
 const runtimeConfig = useRuntimeConfig();
 const route = useRoute();
 
-const previewBaseUrl = ref<string | null>(null);
+const requestOrigin = useRequestURL().origin;
+const previewBaseUrl = ref<string | null>(requestOrigin);
 
 if (import.meta.server) {
     const configured =
@@ -19,7 +20,7 @@ if (import.meta.server) {
     previewBaseUrl.value =
         typeof configured === "string" && configured.trim()
             ? configured.trim()
-            : null;
+            : requestOrigin;
 }
 
 if (import.meta.client) {

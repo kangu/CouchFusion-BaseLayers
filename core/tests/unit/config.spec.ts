@@ -106,3 +106,17 @@ describe('admin colour scheme', () => {
     expect(() => resolveSettings(o(), { admin_theme: 'blue' })).toThrow(/admin_theme/)
   })
 })
+describe('remembered login setting', () => {
+  const o = () => resolveOptions({ appSlug: 'cf-cloud', auth: { enabled: true, password: true } })
+  it('defaults to 12 months and accepts 0 to turn it off', () => {
+    expect(resolveSettings(o(), {}).auth.rememberSeconds).toBe(31536000)
+    expect(resolveSettings(o(), { auth_remember_seconds: '0' }).auth.rememberSeconds).toBe(0)
+    expect(resolveSettings(o(), { auth_remember_seconds: '2592000' }).auth.rememberSeconds).toBe(2592000)
+  })
+  it('rejects values past a year and fills it in for previously generated options', () => {
+    expect(() => resolveSettings(o(), { auth_remember_seconds: '31536001' })).toThrow(/auth_remember_seconds/)
+    const stale = o()
+    delete (stale.defaults.auth as { rememberSeconds?: number }).rememberSeconds
+    expect(resolveSettings(stale, {}).auth.rememberSeconds).toBe(31536000)
+  })
+})

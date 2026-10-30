@@ -45,7 +45,7 @@ describe("visits", () => {
 describe("rollups", () => {
   const day = computeRollups(events, { timeZone: "Europe/Bucharest" }).get("20261009")!;
 
-  it("computes Fathom/Umami core totals", () => {
+  it("computes Fathom-style core totals", () => {
     expect(day.totals).toEqual({ visitors: 2, visits: 3, pageviews: 4, bounces: 2, duration: 180, events: 1 });
     expect(day.hours[11]).toEqual({ pv: 3, v: 2, vi: 2 });
     expect(day.hours[12]).toEqual({ pv: 1, v: 1, vi: 1 });

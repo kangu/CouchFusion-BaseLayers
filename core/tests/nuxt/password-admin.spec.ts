@@ -121,7 +121,12 @@ async function login(name: string, pass = password) {
   return {
     response,
     body,
-    cookie: response.headers.get('set-cookie')?.split(';')[0] ?? '',
+    // a browser sends back every cookie the login set (AuthSession and the remembered login)
+    cookie: response.headers
+      .getSetCookie()
+      .map((c) => c.split(';')[0])
+      .join('; '),
+    setCookies: response.headers.getSetCookie(),
   }
 }
 it('anonymous SSR redirects before rendering protected content', async () => {
@@ -242,6 +247,38 @@ it('password login produces SSR identity, protected API access and request-isola
   expect((await fetch(origin + '/admin', { redirect: 'manual' })).status).toBe(
     302,
   )
+})
+it('keeps people signed in for 12 months across lapsed native sessions', async () => {
+  const a = await login(adminName)
+  const session = a.setCookies.find((c) => c.startsWith('AuthSession='))!
+  const remember = a.setCookies.find((c) => c.startsWith('couchdb_remember='))!
+  expect(session).toMatch(/Max-Age=31536000/i)
+  expect(remember).toMatch(/Max-Age=31536000/i)
+  expect(remember).toMatch(/HttpOnly/i)
+  const rememberCookie = remember.split(';')[0]!
+  // CouchDB's own session has lapsed (or the browser dropped it): only the remembered login is sent.
+  const restored = await fetch(origin + '/api/couchdb/session', { headers: { cookie: rememberCookie } })
+  const body = await restored.json()
+  expect(body.user).toEqual({ name: adminName, roles: ['admin'] })
+  const fresh = restored.headers.getSetCookie().find((c) => c.startsWith('AuthSession='))
+  expect(fresh).toBeTruthy()
+  // The CSRF token from login still works after the native session was renewed.
+  expect(body.csrfToken).toBe(a.body.csrfToken)
+  const page = await fetch(origin + '/admin', { headers: { cookie: rememberCookie } })
+  expect(page.status).toBe(200)
+  // A tampered remembered login is refused and cleared.
+  const forged = await fetch(origin + '/api/couchdb/session', { headers: { cookie: rememberCookie.slice(0, -4) + 'AAAA' } })
+  expect((await forged.json()).user).toBeNull()
+  expect(forged.headers.getSetCookie().join('\n')).toMatch(/couchdb_remember=;[^\n]*Max-Age=0/i)
+  // Signing out ends both.
+  const out = await fetch(origin + '/api/couchdb/session', {
+    method: 'DELETE',
+    headers: { cookie: `${rememberCookie}; ${fresh!.split(';')[0]}`, 'x-couchdb-csrf': a.body.csrfToken, origin },
+  })
+  expect(out.status).toBe(200)
+  const cleared = out.headers.getSetCookie().join('\n')
+  expect(cleared).toMatch(/AuthSession=;[^\n]*Max-Age=0/i)
+  expect(cleared).toMatch(/couchdb_remember=;[^\n]*Max-Age=0/i)
 })
 it('does not expose disabled provider, Data Sync or live routes', async () => {
   for (const path of [

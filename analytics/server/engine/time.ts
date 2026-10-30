@@ -68,15 +68,47 @@ export const timeZoneOffset = (ts: number, timeZone: string): number => {
 
 const pad = (value: number, size = 2) => String(value).padStart(size, "0");
 
+/**
+ * UTC offsets cached per zone and 15-minute UTC bucket. Every current IANA
+ * offset change lands on a 15-minute UTC boundary (including :30/:45 zones),
+ * so one Intl call per bucket is exact. This keeps `Intl.formatToParts` off
+ * the per-event hot path of rollups and reports. Bounded: cleared past
+ * MAX_CACHED_OFFSETS entries.
+ */
+const OFFSET_BUCKET_MS = 15 * 60_000;
+const MAX_CACHED_OFFSETS = 50_000;
+const offsetCache = new Map<string, Map<number, number>>();
+let cachedOffsets = 0;
+
+const cachedOffset = (ts: number, timeZone: string): number => {
+  const bucket = Math.floor(ts / OFFSET_BUCKET_MS);
+  let zone = offsetCache.get(timeZone);
+  const hit = zone?.get(bucket);
+  if (hit !== undefined) return hit;
+  if (cachedOffsets >= MAX_CACHED_OFFSETS) {
+    offsetCache.clear();
+    cachedOffsets = 0;
+    zone = undefined;
+  }
+  if (!zone) {
+    zone = new Map();
+    offsetCache.set(timeZone, zone);
+  }
+  const offset = timeZoneOffset(bucket * OFFSET_BUCKET_MS, timeZone);
+  zone.set(bucket, offset);
+  cachedOffsets += 1;
+  return offset;
+};
+
 /** Local `YYYYMMDD` for a timestamp. */
 export const localDay = (ts: number, timeZone: string): string => {
-  const p = localParts(ts, timeZone);
-  return `${p.year}${pad(p.month)}${pad(p.day)}`;
+  const local = new Date(ts + cachedOffset(ts, timeZone));
+  return `${local.getUTCFullYear()}${pad(local.getUTCMonth() + 1)}${pad(local.getUTCDate())}`;
 };
 
 /** Local hour (0-23) for a timestamp. */
 export const localHour = (ts: number, timeZone: string): number =>
-  localParts(ts, timeZone).hour;
+  new Date(ts + cachedOffset(ts, timeZone)).getUTCHours();
 
 export const parseDay = (day: string) => ({
   year: Number(day.slice(0, 4)),

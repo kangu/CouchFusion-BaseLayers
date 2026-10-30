@@ -23,6 +23,7 @@ export interface ContentPageDocument {
         title: string | null
         description: string | null
         image?: string | null
+    video?: string | null
     }
     stem: string | null
     _rev?: string

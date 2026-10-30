@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * /admin/analytics/tools — tracking pixels, tracked short links, and imports
- * from Umami / Fathom Lite (admin only).
+ * from Fathom Lite (admin only).
  */
 import { onMounted, reactive, ref, watch } from "vue";
 import AnalyticsFrame from "../components/AnalyticsFrame.vue";
@@ -22,7 +22,7 @@ const pixels = ref<any[]>([]);
 const links = ref<any[]>([]);
 const pixelName = ref("");
 const linkForm = reactive({ slug: "", url: "", name: "" });
-const importForm = reactive<Record<string, string>>({ format: "umami", events: "", sessions: "", siteStats: "", pageStats: "", referrerStats: "" });
+const importForm = reactive<Record<string, string>>({ siteStats: "", pageStats: "", referrerStats: "" });
 const importing = ref(false);
 const importResult = ref<any>(null);
 const error = ref<string | null>(null);
@@ -77,9 +77,7 @@ const runImport = async () => {
   importResult.value = null;
   error.value = null;
   try {
-    const body = importForm.format === "umami"
-      ? { format: "umami", events: importForm.events, sessions: importForm.sessions || undefined }
-      : { format: "fathom", siteStats: importForm.siteStats || undefined, pageStats: importForm.pageStats || undefined, referrerStats: importForm.referrerStats || undefined };
+    const body = { format: "fathom", siteStats: importForm.siteStats || undefined, pageStats: importForm.pageStats || undefined, referrerStats: importForm.referrerStats || undefined };
     importResult.value = await api.post(`${base()}/import`, body);
   } catch (err) {
     error.value = errorMessage(err);
@@ -139,32 +137,17 @@ watch(() => state.siteId.value, () => void load(), { immediate: true });
       </div>
 
       <section class="cfa-card cfa-stack" style="margin-top: 16px">
-        <h2>Import historical data</h2>
-        <div class="cfa-row">
-          <label class="cfa-check"><input v-model="importForm.format" type="radio" value="umami" /> Umami (event export)</label>
-          <label class="cfa-check"><input v-model="importForm.format" type="radio" value="fathom" /> Fathom Lite (aggregate tables)</label>
-        </div>
-        <template v-if="importForm.format === 'umami'">
-          <p class="cfa-small cfa-muted" style="margin: 0">
-            Upload the <code>website_event</code> CSV (columns like <code>session_id, created_at, url_path, url_query, referrer_domain, page_title, event_type, event_name</code>)
-            and optionally the <code>session</code> CSV (<code>session_id, hostname, browser, os, device, screen, language, country, subdivision1, city</code>).
-            Rows become raw events, so filters and reports include them. Re-importing the same file is skipped as duplicates.
-          </p>
-          <label class="cfa-field"><span>website_event.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('events', $event)" /></label>
-          <label class="cfa-field"><span>session.csv (optional)</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('sessions', $event)" /></label>
-        </template>
-        <template v-else>
-          <p class="cfa-small cfa-muted" style="margin: 0">
-            Export Fathom Lite's hourly tables with hostnames/pathnames resolved:
-            <code>site_stats (ts, pageviews, visitors, sessions, bounce_rate, avg_duration)</code>,
-            <code>page_stats (ts, hostname, pathname, pageviews, visitors, entries, bounce_rate, avg_duration)</code>,
-            <code>referrer_stats (ts, hostname, pathname, groupname, pageviews, visitors, bounce_rate, avg_duration)</code>.
-            They are stored as imported daily rollups. Dashboards include them; raw-only filters and reports don't. Re-importing a day replaces it.
-          </p>
-          <label class="cfa-field"><span>site_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('siteStats', $event)" /></label>
-          <label class="cfa-field"><span>page_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('pageStats', $event)" /></label>
-          <label class="cfa-field"><span>referrer_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('referrerStats', $event)" /></label>
-        </template>
+        <h2>Import historical data (Fathom Lite)</h2>
+        <p class="cfa-small cfa-muted" style="margin: 0">
+          Export Fathom Lite's hourly tables with hostnames/pathnames resolved:
+          <code>site_stats (ts, pageviews, visitors, sessions, bounce_rate, avg_duration)</code>,
+          <code>page_stats (ts, hostname, pathname, pageviews, visitors, entries, bounce_rate, avg_duration)</code>,
+          <code>referrer_stats (ts, hostname, pathname, groupname, pageviews, visitors, bounce_rate, avg_duration)</code>.
+          They are stored as imported daily rollups. Dashboards include them; raw-only filters and reports don't. Re-importing a day replaces it.
+        </p>
+        <label class="cfa-field"><span>site_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('siteStats', $event)" /></label>
+        <label class="cfa-field"><span>page_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('pageStats', $event)" /></label>
+        <label class="cfa-field"><span>referrer_stats.csv</span><input class="cfa-input" type="file" accept=".csv,text/csv" @change="readFile('referrerStats', $event)" /></label>
         <div class="cfa-row">
           <button type="button" class="cfa-btn cfa-btn-primary" :disabled="importing" @click="runImport">{{ importing ? "Importing…" : "Import" }}</button>
           <code v-if="importResult" class="cfa-small">{{ JSON.stringify(importResult) }}</code>

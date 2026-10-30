@@ -65,8 +65,10 @@ const select = (row: any) => {
   if (props.clickable === false || row.value === "(other)") return;
   if (active.value === "prop") {
     const [event, key, value] = String(row.value).split("\u001f");
-    props.state.addFilter({ dim: "event", op: "eq", value: event });
-    props.state.addFilter({ dim: "prop", op: "eq", value: `${key}=${value}` });
+    props.state.addFilters(
+      { dim: "event", op: "eq", value: event },
+      { dim: "prop", op: "eq", value: `${key}=${value}` },
+    );
     return;
   }
   props.state.addFilter({ dim: active.value, op: "eq", value: row.value });

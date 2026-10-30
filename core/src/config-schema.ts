@@ -105,6 +105,7 @@ export function validateSettings(
     invalid('auth_redirect_path', 'a local absolute path')
   integer(auth.tokenTtlSeconds, 'auth_token_ttl_seconds', 60, 3600)
   integer(auth.sessionMaxAgeSeconds, 'auth_session_max_age_seconds', 60, 86400)
+  integer(auth.rememberSeconds, 'auth_remember_seconds', 0, 31536000)
   integer(auth.proofOfWorkBits, 'auth_pow_bits', 1, 24)
   integer(auth.proofOfWorkTtlSeconds, 'auth_pow_ttl_seconds', 30, 3600)
   database(auth.tokenDatabase, 'auth_token_database')

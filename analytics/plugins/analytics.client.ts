@@ -1,9 +1,12 @@
 import type { DirectiveBinding } from "vue";
-import { useRuntimeConfig } from "#imports";
+import { injectHead, useRuntimeConfig } from "#imports";
 import { createAnalyticsClient } from "../composables/useAnalytics";
-import type { UmamiBindingValue } from "../types/umami";
+import type { AnalyticsBindingValue } from "../types/analytics";
 
 type AnalyticsClient = ReturnType<typeof createAnalyticsClient>;
+
+/** Longest wait for the new page's title before sending its pageview anyway. */
+const TITLE_WAIT_MS = 300;
 
 interface AnalyticsElement extends HTMLElement {
   __analyticsCleanup__?: () => void;
@@ -11,7 +14,7 @@ interface AnalyticsElement extends HTMLElement {
 
 function bindDirective(
   el: AnalyticsElement,
-  binding: DirectiveBinding<UmamiBindingValue>,
+  binding: DirectiveBinding<AnalyticsBindingValue>,
   client: AnalyticsClient,
 ) {
   cleanupDirective(el);
@@ -43,7 +46,7 @@ function cleanupDirective(el: AnalyticsElement) {
 }
 
 function normalizeBinding(
-  binding: DirectiveBinding<UmamiBindingValue>,
+  binding: DirectiveBinding<AnalyticsBindingValue>,
 ): { event: string; data?: Record<string, any>; trigger: string } | null {
   const value = binding.value;
 
@@ -87,25 +90,15 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   const router = useRouter();
   const runtimeConfig = useRuntimeConfig();
   const publicAnalytics = runtimeConfig.public?.analytics ?? {};
-  const umamiConfig = publicAnalytics.umami ?? {};
   tracker.init({
     endpoint: publicAnalytics.endpoint ?? undefined,
-    websiteId: umamiConfig.websiteId ?? "",
-    appName: umamiConfig.appName,
-    includeTitle:
-      typeof umamiConfig.includeTitle === "boolean"
-        ? umamiConfig.includeTitle
-        : true,
-    sendReferrer:
-      typeof umamiConfig.sendReferrer === "boolean"
-        ? umamiConfig.sendReferrer
-        : true,
-    debug: Boolean(umamiConfig.debug),
+    includeTitle: publicAnalytics.includeTitle !== false,
+    sendReferrer: publicAnalytics.sendReferrer !== false,
+    debug: publicAnalytics.debug === true,
     persistentId: publicAnalytics.persistentId === true,
-    tag: typeof umamiConfig.tag === "string" && umamiConfig.tag ? umamiConfig.tag : undefined,
+    tag: typeof publicAnalytics.tag === "string" && publicAnalytics.tag ? publicAnalytics.tag : undefined,
   });
   nuxtApp.provide("analytics", tracker);
-  nuxtApp.provide("umami", tracker);
 
   // initialize v-analytics directive
   nuxtApp.vueApp.directive("analytics", {
@@ -149,10 +142,43 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     );
   }
 
-  router.afterEach(async (to, from) => {
+  // Router pageviews.
+  // - Failed, aborted and duplicate navigations are skipped (the page didn't change).
+  // - Hash-only changes are skipped unless `trackHashChanges` is on; query
+  //   changes (pagination, filters) still count.
+  // - The hit is sent once the new page's <title> is in the DOM (unhead's
+  //   `dom:rendered`), with a short fallback for pages whose head didn't
+  //   change. Sending right away would record the previous page's title.
+  const trackHashChanges = publicAnalytics.trackHashChanges === true;
+  const pageKey = (fullPath: string) => (trackHashChanges ? fullPath : fullPath.split("#")[0]);
+  let lastTracked: string | null = null;
+  let pending: { to: any; from: any; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  const flush = () => {
+    if (!pending) return;
+    const { to, from, timer } = pending;
+    pending = null;
+    clearTimeout(timer);
     void tracker.trackRouterNavigation(to, from).catch((err) => {
-      // report if we are in dev mode
       if (import.meta.dev) console.warn("[analytics] nav track failed", err);
     });
+  };
+
+  try {
+    injectHead(nuxtApp)?.hooks.hook("dom:rendered", flush);
+  } catch {
+    // No unhead instance: the timeout below still sends the pageview.
+  }
+  // Don't lose a pageview still waiting for its title when the tab closes.
+  window.addEventListener("pagehide", flush);
+
+  router.afterEach((to, from, failure) => {
+    if (failure) return;
+    const key = pageKey(to.fullPath);
+    if (key === lastTracked) return;
+    lastTracked = key;
+    // A newer navigation sends the previous one first, so none is lost.
+    flush();
+    pending = { to, from, timer: setTimeout(flush, TITLE_WAIT_MS) };
   });
 });

@@ -1,0 +1,346 @@
+# #database import inventory (generated 2026-10-28)
+# Regenerate: grep -rnE "from ['\"]#database" layers apps --include='*.ts' --include='*.vue' (excluding node_modules, .nuxt, .output, layers/database)
+
+## Functions by use
+ 119 couchdb          getDocument                        auth, bitvocation, content, couchfusioncom, email, events, feedback-tool, lightning, maintenance, orders, pacanele-dashboard, radustanciu, ylemreef
+ 108 couchdb          putDocument                        auth, bitvocation, content, couchfusioncom, email, events, feedback-tool, kangu, lightning, maintenance, orders, pacanele-dashboard, ylemreef
+  60 couchdb          getView                            auth, bitvocation, content, couchfusioncom, events, feedback-tool, lightning, maintenance, orders, pacanele-dashboard, sitemap-xml
+  27 couchdb          getSession                         analytics, auth, bitvocation, client-consultant-feedback, content, feedback-tool, lightning, orders, pacanele-dashboard
+  24 couchdb          CouchDBDocument                    bitvocation, content, events, lightning, maintenance
+  24 couchdb          getAllDocs                         auth, bitvocation, content, email, events, maintenance, ylemreef
+  15 couchdb          initializeDatabase                 auth, bitvocation, client-consultant-feedback, content, couchfusioncom, events, feedback-tool, lightning, maintenance, orders, pacanele-dashboard, recipes
+  12 couchdb          CouchDBDesignDocument              auth, bitvocation, content, couchfusioncom, events, feedback-tool, lightning, maintenance, orders, pacanele-dashboard
+  12 couchdb          couchDBRequest                     analytics, client-consultant-feedback, couchfusioncom, mindarchy, pacanele-dashboard, recipes, smart-lead
+  10 couch-config     buildCouchEnvSection               analytics, bitvocation, content, couchfusioncom, imagekit, lightning, maintenance, sms
+  10 couchdb          bulkDocs                           bitvocation, content, maintenance, orders
+   8 couchdb          validateCouchDBEnvironment         auth, content, events, feedback-tool, lightning, maintenance, orders, pacanele-dashboard
+   7 couch-config     readCouchConfigValues              bitvocation, content, couchfusioncom, imagekit, lightning, maintenance, sms
+   7 couchdb          deleteDocument                     bitvocation, content, events, feedback-tool, maintenance
+   6 couch-config     resolveRuntimeAppSlug              analytics, bitvocation, couchfusioncom, imagekit, lightning
+   6 couchdb          generateAuthSessionCookie          auth, client-consultant-feedback, couchfusioncom
+   6 couchdb          getDocumentWithAttachments         content, feedback-tool, pacanele-dashboard
+   5 couchdb          createUser                         auth, bitvocation, couchfusioncom, lightning, maintenance
+   5 couchdb          CouchDBViewResponse                bitvocation, feedback-tool
+   4 couchdb.server   getDocument                        tulin-delivery
+   4 couchdb.server   putDocument                        tulin-delivery
+   4 couchdb.server   getView                            tulin-delivery
+   3 couchdb          putAttachment                      content, feedback-tool, pacanele-dashboard
+   3 couchdb          CouchDBDocumentWithAttachments     content, feedback-tool
+   3 couchdb.server   getSession                         tulin-delivery
+   2 couchdb          authenticate                       auth, couchfusioncom
+   2 couch-config     readCouchConfigValue               bitvocation, content
+   2 couch-config     normalizeCouchEnvSlug              analytics, content
+   2 couchdb          deleteAttachment                   content, pacanele-dashboard
+   2 couchdb          getAttachment                      content, pacanele-dashboard
+   2 couch-config     writeCouchConfigValue              analytics, maintenance
+   2 couchdb.server   CouchDBDocument                    tulin-delivery
+   1 couchdb          logout                             auth
+   1 couchdb          deleteLocalDocument                content
+   1 couchdb          getLocalDocument                   content
+   1 couchdb          putLocalDocument                   content
+   1 couch-config     parseCouchConfigString             analytics
+   1 couchdb          createDatabase                     lovable-gifts-sdd
+   1 couchdb.server   initializeDatabase                 tulin-delivery
+   1 couchdb.server   validateCouchDBEnvironment         tulin-delivery
+   1 couchdb.server   deleteDocument                     tulin-delivery
+   1 couchdb.server   CouchDBDesignDocument              tulin-delivery
+   1 couchdb          CouchDBSession                     bitvocation
+
+## Every import
+apps/bitvocation/server/api/career-compass/generate.post.ts:3  import { getAllDocs } from '#database/utils/couchdb'
+apps/bitvocation/server/api/community-offerings/[id].delete.ts:2  import { getDocument, getView, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/community-offerings/[id].patch.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/community-offerings/index.get.ts:2  import { getDocument, getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/community-offerings/index.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/community-offerings/me.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/cron/meetup-telegram-announcements.post.ts:2  import { getView, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/cron/pow-lab-lite-reminders.post.ts:3  import { getAllDocs, getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/cron/pow-lab-reminders.post.ts:3  import { getAllDocs, getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/email-logs/[id].get.ts:4  import { getDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/email-logs/index.get.ts:4  import { getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/forms/contact.post.ts:2  import {getDocument} from '#database/utils/couchdb'
+apps/bitvocation/server/api/jobs.get.ts:2  import {getAllDocs} from '#database/utils/couchdb'
+apps/bitvocation/server/api/lightning/cancel.post.ts:2  import { getSession, getDocument, putDocument, type CouchDBDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/[id].delete.ts:2  import { deleteDocument, getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/[id].put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/[id]/rsvp.post.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/index.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/meetups/series/[seriesId]/source.get.ts:2  import { getDocument, getView } from "#database/utils/couchdb";
+apps/bitvocation/server/api/profile/avatar.delete.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/profile/avatar.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/site-config/index.get.ts:4  import { getDocument, putDocument, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/api/site-config/index.put.ts:3  import { getDocument, putDocument, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/api/survey.post.ts:3  import { putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/surveys/index.get.ts:2  import { getSession, getAllDocs } from '#database/utils/couchdb'
+apps/bitvocation/server/api/to/[slug].get.ts:2  import { getView, type CouchDBViewResponse } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/[id].delete.ts:2  import { getDocument, getSession, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/[id].put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/[id]/expiry-warning-dismiss.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/[id]/telegram-removal.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/bulk-delete.post.ts:2  import { bulkDocs, getDocument, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/bulk-update.post.ts:2  import { bulkDocs, getDocument, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/bulk.post.ts:2  import { bulkDocs, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/import.post.ts:3  import { bulkDocs, getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/index.post.ts:3  import { createUser, getSession, getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/referral-count.get.ts:3  import { getDocument, getView } from '#database/utils/couchdb'
+apps/bitvocation/server/api/users/save-my-user.post.ts:2  import { getSession, getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/plugins/membership-expiry.ts:1  import { getAllDocs, getDocument, putDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/auth-helpers.ts:3  import type { CouchDBSession } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/auth-helpers.ts:4  import { getDocument, getSession } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/career-compass-openai-config.ts:5  } from '#database/utils/couch-config'
+apps/bitvocation/server/utils/community-offerings.ts:2  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/community-offerings.ts:3  import { initializeDatabase } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/event-notifications-settings.ts:69    const { getDocument } = await import('#database/utils/couchdb')
+apps/bitvocation/server/utils/event-notifications-settings.ts:78    const { getDocument, putDocument } = await import('#database/utils/couchdb')
+apps/bitvocation/server/utils/lightning-cancel.ts:1  import type { CouchDBDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/meetup-recurrence-service.ts:1  import { bulkDocs, getAllDocs, getDocument, getView, putDocument } from "#database/utils/couchdb";
+apps/bitvocation/server/utils/meetup-telegram-config.ts:6  } from '#database/utils/couch-config'
+apps/bitvocation/server/utils/meetups.ts:2  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/meetups.ts:3  import { initializeDatabase } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/notification-log.ts:1  import { initializeDatabase } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/notification-log.ts:32    const { getView } = await import('#database/utils/couchdb')
+apps/bitvocation/server/utils/notification-log.ts:50    const { putDocument } = await import('#database/utils/couchdb')
+apps/bitvocation/server/utils/surveys.ts:2  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+apps/bitvocation/server/utils/surveys.ts:3  import { initializeDatabase } from '#database/utils/couchdb'
+apps/client-consultant-feedback/server/api/login/verify-code.post.ts:10  import { generateAuthSessionCookie, getSession } from "#database/utils/couchdb";
+apps/client-consultant-feedback/server/api/workspace/action.post.ts:16  import { couchDBRequest } from "#database/utils/couchdb";
+apps/client-consultant-feedback/server/api/workspace/users.get.ts:2  import { couchDBRequest } from "#database/utils/couchdb";
+apps/client-consultant-feedback/server/utils/accounts.ts:1  import { couchDBRequest, initializeDatabase } from "#database/utils/couchdb";
+apps/client-consultant-feedback/server/utils/repository.ts:1  import { couchDBRequest } from "#database/utils/couchdb";
+apps/client-consultant-feedback/server/utils/session.ts:1  import { getSession } from "#database/utils/couchdb";
+apps/couchfusioncom/server/api/admin/developers/comments/[id].patch.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/admin/developers/features/[id].patch.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/admin/developers/features/[id]/assignments.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/admin/developers/features/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/auth/email/request.post.ts:3  import { getView, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/auth/email/verify.post.ts:6  } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/auth/nostr/verify.post.ts:7  } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/[id].get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/[id]/comments.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/[id]/donations.post.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/[id]/interest.post.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/[id]/vote.post.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/features/index.post.ts:3  import { putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/invoices/[invoiceId]/events.get.ts:2  import { couchDBRequest, getDocument, getView } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/me/account.patch.ts:3  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/me/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/membership-invoices/[id].get.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/membership-invoices/[id]/finalize.post.ts:3  import { authenticate, createUser, getDocument, getView, putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/api/developers/membership-invoices/index.post.ts:2  import { putDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/plugins/developers-hub-init.ts:1  import { initializeDatabase } from '#database/utils/couchdb'
+apps/couchfusioncom/server/utils/developers-hub/access.ts:2  import { getView } from '#database/utils/couchdb'
+apps/couchfusioncom/server/utils/developers-hub/config.ts:1  import { buildCouchEnvSection, readCouchConfigValues, resolveRuntimeAppSlug } from '#database/utils/couch-config'
+apps/couchfusioncom/server/utils/developers-hub/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+apps/couchfusioncom/server/utils/developers-hub/feature-aggregates.ts:1  import { getView } from '#database/utils/couchdb'
+apps/feedback-tool/server/api/feedback/[feedbackId]/attachments/[attachmentName].get.ts:4  import { getDocumentWithAttachments, CouchDBDocumentWithAttachments } from '#database/utils/couchdb';
+apps/feedback-tool/server/api/session.get.ts:2  import { getDocument } from '#database/utils/couchdb';
+apps/feedback-tool/server/plugins/init.ts:1  import { initializeDatabase, validateCouchDBEnvironment } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/activity-repository.ts:2  import { getDocument, getView, putDocument } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/activity-repository.ts:3  import type { CouchDBViewResponse } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/auth.ts:3  import { getSession } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/dashboard-repository.ts:1  import { getView } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/dashboard-repository.ts:2  import type { CouchDBViewResponse } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/feedback-repository.ts:2  import { getDocumentWithAttachments, getView, putDocument, putAttachment, CouchDBDocumentWithAttachments } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/feedback-repository.ts:3  import type { CouchDBViewResponse } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/projects-repository.ts:2  import { getDocument, getView, putDocument, deleteDocument } from '#database/utils/couchdb';
+apps/feedback-tool/server/utils/projects-repository.ts:3  import type { CouchDBViewResponse } from '#database/utils/couchdb';
+apps/kangu/server/api/contact/index.post.ts:3  import { putDocument } from '#database/utils/couchdb'
+apps/lovable-gifts-sdd/server/api/giftscope/auth/signup.post.ts:110      const { createUser } = await import('#database/utils/couchdb')
+apps/lovable-gifts-sdd/server/plugins/giftscope-database.ts:1  import { createDatabase } from '#database/utils/couchdb'
+apps/lovable-gifts-sdd/server/utils/giftscope/config.ts:8    const databaseConfig = await import('#database/utils/couch-config')
+apps/lovable-gifts-sdd/server/utils/giftscope/state.ts:53      const { getDocument } = await import('#database/utils/couchdb')
+apps/lovable-gifts-sdd/server/utils/giftscope/state.ts:57      const { putDocument } = await import('#database/utils/couchdb')
+apps/mindarchy/server/api/sharing-beta/requests.post.ts:1  import { couchDBRequest } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/attachments.get.ts:2  import { getDocumentWithAttachments } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/attachments.post.ts:2  import { getDocumentWithAttachments, putAttachment } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/attachments/[name].delete.ts:2  import { getDocumentWithAttachments, deleteAttachment } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/attachments/[name].get.ts:2  import { getAttachment } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/index.delete.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/index.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/[id]/index.put.ts:2  import { getDocument, putDocument, getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/index.post.ts:2  import { putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/clients/myself/index.post.ts:2  import { putDocument, getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/[eventId]/prizes/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/[eventId]/prizes/index.post.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/[id]/index.delete.ts:2  import { getDocument, couchDBRequest } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/[id]/index.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/[id]/index.put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/events/index.post.ts:2  import { putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/leads/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/new-lead.post.ts:2  import { getDocument, putDocument, getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prize-assignments/[id]/index.delete.ts:2  import { getDocument, couchDBRequest } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prize-assignments/[id]/index.put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prizes/[id]/index.delete.ts:2  import { getDocument, couchDBRequest } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prizes/[id]/index.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prizes/[id]/index.put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prizes/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/prizes/index.post.ts:2  import { putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/stats/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totem-config/[id]/index.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totems/[id]/index.delete.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totems/[id]/index.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totems/[id]/index.put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totems/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/api/totems/index.post.ts:2  import { putDocument, getDocument } from '#database/utils/couchdb'
+apps/pacanele-dashboard/server/plugins/init.ts:6  import {initializeDatabase, validateCouchDBEnvironment} from '#database/utils/couchdb';
+apps/pacanele-dashboard/server/utils/client-self.ts:3  import { getSession, getView } from '#database/utils/couchdb'
+apps/pacanele-dashboard/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+apps/radustanciu/server/api/contact.post.ts:2  import {getDocument} from '#database/utils/couchdb'
+apps/recipes/server/plugins/database-init.ts:1  import { initializeDatabase } from '#database/utils/couchdb'
+apps/recipes/server/utils/couch.ts:2  import { couchDBRequest } from '#database/utils/couchdb'
+apps/smart-lead/server/utils/requests.ts:2  import { couchDBRequest } from '#database/utils/couchdb'
+apps/tulin-delivery/server/api/menu/[id].get.ts:2  import { getDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/menu/index.get.ts:2  import { getView } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/orders/index.post.ts:3  import { putDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/orders/track.get.ts:2  import { getView } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/staff/menu/index.get.ts:2  import { getView } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/staff/orders/[id].patch.ts:2  import { getDocument, putDocument, getSession } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/api/staff/settings/drivers.patch.ts:2  import { getSession } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/plugins/menu-init.ts:3  import { initializeDatabase, validateCouchDBEnvironment } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/delivery-settings.ts:1  import { getDocument, putDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/menu-design-document.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/menu-documents.ts:2  import type { CouchDBDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/menu-editor.ts:3  import { getDocument, putDocument, deleteDocument, getView } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/order-status.ts:1  import type { CouchDBDocument } from '#database/utils/couchdb.server'
+apps/tulin-delivery/server/utils/staff-auth.ts:3  import { getSession } from '#database/utils/couchdb.server'
+apps/ylemreef/server/api/inquiries/[id].patch.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+apps/ylemreef/server/api/inquiries/index.get.ts:2  import { getAllDocs } from '#database/utils/couchdb'
+apps/ylemreef/server/api/inquiries/index.post.ts:2  import { putDocument } from '#database/utils/couchdb'
+layers/analytics/server/engine/access.ts:7  import { getSession } from "#database/utils/couchdb";
+layers/analytics/server/engine/admin-routes.ts:17  import { writeCouchConfigValue } from "#database/utils/couch-config";
+layers/analytics/server/engine/config.ts:15  } from "#database/utils/couch-config";
+layers/analytics/server/engine/couch.ts:5  import { couchDBRequest } from "#database/utils/couchdb";
+layers/auth/server/api/auth/nostr/verify.post.ts:5  } from "#database/utils/couchdb";
+layers/auth/server/api/login-verify.post.ts:9  } from "#database/utils/couchdb";
+layers/auth/server/api/login-with-password.post.ts:2  import { getDocument, putDocument, getView, createUser, authenticate, getSession, generateAuthSessionCookie } from '#database/utils/couchdb';
+layers/auth/server/api/login.get.ts:4  import { getSession, getDocument } from '#database/utils/couchdb'
+layers/auth/server/api/login.post.ts:2  import { getDocument, getView, putDocument } from "#database/utils/couchdb";
+layers/auth/server/api/logout.delete.ts:2  import { logout } from '#database/utils/couchdb'
+layers/auth/server/api/users.get.ts:2  import { getAllDocs, getSession, getView } from "#database/utils/couchdb";
+layers/auth/server/plugins/init.ts:6  import {initializeDatabase, validateCouchDBEnvironment} from '#database/utils/couchdb';
+layers/auth/server/utils/assert-admin-session.ts:2  import { getSession } from "#database/utils/couchdb";
+layers/auth/server/utils/authenticated-user.ts:2  import { getDocument, getSession } from "#database/utils/couchdb";
+layers/auth/server/utils/couchSession.ts:6  import {getSession} from '#database/utils/couchdb'
+layers/auth/server/utils/login-token.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/auth/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from "#database/utils/couchdb";
+layers/content/server/api/content/fonts/asset/[name].get.ts:7  import { getAttachment } from "#database/utils/couchdb";
+layers/content/server/api/content/llm-translations/translate.post.ts:2  import { getAllDocs } from '#database/utils/couchdb'
+layers/content/server/api/content/pages.delete.ts:5  import { bulkDocs, getAllDocs, deleteDocument } from '#database/utils/couchdb'
+layers/content/server/api/content/pages.get.ts:2  import { getAllDocs, getView } from '#database/utils/couchdb'
+layers/content/server/api/content/pages/publication-state.patch.ts:2  import { getAllDocs, putDocument } from '#database/utils/couchdb'
+layers/content/server/plugins/init.ts:1  import { initializeDatabase, validateCouchDBEnvironment } from '#database/utils/couchdb'
+layers/content/server/utils/auth.ts:3  import { getDocument, getSession } from '#database/utils/couchdb'
+layers/content/server/utils/component-picker-categories.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/content/server/utils/content-fonts.ts:15  } from "#database/utils/couchdb";
+layers/content/server/utils/content-fonts.ts:6  } from "#database/utils/couch-config";
+layers/content/server/utils/content-i18n-migration.ts:2  import { bulkDocs, getView } from "#database/utils/couchdb";
+layers/content/server/utils/content-i18n-settings.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/content/server/utils/content-page-url-rename.ts:2  import { getAllDocs, putDocument } from '#database/utils/couchdb'
+layers/content/server/utils/content-pages-save.ts:2  import { bulkDocs, getAllDocs, putDocument } from '#database/utils/couchdb'
+layers/content/server/utils/content-theme.ts:2  import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/content/server/utils/global-component-usage.ts:1  import { getAllDocs } from "#database/utils/couchdb";
+layers/content/server/utils/global-components-settings.ts:1  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/content/server/utils/llm-translations-config.ts:1  import type { CouchDBDocument } from '#database/utils/couchdb'
+layers/content/server/utils/llm-translations-config.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+layers/content/server/utils/llm-translations-config.ts:3  import { readCouchConfigValue } from '#database/utils/couch-config'
+layers/content/server/utils/llm-translations-logs.ts:1  import type { CouchDBDocument } from '#database/utils/couchdb'
+layers/content/server/utils/llm-translations-logs.ts:2  import { putDocument } from '#database/utils/couchdb'
+layers/content/server/utils/page-history.ts:6  } from '#database/utils/couchdb'
+layers/content/tests/api-content-pages.spec.ts:9  import { getAllDocs, putDocument } from '#database/utils/couchdb'
+layers/content/tests/api-global-components.spec.ts:5  import { putDocument } from "#database/utils/couchdb";
+layers/content/tests/content-page-url-rename.spec.ts:2  import { getAllDocs } from '#database/utils/couchdb'
+layers/content/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+layers/email/server/api/email-templates/[id].get.ts:2  import { getDocument } from '#database/utils/couchdb'
+layers/email/server/api/email-templates/[id].put.ts:2  import { putDocument, getDocument } from '#database/utils/couchdb'
+layers/email/server/api/email-templates/index.get.ts:2  import { getAllDocs } from '#database/utils/couchdb'
+layers/email/server/api/email-templates/index.post.ts:2  import { putDocument, getDocument } from '#database/utils/couchdb'
+layers/events/server/api/events/conference-proposals/[id].delete.ts:2  import { deleteDocument, getDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conference-proposals/[id].patch.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conference-proposals/index.get.ts:2  import { getAllDocs } from "#database/utils/couchdb";
+layers/events/server/api/events/conference-proposals/index.post.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id].delete.ts:2  import { deleteDocument, getDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id].patch.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id]/favorite.delete.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id]/favorite.post.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id]/watch.delete.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/[id]/watch.post.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/featured.get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/featured.patch.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/import-csv.post.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/index.get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/events/server/api/events/conferences/index.post.ts:2  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/api/events/public/conferences.get.ts:2  import { getAllDocs } from "#database/utils/couchdb";
+layers/events/server/plugins/init.ts:1  import { validateCouchDBEnvironment } from "#database/utils/couchdb";
+layers/events/server/utils/conference-csv.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/events/server/utils/conference-next-year-recreation.ts:1  import { getAllDocs, getDocument, putDocument } from "#database/utils/couchdb";
+layers/events/server/utils/conference-proposal.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/events/server/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from "#database/utils/couchdb";
+layers/events/server/utils/events-db.ts:2  import { initializeDatabase } from "#database/utils/couchdb";
+layers/events/server/utils/featured-conferences.ts:1  import { getDocument } from "#database/utils/couchdb";
+layers/events/server/utils/nostr-notifications.ts:2  import { getView } from "#database/utils/couchdb";
+layers/events/server/utils/require-conference.ts:2  import { getDocument } from "#database/utils/couchdb";
+layers/imagekit/server/utils/imagekit-config.ts:6  } from '#database/utils/couch-config'
+layers/lightning/server/api/lightning/career-hub-checkout.post.ts:3  import { putDocument } from "#database/utils/couchdb";
+layers/lightning/server/api/lightning/career-hub-checkout/[token].get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/lightning/server/api/lightning/events.get.ts:12  } from "#database/utils/couchdb";
+layers/lightning/server/api/lightning/invoice/[invoiceId].get.ts:2  import { getDocument } from '#database/utils/couchdb'
+layers/lightning/server/api/lightning/purchase.post.ts:4  import { getDocument, getSession } from '#database/utils/couchdb'
+layers/lightning/server/api/webhooks/blink.post.ts:2  import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/api/webhooks/strike.post.ts:3  import {getDocument, putDocument, type CouchDBDocument} from '#database/utils/couchdb'
+layers/lightning/server/composables/useLightning.ts:3  import { getDocument } from '#database/utils/couchdb'
+layers/lightning/server/plugins/blink-nc-payment-reconciliation.ts:1  import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/plugins/init.ts:9  } from "#database/utils/couchdb";
+layers/lightning/server/plugins/nwc-payment-reconciliation.ts:1  import { getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/plugins/pending-invoice-expiration.ts:6  } from "#database/utils/couchdb";
+layers/lightning/server/utils/blink-nc-payment-refresh.ts:2  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/blink-nc-reconciliation.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/lightning-config.ts:5  } from "#database/utils/couch-config";
+layers/lightning/server/utils/nwc-payment-refresh.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/order-fulfillment.ts:2  import { createUser, getDocument, getView, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/payment-event-log.ts:1  import { getDocument, putDocument, type CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/payment-state.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/server/utils/pending-invoice-expiration.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+layers/lightning/utils/guest-checkout.ts:2  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/lightning/utils/orders.ts:6  import {putDocument, getSession, getDocument} from '#database/utils/couchdb'
+layers/maintenance/server/api/maintenance/clients/[id].delete.ts:10  } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/clients/[id].patch.ts:7  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/clients/index.get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/clients/index.post.ts:2  import { putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/dashboard.get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/employees/[id].delete.ts:6  import { getDocument, deleteDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/employees/[id].patch.ts:7  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/employees/index.get.ts:2  import { getAllDocs } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/employees/index.post.ts:2  import { createUser } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/jobs/[id]/assign.patch.ts:7  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/jobs/[id]/reschedule.patch.ts:7  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/jobs/[id]/status.patch.ts:7  import { getDocument, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/jobs/index.get.ts:2  import { getDocument, getView } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/notifications/index.get.ts:2  import { getView } from "#database/utils/couchdb";
+layers/maintenance/server/api/maintenance/settings.put.ts:5  } from "#database/utils/couch-config";
+layers/maintenance/server/plugins/init.ts:7  } from "#database/utils/couchdb";
+layers/maintenance/server/utils/audit.ts:1  import { putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/utils/config.ts:4  } from "#database/utils/couch-config";
+layers/maintenance/server/utils/cron.ts:1  import { getView, putDocument } from "#database/utils/couchdb";
+layers/maintenance/server/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from "#database/utils/couchdb";
+layers/maintenance/server/utils/maintenance-db.ts:2  import { initializeDatabase } from "#database/utils/couchdb";
+layers/maintenance/server/utils/types.ts:1  import type { CouchDBDocument } from "#database/utils/couchdb";
+layers/orders/server/api/orders/cash-on-delivery.post.ts:3  import { bulkDocs } from '#database/utils/couchdb'
+layers/orders/server/api/orders/index.get.ts:2  import { getView } from '#database/utils/couchdb'
+layers/orders/server/api/orders/products/[id].delete.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+layers/orders/server/api/orders/products/[id].put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+layers/orders/server/api/orders/products/index.post.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+layers/orders/server/api/orders/settings/admin-labels.get.ts:2  import { getDocument } from '#database/utils/couchdb'
+layers/orders/server/api/orders/settings/admin-labels.put.ts:2  import { getDocument, putDocument } from '#database/utils/couchdb'
+layers/orders/server/api/store/products/[slug].get.ts:2  import { getDocument } from '#database/utils/couchdb'
+layers/orders/server/plugins/init.ts:1  import { initializeDatabase, validateCouchDBEnvironment } from '#database/utils/couchdb'
+layers/orders/server/utils/auth.ts:2  import { getSession } from '#database/utils/couchdb'
+layers/orders/server/utils/orders-database.ts:2  import { getView } from '#database/utils/couchdb'
+layers/orders/utils/design-documents.ts:1  import type { CouchDBDesignDocument } from '#database/utils/couchdb'
+layers/sitemap-xml/server/api/sitemap.xml.get.ts:16  import { getView } from "#database/utils/couchdb";
+layers/sms/server/utils/config.ts:4  } from "#database/utils/couch-config";

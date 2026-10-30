@@ -53,6 +53,8 @@ export interface AuthSettings {
   challengeDatabase: string
   tokenTtlSeconds: number
   sessionMaxAgeSeconds: number
+  /** How long a person stays signed in across CouchDB session renewals; 0 turns it off. */
+  rememberSeconds: number
   proofOfWorkBits: number
   proofOfWorkTtlSeconds: number
   nostrRelays: string[]

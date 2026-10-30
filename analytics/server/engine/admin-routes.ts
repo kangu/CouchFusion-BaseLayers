@@ -2,20 +2,21 @@
  * Admin / viewer API: `/api/analytics/admin/**`.
  */
 import { createError, setResponseHeaders } from "h3";
-import { forwardsToUmami, resetEngineConfigCache, resolveEngineConfig, storesLocally, type EngineConfig } from "./config";
+import { readConfigSection, resetEngineConfigCache, resolveEngineConfig, type EngineConfig } from "./config";
 import { canReadSite, requireUser, notFound, type AnalyticsUser } from "./access";
 import { rebuildRange, resetSiteData } from "./aggregator";
 import { toCsv } from "./csv";
 import { getMetrics, getOverview, getRealtime, resolveRange } from "./query";
 import { geoStats, outcomeStats } from "./collector";
-import { pendingRawEvents } from "./queue";
+import { pendingRawEvents, queueStats, rawWritesFailing } from "./queue";
 import { ensureAppSite, sanitizeSite, saveSite, setShareToken } from "./sites";
 import { mainDb } from "./storage";
 import type { Route, RouteContext } from "./router";
 import type { SiteDoc } from "./types";
 import { isValidTimeZone, normalizeDayInput } from "./time";
-import { readCouchConfigValues, writeCouchConfigValue } from "#database/utils/couch-config";
-import { parseCidrList } from "./net";
+import { writeCouchConfigValue } from "#database/utils/couch-config";
+import { GEO_SOURCES } from "./geo";
+import { HEADER_TRUST_MODES, parseCidrList } from "./net";
 
 export interface AdminContext {
   config: EngineConfig;
@@ -41,13 +42,13 @@ const publicSite = (site: SiteDoc, user: AnalyticsUser) => {
 
 /** `_config` keys editable from the admin UI (flat strings). */
 export const EDITABLE_SETTINGS = [
-  "analytics_mode",
   "analytics_ignore_ips",
   "analytics_respect_dnt",
   "analytics_raw_retention_months",
   "analytics_max_scan_days",
   "analytics_persistent_id",
   "analytics_geo_source",
+  "analytics_trust_headers",
   "analytics_aggregator_enabled",
 ] as const;
 
@@ -56,8 +57,8 @@ const validateSetting = (key: string, value: string) => {
     throw createError({ statusCode: 400, statusMessage: `${key}: ${message}` });
   };
   if (value === "") return;
-  if (key === "analytics_mode" && !["umami_cloud", "self_hosted", "dual"].includes(value)) fail("umami_cloud | self_hosted | dual");
-  if (key === "analytics_geo_source" && !["header", "none"].includes(value)) fail("header | none");
+  if (key === "analytics_geo_source" && !(GEO_SOURCES as string[]).includes(value)) fail(GEO_SOURCES.join(" | "));
+  if (key === "analytics_trust_headers" && !(HEADER_TRUST_MODES as string[]).includes(value)) fail(HEADER_TRUST_MODES.join(" | "));
   if (["analytics_respect_dnt", "analytics_persistent_id", "analytics_aggregator_enabled"].includes(key) && !["true", "false"].includes(value)) fail("true | false");
   if (["analytics_raw_retention_months", "analytics_max_scan_days"].includes(key) && !/^\d{1,4}$/.test(value)) fail("number expected");
   if (key === "analytics_ignore_ips") {
@@ -71,11 +72,9 @@ export const coreAdminRoutes: AdminRoute[] = [
     method: "GET",
     path: "status",
     handler: ({ config, user }) => ({
-      mode: config.mode,
       slug: config.slug,
       section: config.section,
-      storesLocally: storesLocally(config),
-      forwardsToUmami: forwardsToUmami(config),
+      configLoaded: config.loaded,
       siteId: config.defaultSiteId,
       aggregatorEnabled: config.aggregatorEnabled,
       persistentId: config.persistentId,
@@ -83,7 +82,8 @@ export const coreAdminRoutes: AdminRoute[] = [
       rawRetentionMonths: config.rawRetentionMonths,
       database: user.isAdmin ? mainDb(config) : undefined,
       pendingEvents: pendingRawEvents(),
-      geo: { source: config.geoSource, ...geoStats },
+      writes: { ...queueStats, failing: rawWritesFailing() },
+      geo: { source: config.geoSource, trustHeaders: config.trustHeaders, ...geoStats },
       outcomes: { ...outcomeStats },
       user: { name: user.name, isAdmin: user.isAdmin },
     }),
@@ -101,10 +101,17 @@ export const coreAdminRoutes: AdminRoute[] = [
     method: "GET",
     path: "settings",
     admin: true,
-    handler: async ({ config }) => ({
-      section: config.section,
-      values: await readCouchConfigValues(config.section, [...EDITABLE_SETTINGS]),
-    }),
+    handler: async ({ config }) => {
+      // Strict read: on failure the page shows an error instead of blank values
+      // that a save would then write back over the real ones.
+      const all = await readConfigSection(config.section).catch(() => {
+        throw createError({ statusCode: 502, statusMessage: `Could not read _config ${config.section}` });
+      });
+      return {
+        section: config.section,
+        values: Object.fromEntries(EDITABLE_SETTINGS.map((key) => [key, all[key] ?? null])),
+      };
+    },
   },
   {
     method: "PUT",
@@ -214,9 +221,6 @@ export const coreAdminRoutes: AdminRoute[] = [
 export const buildAdminContext = async (base: RouteContext, route?: Route<AdminContext>): Promise<AdminContext> => {
   const user = await requireUser(base.event);
   const config = await resolveEngineConfig(useRuntimeConfig());
-  if (!storesLocally(config) && !/\/(status|settings)/.test(base.event.path)) {
-    throw createError({ statusCode: 409, statusMessage: `Self-hosted analytics is disabled (analytics_mode=${config.mode})` });
-  }
   // One website per app: every `site/**` route works on it.
   let site: SiteDoc | null = null;
   if (/^site(\/|$)/.test(route?.path ?? "")) {

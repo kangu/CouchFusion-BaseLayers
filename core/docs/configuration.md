@@ -12,7 +12,8 @@ Runtime policy comes from `_node/_local/_config/cf_env_<normalized appSlug>` as 
 | auth_token_database, auth_challenge_database | Explicit existing storage for enabled passwordless/PoW methods |
 | auth_heading, auth_redirect_path | Login heading, local absolute post-login path (default `/`) |
 | auth_token_ttl_seconds | 60..3600, default 600 |
-| auth_session_max_age_seconds | 60..86400, default 600; checked after native session validation; cannot override CouchDB's shorter timeout |
+| auth_remember_seconds | 0..31536000, default 31536000 (12 months). How long a person stays signed in. Login also sets an HttpOnly `couchdb_remember` cookie; when the native session lapses, the server issues a fresh one with CouchDB's own signing scheme (secret read from `chttpd_auth`, roles re-read from `_users`). Changing the password or rotating the CouchDB secret ends it; signing out clears it on that browser. 0 turns it off. Server admins defined only in CouchDB's config have no `_users` salt and keep the plain native session |
+| auth_session_max_age_seconds | 60..86400, default 600; only applies when `auth_remember_seconds` is 0. Checked after native session validation; cannot override CouchDB's shorter timeout |
 | auth_cookie_secret | Server-only passwordless signing secret; must match native chttpd_auth secret |
 | auth_pow_bits, auth_pow_ttl_seconds | 1..24/default18, 30..3600/default600 |
 | admin_roles | Comma-separated allowed application roles, default admin; cannot be empty when enabled |

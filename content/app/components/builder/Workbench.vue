@@ -267,7 +267,7 @@ const contentThemeSettings = useContentThemeSettings();
 const runtimeConfig = useRuntimeConfig();
 const contentRuntimeStylingConfig = computed(() =>
     resolveContentRuntimeStylingConfig(
-        runtimeConfig.content ?? runtimeConfig.public?.content,
+        (runtimeConfig.public?.content ?? (import.meta.server ? runtimeConfig.content : undefined)),
     ),
 );
 const isTypographyFeatureEnabled = computed(
@@ -278,7 +278,7 @@ const isThemeFeatureEnabled = computed(
 );
 const contentI18nConfig = computed(() =>
     resolveContentI18nConfig(
-        runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+        (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
     ),
 );
 
@@ -390,6 +390,7 @@ const pageConfig = reactive<PageConfigInput>({
     seoTitle: "Page title",
     seoDescription: "SEO description.",
     seoImage: "",
+    seoVideo: "",
     navigation: true,
     extension: "md",
     meta: {},
@@ -558,6 +559,7 @@ const seoDraft = reactive({
     seoTitle: pageConfig.seoTitle,
     seoDescription: pageConfig.seoDescription,
     seoImage: pageConfig.seoImage,
+    seoVideo: pageConfig.seoVideo,
     assistiveSectionSnap: getAssistiveSectionSnap(),
     routeAccess: createRouteAccessDraft(pageConfig.meta, pageConfig.path),
 });
@@ -578,6 +580,7 @@ const syncSeoDraftFromPageConfig = () => {
     seoDraft.seoTitle = pageConfig.seoTitle;
     seoDraft.seoDescription = pageConfig.seoDescription;
     seoDraft.seoImage = pageConfig.seoImage;
+    seoDraft.seoVideo = pageConfig.seoVideo;
     seoDraft.assistiveSectionSnap = getAssistiveSectionSnap();
     seoDraft.routeAccess = createRouteAccessDraft(
         pageConfig.meta,
@@ -601,6 +604,7 @@ const hasSeoDraftChanges = computed(
         seoDraft.seoTitle !== pageConfig.seoTitle ||
         seoDraft.seoDescription !== pageConfig.seoDescription ||
         seoDraft.seoImage !== pageConfig.seoImage ||
+        seoDraft.seoVideo !== pageConfig.seoVideo ||
         hasRouteAccessDraftChanges.value ||
         (isAssistiveSectionSnapToggleEnabled.value &&
             seoDraft.assistiveSectionSnap !== getAssistiveSectionSnap()),
@@ -629,6 +633,7 @@ const applySeoDraft = () => {
     pageConfig.seoTitle = seoDraft.seoTitle;
     pageConfig.seoDescription = seoDraft.seoDescription;
     pageConfig.seoImage = seoDraft.seoImage;
+    pageConfig.seoVideo = seoDraft.seoVideo;
     if (isAssistiveSectionSnapToggleEnabled.value) {
         setAssistiveSectionSnap(seoDraft.assistiveSectionSnap);
     }
@@ -1034,6 +1039,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.seoTitle = "Page title";
         pageConfig.seoDescription = "SEO description.";
         pageConfig.seoImage = "";
+        pageConfig.seoVideo = "";
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
@@ -1053,6 +1059,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.seoTitle = doc.seo?.title ?? "";
     pageConfig.seoDescription = doc.seo?.description ?? "";
     pageConfig.seoImage = doc.seo?.image ?? "";
+    pageConfig.seoVideo = doc.seo?.video ?? "";
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = isPlainObject(doc.meta) ? { ...doc.meta } : {};
@@ -3592,6 +3599,11 @@ const handleSaveDebugClick = () => {
                         "
                     />
                 </div>
+                <label class="builder-config__full">
+                    <span>Social preview video</span>
+                    <small>Absolute HTTPS MP4 URL for og:video</small>
+                    <input v-model="seoDraft.seoVideo" type="url" placeholder="https://…/social-preview.mp4" />
+                </label>
                 <fieldset class="builder-config__route-access builder-config__full">
                     <legend>Route access</legend>
                     <p class="builder-config__hint">

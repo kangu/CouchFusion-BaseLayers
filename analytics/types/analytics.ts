@@ -1,6 +1,6 @@
 import type { Ref } from "vue";
 
-export interface UmamiClient {
+export interface AnalyticsClient {
   init: (config?: Record<string, any>) => void;
   trackPageview: (extra?: Record<string, any>) => Promise<void>;
   trackEvent: (
@@ -15,11 +15,12 @@ export interface UmamiClient {
     extra?: Record<string, any>,
   ) => Promise<void>;
   trackView: (url?: string, referrer?: string) => Promise<void>;
+  identify: (id?: string | Record<string, any>, data?: Record<string, any>) => Promise<void>;
   isLoaded: Ref<boolean>;
   getInstance: () => any;
 }
 
-export type UmamiBindingValue =
+export type AnalyticsBindingValue =
   | string
   | {
       event: string;

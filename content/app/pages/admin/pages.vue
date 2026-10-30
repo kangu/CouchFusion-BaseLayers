@@ -19,7 +19,7 @@ const contentStore = useContentPagesStore();
 const runtimeConfig = useRuntimeConfig();
 const contentI18nConfig = computed(() =>
   resolveContentI18nConfig(
-    runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+    (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
   ),
 );
 

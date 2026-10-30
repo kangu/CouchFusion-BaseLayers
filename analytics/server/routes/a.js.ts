@@ -1,11 +1,8 @@
-// Standalone tracker script (self-hosted mode only).
-import { defineEventHandler, setResponseHeaders, createError } from "h3";
-import { resolveEngineConfig, storesLocally } from "../engine/config";
+// Standalone tracker script for pages served outside the Nuxt app.
+import { defineEventHandler, setResponseHeaders } from "h3";
 import { TRACKER_SCRIPT } from "../engine/tracker-script";
 
-export default defineEventHandler(async (event) => {
-  const config = await resolveEngineConfig(useRuntimeConfig());
-  if (!storesLocally(config)) throw createError({ statusCode: 404, statusMessage: "Not found" });
+export default defineEventHandler((event) => {
   setResponseHeaders(event, {
     "Content-Type": "application/javascript; charset=utf-8",
     "Cache-Control": "public, max-age=3600",

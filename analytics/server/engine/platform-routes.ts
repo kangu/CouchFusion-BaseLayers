@@ -4,7 +4,7 @@
 import { createError } from "h3";
 import type { AdminContext, AdminRoute } from "./admin-routes";
 import { collectRange, deleteDoc, getDoc } from "./couch";
-import { importFathom, importUmami } from "./importer";
+import { importFathom } from "./importer";
 import { createApiKey, createLink, createPixel, listApiKeys } from "./platform";
 import { mainDb } from "./storage";
 import type { SiteDoc } from "./types";
@@ -66,21 +66,17 @@ export const platformRoutes: AdminRoute[] = [
     method: "POST",
     path: "site/import",
     admin: true,
+    maxBody: MAX_IMPORT_CHARS,
     handler: async (ctx) => {
+      // Size is enforced while reading the body (maxBody).
       const body = ctx.body ?? {};
-      const size = JSON.stringify(body).length;
-      if (size > MAX_IMPORT_CHARS) throw createError({ statusCode: 413, statusMessage: "Import too large (max 50 MB per request)" });
-      if (body.format === "umami") {
-        if (typeof body.events !== "string" || !body.events.trim()) throw createError({ statusCode: 400, statusMessage: "events CSV required" });
-        return importUmami(ctx.config, site(ctx), body.events, typeof body.sessions === "string" ? body.sessions : undefined);
-      }
       if (body.format === "fathom") {
         if (![body.siteStats, body.pageStats, body.referrerStats].some((v) => typeof v === "string" && v.trim())) {
           throw createError({ statusCode: 400, statusMessage: "At least one Fathom CSV required" });
         }
         return importFathom(ctx.config, site(ctx), { siteStats: body.siteStats, pageStats: body.pageStats, referrerStats: body.referrerStats });
       }
-      throw createError({ statusCode: 400, statusMessage: "format must be umami or fathom" });
+      throw createError({ statusCode: 400, statusMessage: "format must be fathom" });
     },
   },
 ];

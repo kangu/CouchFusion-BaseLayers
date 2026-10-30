@@ -2,9 +2,7 @@ import { ref } from "vue";
 import { useNuxtApp } from "#app";
 
 export interface AnalyticsClientConfig {
-  websiteId: string;
   endpoint: string;
-  appName?: string;
   includeTitle: boolean;
   sendReferrer: boolean;
   debug: boolean;
@@ -15,9 +13,7 @@ export interface AnalyticsClientConfig {
 }
 
 const DEFAULT_CONFIG: AnalyticsClientConfig = {
-  websiteId: "",
   endpoint: "/api/stats",
-  appName: undefined,
   includeTitle: true,
   sendReferrer: true,
   debug: false,
@@ -183,8 +179,6 @@ export function createAnalyticsClient(
 
     if (config.sendReferrer && c.referrer) payload.referrer = c.referrer;
     if (config.includeTitle && c.title) payload.title = c.title;
-    if (config.appName) payload.appName = config.appName;
-    if (config.websiteId) payload.website = config.websiteId;
     if (config.tag) payload.tag = config.tag;
     if (distinctId) payload.id = distinctId;
     if (config.persistentId) {
@@ -218,7 +212,7 @@ export function createAnalyticsClient(
 
   /**
    * Associates subsequent hits with an app-level id (e.g. logged-in user) and
-   * stores optional session properties. Mirrors `umami.identify()`.
+   * stores optional session properties.
    */
   async function identify(id?: string | Record<string, any>, data: Record<string, any> = {}) {
     if (id && typeof id === "object") {

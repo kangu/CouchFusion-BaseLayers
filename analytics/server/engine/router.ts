@@ -1,7 +1,9 @@
 /**
  * Minimal path router used by the catch-all analytics API handlers.
  */
-import { createError, getMethod, getQuery, readBody, type H3Event } from "h3";
+import { createError, getMethod, getQuery, type H3Event } from "h3";
+import { API_BODY_LIMIT, readLimitedBody } from "./body";
+import { CouchError } from "./couch";
 import { QueryError } from "./query";
 
 export interface RouteContext {
@@ -15,6 +17,8 @@ export interface Route<C> {
   method: "GET" | "POST" | "PUT" | "DELETE";
   path: string;
   handler: (ctx: RouteContext & C) => Promise<any> | any;
+  /** Max request body in bytes (default API_BODY_LIMIT). */
+  maxBody?: number;
 }
 
 const matchPath = (pattern: string, path: string): Record<string, string> | null => {
@@ -41,14 +45,22 @@ export const dispatch = async <C>(
     if (route.method !== method) continue;
     const params = matchPath(route.path, path);
     if (!params) continue;
-    const body = method === "POST" || method === "PUT" ? await readBody(event).catch(() => ({})) : undefined;
-    const base: RouteContext = { event, params, query: getQuery(event), body: body ?? {} };
+    const base: RouteContext = { event, params, query: getQuery(event), body: {} };
     try {
+      // Authenticate before reading the body, so anonymous callers can't make
+      // the server buffer large payloads.
       const extra = await buildContext(base, route);
+      if (method === "POST" || method === "PUT") {
+        const parsed = await readLimitedBody(event, route.maxBody ?? API_BODY_LIMIT);
+        base.body = parsed && typeof parsed === "object" ? parsed : {};
+      }
       return await route.handler({ ...base, ...extra });
     } catch (error: any) {
       if (error instanceof QueryError) throw createError({ statusCode: error.statusCode, statusMessage: error.message });
       if (error?.statusCode) throw error;
+      if (error instanceof CouchError && (error.status === 503 || error.status === 504)) {
+        throw createError({ statusCode: 503, statusMessage: "Analytics storage is unavailable, try again shortly" });
+      }
       if (error instanceof Error && /^(Site id|Invalid|Unknown)/.test(error.message)) {
         throw createError({ statusCode: 400, statusMessage: error.message });
       }

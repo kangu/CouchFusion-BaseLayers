@@ -14,7 +14,7 @@ export default defineNuxtPlugin(() => {
   const route = useRoute();
   const runtimeConfig = useRuntimeConfig();
   const contentI18nConfig = resolveContentI18nConfig(
-    runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+    (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
   );
 
   const activeLocale = computed(

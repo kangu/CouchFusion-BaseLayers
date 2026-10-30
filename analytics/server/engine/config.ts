@@ -1,49 +1,52 @@
 /**
  * Engine settings resolved from the app's CouchDB `_config` section
- * `cf_env_[appSlug]` (flat key/values). Cached briefly so operators can switch
- * modes without restarting.
+ * `cf_env_[appSlug]` (flat key/values). Every key is optional: with none set,
+ * analytics runs on defaults. Cached briefly so admin edits apply without a restart.
+ *
+ * A failed read never silently turns into defaults: the last settings that
+ * loaded keep being used, and before any have loaded the config is marked
+ * `loaded: false` so nothing writes, provisions or deletes data with guesses.
  */
 import {
   buildCouchEnvSection,
   normalizeCouchEnvSlug,
-  readCouchConfigValues,
+  parseCouchConfigString,
   resolveRuntimeAppSlug,
 } from "#database/utils/couch-config";
-import { parseCidrList } from "./net";
-
-export type AnalyticsMode = "umami_cloud" | "self_hosted" | "dual";
+import { couch, CouchError } from "./couch";
+import type { GeoSource } from "./geo";
+import { parseCidrList, type HeaderTrust } from "./net";
 
 export interface EngineConfig {
   slug: string;
   section: string;
-  mode: AnalyticsMode;
+  /** False when `_config` has never been readable: values are defaults and must not drive writes. */
+  loaded: boolean;
   /** Id of the app's single website (`analytics_default_site_id`, else the app slug). */
   defaultSiteId: string;
   dbPrefix: string;
   rawRetentionMonths: number;
   respectDnt: boolean;
   ignoreIps: ReturnType<typeof parseCidrList>;
-  geoSource: "header" | "none";
+  geoSource: GeoSource;
+  /** Which forwarding headers to trust for client IP and geo (see net.ts). */
+  trustHeaders: HeaderTrust;
   aggregatorEnabled: boolean;
   persistentId: boolean;
   maxScanDays: number;
-  /** Legacy/shared exclusions from `umami_excluded_paths`. */
-  excludedPaths: string[];
 }
 
 export const ENGINE_CONFIG_KEYS = [
-  "analytics_mode",
   "analytics_default_site_id",
   "analytics_db_prefix",
   "analytics_raw_retention_months",
   "analytics_respect_dnt",
   "analytics_ignore_ips",
   "analytics_geo_source",
+  "analytics_trust_headers",
   "analytics_aggregator_enabled",
   "analytics_persistent_id",
   "analytics_max_scan_days",
-  "umami_excluded_paths",
-  "NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS",
 ] as const;
 
 const CACHE_TTL_MS = 60_000;
@@ -68,11 +71,17 @@ const int = (value: unknown, fallback: number, min: number, max: number): number
   return Math.min(max, Math.max(min, parsed));
 };
 
-export const parsePathList = (value: unknown): string[] =>
-  (text(value) ?? "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+/** `header`, `timezone`, `auto` (header, then time zone) or `none`; anything else is `auto`. */
+const parseGeoSource = (value: unknown): GeoSource => {
+  const raw = text(value)?.toLowerCase();
+  return raw === "header" || raw === "timezone" || raw === "none" ? raw : "auto";
+};
+
+/** `auto`, `cloudflare` or `all`; anything else is `auto`. */
+const parseHeaderTrust = (value: unknown): HeaderTrust => {
+  const raw = text(value)?.toLowerCase();
+  return raw === "cloudflare" || raw === "all" ? raw : "auto";
+};
 
 /** Builds the default database prefix for an app slug. */
 export const defaultDbPrefix = (slug: string): string =>
@@ -91,34 +100,60 @@ const resolveSiteId = (explicit: string | null, slug: string): string => {
 export const buildEngineConfig = (
   slug: string,
   values: Record<string, string | null | undefined>,
+  loaded = true,
 ): EngineConfig => {
-  const modeRaw = text(values.analytics_mode)?.toLowerCase();
-  const mode: AnalyticsMode =
-    modeRaw === "self_hosted" || modeRaw === "dual" ? modeRaw : "umami_cloud";
   const prefix = text(values.analytics_db_prefix)?.toLowerCase();
   return {
     slug,
     section: buildCouchEnvSection(slug),
-    mode,
+    loaded,
     defaultSiteId: resolveSiteId(text(values.analytics_default_site_id), slug),
     dbPrefix: prefix && /^[a-z][a-z0-9_$()+-]*$/.test(prefix) ? prefix : defaultDbPrefix(slug),
     rawRetentionMonths: int(values.analytics_raw_retention_months, 13, 1, 120),
     respectDnt: bool(values.analytics_respect_dnt, true),
     ignoreIps: parseCidrList(text(values.analytics_ignore_ips)),
-    geoSource: text(values.analytics_geo_source)?.toLowerCase() === "none" ? "none" : "header",
+    geoSource: parseGeoSource(values.analytics_geo_source),
+    trustHeaders: parseHeaderTrust(values.analytics_trust_headers),
     aggregatorEnabled: bool(values.analytics_aggregator_enabled, true),
     persistentId: bool(values.analytics_persistent_id, false),
     maxScanDays: int(values.analytics_max_scan_days, 31, 1, 366),
-    excludedPaths: parsePathList(
-      text(values.umami_excluded_paths) ?? text(values.NUXT_PUBLIC_UMAMI_EXCLUDED_PATHS),
-    ),
   };
+};
+
+/** Retry delay after a failed `_config` read. */
+const RETRY_MS = 5_000;
+
+/**
+ * Reads a whole `_config` section in one request. Throws when CouchDB can't
+ * answer, unlike the shared per-key reader, which turns failures into "unset".
+ * A missing section is simply empty.
+ */
+export const readConfigSection = async (section: string): Promise<Record<string, string>> => {
+  if (!section) return {};
+  const raw = await couch<Record<string, unknown>>(
+    `_node/_local/_config/${encodeURIComponent(section)}`,
+    {},
+    { allow404: true, timeoutMs: 5_000 },
+  );
+  const values: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    const parsed = typeof value === "string" ? parseCouchConfigString(value) : null;
+    if (parsed !== null) values[key] = parsed;
+  }
+  return values;
 };
 
 let cached: { expiresAt: number; config: EngineConfig } | null = null;
 let inFlight: Promise<EngineConfig> | null = null;
+/** Last config read successfully; survives cache resets. */
+let lastGood: EngineConfig | null = null;
+let failing = false;
 
-/** Resolves engine settings (cached for 60 s, concurrent reads deduplicated). */
+/**
+ * Resolves engine settings (cached for 60 s, concurrent reads deduplicated).
+ * When the read fails it serves the last good settings (or a `loaded: false`
+ * default before any) and retries after a few seconds.
+ */
 export const resolveEngineConfig = async (
   runtimeConfig: Record<string, any> = useRuntimeConfig(),
 ): Promise<EngineConfig> => {
@@ -126,10 +161,27 @@ export const resolveEngineConfig = async (
   if (inFlight) return inFlight;
   inFlight = (async () => {
     const slug = resolveRuntimeAppSlug(runtimeConfig);
-    const values = await readCouchConfigValues(buildCouchEnvSection(slug), [...ENGINE_CONFIG_KEYS]);
-    const config = buildEngineConfig(slug, values);
-    cached = { expiresAt: Date.now() + CACHE_TTL_MS, config };
-    return config;
+    const section = buildCouchEnvSection(slug);
+    try {
+      const config = buildEngineConfig(slug, await readConfigSection(section));
+      lastGood = config;
+      if (failing) console.info(`[analytics] _config ${section} is readable again`);
+      failing = false;
+      cached = { expiresAt: Date.now() + CACHE_TTL_MS, config };
+      return config;
+    } catch (error) {
+      const fallback = lastGood?.slug === slug ? lastGood : buildEngineConfig(slug, {}, false);
+      if (!failing) {
+        const reason = error instanceof CouchError ? error.message : String(error);
+        console.warn(
+          `[analytics] could not read _config ${section} (${reason}); ` +
+            (fallback.loaded ? "keeping the last settings that loaded" : "collection is paused until it can be read"),
+        );
+      }
+      failing = true;
+      cached = { expiresAt: Date.now() + RETRY_MS, config: fallback };
+      return fallback;
+    }
   })();
   try {
     return await inFlight;
@@ -138,16 +190,13 @@ export const resolveEngineConfig = async (
   }
 };
 
-/** True when events are stored locally. */
-export const storesLocally = (config: EngineConfig): boolean =>
-  config.mode === "self_hosted" || config.mode === "dual";
-
-/** True when events are forwarded to Umami Cloud. */
-export const forwardsToUmami = (config: EngineConfig): boolean =>
-  config.mode === "umami_cloud" || config.mode === "dual";
-
-/** Test seam / admin refresh: drops the memoized value. */
+/** Test seam / admin refresh: drops the memoized value (the last good config is kept). */
 export const resetEngineConfigCache = (): void => {
   cached = null;
   inFlight = null;
+};
+
+/** Thrown by writers when settings were never loaded. Routes map it to 503. */
+export const assertConfigLoaded = (config: EngineConfig): void => {
+  if (!config.loaded) throw new CouchError(503, "config_unavailable", `_config ${config.section} could not be read`);
 };

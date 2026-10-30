@@ -592,8 +592,7 @@ export default defineComponent({
         const route = useRoute();
         const contentI18nConfig = computed(() =>
             resolveContentI18nConfig(
-                runtimeConfig.content?.i18n ??
-                    runtimeConfig.public?.content?.i18n,
+                (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
             ),
         );
         const resolvedDefaultLocale = computed(

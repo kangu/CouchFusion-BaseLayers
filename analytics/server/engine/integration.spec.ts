@@ -18,7 +18,7 @@ import type { RawEvent } from "./types";
 
 const enabled = process.env.ANALYTICS_IT === "1" && Boolean(process.env.COUCHDB_ADMIN_AUTH);
 const prefix = `analytics_it_${randomBytes(3).toString("hex")}`;
-const config = buildEngineConfig("it", { analytics_mode: "self_hosted", analytics_db_prefix: prefix, analytics_default_site_id: "it" });
+const config = buildEngineConfig("it", { analytics_db_prefix: prefix, analytics_default_site_id: "it" });
 
 describe.skipIf(!enabled)("engine integration (CouchDB)", () => {
   afterAll(async () => {

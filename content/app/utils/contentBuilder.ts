@@ -22,6 +22,7 @@ export interface PageConfigInput {
   seoTitle: string
   seoDescription: string
   seoImage?: string | null
+  seoVideo?: string | null
   navigation: boolean
   extension: string
   meta?: Record<string, any>
@@ -48,6 +49,7 @@ export interface MinimalContentDocument {
     title: string
     description: string
     image?: string | null
+    video?: string | null
   }
   stem: string
 }
@@ -513,7 +515,8 @@ export const createDocumentFromTree = (
     seo: {
       title: config.seoTitle,
       description: config.seoDescription,
-      image: config.seoImage ?? null
+      image: config.seoImage ?? null,
+      video: config.seoVideo ?? null
     },
     stem: pathToStem(normalizedPath)
   }

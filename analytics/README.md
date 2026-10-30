@@ -3,7 +3,8 @@
 Privacy-friendly, self-hosted web analytics for CouchFusion apps. Each app tracks one website: its own. The layer collects pageviews and events from your Nuxt app (or any website), stores them in CouchDB, and gives you an admin dashboard with realtime, reports, sessions, sharing and an API. No cookies, no third-party service, no stored IP addresses.
 
 > A browsable version of this guide with diagrams is in [`README.html`](README.html).
-> Forwarding to Umami Cloud still exists as a legacy mode: see [`docs/umami-cloud-forwarding.md`](docs/umami-cloud-forwarding.md).
+
+Analytics is on as soon as an app extends the layer. No CouchDB `_config` keys are required: every engine setting has a default.
 
 ## Contents
 
@@ -18,7 +19,6 @@ Privacy-friendly, self-hosted web analytics for CouchFusion apps. Each app track
 9. [Operations](#operations)
 10. [Troubleshooting](#troubleshooting)
 11. [Development and tests](#development-and-tests)
-12. [Legacy: Umami Cloud forwarding](#legacy-umami-cloud-forwarding)
 
 ## What you get
 
@@ -29,7 +29,7 @@ Privacy-friendly, self-hosted web analytics for CouchFusion apps. Each app track
 - **Reports**: goals, funnels, journeys, retention, UTM, attribution, revenue and multi-dimension breakdowns.
 - **Sessions**: every visit with its full event timeline.
 - **Sharing and access**: a public read-only link, viewer roles, API keys with a REST API.
-- **Extras**: tracking pixels for emails, tracked short links, CSV export, import from Umami and Fathom Lite.
+- **Extras**: tracking pixels for emails, tracked short links, CSV export, import from Fathom Lite.
 
 ## How it works
 
@@ -57,6 +57,8 @@ Privacy-friendly, self-hosted web analytics for CouchFusion apps. Each app track
 6. **Query.** The dashboard reads rollups for unfiltered views, which is fast. Filters, reports, sessions and realtime read the raw hits, limited to 31 days by default.
 
 ## Setup
+
+Collection needs only step 1. Steps 2–5 set up the admin dashboard.
 
 ### 1. Add the layers
 
@@ -94,17 +96,9 @@ bun add apexcharts @iconify/vue
 @source "../../../../../layers/auth/app/**/*.{vue,ts}";
 ```
 
-### 4. Turn the engine on in CouchDB
+On first start the server creates the app's analytics databases and its website record by itself, named after the app slug. The startup log prints both.
 
-Add these keys to the `_config` section `cf_env_<appSlug>` (flat strings):
-
-```ini
-analytics_mode = self_hosted
-```
-
-That's all the engine needs. On first start it creates the app's website record by itself, named after the app slug.
-
-### 5. Review the website settings
+### 4. Review the website settings
 
 Log in with a user that has the `admin` role and open `/admin/analytics/settings`:
 
@@ -112,7 +106,7 @@ Log in with a user that has the `admin` role and open `/admin/analytics/settings
 2. List the site's domains, one per line (subdomains are included). While the list is empty, hits from any hostname are accepted.
 3. Keep `/admin*` and `/login` in **Excluded paths** so your own admin work isn't counted.
 
-### 6. Check it
+### 5. Check it
 
 Open a public page of the site, then look at **Realtime**. The hit appears immediately. Overview totals follow within about a minute.
 
@@ -122,7 +116,7 @@ If the app has no `/admin` page yet, add one that uses the `admin-workspace` lay
 
 ### Automatic
 
-Once the layer is extended, every route change in the Nuxt app is tracked as a pageview. Nothing else is needed.
+Once the layer is extended, every route change in the Nuxt app is tracked as a pageview. Nothing else is needed. Failed, aborted and duplicate navigations aren't counted, and neither are hash-only changes (`/page#a` → `/page#b`) unless `trackHashChanges` is on. Query changes such as pagination still count. Each pageview is sent once the new page's title is set, so the Titles report shows the right page.
 
 ### Custom events
 
@@ -176,8 +170,9 @@ Later hits carry that id. Retention and multi-day attribution need this, because
 | `autoCapture.downloads` | `false` | send `file-download` for links to files |
 | `autoCapture.downloadExtensions` | pdf, zip, csv, … | comma-separated list of extensions |
 | `persistentId` | `false` | opt-in localStorage visitor id (needs consent, and `analytics_persistent_id=true` on the server) |
-| `umami.tag` | — | tag attached to every hit, for A/B variants or deploys |
-| `umami.includeTitle`, `umami.sendReferrer`, `umami.debug` | `true`, `true`, `false` | payload details |
+| `tag` | — | tag attached to every hit, for A/B variants or deploys |
+| `includeTitle`, `sendReferrer`, `debug` | `true`, `true`, `false` | payload details |
+| `trackHashChanges` | `false` | count hash-only route changes as pageviews |
 | `endpoint` | `/api/stats` | where the client posts hits |
 
 ### Pages outside the Nuxt app
@@ -192,7 +187,7 @@ No website id is needed: every hit goes to the app's one website.
 
 Supported attributes: `data-auto-track="false"`, `data-domains`, `data-tag`, `data-exclude-search`, `data-exclude-hash`, `data-do-not-track`, `data-before-send`, `data-host-url`.
 
-In page scripts: `umami.track("event", { key: "value" })` and `umami.identify("user-id")`. The same functions are available as `cfa.track` and `cfa.identify`. In HTML: `<a data-umami-event="cta" data-umami-event-plan="pro">`.
+In page scripts: `cfa.track("event", { key: "value" })` and `cfa.identify("user-id")`. In HTML: `<a data-cfa-event="cta" data-cfa-event-plan="pro">`.
 
 ## The dashboard
 
@@ -216,17 +211,17 @@ In page scripts: `umami.track("event", { key: "value" })` and `umami.identify("u
 
 ## Configuration reference
 
-All keys live in CouchDB `_config`, section `cf_env_<appSlug>`, as flat strings. Most can be edited under **Settings → Engine**. Changes apply within about a minute, with no restart.
+All keys are optional. They live in CouchDB `_config`, section `cf_env_<appSlug>`, as flat strings. Most can be edited under **Settings → Engine**. Changes apply within about a minute, with no restart.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `analytics_mode` | `umami_cloud` | `self_hosted` = built-in engine. `dual` and `umami_cloud` are legacy modes. |
 | `analytics_default_site_id` | app slug | id of the app's website record; rarely needs setting |
 | `analytics_db_prefix` | `analytics_<slug>` | database name prefix |
 | `analytics_raw_retention_months` | `13` | raw hits older than this are deleted; rollups are kept |
 | `analytics_respect_dnt` | `true` | drop hits with `DNT: 1` or `Sec-GPC: 1` |
 | `analytics_ignore_ips` | — | comma-separated IPs or CIDRs to ignore |
-| `analytics_geo_source` | `header` | `header` reads Cloudflare, CloudFront or Vercel headers; `none` disables geo |
+| `analytics_trust_headers` | `auto` | `auto`: trust Cloudflare's IP and geo headers only on requests that came from a Cloudflare address. `cloudflare`: always trust them. `all`: trust every forwarding header as sent (old behavior). See [Country detection](#country-detection). |
+| `analytics_geo_source` | `auto` | `auto`: CDN header, otherwise the browser time zone. `header`: CDN headers only. `timezone`: time zone only. `none`: no geo. |
 | `analytics_aggregator_enabled` | `true` | set `false` on instances that shouldn't aggregate |
 | `analytics_persistent_id` | `false` | accept the opt-in persistent visitor id |
 | `analytics_max_scan_days` | `31` | longest range for filters, reports and sessions |
@@ -235,15 +230,31 @@ Website settings (name, domains, timezone, excluded paths, goals, viewer roles, 
 
 ## Country detection
 
-The engine reads the visitor's country from a header the CDN adds to every request. Nothing is looked up, no IP database is installed, and the IP is not stored.
+Country comes from one of two places, chosen by `analytics_geo_source` (default `auto`: the header when there is one, otherwise the time zone). No IP database is installed, nothing is looked up remotely, and the IP is not stored.
+
+1. **A CDN header** (country, plus region and city when the CDN sends them). See the list below.
+2. **The browser's time zone**, for sites with no CDN header. The trackers send the visitor's IANA time zone (for example `Europe/Bucharest`), and the server maps it to a country with a built-in table generated from the public-domain tz database (`server/engine/tz-country.ts`, about 10 KB, 541 zone names, 247 countries).
+   - It gives a country only, never a region or city.
+   - Zones with no country (`UTC`, `Etc/*`) give no country. So does `Atlantic/Reykjavik`, which Firefox's fingerprinting protection, Tor Browser and Mullvad Browser report for everyone.
+   - It's wrong for people whose computer is set to a different country's time zone (travelers who changed it, remote desktops). It's right for VPN users, unlike IP-based lookup.
+   - To refresh the table (once or twice a year is plenty), run `node scripts/generate-tz-country.mjs`.
+
+Header sources:
 
 - **Cloudflare** sends `CF-IPCountry` when the site is proxied (orange cloud) and *Network → IP Geolocation* is on, which is the default. For region and city, enable the managed transform *Add visitor location headers*.
 - **A reverse proxy between Cloudflare and the app** (Caddy, nginx) is fine as long as it forwards request headers. Caddy's `reverse_proxy` does this by default; don't strip `CF-IPCountry` or `CF-Connecting-IP` with `header_up -...`.
 - CloudFront (`CloudFront-Viewer-Country`) and Vercel (`X-Vercel-IP-Country`) headers are read too.
-- **Check it:** Settings → Engine shows how many hits since the last server start carried a country.
-- Local development has no CDN in front, so no countries are recorded there.
+- **Check it:** Settings → Engine shows how many hits since the last server start carried a country, and how many of those came from the time zone.
+- Local development has no CDN in front, so with `auto` the country comes from your own time zone.
 
-The headers are trusted as sent. If the app can be reached directly, bypassing Cloudflare, a client could fake its country; restrict the origin to Cloudflare if that matters.
+**Which headers are trusted** (`analytics_trust_headers`, default `auto`). Visitors can send any header, so with `auto` the layer checks who actually connected:
+- **The connecting address.** This is the socket peer. When the peer is a local reverse proxy (a loopback or private address, e.g. Caddy on 127.0.0.1), it is instead the address that proxy reports in `X-Real-IP`, or the last `X-Forwarded-For` hop. Your Caddy template sets `X-Real-IP {remote_host}`.
+- **Cloudflare's headers** (`CF-Connecting-IP`, `CF-IPCountry`, region, city) are used only when that address is one of Cloudflare's published ranges. Anyone else sending them is ignored, so on sites not behind Cloudflare, visitors can't choose their IP (which feeds the visitor hash, ignored IPs and rate limiting) or their country.
+- **Other CDN headers** (CloudFront, Vercel, `X-Country-Code`) are ignored with `auto`.
+
+Set `cloudflare` when another proxy or load balancer sits between Cloudflare and Caddy, so Caddy sees that proxy's address instead of Cloudflare's. Set `all` for the old behavior (every header trusted as sent), e.g. on CloudFront or Vercel, or when your own proxy sets `X-Country-Code`. Settings → Engine shows how many hits carried Cloudflare headers that were ignored.
+
+Cloudflare's ranges are built into `server/engine/net.ts`. Check them against https://www.cloudflare.com/ips/ now and then; they rarely change.
 
 ## Privacy model
 
@@ -269,9 +280,7 @@ The headers are trusted as sent. If the app can be reached directly, bypassing C
 - **Tracking pixels.** Tools page. Put the image in an email or external page; each load is a `pixel-view` event.
 - **Tracked links.** Tools page. `/l/<slug>` records a `link-click` event and redirects.
 - **CSV export.** The CSV link on each dashboard table.
-- **Import.** Tools page.
-  - Umami: upload the `website_event` CSV and optionally the `session` CSV. Rows become raw hits, so filters and reports include them.
-  - Fathom Lite: upload hourly `site_stats`, `page_stats` and `referrer_stats` CSVs. They appear in dashboards but not in filtered views or reports.
+- **Import.** Tools page. Upload Fathom Lite's hourly `site_stats`, `page_stats` and `referrer_stats` CSVs. They appear in dashboards but not in filtered views or reports.
 
 ## Operations
 
@@ -284,8 +293,10 @@ The headers are trusted as sent. If the app can be reached directly, bypassing C
 
 - **Aggregator.** Runs inside the app every 60 seconds. With several instances, a lease in CouchDB makes sure only one aggregates. An instance that is killed hard can hold the lease for up to three minutes.
 - **Retention.** Whole monthly raw databases are dropped once they are older than `analytics_raw_retention_months`.
-- **Rebuild.** Settings → Data → Rebuild recomputes rollups for a date range from raw hits.
-- **Reset.** Settings → Data deletes all collected data after you type the website id.
+- **Rebuild.** Settings → Data → Rebuild recomputes rollups for a date range from raw hits. Days whose raw hits were already deleted by retention keep their rollups, and the result says how many were skipped.
+- **Reset.** Settings → Data deletes all collected data after you type the website id. It deletes in pages, reports an error if anything couldn't be deleted (running it again is safe), and tells every instance to drop its in-memory copy of today.
+- **CouchDB outages.** Hits are buffered in memory (up to 20,000) and retried with backoff, from 2 up to 30 seconds. They are written once CouchDB answers again. Every CouchDB call times out (15 s, or 60 s for scans and bulk writes), so a stalled CouchDB never hangs requests. If `_config` can't be read, the last settings that loaded stay in use. If none have loaded since the server started, nothing is stored or deleted until they can be read. Settings → Engine shows both states.
+- **Request size.** `/api/stats` accepts bodies up to 32 KB and the APIs up to 64 KB (the import, 50 MB). Larger requests get 413 before they are fully read.
 - **Capacity.** Today's hits are kept in memory for aggregation. Plan for roughly 100–200k hits per day per app.
 - **Backups.** Back up `analytics_<slug>`. Raw month databases can be replicated like any CouchDB database.
 
@@ -295,10 +306,10 @@ The headers are trusted as sent. If the app can be reached directly, bypassing C
 |---|---|
 | My own visits don't show | You only visited `/admin*` or `/login`, which are excluded. Open a public page. |
 | Hits appear in Realtime but not in Overview | Rollups refresh every 60 seconds. |
-| Nothing is recorded at all | `analytics_mode` isn't `self_hosted` (the server log prints the mode at startup), or "Collecting" is switched off in Settings. |
+| Nothing is recorded at all | CouchDB isn't reachable, or its `_config` can't be read (the log says "could not read _config … collection is paused"), or "Collecting" is switched off in Settings. |
 | A browser never shows up | It sends Do-Not-Track or Global Privacy Control (Brave does by default), or its IP is in `analytics_ignore_ips`. Settings → Engine lists how many hits were dropped and why since the server started. |
 | Hits from another domain are dropped | The domain isn't listed under Settings → Domains. |
-| No countries | The app isn't behind a CDN that sends country headers, or a proxy in between strips them. See [Country detection](#country-detection). |
+| No countries | `analytics_geo_source` is `header` and the app isn't behind a CDN that sends country headers. Use `auto`. See [Country detection](#country-detection). |
 | Automated tests aren't counted | Headless browsers are treated as bots. |
 | "Filtered queries are limited to 31 days" | Raise `analytics_max_scan_days`, or remove the filter. |
 | `/admin` shows "Page not found" | The app has no `/admin` page. Add one with the `admin-workspace` layout. |
@@ -330,12 +341,3 @@ Code map:
 | `scripts/generate-world-dots.mjs` | regenerates the map's dot grid (`admin/utils/world-dots.ts`) from Natural Earth data |
 
 More detail: [`docs/self-hosted-analytics.md`](docs/self-hosted-analytics.md) and the design spec in `docs/specs/`.
-
-## Legacy: Umami Cloud forwarding
-
-The layer started as a proxy to Umami Cloud. That still works and is the default while `analytics_mode` is unset, so existing apps keep behaving as before:
-
-- `umami_cloud`: forward only, nothing stored locally.
-- `dual`: store locally and forward. Useful for comparing numbers during a migration.
-
-New work should use `self_hosted`. Setup notes for forwarding are in [`docs/umami-cloud-forwarding.md`](docs/umami-cloud-forwarding.md).

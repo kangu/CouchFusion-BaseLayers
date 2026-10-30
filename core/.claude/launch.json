@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cf-cloud",
+      "runtimeExecutable": "zsh",
+      "runtimeArgs": [
+        "-lc",
+        "cd /Users/radu/Projects/nuxt-apps/apps/cf-cloud && PATH=$HOME/.nvm/versions/node/v24.22.1/bin:$PATH npx nuxt dev --port 3100"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "design-lab",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4310",
+        "-d",
+        "/Users/radu/Projects/nuxt-apps/layers/core/design-lab"
+      ],
+      "port": 4310
+    }
+  ]
+}

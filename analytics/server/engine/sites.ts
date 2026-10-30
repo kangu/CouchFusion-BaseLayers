@@ -2,7 +2,7 @@
  * Website registry stored as `site:<id>` docs in the main analytics database.
  */
 import { randomBytes } from "node:crypto";
-import type { EngineConfig } from "./config";
+import { assertConfigLoaded, type EngineConfig } from "./config";
 import { CouchError, ensureDatabase, getDoc, putDoc } from "./couch";
 import { normalizeHost } from "./referrer";
 import { mainDb } from "./storage";
@@ -99,6 +99,8 @@ let ensuring: Promise<SiteDoc> | null = null;
 export const ensureAppSite = async (config: EngineConfig, { fresh = false } = {}): Promise<SiteDoc> => {
   const existing = (await listSites(config, { fresh }))[0];
   if (existing) return existing;
+  // Never create a website record from guessed (default) settings.
+  assertConfigLoaded(config);
   if (ensuring) return ensuring;
   ensuring = (async () => {
     const db = mainDb(config);

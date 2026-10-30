@@ -106,6 +106,7 @@ export function resolveOptions(
         challengeDatabase: '',
         tokenTtlSeconds: 600,
         sessionMaxAgeSeconds: 600,
+        rememberSeconds: 31536000,
         proofOfWorkBits: 18,
         proofOfWorkTtlSeconds: 600,
         nostrRelays: [],
@@ -154,7 +155,11 @@ export function resolveSettings(
   options: ResolvedOptions,
   remote: Record<string, string> = {},
 ): ResolvedCouchDBSettings {
-  const auth = { ...options.defaults.auth },
+  // rememberSeconds defaults for options generated before the setting existed
+  const auth = {
+      ...options.defaults.auth,
+      rememberSeconds: options.defaults.auth.rememberSeconds ?? 31536000,
+    },
     admin = { ...options.defaults.admin, theme: colorScheme(options.defaults.admin.theme) },
     features = { ...options.features }
   for (const key of [
@@ -168,6 +173,7 @@ export function resolveSettings(
     'auth_redirect_path',
     'auth_token_ttl_seconds',
     'auth_session_max_age_seconds',
+    'auth_remember_seconds',
     'auth_pow_bits',
     'auth_pow_ttl_seconds',
     'auth_password_enabled',
@@ -201,6 +207,7 @@ export function resolveSettings(
   const numbers: Record<string, [keyof typeof auth, number, number]> = {
     auth_token_ttl_seconds: ['tokenTtlSeconds', 60, 3600],
     auth_session_max_age_seconds: ['sessionMaxAgeSeconds', 60, 86400],
+    auth_remember_seconds: ['rememberSeconds', 0, 31536000],
     auth_pow_bits: ['proofOfWorkBits', 1, 24],
     auth_pow_ttl_seconds: ['proofOfWorkTtlSeconds', 30, 3600],
   }

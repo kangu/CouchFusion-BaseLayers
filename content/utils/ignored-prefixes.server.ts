@@ -185,6 +185,23 @@ export default async function contentLayerIgnoredPrefixesModule(
     allow: runtimeAllow,
   };
 
+  // Middleware runs during SSR and client navigation, and reads public config first.
+  // Publish discovered app routes there too instead of shadowing server exclusions.
+  nuxt.options.runtimeConfig.public ||= {};
+  const publicContent = nuxt.options.runtimeConfig.public.content || {};
+  const publicAllow = Array.from(new Set([
+    ...runtimeAllow,
+    ...normalisePrefixList(publicContent.allow ?? []),
+  ]));
+  nuxt.options.runtimeConfig.public.content = {
+    ...publicContent,
+    ignore: applyAllowOverrides([
+      ...mergedRuntimeIgnore,
+      ...normalisePrefixList(publicContent.ignore ?? []),
+    ], publicAllow),
+    allow: publicAllow,
+  };
+
   nuxt.hook("app:config", (appConfig: any) => {
     appConfig.content = applyContentConfig(appConfig.content);
   });
