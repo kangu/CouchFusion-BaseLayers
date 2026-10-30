@@ -30,6 +30,7 @@ Written by the control plane to `/run/couchfusion/dev/<app>.env` before it start
 | `COUCHFUSION_CONTROL_TOKEN` | Per-start secret; required in header `x-couchfusion-control-token` on the control routes. |
 | `COUCHFUSION_PUBLIC_ORIGIN` | The dev slot origin the browser uses, e.g. `https://hetzner1.tailb7471b.ts.net:9181`. Only its hostname is used (Vite `allowedHosts`). |
 | `NUXT_PUBLIC_CONTENT_CONTROL_PLANE_ORIGINS` | Comma-separated control-plane origins the bridge may talk to (fills `runtimeConfig.public.content.controlPlane.origins`). |
+| `COUCHFUSION_AGENT_MARKER` | Path of the marker file that exists while a Codex generate job runs (`/run/couchfusion/dev/<app>.agent-running`). Enables the agent reload guard (below). |
 
 **Why these are not `cf_env_[slug]` parameters.** The repo rule says layers read app environment parameters from CouchDB `_config` (`cf_env_<slug>`). These values are different in kind: they are per-process supervisor injections that change on every dev start (the token), describe how this particular process is reached (the slot origin), and must never exist in production. Storing them in `_config` would make them shared, persistent and visible to production — the opposite of what they are for. They follow the same pattern as the existing `COUCHFUSION_PREVIEW` / `COUCHFUSION_PREVIEW_TOKEN` preview-host variables. Application parameters (ImageKit, analytics, …) still come from `cf_env_<slug>`.
 
@@ -79,6 +80,24 @@ Only the slot hostname is added to `allowedHosts`. **No `vite.server.hmr` overri
 
 The control plane's slot proxy passes WebSocket upgrades through and rewrites `Host` to the loopback upstream, which Vite accepts by default. Forcing `hmr.host`/`clientPort` would break whichever access path it did not name. Phase 0 spike S2 confirmed `[vite] connected.` through `tailscale serve` without an override.
 
+### Agent reload guard (Phase 2)
+
+While Codex generates a component it writes and rewrites `app/components/content/*.vue`, and the registry watcher rewrites `app/content-builder/component-definitions.{ts,json}` after each write. Without a guard, Vite reloads the builder page several times mid-run (observed 3× in the Phase 1 UI test).
+
+`utils/agent-reload-guard.ts` adds a Vite plugin (client dev server only) when `nuxt.options.dev` **and** `COUCHFUSION_AGENT_MARKER` is set. It wraps `server.ws.send` — in Vite 7 the same object as the client environment's `hot` channel, so every HMR message passes through it — and, **only while the marker file exists**, drops:
+
+| Message | Origin (observed on radustanciu, Nuxt 4.1.2 / Vite 7.3) | Rule |
+|---|---|---|
+| `full-reload` with `path:"*"`, `triggeredBy:<…/components/content/X.vue>` | content `import.meta.glob` (layer plugin) invalidation on add/delete | path or triggeredBy is a guarded path |
+| `full-reload` without path | Vite propagation of the registry `.ts` change (module imported eagerly by `useComponentRegistry`) | inside the time window |
+| `custom` `file-changed` `{file}` | `@vitejs/plugin-vue` `handleHotUpdate` for the `.vue` and the registry files | file is a guarded path |
+| `prune` `[/components/content/X.vue]` | Vite on delete | all paths guarded |
+| `update` (e.g. Tailwind `main.css` rebuild after a content `.vue` edit) | Tailwind v4 content scanning | inside the time window |
+
+Guarded paths: anything under `/components/content/` and `/content-builder/component-definitions.*`. The time window (`GUARD_WINDOW_MS`, 2.5 s) opens on every watcher `add`/`change`/`unlink` of a guarded path while the marker exists; the listener is prepended so it runs before Vite's own handler. Other traffic (`connected`, `ping`, `error`, other custom events, updates outside the window) always passes, and with no marker file everything passes unchanged. When the job ends the control plane removes the marker and asks the builder to reload through the bridge, which picks up all changes at once.
+
+Proof (local, port 4499, radustanciu + headless browser + raw HMR client): see `docs/implementation_results/2026-10-30T09-15-00+0200_agent-reload-guard.md`.
+
 ## Registry generator
 
 `scripts/generate-component-registry.mjs` now reads sources through `scripts/read-component-source.mjs`. A `.vue` file that disappears between directory listing and reading is skipped with a warning instead of failing the whole run. Phase 0 spike S1 showed a delete during a watcher run crashed the generator with ENOENT.
@@ -87,6 +106,6 @@ The control plane's slot proxy passes WebSocket upgrades through and rewrites `H
 
 From `layers/`:
 ```bash
-bunx vitest --config vitest.config.ts content/tests/server/control-plane-routes.spec.ts content/tests/builder/control-plane-bridge.spec.ts --run
+bunx vitest --config vitest.config.ts content/tests/server/control-plane-routes.spec.ts content/tests/server/agent-reload-guard.spec.ts content/tests/builder/control-plane-bridge.spec.ts --run
 bun test content/tests/scripts/read-component-source.test.mjs
 ```

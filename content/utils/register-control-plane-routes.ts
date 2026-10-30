@@ -1,4 +1,8 @@
 import { fileURLToPath } from "node:url";
+import {
+  agentReloadGuardEnabled,
+  agentReloadGuardPlugin,
+} from "./agent-reload-guard";
 
 type ControlPlaneEnvironment = Record<string, string | undefined>;
 
@@ -76,6 +80,19 @@ export default async function registerControlPlaneRoutes(
       }
       nuxt.options.vite.server.allowedHosts = list;
     }
+  }
+
+  // Agent reload guard: while the control plane's generate job runs (marker file
+  // exists), Vite must not reload the builder for content-component/registry changes.
+  if (agentReloadGuardEnabled(true, environment)) {
+    const markerPath = environment.COUCHFUSION_AGENT_MARKER!.trim();
+    nuxt.hook("vite:extendConfig", (config: any, context?: { isClient?: boolean }) => {
+      if (context && context.isClient === false) {
+        return;
+      }
+      config.plugins ||= [];
+      config.plugins.push(agentReloadGuardPlugin(markerPath));
+    });
   }
 
   if (!controlPlaneEnabled(true, environment)) {
