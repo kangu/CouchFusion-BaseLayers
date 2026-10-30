@@ -23,6 +23,7 @@ import {
 } from "#content/app/composables/useContentFontSettings";
 import { useContentThemeSettings } from "#content/app/composables/useContentThemeSettings";
 import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
+import { useControlPlaneBridge } from "#content/app/composables/useControlPlaneBridge";
 import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
 import {
     filterNodesBySearch,
@@ -1184,6 +1185,20 @@ const openRootPicker = (insertIndex: number | null = null) => {
     pendingRootInsertIndex.value = insertIndex;
     isRootPickerOpen.value = true;
 };
+
+// CouchFusion control plane (dev sessions only): after a component was generated and
+// the builder reloaded, open the picker so it can scroll to the new component.
+const controlPlaneBridge = useControlPlaneBridge();
+watch(
+    () => controlPlaneBridge.focusComponentId.value,
+    (componentId) => {
+        if (componentId && !isRootPickerOpen.value) {
+            openRootPicker();
+        }
+    },
+    // The workbench may mount after the focus request arrived (async component).
+    { immediate: true },
+);
 
 const resetAddSectionButtonAnimation = () => {
     if (addSectionAnimationTimer) {

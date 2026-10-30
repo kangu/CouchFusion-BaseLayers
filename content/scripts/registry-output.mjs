@@ -59,7 +59,9 @@ export async function writeRegistryPair({ outputFile, records, fileSystem = fs }
 }
 
 async function writeSynced(fileSystem, filename, content) {
-  const handle = await fileSystem.open(filename, 'wx', 0o600)
+  // Group-readable: the registry is generated, non-secret metadata that other workspace
+  // users (e.g. the CouchFusion control plane) must read. The process umask still applies.
+  const handle = await fileSystem.open(filename, 'wx', 0o664)
   try {
     await handle.writeFile(content)
     await handle.sync()

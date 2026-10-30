@@ -1030,7 +1030,8 @@ export async function authenticate(
       body: formData.toString(),
     });
 
-    console.log("_session response:", response);
+    // Log the outcome only: the full response includes the AuthSession Set-Cookie (a live session token).
+    console.log(`_session response: ${response.status} ${response.statusText} for ${username}`);
     if (response.ok) {
       // Extract AuthSession cookie from Set-Cookie header
       // not anymore

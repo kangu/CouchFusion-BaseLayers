@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createRegistryRecord, writeRegistryPair } from './registry-output.mjs'
+import { readComponentSource } from './read-component-source.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1535,8 +1536,13 @@ const generateRecords = async (vueFiles, helpers) => {
   const records = []
 
   for (const file of vueFiles) {
-    const source = await fs.readFile(file, 'utf8')
-    const sourceStats = await fs.stat(file)
+    const loaded = await readComponentSource(file)
+    if (!loaded) {
+      // Deleted between listing and reading (e.g. a component delete during a watcher run).
+      console.warn(`[registry] skipped ${path.relative(process.cwd(), file)}: file no longer exists`)
+      continue
+    }
+    const { source, stats: sourceStats } = loaded
     const { descriptor } = helpers.compiler.parse(source, { filename: file })
     const componentName = path.basename(file, '.vue')
 

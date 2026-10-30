@@ -24,6 +24,16 @@
                 </div>
                 <div class="component-picker-header-controls">
                     <button
+                        v-if="hostBridgeConnected"
+                        type="button"
+                        class="component-picker-manage-button component-picker-new-button"
+                        title="Ask the CouchFusion control plane to generate a new component"
+                        :disabled="hostRequestPending"
+                        @click="requestNewComponent"
+                    >
+                        New component
+                    </button>
+                    <button
                         v-if="categoryManagerAvailable"
                         type="button"
                         class="component-picker-manage-button"
@@ -116,6 +126,14 @@
                     {{ tab.label }}
                 </button>
             </div>
+            <p
+                v-if="hostRequestStatus"
+                class="component-picker-host-status"
+                :class="`is-${hostRequestStatus.status}`"
+                role="status"
+            >
+                {{ hostRequestStatus.text }}
+            </p>
             <section v-if="manageCategoriesOpen" class="component-picker-manage">
                 <aside class="component-picker-manage__sidebar">
                     <div class="component-picker-manage__head">
@@ -218,6 +236,8 @@
                     v-for="comp in filteredComponents"
                     :key="comp.id"
                     class="component-card"
+                    :class="{ 'is-host-focused': hostFocusedComponentId === comp.id }"
+                    :data-component-id="comp.id"
                     role="button"
                     tabindex="0"
 
@@ -306,6 +326,22 @@
                                 <path d="M14 11v5" />
                             </svg>
                         </button>
+                        <button
+                            v-if="canRequestFileDelete(comp)"
+                            class="delete-global-component-btn delete-component-file-btn"
+                            type="button"
+                            title="Delete component file (confirmed in the control plane)"
+                            :disabled="hostRequestPending"
+                            @click.stop="requestDeleteComponentFile(comp)"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4h8v2" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v5" />
+                                <path d="M14 11v5" />
+                            </svg>
+                        </button>
                     </div>
                     <div class="component-card-footer" @click="select(comp.id)">
                         <div class="component-info">
@@ -378,6 +414,10 @@ import LazyLoader from "./LazyLoader.vue";
 import RichTooltip from "../ui/RichTooltip.vue";
 import { declaredPreviewDefaults } from "#content/app/utils/component-preview";
 import { useComponentPickerCategories } from "#content/app/composables/useComponentPickerCategories";
+import {
+    useControlPlaneBridge,
+    type BridgeRequestResult,
+} from "#content/app/composables/useControlPlaneBridge";
 import {
     buildComponentPickerCategoryTabs,
     filterComponentPickerDefinitions,
@@ -464,6 +504,101 @@ const deleteGlobalComponent = (definition: ComponentDefinition) => {
     }
     emit("delete-global-component", definition.id);
 };
+
+// CouchFusion control-plane actions (dev sessions only). The control plane confirms
+// every action in its own UI; these buttons only send a request over the bridge.
+const hostBridge = useControlPlaneBridge();
+const hostBridgeConnected = computed(() => hostBridge.connected.value);
+const hostRequestPending = ref(false);
+const hostRequestStatus = ref<{ status: BridgeRequestResult["status"]; text: string } | null>(null);
+const hostFocusedComponentId = ref<string | null>(null);
+let hostStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+const showHostStatus = (status: BridgeRequestResult["status"], text: string) => {
+    hostRequestStatus.value = { status, text };
+    if (hostStatusTimer) {
+        clearTimeout(hostStatusTimer);
+    }
+    hostStatusTimer = setTimeout(() => {
+        hostRequestStatus.value = null;
+        hostStatusTimer = null;
+    }, 6000);
+};
+
+const describeHostResult = (action: string, result: BridgeRequestResult): string => {
+    if (result.message) {
+        return result.message;
+    }
+    switch (result.status) {
+        case "accepted":
+            return `${action}: continue in the control plane.`;
+        case "done":
+            return `${action}: done.`;
+        case "cancelled":
+            return `${action}: cancelled.`;
+        default:
+            return `${action}: failed.`;
+    }
+};
+
+/**
+ * File deletion is offered only for the app's own content components. The picker's
+ * options are built-in primitives, global aliases and the app's generated project
+ * registry, so "not global and not primitive" means a project component file. The
+ * control plane re-checks via the manifest that the source lives under
+ * `app/components/content/` and refuses anything else.
+ */
+const canRequestFileDelete = (definition: ComponentDefinition): boolean =>
+    hostBridgeConnected.value &&
+    !isGlobalComponentDefinition(definition) &&
+    !isPrimitiveComponent(definition);
+
+const runHostRequest = async (action: string, send: () => Promise<BridgeRequestResult>) => {
+    if (hostRequestPending.value) {
+        return;
+    }
+    hostRequestPending.value = true;
+    try {
+        const result = await send();
+        showHostStatus(result.status, describeHostResult(action, result));
+    } finally {
+        hostRequestPending.value = false;
+    }
+};
+
+const requestDeleteComponentFile = (definition: ComponentDefinition) =>
+    runHostRequest(`Delete ${definition.label}`, () => hostBridge.requestDelete(definition.id));
+
+const requestNewComponent = () =>
+    runHostRequest("New component", () => hostBridge.requestCreate(searchQuery.value));
+
+const focusHostComponent = async (componentId: string) => {
+    manageCategoriesOpen.value = false;
+    selectedCategory.value = "all";
+    searchQuery.value = "";
+    hostFocusedComponentId.value = componentId;
+    hostBridge.clearFocus();
+    await nextTick();
+    const card = componentGrid.value?.querySelector<HTMLElement>(
+        `[data-component-id="${CSS.escape(componentId)}"]`,
+    );
+    card?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setTimeout(() => {
+        if (hostFocusedComponentId.value === componentId) {
+            hostFocusedComponentId.value = null;
+        }
+    }, 4000);
+};
+
+watch(
+    () => [props.isOpen, hostBridge.focusComponentId.value] as const,
+    ([open, componentId]) => {
+        if (open && componentId) {
+            void focusHostComponent(componentId);
+        }
+    },
+    { immediate: true },
+);
 
 const PRIMITIVE_COMPONENT_IDS = new Set(["p", "span", "strong", "template"]);
 const PRIMITIVE_COMPONENT_LABELS = new Set([
@@ -1595,6 +1730,46 @@ watch(
 
 .delete-global-component-btn:hover svg {
     color: #dc2626;
+}
+
+/* CouchFusion control-plane actions (rendered only while the bridge is connected). */
+.delete-component-file-btn:disabled {
+    cursor: wait;
+    opacity: 0.5;
+}
+
+.component-picker-new-button {
+    border-color: #2563eb;
+    color: #1d4ed8;
+}
+
+.component-picker-new-button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.component-picker-host-status {
+    margin: 0;
+    padding: 6px 24px;
+    font-size: 13px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
+.component-picker-host-status.is-failed {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.component-picker-host-status.is-cancelled {
+    background: #f9fafb;
+    color: #374151;
+}
+
+.component-card.is-host-focused {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
 }
 
 /* ... preview styles same ... */

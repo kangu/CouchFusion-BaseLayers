@@ -16,6 +16,10 @@ export default defineNuxtConfig({
       new URL("./utils/register-component-preview-pages", import.meta.url),
     ),
     fileURLToPath(new URL("./utils/component-registry-watch", import.meta.url)),
+    // Dev-only, token-gated routes for the CouchFusion control plane (inert without env).
+    fileURLToPath(
+      new URL("./utils/register-control-plane-routes", import.meta.url),
+    ),
   ],
 
   imports: {
@@ -76,6 +80,11 @@ export default defineNuxtConfig({
         i18n: {
           defaultLocale: "en",
           locales: ["en"] as string[],
+        },
+        controlPlane: {
+          // Comma-separated control-plane origins allowed to talk to the builder
+          // bridge (NUXT_PUBLIC_CONTENT_CONTROL_PLANE_ORIGINS). Empty = bridge off.
+          origins: "",
         },
       },
     },
