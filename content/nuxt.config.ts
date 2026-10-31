@@ -20,6 +20,8 @@ export default defineNuxtConfig({
     fileURLToPath(
       new URL("./utils/register-control-plane-routes", import.meta.url),
     ),
+    // Dev-only: preload each page's module graph in one go (fewer round trips over slow links).
+    fileURLToPath(new URL("./utils/dev-module-preload", import.meta.url)),
   ],
 
   imports: {
