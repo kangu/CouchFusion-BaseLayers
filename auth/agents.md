@@ -58,6 +58,7 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - Proof-of-work defaults include `enabled: "true"`, `difficultyBits: 18`, and `ttlSeconds: 600`; coerce string booleans before checking.
 - Consumers customize login UI by shadowing `/login`, not by editing this layer's default login page.
 - Cookie secret rotation invalidates existing sessions across all instances.
+- Every login issues its session through `server/utils/session-cookie.ts`: stamped one year ahead with `Max-Age` (override per app with `cf_env_<slug>.auth_session_max_age_seconds` or `NUXT_AUTH_SESSION_MAX_AGE_SECONDS`). Without `COUCHDB_COOKIE_SECRET` it reads CouchDB's `chttpd_auth/secret`. The cookie salt comes from `[admins]` first (CouchDB checks server admins before `_users`), and each cookie is checked with `GET /_session` before it is sent. Do not pass CouchDB's own `_session` cookie through: it expires after CouchDB's 600 s timeout.
 - `assert-admin-session` throws a 403; consumers should render/handle forbidden states explicitly.
 
 ## Cross-References

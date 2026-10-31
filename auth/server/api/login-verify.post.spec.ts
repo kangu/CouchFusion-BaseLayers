@@ -29,6 +29,7 @@ vi.mock("#database/utils/couchdb", () => ({
   getView: async (_db: string, _ddoc: string, _view: string, { key }: { key: string }) => ({
     rows: user.email.toLowerCase() === key ? [{ id: user._id, key, value: user }] : [],
   }),
+  getSession: async () => ({ ok: true, userCtx: { name: "maria", roles: [] } }),
   generateAuthSessionCookie: (name: string) =>
     `AuthSession=${Buffer.from(`${name}:stamp:sig`).toString("base64")}; Version=1; Path=/; HttpOnly`,
 }));

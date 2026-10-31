@@ -40,6 +40,15 @@ export default defineNuxtConfig({
     couchdbCookieSecret:
       process.env.NUXT_COUCHDB_COOKIE_SECRET ||
       process.env.COUCHDB_COOKIE_SECRET,
+    // Login session length in seconds (default one year). CouchDB `_config`
+    // `cf_env_<slug>.auth_session_max_age_seconds` overrides it at runtime.
+    authSessionMaxAgeSeconds:
+      Number.parseInt(
+        process.env.NUXT_AUTH_SESSION_MAX_AGE_SECONDS ||
+          process.env.AUTH_SESSION_MAX_AGE_SECONDS ||
+          "",
+        10,
+      ) || 31536000,
     nostrConfigSlug:
       process.env.NUXT_NOSTR_CONFIG_SLUG || process.env.NOSTR_CONFIG_SLUG || "",
     nostrConfigSection:

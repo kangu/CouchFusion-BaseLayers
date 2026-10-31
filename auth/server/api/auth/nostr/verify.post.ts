@@ -1,8 +1,6 @@
-import { createError, defineEventHandler, readBody, setHeader } from "h3";
-import {
-  generateAuthSessionCookie,
-  getView,
-} from "#database/utils/couchdb";
+import { createError, defineEventHandler, readBody } from "h3";
+import { getView } from "#database/utils/couchdb";
+import { issueSessionCookie } from "#auth/server/utils/session-cookie";
 import { verifyEvent, type Event } from "nostr-tools";
 import { consumeNostrChallenge, verifyNostrChallenge } from "#auth/server/utils/nostr-challenge";
 import {
@@ -123,22 +121,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const runtimeConfig = useRuntimeConfig();
-  if (!runtimeConfig.couchdbCookieSecret) {
+  // Long-lived session (one year by default, see server/utils/session-cookie.ts).
+  if (!(await issueSessionCookie(event, userDoc, useRuntimeConfig()))) {
     throw createError({
       statusCode: 500,
       statusMessage: "CouchDB cookie secret not configured",
     });
   }
-
-  const newCookie = generateAuthSessionCookie(
-    userDoc.name,
-    runtimeConfig.couchdbCookieSecret,
-    userDoc.salt,
-    6_000_000,
-  );
-
-  setHeader(event, "Set-Cookie", newCookie);
   consumeNostrChallenge(challengePayload.challenge);
   return {
     success: true,

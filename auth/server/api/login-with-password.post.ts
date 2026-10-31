@@ -1,5 +1,6 @@
 import {defineEventHandler, readBody, createError} from "h3"
-import { getDocument, putDocument, getView, createUser, authenticate, getSession, generateAuthSessionCookie } from '#database/utils/couchdb';
+import { getDocument, authenticate } from '#database/utils/couchdb';
+import { issueSessionCookie } from '../utils/session-cookie';
 
 // Helper function so not to import anything external
 function isValidEmail (email) {
@@ -51,7 +52,14 @@ export default defineEventHandler(async (event) => {
         })
     }
 
-    if (result.setCookie) {
+    // CouchDB's own cookie lasts only its 600 s timeout; issue the layer's long-lived one.
+    // A server admin may have no _users document; the helper then uses the admin salt.
+    const userDoc = result.name
+        ? await getDocument('_users', `org.couchdb.user:${result.name}`).catch(() => null)
+        : null
+    const issued = await issueSessionCookie(event, userDoc ?? (result.name ? { name: result.name } : null), config)
+    if (!issued && result.setCookie) {
+        console.warn('[auth] no CouchDB cookie secret available; falling back to the short CouchDB session')
         setHeader(event, 'Set-Cookie', result.setCookie)
     }
 

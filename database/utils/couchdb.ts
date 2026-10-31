@@ -16,6 +16,8 @@ export interface CouchDBError {
 export interface CouchDBLoginResult {
   ok: boolean;
   setCookie?: string | null;
+  /** The CouchDB user name the session belongs to (from the `_session` response). */
+  name?: string;
 }
 
 export interface CouchDBResponse {
@@ -978,7 +980,7 @@ COUCHDB_ADMIN_AUTH must be base64("username:password").
   if (!cookieSecret) {
     const message = `
 🚨 CouchDB Configuration Warning:
-COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Session generation may fail at runtime.
+COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Login sessions will use CouchDB's own chttpd_auth/secret (read with the admin credentials).
     `.trim();
 
     if (options.strict) {
@@ -1036,7 +1038,14 @@ export async function authenticate(
       // Extract AuthSession cookie from Set-Cookie header
       // not anymore
       // just return the it so it can be set
-      return { ok: true, setCookie: response.headers.get("set-cookie") };
+      const payload = (await response.json().catch(() => null)) as {
+        name?: unknown;
+      } | null;
+      return {
+        ok: true,
+        setCookie: response.headers.get("set-cookie"),
+        name: typeof payload?.name === "string" ? payload.name : undefined,
+      };
       /*
       // keep this code here commented as I might want to use it later
       const setCookieHeader = response.headers.get('set-cookie');
@@ -1128,12 +1137,17 @@ export async function getSession(
 
 /**
  * Generate a CouchDB AuthSession cookie value.
+ *
+ * CouchDB accepts the cookie while `stamp + [chttpd_auth] timeout` is in the future, where
+ * the stamp is `now + timeoutSeconds`. `maxAgeSeconds` adds a `Max-Age` attribute, so the
+ * browser keeps the cookie across restarts instead of dropping it with the session.
  */
 export function generateAuthSessionCookie(
   username: string,
   couchSecret: string,
   userSalt: string,
   timeoutSeconds = 600,
+  options: { maxAgeSeconds?: number } = {},
 ): string {
   // Calculate expiration timestamp
   const expirationTime = Math.floor(Date.now() / 1000) + timeoutSeconds;
@@ -1169,7 +1183,12 @@ export function generateAuthSessionCookie(
   const isProduction = process.env.NODE_ENV === "production";
   const secureFlag = isProduction ? "; Secure" : "";
 
-  return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
+  const maxAge =
+    Number.isFinite(options.maxAgeSeconds) && (options.maxAgeSeconds as number) > 0
+      ? `; Max-Age=${Math.floor(options.maxAgeSeconds as number)}`
+      : "";
+
+  return `AuthSession=${base64Cookie}; Version=1; Path=/${maxAge}; HttpOnly${secureFlag}`;
 }
 
 export interface VerifyAuthSessionOptions {

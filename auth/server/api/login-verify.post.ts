@@ -1,16 +1,14 @@
 // Checks to see if the provided login token is valid
 
-import { defineEventHandler, readBody, createError, setHeader } from "h3";
+import { defineEventHandler, readBody, createError } from "h3";
 import {
   getDocument,
   putDocument,
   getView,
-  generateAuthSessionCookie,
 } from "#database/utils/couchdb";
 import { sanitizeUserDoc } from "../utils/sanitizeUserDoc";
+import { issueSessionCookie, resolveCookieSecret } from "../utils/session-cookie";
 
-// Issued cookies are stamped this far ahead, extending CouchDB's own timeout (~69 days).
-const SESSION_STAMP_OFFSET_SECONDS = 6000000;
 
 // Helper function so not to import anything external
 function isValidEmail(email) {
@@ -32,8 +30,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const runtimeConfig = useRuntimeConfig();
 
-  // Validate cookie secret is available
-  if (!runtimeConfig.couchdbCookieSecret) {
+  // Validate a cookie secret is available before the token is consumed
+  if (!(await resolveCookieSecret(runtimeConfig))) {
     throw createError({
       statusCode: 500,
       statusMessage: "CouchDB cookie secret not configured",
@@ -95,13 +93,13 @@ export default defineEventHandler(async (event) => {
     // _rev, so a concurrent second use fails with a conflict and is rejected below.
     await putDocument(DB, { ...resp, used: true });
 
-    const newCookie = generateAuthSessionCookie(
-      userDoc.name,
-      runtimeConfig.couchdbCookieSecret,
-      userDoc.salt,
-      SESSION_STAMP_OFFSET_SECONDS,
-    );
-    setHeader(event, "Set-Cookie", `${newCookie}; SameSite=Lax`);
+    // Long-lived session (one year by default, see server/utils/session-cookie.ts).
+    if (!(await issueSessionCookie(event, userDoc, runtimeConfig))) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "CouchDB cookie secret not configured",
+      });
+    }
 
     // Only non-secret data goes back to the browser: never password-hash fields
     // or the token document. `resp.funnel` and `doc` keep the existing response shape.
