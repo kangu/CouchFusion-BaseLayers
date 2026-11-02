@@ -178,6 +178,137 @@ const parseBoundBuilderPropValue = (value: unknown): unknown => {
   }
 }
 
+const JSON_STRING_PROP_TYPES = new Set<string>(['stringarray', 'jsonarray', 'jsonobject'])
+
+/**
+ * Key under which the builder saves a prop: lists and objects are JSON strings
+ * under `:key`, every other type is a plain value under `key`.
+ */
+export const builderPropStorageKey = (key: string, type: string): string =>
+  JSON_STRING_PROP_TYPES.has(type) ? `:${key}` : key
+
+const cloneDefaultValue = <T>(value: T): T => {
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+/**
+ * Fills a component's registry defaults into the props a stored block does not
+ * carry, encoded the way the builder saves them (see `builderPropStorageKey`).
+ *
+ * A block stored as `[id, {}]` renders its component defaults on the public
+ * page. Filling the same defaults into the builder node when a page loads makes
+ * the node editor and the inline preview show what the public page shows, and
+ * the next save stores them exactly like a newly added block. Props the
+ * document contains, under either key, are left untouched, including empty
+ * values; props without a registry default stay missing, so the component
+ * keeps its own default.
+ */
+export const applyBuilderPropDefaults = (
+  component: string,
+  props: Record<string, unknown>,
+  definitionLookup: Record<string, ComponentDefinition>
+): Record<string, unknown> => {
+  const definition = definitionLookup[component]
+  if (!definition?.props?.length) {
+    return props
+  }
+
+  for (const schema of definition.props) {
+    if (schema.default === undefined) {
+      continue
+    }
+    const storageKey = builderPropStorageKey(schema.key, schema.type)
+    if (props[schema.key] !== undefined || props[storageKey] !== undefined) {
+      continue
+    }
+    props[storageKey] = JSON_STRING_PROP_TYPES.has(schema.type)
+      ? (typeof schema.default === 'string' ? schema.default : JSON.stringify(schema.default))
+      : cloneDefaultValue(schema.default)
+  }
+
+  return props
+}
+
+/**
+ * Brings stored list and JSON props into the shape the node editor edits:
+ * `json` strings are parsed, `jsonarray`/`stringarray` values become JSON
+ * strings under `:key`. A list the document does not contain stays missing
+ * (it used to become "[]", which emptied the preview and was saved over the
+ * component default); a stored value that is not a list still becomes "[]".
+ */
+export const normalizeBuilderJsonProps = (
+  component: string,
+  props: Record<string, unknown>,
+  definitionLookup: Record<string, ComponentDefinition>
+): Record<string, unknown> => {
+  const definition = definitionLookup[component]
+  if (!definition?.props?.length) {
+    return props
+  }
+
+  for (const schema of definition.props) {
+    const storageKey =
+      schema.type === 'stringarray' || schema.type === 'jsonarray'
+        ? `:${schema.key}`
+        : schema.key
+    const rawValue = props[schema.key] ?? props[storageKey]
+
+    if (schema.type === 'json') {
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim()
+
+        if (!trimmed) {
+          props[schema.key] = []
+          continue
+        }
+
+        try {
+          props[schema.key] = JSON.parse(trimmed)
+        } catch (error) {
+          console.warn(
+            `Failed to parse JSON prop "${schema.key}" for component ${component}:`,
+            error
+          )
+          // Keep original string so the editor can surface it for correction.
+        }
+      }
+    }
+
+    if (schema.type === 'jsonarray' || schema.type === 'stringarray') {
+      let serialized: string | undefined
+      if (typeof rawValue === 'string') {
+        serialized = rawValue
+      } else if (Array.isArray(rawValue)) {
+        serialized = JSON.stringify(
+          schema.type === 'stringarray'
+            ? rawValue.map((entry) => String(entry ?? ''))
+            : rawValue
+        )
+      }
+
+      const isStored = schema.key in props || storageKey in props
+      if (serialized !== undefined) {
+        props[storageKey] = serialized
+      } else if (isStored && props[storageKey] === undefined) {
+        props[storageKey] = '[]'
+      }
+
+      if (storageKey !== schema.key) {
+        delete props[schema.key]
+      }
+    }
+  }
+
+  return props
+}
+
 /**
  * Converts Vue-style bound keys into the canonical prop keys used by the
  * builder editor while preserving colon-prefixed JSON storage keys.
@@ -193,12 +324,7 @@ export const normalizeBuilderComponentProps = (
   }
 
   for (const schema of definition.props) {
-    const storageKey =
-      schema.type === 'stringarray' ||
-      schema.type === 'jsonarray' ||
-      schema.type === 'jsonobject'
-        ? `:${schema.key}`
-        : schema.key
+    const storageKey = builderPropStorageKey(schema.key, schema.type)
     const boundKey = `:${schema.key}`
 
     if (boundKey === storageKey || !(boundKey in props)) {

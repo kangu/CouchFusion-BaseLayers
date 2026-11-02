@@ -38,8 +38,10 @@ import type {
     ComponentRegistry,
 } from "~/types/builder";
 import {
+    applyBuilderPropDefaults,
     createDocumentFromTree,
     normalizeBuilderComponentProps,
+    normalizeBuilderJsonProps,
     type MinimalContentDocument,
     type PageConfigInput,
     type SpacingPresetId,
@@ -783,89 +785,6 @@ const socialImagePropDefinition: ComponentPropSchema = {
     description: "Absolute URL used for Open Graph and Twitter cards.",
 };
 
-const normalizeJsonProps = (
-    component: string,
-    props: Record<string, unknown>,
-) => {
-    const definition = registry.lookup[component];
-    if (!definition?.props?.length) {
-        return props;
-    }
-
-    for (const schema of definition.props) {
-        const storageKey =
-            schema.type === "stringarray" || schema.type === "jsonarray"
-                ? `:${schema.key}`
-                : schema.key;
-        const rawValue = props[schema.key] ?? props[storageKey];
-
-        if (schema.type === "json") {
-            if (typeof rawValue === "string") {
-                const trimmed = rawValue.trim();
-
-                if (!trimmed) {
-                    props[schema.key] = [];
-                    continue;
-                }
-
-                try {
-                    props[schema.key] = JSON.parse(trimmed);
-                } catch (error) {
-                    console.warn(
-                        `Failed to parse JSON prop "${schema.key}" for component ${component}:`,
-                        error,
-                    );
-                    // Keep original string so the editor can surface it for correction.
-                }
-            }
-        }
-
-        if (schema.type === "jsonarray") {
-            let serialized: string | undefined;
-            if (typeof rawValue === "string") {
-                serialized = rawValue;
-            } else if (Array.isArray(rawValue)) {
-                serialized = JSON.stringify(rawValue);
-            }
-
-            if (serialized !== undefined) {
-                props[storageKey] = serialized;
-            } else if (props[storageKey] === undefined) {
-                props[storageKey] = "[]";
-            }
-
-            if (storageKey !== schema.key) {
-                delete props[schema.key];
-            }
-            continue;
-        }
-
-        if (schema.type === "stringarray") {
-            let serialized: string | undefined;
-            if (typeof rawValue === "string") {
-                serialized = rawValue;
-            } else if (Array.isArray(rawValue)) {
-                serialized = JSON.stringify(
-                    rawValue.map((entry) => String(entry ?? "")),
-                );
-            }
-
-            if (serialized !== undefined) {
-                props[storageKey] = serialized;
-            } else if (props[storageKey] === undefined) {
-                props[storageKey] = "[]";
-            }
-
-            if (storageKey !== schema.key) {
-                delete props[schema.key];
-            }
-            continue;
-        }
-    }
-
-    return props;
-};
-
 const parseMarginClasses = (
     className: unknown,
 ): BuilderNode["margins"] | null => {
@@ -963,13 +882,14 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
                 processedProps[key] = value;
             }
         }
-        node.props = normalizeJsonProps(
+        node.props = normalizeBuilderJsonProps(
             component,
             normalizeBuilderComponentProps(
                 component,
                 processedProps,
                 registry.lookup,
             ),
+            registry.lookup,
         );
 
         if (component === "p") {
@@ -989,6 +909,12 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
                 node.props.style = cleanedStyle;
             }
         }
+
+        // Props the document does not store get their registry defaults, so the
+        // editor and the preview show what the public page renders. Runs after the
+        // paragraph step: `p` has an `align` default that would otherwise win over
+        // a stored text-align style.
+        applyBuilderPropDefaults(component, node.props, registry.lookup);
 
         node.children = children
             .map((child) => deserializeEntry(child))
