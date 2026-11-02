@@ -48,6 +48,11 @@ export default defineNuxtConfig({
           "",
         10,
       ) || 31536000,
+    // How long an emailed login code stays valid, in minutes (1–1440, default 60).
+    // Admin-only apps can lower it with NUXT_AUTH_LOGIN_TOKEN_TTL_MINUTES; flows that email
+    // codes for later use (order confirmations) rely on the generous default.
+    authLoginTokenTtlMinutes:
+      Number.parseInt(process.env.NUXT_AUTH_LOGIN_TOKEN_TTL_MINUTES || "", 10) || 60,
     nostrConfigSlug:
       process.env.NUXT_NOSTR_CONFIG_SLUG || process.env.NOSTR_CONFIG_SLUG || "",
     nostrConfigSection:
