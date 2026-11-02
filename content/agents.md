@@ -56,6 +56,8 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - `server/api/content/pages.post.ts` has i18n migration behavior on first save; run i18n page-save tests before modifying it.
 - Runtime styling is opt-out with `runtimeConfig.content.runtimeStyling.*`; font/theme changes may affect all consuming apps.
 
+- The registry generator reads number literals through `scripts/registry-literals.mjs` (`readNumericLiteral`), which handles signs: Babel parses `-8` as a unary minus around `8`, and a bare `isNumericLiteral` check silently dropped negative defaults and negative `builderFieldMeta` values. Route any new literal reading through it.
+
 ## Cross-References
 
 - Root project instructions: `/Users/radu/Projects/nuxt-apps/AGENTS.md`.

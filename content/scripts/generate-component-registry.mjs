@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createRegistryRecord, writeRegistryPair } from './registry-output.mjs'
 import { readComponentSource } from './read-component-source.mjs'
+import { isNumericValue, readNumericLiteral } from './registry-literals.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -552,7 +553,7 @@ const inferFieldTypeFromValue = (node, types) => {
   if (types.isStringLiteral(node) || types.isTemplateLiteral(node)) {
     return 'text'
   }
-  if (types.isNumericLiteral(node)) {
+  if (isNumericValue(node, types)) {
     return 'number'
   }
   if (types.isBooleanLiteral(node)) {
@@ -847,8 +848,8 @@ const nodeToValue = (node, types) => {
   if (types.isBooleanLiteral(node)) {
     return node.value
   }
-  if (types.isNumericLiteral(node)) {
-    return node.value
+  if (isNumericValue(node, types)) {
+    return readNumericLiteral(node, types)
   }
   if (types.isNullLiteral?.(node)) {
     return null
@@ -1649,12 +1650,14 @@ const objectExpressionToLiteral = (node, types) => {
         obj[key] = prop.value.elements.map((el) => {
           if (types.isObjectExpression(el)) return objectExpressionToLiteral(el, types)
           if (types.isStringLiteral(el)) return el.value
-          if (types.isNumericLiteral(el)) return el.value
+          if (isNumericValue(el, types)) return readNumericLiteral(el, types)
           if (types.isBooleanLiteral(el)) return el.value
           return null
         })
-      } else if (types.isStringLiteral(prop.value) || types.isNumericLiteral(prop.value) || types.isBooleanLiteral(prop.value)) {
+      } else if (types.isStringLiteral(prop.value) || types.isBooleanLiteral(prop.value)) {
         obj[key] = prop.value.value
+      } else if (isNumericValue(prop.value, types)) {
+        obj[key] = readNumericLiteral(prop.value, types)
       }
     }
   })
