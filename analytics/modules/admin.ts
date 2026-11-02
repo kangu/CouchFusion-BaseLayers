@@ -6,7 +6,7 @@
  *    `/admin/analytics/share/:token` (kept under the content layer's reserved
  *    `/admin` prefix so the CMS catch-all never claims it)
  *  - an "Analytics" sidebar section in `appConfig.adminWorkspace.sections`
- * Apps that only forward to Umami Cloud get none of this.
+ * Data collection does not depend on this: it runs in every app that extends the layer.
  */
 import { fileURLToPath } from "node:url";
 

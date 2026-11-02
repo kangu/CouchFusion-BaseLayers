@@ -7,7 +7,8 @@ import type { EngineConfig } from "./config";
 import { collectRange, getDoc, putDoc } from "./couch";
 import { getDailySalt, visitorHash } from "./identity";
 import { buildRawEvent } from "./hit";
-import { geoFromHeaders, getClientIp, ipMatchesCidrs } from "./net";
+import { resolveGeo } from "./geo";
+import { ipMatchesCidrs, resolveClient } from "./net";
 import { enqueueRawEvent } from "./queue";
 import { getSite } from "./sites";
 import { mainDb } from "./storage";
@@ -128,12 +129,14 @@ export const recordServerHit = async (
   siteId: string,
   payload: { url: string; name: string; data: Record<string, string> },
 ) => {
+  if (!config.loaded) return false;
   const site = await getSite(config, siteId);
   if (!site?.enabled) return false;
   const ua = getRequestHeader(event, "user-agent") || "";
   if (isBot(ua)) return false;
   if (config.respectDnt && (getRequestHeader(event, "dnt") === "1" || getRequestHeader(event, "sec-gpc") === "1")) return false;
-  const ip = getClientIp(event);
+  const client = resolveClient(event, config.trustHeaders);
+  const ip = client.ip;
   if (ipMatchesCidrs(ip, config.ignoreIps)) return false;
   const now = Date.now();
   const salt = await getDailySalt(config, localDay(now, site.timezone));
@@ -150,9 +153,10 @@ export const recordServerHit = async (
       },
     },
     site: { ...site, excludedPaths: [] },
-    config: { ...config, excludedPaths: [] },
+    config,
     agent: parseUserAgent(ua),
-    geo: config.geoSource === "header" ? geoFromHeaders(event) : { country: null, region: null, city: null },
+    // Pixel and link hits have no browser time zone: headers only.
+    geo: resolveGeo(event, undefined, config.geoSource, client.geoHeaders),
     visitor: visitorHash(salt, site.id, ip, ua),
     now,
     random: randomBytes(4).toString("hex"),

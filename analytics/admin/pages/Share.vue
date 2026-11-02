@@ -21,7 +21,7 @@ useHead({ title: "Shared analytics", meta: [{ name: "robots", content: "noindex,
 <template>
   <div class="cfa-share-page">
     <AnalyticsFrame :title="state.site.value?.name ?? 'Analytics'" subtitle="Read-only shared dashboard">
-      <SiteGate :state="state" :admin-link="false">
+      <SiteGate :state="state">
         <AnalyticsToolbar :state="state" :show-site="false" />
         <OverviewDashboard :api="api" :state="state" />
       </SiteGate>

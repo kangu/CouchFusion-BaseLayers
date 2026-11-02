@@ -23,6 +23,7 @@ import {
 } from "#content/app/composables/useContentFontSettings";
 import { useContentThemeSettings } from "#content/app/composables/useContentThemeSettings";
 import { useGlobalComponentsRegistry } from "#content/app/composables/useGlobalComponentsRegistry";
+import { useControlPlaneBridge } from "#content/app/composables/useControlPlaneBridge";
 import type { ContentGlobalComponentEntry } from "#content/utils/global-components";
 import {
     filterNodesBySearch,
@@ -37,8 +38,10 @@ import type {
     ComponentRegistry,
 } from "~/types/builder";
 import {
+    applyBuilderPropDefaults,
     createDocumentFromTree,
     normalizeBuilderComponentProps,
+    normalizeBuilderJsonProps,
     type MinimalContentDocument,
     type PageConfigInput,
     type SpacingPresetId,
@@ -266,7 +269,7 @@ const contentThemeSettings = useContentThemeSettings();
 const runtimeConfig = useRuntimeConfig();
 const contentRuntimeStylingConfig = computed(() =>
     resolveContentRuntimeStylingConfig(
-        runtimeConfig.content ?? runtimeConfig.public?.content,
+        (runtimeConfig.public?.content ?? (import.meta.server ? runtimeConfig.content : undefined)),
     ),
 );
 const isTypographyFeatureEnabled = computed(
@@ -277,7 +280,7 @@ const isThemeFeatureEnabled = computed(
 );
 const contentI18nConfig = computed(() =>
     resolveContentI18nConfig(
-        runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+        (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
     ),
 );
 
@@ -389,6 +392,7 @@ const pageConfig = reactive<PageConfigInput>({
     seoTitle: "Page title",
     seoDescription: "SEO description.",
     seoImage: "",
+    seoVideo: "",
     navigation: true,
     extension: "md",
     meta: {},
@@ -557,6 +561,7 @@ const seoDraft = reactive({
     seoTitle: pageConfig.seoTitle,
     seoDescription: pageConfig.seoDescription,
     seoImage: pageConfig.seoImage,
+    seoVideo: pageConfig.seoVideo,
     assistiveSectionSnap: getAssistiveSectionSnap(),
     routeAccess: createRouteAccessDraft(pageConfig.meta, pageConfig.path),
 });
@@ -577,6 +582,7 @@ const syncSeoDraftFromPageConfig = () => {
     seoDraft.seoTitle = pageConfig.seoTitle;
     seoDraft.seoDescription = pageConfig.seoDescription;
     seoDraft.seoImage = pageConfig.seoImage;
+    seoDraft.seoVideo = pageConfig.seoVideo;
     seoDraft.assistiveSectionSnap = getAssistiveSectionSnap();
     seoDraft.routeAccess = createRouteAccessDraft(
         pageConfig.meta,
@@ -600,6 +606,7 @@ const hasSeoDraftChanges = computed(
         seoDraft.seoTitle !== pageConfig.seoTitle ||
         seoDraft.seoDescription !== pageConfig.seoDescription ||
         seoDraft.seoImage !== pageConfig.seoImage ||
+        seoDraft.seoVideo !== pageConfig.seoVideo ||
         hasRouteAccessDraftChanges.value ||
         (isAssistiveSectionSnapToggleEnabled.value &&
             seoDraft.assistiveSectionSnap !== getAssistiveSectionSnap()),
@@ -628,6 +635,7 @@ const applySeoDraft = () => {
     pageConfig.seoTitle = seoDraft.seoTitle;
     pageConfig.seoDescription = seoDraft.seoDescription;
     pageConfig.seoImage = seoDraft.seoImage;
+    pageConfig.seoVideo = seoDraft.seoVideo;
     if (isAssistiveSectionSnapToggleEnabled.value) {
         setAssistiveSectionSnap(seoDraft.assistiveSectionSnap);
     }
@@ -777,89 +785,6 @@ const socialImagePropDefinition: ComponentPropSchema = {
     description: "Absolute URL used for Open Graph and Twitter cards.",
 };
 
-const normalizeJsonProps = (
-    component: string,
-    props: Record<string, unknown>,
-) => {
-    const definition = registry.lookup[component];
-    if (!definition?.props?.length) {
-        return props;
-    }
-
-    for (const schema of definition.props) {
-        const storageKey =
-            schema.type === "stringarray" || schema.type === "jsonarray"
-                ? `:${schema.key}`
-                : schema.key;
-        const rawValue = props[schema.key] ?? props[storageKey];
-
-        if (schema.type === "json") {
-            if (typeof rawValue === "string") {
-                const trimmed = rawValue.trim();
-
-                if (!trimmed) {
-                    props[schema.key] = [];
-                    continue;
-                }
-
-                try {
-                    props[schema.key] = JSON.parse(trimmed);
-                } catch (error) {
-                    console.warn(
-                        `Failed to parse JSON prop "${schema.key}" for component ${component}:`,
-                        error,
-                    );
-                    // Keep original string so the editor can surface it for correction.
-                }
-            }
-        }
-
-        if (schema.type === "jsonarray") {
-            let serialized: string | undefined;
-            if (typeof rawValue === "string") {
-                serialized = rawValue;
-            } else if (Array.isArray(rawValue)) {
-                serialized = JSON.stringify(rawValue);
-            }
-
-            if (serialized !== undefined) {
-                props[storageKey] = serialized;
-            } else if (props[storageKey] === undefined) {
-                props[storageKey] = "[]";
-            }
-
-            if (storageKey !== schema.key) {
-                delete props[schema.key];
-            }
-            continue;
-        }
-
-        if (schema.type === "stringarray") {
-            let serialized: string | undefined;
-            if (typeof rawValue === "string") {
-                serialized = rawValue;
-            } else if (Array.isArray(rawValue)) {
-                serialized = JSON.stringify(
-                    rawValue.map((entry) => String(entry ?? "")),
-                );
-            }
-
-            if (serialized !== undefined) {
-                props[storageKey] = serialized;
-            } else if (props[storageKey] === undefined) {
-                props[storageKey] = "[]";
-            }
-
-            if (storageKey !== schema.key) {
-                delete props[schema.key];
-            }
-            continue;
-        }
-    }
-
-    return props;
-};
-
 const parseMarginClasses = (
     className: unknown,
 ): BuilderNode["margins"] | null => {
@@ -957,13 +882,14 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
                 processedProps[key] = value;
             }
         }
-        node.props = normalizeJsonProps(
+        node.props = normalizeBuilderJsonProps(
             component,
             normalizeBuilderComponentProps(
                 component,
                 processedProps,
                 registry.lookup,
             ),
+            registry.lookup,
         );
 
         if (component === "p") {
@@ -983,6 +909,12 @@ const deserializeEntry = (entry: any): BuilderNodeChild | null => {
                 node.props.style = cleanedStyle;
             }
         }
+
+        // Props the document does not store get their registry defaults, so the
+        // editor and the preview show what the public page renders. Runs after the
+        // paragraph step: `p` has an `align` default that would otherwise win over
+        // a stored text-align style.
+        applyBuilderPropDefaults(component, node.props, registry.lookup);
 
         node.children = children
             .map((child) => deserializeEntry(child))
@@ -1033,6 +965,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
         pageConfig.seoTitle = "Page title";
         pageConfig.seoDescription = "SEO description.";
         pageConfig.seoImage = "";
+        pageConfig.seoVideo = "";
         pageConfig.navigation = true;
         pageConfig.extension = "md";
         pageConfig.meta = {};
@@ -1052,6 +985,7 @@ const applyDocument = (doc: MinimalContentDocument | null) => {
     pageConfig.seoTitle = doc.seo?.title ?? "";
     pageConfig.seoDescription = doc.seo?.description ?? "";
     pageConfig.seoImage = doc.seo?.image ?? "";
+    pageConfig.seoVideo = doc.seo?.video ?? "";
     pageConfig.navigation = doc.navigation ?? true;
     pageConfig.extension = doc.extension ?? "md";
     pageConfig.meta = isPlainObject(doc.meta) ? { ...doc.meta } : {};
@@ -1184,6 +1118,20 @@ const openRootPicker = (insertIndex: number | null = null) => {
     pendingRootInsertIndex.value = insertIndex;
     isRootPickerOpen.value = true;
 };
+
+// CouchFusion control plane (dev sessions only): after a component was generated and
+// the builder reloaded, open the picker so it can scroll to the new component.
+const controlPlaneBridge = useControlPlaneBridge();
+watch(
+    () => controlPlaneBridge.focusComponentId.value,
+    (componentId) => {
+        if (componentId && !isRootPickerOpen.value) {
+            openRootPicker();
+        }
+    },
+    // The workbench may mount after the focus request arrived (async component).
+    { immediate: true },
+);
 
 const resetAddSectionButtonAnimation = () => {
     if (addSectionAnimationTimer) {
@@ -3577,6 +3525,11 @@ const handleSaveDebugClick = () => {
                         "
                     />
                 </div>
+                <label class="builder-config__full">
+                    <span>Social preview video</span>
+                    <small>Absolute HTTPS MP4 URL for og:video</small>
+                    <input v-model="seoDraft.seoVideo" type="url" placeholder="https://…/social-preview.mp4" />
+                </label>
                 <fieldset class="builder-config__route-access builder-config__full">
                     <legend>Route access</legend>
                     <p class="builder-config__hint">

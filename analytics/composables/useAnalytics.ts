@@ -1,10 +1,8 @@
 import { ref } from "vue";
-import { useNuxtApp } from "#app";
+import { useNuxtApp } from "#imports";
 
 export interface AnalyticsClientConfig {
-  websiteId: string;
   endpoint: string;
-  appName?: string;
   includeTitle: boolean;
   sendReferrer: boolean;
   debug: boolean;
@@ -15,9 +13,7 @@ export interface AnalyticsClientConfig {
 }
 
 const DEFAULT_CONFIG: AnalyticsClientConfig = {
-  websiteId: "",
   endpoint: "/api/stats",
-  appName: undefined,
   includeTitle: true,
   sendReferrer: true,
   debug: false,
@@ -26,6 +22,29 @@ const DEFAULT_CONFIG: AnalyticsClientConfig = {
 };
 
 const PERSISTENT_ID_KEY = "cfa.pid";
+
+/**
+ * Query parameters that mark a page load as a preview, not a visit. The content layer's builder
+ * shows the public page in its live-preview iframe as `?inline-preview=1`; editing there must not
+ * count as pageviews or events.
+ */
+export const PREVIEW_QUERY_PARAMS = ["inline-preview"] as const;
+
+export function isPreviewUrl(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return PREVIEW_QUERY_PARAMS.some((name) => params.has(name));
+}
+
+/**
+ * Decided once, from the URL the page was loaded with: navigations inside the preview may drop
+ * the parameter and must stay untracked too. Every client from this module checks it before
+ * sending (pageviews, events, v-analytics, auto-capture, component views, identify).
+ */
+const loadedAsPreview =
+  typeof window !== "undefined" && isPreviewUrl(window.location.search);
+
+/** True when this page load is a builder preview, so nothing is sent. */
+export const isPreviewPageLoad = (): boolean => loadedAsPreview;
 
 /** Reads (or creates) the opt-in first-party persistent id. */
 function getPersistentId(): string | undefined {
@@ -138,6 +157,10 @@ export function createAnalyticsClient(
   let distinctId: string | undefined;
 
   async function sendPayload(payload: Record<string, any>, type = "event") {
+    if (loadedAsPreview) {
+      if (config.debug) console.info("[analytics] preview page load, not sent", type, payload.name ?? payload.url);
+      return;
+    }
     const body = buildRequestBody(payload, type);
 
     if (typeof window !== "undefined") {
@@ -183,8 +206,6 @@ export function createAnalyticsClient(
 
     if (config.sendReferrer && c.referrer) payload.referrer = c.referrer;
     if (config.includeTitle && c.title) payload.title = c.title;
-    if (config.appName) payload.appName = config.appName;
-    if (config.websiteId) payload.website = config.websiteId;
     if (config.tag) payload.tag = config.tag;
     if (distinctId) payload.id = distinctId;
     if (config.persistentId) {
@@ -218,7 +239,7 @@ export function createAnalyticsClient(
 
   /**
    * Associates subsequent hits with an app-level id (e.g. logged-in user) and
-   * stores optional session properties. Mirrors `umami.identify()`.
+   * stores optional session properties.
    */
   async function identify(id?: string | Record<string, any>, data: Record<string, any> = {}) {
     if (id && typeof id === "object") {

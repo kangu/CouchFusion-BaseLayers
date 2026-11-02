@@ -1,5 +1,7 @@
 import {defineEventHandler, readBody, createError} from "h3"
-import { getDocument, putDocument, getView, createUser, authenticate, getSession, generateAuthSessionCookie } from '#database/utils/couchdb';
+import { getDocument, authenticate } from '#database/utils/couchdb';
+import { issueSessionCookie } from '../utils/session-cookie';
+import { clientAddress, passwordFailuresByAddress, passwordFailuresByUser } from '../utils/login-limits';
 
 // Helper function so not to import anything external
 function isValidEmail (email) {
@@ -30,7 +32,21 @@ export default defineEventHandler(async (event) => {
     // Try with prefix first, then without prefix
     const username = body.username.trim()
     const fullUsername = `${dbLoginPrefix}${username}`
-    
+
+    // Brute-force limits, checked before CouchDB's (deliberately slow) password check.
+    // The username is counted without the app prefix, so both spellings share a counter.
+    const address = clientAddress(event)
+    const lowered = username.toLowerCase()
+    const userKey = dbLoginPrefix && lowered.startsWith(dbLoginPrefix.toLowerCase())
+        ? lowered.slice(dbLoginPrefix.length)
+        : lowered
+    if (passwordFailuresByAddress.blocked(address) || passwordFailuresByUser.blocked(userKey)) {
+        throw createError({
+            statusCode: 429,
+            statusMessage: 'Too many attempts. Try again later.',
+        })
+    }
+
     let result = await authenticate(fullUsername, body.password).catch(() => null)
     
     if (!result?.ok && username.startsWith(dbLoginPrefix) && username !== fullUsername) {
@@ -45,13 +61,23 @@ export default defineEventHandler(async (event) => {
     }
 
     if (!result?.ok) {
+        passwordFailuresByAddress.fail(address)
+        passwordFailuresByUser.fail(userKey)
         throw createError({
             statusCode: 401,
             statusMessage: 'Invalid username or password',
         })
     }
+    passwordFailuresByUser.reset(userKey)
 
-    if (result.setCookie) {
+    // CouchDB's own cookie lasts only its 600 s timeout; issue the layer's long-lived one.
+    // A server admin may have no _users document; the helper then uses the admin salt.
+    const userDoc = result.name
+        ? await getDocument('_users', `org.couchdb.user:${result.name}`).catch(() => null)
+        : null
+    const issued = await issueSessionCookie(event, userDoc ?? (result.name ? { name: result.name } : null), config)
+    if (!issued && result.setCookie) {
+        console.warn('[auth] no CouchDB cookie secret available; falling back to the short CouchDB session')
         setHeader(event, 'Set-Cookie', result.setCookie)
     }
 

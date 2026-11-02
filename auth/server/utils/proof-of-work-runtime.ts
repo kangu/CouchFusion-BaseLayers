@@ -6,6 +6,7 @@ import {
   createProofOfWorkChallenge,
   verifyProofOfWork,
 } from "#auth/server/utils/proof-of-work";
+import { getCachedCookieSecret } from "#auth/server/utils/session-cookie";
 
 interface RuntimeProofOfWorkConfig {
   enabled?: boolean | string;
@@ -53,7 +54,10 @@ const parsePositiveInteger = (value: unknown, fallback: number): number => {
 
 /**
  * Resolves proof-of-work settings from Nuxt runtime config and validates that
- * enabled deployments have a server-only signing secret.
+ * enabled deployments have a server-only signing secret: `proofOfWork.secret` when set,
+ * otherwise CouchDB's cookie secret (read at server start by the auth init plugin and
+ * refreshed by `resolveCookieSecret`). Synchronous on purpose: callers in other layers and
+ * apps use `assertProofOfWork` without awaiting it.
  */
 export const resolveProofOfWorkConfig = (): ResolvedProofOfWorkConfig => {
   const runtimeConfig = useRuntimeConfig();
@@ -61,7 +65,7 @@ export const resolveProofOfWorkConfig = (): ResolvedProofOfWorkConfig => {
   const enabled = parseBoolean(proofOfWork.enabled, true);
   const secretCandidates = [
     proofOfWork.secret,
-    runtimeConfig.couchdbCookieSecret,
+    getCachedCookieSecret(),
     runtimeConfig.cronSecret,
   ];
   const secret = secretCandidates
@@ -71,7 +75,7 @@ export const resolveProofOfWorkConfig = (): ResolvedProofOfWorkConfig => {
   if (enabled && !secret) {
     throw createError({
       statusCode: 500,
-      statusMessage: "Proof-of-work signing secret is not configured.",
+      statusMessage: "Proof-of-work signing secret is unavailable (CouchDB cookie secret not read yet).",
     });
   }
 

@@ -29,13 +29,13 @@ const engine = reactive<Record<string, string>>({});
 const engineSection = ref("");
 
 const ENGINE_FIELDS = [
-  { key: "analytics_mode", label: "Mode", options: ["self_hosted", "dual", "umami_cloud"], placeholder: "umami_cloud" },
   { key: "analytics_ignore_ips", label: "Ignored IPs / CIDRs (comma-separated)", placeholder: "203.0.113.4, 10.0.0.0/8" },
   { key: "analytics_respect_dnt", label: "Respect Do-Not-Track / GPC", options: ["true", "false"], placeholder: "true" },
   { key: "analytics_raw_retention_months", label: "Raw event retention (months)", placeholder: "13" },
   { key: "analytics_max_scan_days", label: "Max days for filtered views and reports", placeholder: "31" },
   { key: "analytics_persistent_id", label: "Persistent visitor id (consent required)", options: ["false", "true"], placeholder: "false" },
-  { key: "analytics_geo_source", label: "Geo source", options: ["header", "none"], placeholder: "header" },
+  { key: "analytics_geo_source", label: "Country source (auto = CDN header, else browser time zone)", options: ["auto", "header", "timezone", "none"], placeholder: "auto" },
+  { key: "analytics_trust_headers", label: "Trust forwarding headers (auto = Cloudflare's only when the request came from Cloudflare)", options: ["auto", "cloudflare", "all"], placeholder: "auto" },
   { key: "analytics_aggregator_enabled", label: "Run aggregator on this instance", options: ["true", "false"], placeholder: "true" },
 ];
 
@@ -48,6 +48,8 @@ const OUTCOME_LABELS: Record<string, string> = {
   disabled: "arrived while collecting was off",
   rate_limited: "were rate limited",
   invalid: "were malformed",
+  unavailable: "arrived while the CouchDB settings couldn't be read",
+  queue_full: "arrived while the write buffer was full",
 };
 
 // computed
@@ -60,7 +62,6 @@ const dropped = computed(() =>
 );
 const shareUrl = computed(() => (site.value?.shareToken ? `${origin.value}/admin/analytics/share/${site.value.shareToken}` : ""));
 const scriptSnippet = computed(() => `<script defer src="${origin.value}/a.js"><\/script>`);
-const offSnippet = computed(() => `# CouchDB _config section ${status.value?.section ?? "cf_env_<slug>"}\nanalytics_mode = self_hosted`);
 
 // local page api
 const fill = (value: any) => {
@@ -84,12 +85,8 @@ const load = async () => {
     status.value = statusResult;
     engineSection.value = settingsResult.section;
     for (const field of ENGINE_FIELDS) engine[field.key] = settingsResult.values?.[field.key] ?? "";
-    if (statusResult.storesLocally) {
-      site.value = (await api.get("site")).site;
-      fill(site.value);
-    } else {
-      site.value = null;
-    }
+    site.value = (await api.get("site")).site;
+    fill(site.value);
   } catch (err) {
     error.value = errorMessage(err);
   }
@@ -100,7 +97,9 @@ const run = async (label: string, action: () => Promise<any>) => {
   notice.value = null;
   try {
     const result = await action();
-    notice.value = result && !result.site && !result.ok ? `${label}: ${JSON.stringify(result)}` : label;
+    notice.value = typeof result?.message === "string"
+      ? result.message
+      : result && !result.site && !result.ok ? `${label}: ${JSON.stringify(result)}` : label;
     await load();
   } catch (err) {
     error.value = errorMessage(err);
@@ -127,7 +126,14 @@ const save = async () => {
 
 const saveEngine = () => run("Engine settings saved (applied within a minute)", () => api.put("settings", { values: { ...engine } }));
 const toggleShare = (enabled: boolean) => run(enabled ? "Share link created" : "Share link revoked", () => api.post("site/share", { enabled }));
-const doRebuild = () => run("Rebuilt", () => api.post("site/rebuild", { ...rebuild }));
+const doRebuild = () =>
+  run("Rebuilt", async () => {
+    const result = await api.post("site/rebuild", { ...rebuild });
+    const skipped = result.skipped
+      ? ` ${result.skipped} days through ${result.skippedThrough} were left as they are: their raw data has been deleted by retention.`
+      : "";
+    return { message: `Rebuilt ${result.days} days (${result.written} changed).${skipped}` };
+  });
 const doReset = async () => {
   await run("Data reset", () => api.post("site/reset", { confirm: resetConfirm.value }));
   resetConfirm.value = "";
@@ -153,12 +159,6 @@ onMounted(() => {
     <p v-if="notice" class="cfa-badge" style="margin-bottom: 12px">{{ notice }}</p>
 
     <div class="cfa-stack">
-      <section v-if="status && !status.storesLocally" class="cfa-card">
-        <h2>Built-in analytics is off</h2>
-        <p class="cfa-muted">The mode is <code>{{ status.mode }}</code>, so nothing is stored here. Switch the mode to <code>self_hosted</code> under Engine below, or in CouchDB:</p>
-        <pre class="cfa-code">{{ offSnippet }}</pre>
-      </section>
-
       <form v-if="site" class="cfa-card cfa-stack" @submit.prevent="save">
         <div class="cfa-row" style="justify-content: space-between">
           <h2 style="margin: 0">Website</h2>
@@ -209,7 +209,7 @@ onMounted(() => {
         <pre class="cfa-code">{{ scriptSnippet }}</pre>
         <div class="cfa-row" style="margin-top: 8px">
           <button type="button" class="cfa-btn cfa-btn-sm" @click="copy(scriptSnippet)">Copy script</button>
-          <span class="cfa-small cfa-muted">Options: data-auto-track="false", data-domains, data-tag, data-exclude-search, data-exclude-hash, data-do-not-track. API: <code>umami.track(name, data)</code>, <code>umami.identify(id, data)</code>.</span>
+          <span class="cfa-small cfa-muted">Options: data-auto-track="false", data-domains, data-tag, data-exclude-search, data-exclude-hash, data-do-not-track. Click tracking: <code>data-cfa-event="name"</code> (+ <code>data-cfa-event-*</code> properties). API: <code>cfa.track(name, data)</code>, <code>cfa.identify(id, data)</code>.</span>
         </div>
       </section>
 
@@ -241,16 +241,26 @@ onMounted(() => {
             <input v-else v-model="engine[field.key]" class="cfa-input" :placeholder="field.placeholder" />
           </label>
         </div>
-        <p v-if="status.storesLocally && status.geo" class="cfa-small cfa-muted" style="margin: 0">
-          Country detection: <strong>{{ status.geo.withCountry }}</strong> of {{ status.geo.stored }} hits since this server started carried a country
-          <template v-if="status.geo.stored && !status.geo.withCountry">. None so far: check that the site is proxied through Cloudflare and that your reverse proxy forwards the <code>CF-IPCountry</code> header.</template>
+        <p v-if="status.geo" class="cfa-small cfa-muted" style="margin: 0">
+          Country detection: <strong>{{ status.geo.withCountry }}</strong> of {{ status.geo.stored }} hits since this server started carried a country<template v-if="status.geo.fromTimezone">, {{ status.geo.fromTimezone }} of them inferred from the browser time zone</template>
+          <template v-if="status.geo.stored && !status.geo.withCountry">. None so far: with source <code>header</code>, check that the site is proxied through Cloudflare and that your reverse proxy forwards the <code>CF-IPCountry</code> header, or switch to <code>auto</code>.</template>
           <template v-else>.</template>
         </p>
-        <p v-if="status.storesLocally" class="cfa-small cfa-muted" style="margin: 0">
+        <p v-if="status.geo?.ignoredCloudflareHeaders" class="cfa-small cfa-muted" style="margin: 0">
+          {{ status.geo.ignoredCloudflareHeaders }} hits carried Cloudflare headers but didn't come from a Cloudflare address, so those headers were ignored.
+          That's expected if someone is faking them. If this site really is behind Cloudflare with another proxy in between, set "Trust forwarding headers" to <code>cloudflare</code>.
+        </p>
+        <p class="cfa-small cfa-muted" style="margin: 0">
           Since this server started: <strong>{{ status.outcomes?.stored ?? 0 }}</strong> hits stored<template v-if="dropped.length">; dropped: {{ dropped.join(", ") }}</template>.
           <template v-if="status.outcomes?.dnt"> To count browsers that send those privacy signals, set "Respect Do-Not-Track / GPC" to false.</template>
         </p>
-        <p class="cfa-small cfa-muted" style="margin: 0"><code>self_hosted</code> stores everything here. <code>dual</code> also forwards to Umami Cloud; <code>umami_cloud</code> only forwards (both legacy).</p>
+        <p v-if="status.configLoaded === false" class="cfa-error" style="margin: 0">
+          CouchDB <code>_config</code> {{ status.section }} can't be read, so nothing is being stored. It retries every few seconds.
+        </p>
+        <p v-if="status.writes?.failing || status.writes?.dropped" class="cfa-small cfa-muted" style="margin: 0">
+          <template v-if="status.writes.failing"><strong>Writes to CouchDB are failing</strong>; {{ status.pendingEvents }} hits are waiting and being retried. </template>
+          <template v-if="status.writes.dropped">{{ status.writes.dropped }} hits could not be written since this server started.</template>
+        </p>
         <div><button type="submit" class="cfa-btn cfa-btn-primary">Save engine settings</button></div>
       </form>
 

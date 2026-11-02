@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const challenge = issueNostrChallenge(identity.npub, ttlSeconds);
+  const challenge = await issueNostrChallenge(identity.npub, ttlSeconds);
 
   return {
     success: true,

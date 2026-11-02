@@ -1,7 +1,7 @@
 /**
  * Database naming and raw-event access.
  */
-import type { EngineConfig } from "./config";
+import { assertConfigLoaded, type EngineConfig } from "./config";
 import { collectRange, ensureDatabase, listDatabases } from "./couch";
 import { utcMonthKey, utcMonthsInRange } from "./time";
 import type { RawEvent } from "./types";
@@ -23,6 +23,7 @@ export const rawEventId = (siteId: string, ts: number, random: string): string =
 
 /** Ensures the main analytics database exists. */
 export const ensureMainDb = async (config: EngineConfig): Promise<string> => {
+  assertConfigLoaded(config);
   const db = mainDb(config);
   await ensureDatabase(db);
   return db;
@@ -53,7 +54,7 @@ export const readRawEvents = async (
       `${siteId}:${tsKey(fromTs)}`,
       `${siteId}:${tsKey(toTs - 1)}:￰`,
     );
-    events.push(...docs);
+    for (const doc of docs) events.push(doc);
   }
   return events;
 };

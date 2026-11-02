@@ -1,22 +1,18 @@
 /**
- * Data import:
- *  - Umami `website_event` CSV export (+ optional `session` CSV joined on
- *    session_id) -> raw events (src: "umami"), then affected days rebuilt.
- *  - Fathom Lite aggregate CSVs (site_stats / page_stats / referrer_stats,
- *    hourly rows with hostname/pathname resolved) -> `imp:<site>:<day>`
- *    rollups that are merged into dashboards (raw-only features such as
- *    filters and reports do not include them).
+ * Data import: Fathom Lite aggregate CSVs (site_stats / page_stats /
+ * referrer_stats, hourly rows with hostname/pathname resolved) ->
+ * `imp:<site>:<day>` rollups that are merged into dashboards (raw-only
+ * features such as filters and reports do not include them).
  */
-import { createHash } from "node:crypto";
 import type { EngineConfig } from "./config";
-import { bulk, ensureDatabase, upsertDoc } from "./couch";
-import { importId, rebuildRange } from "./aggregator";
+import { upsertDoc } from "./couch";
+import { importId } from "./aggregator";
 import { parseCsv } from "./csv";
 import { normalizePath } from "./hit";
-import { classifyChannel, hasClickId, parseReferrer, parseUtm } from "./referrer";
-import { mainDb, rawDbForTs, rawEventId } from "./storage";
+import { parseReferrer } from "./referrer";
+import { mainDb } from "./storage";
 import { localDay, localHour } from "./time";
-import type { DayRollup, RawEvent, SiteDoc } from "./types";
+import type { DayRollup, SiteDoc } from "./types";
 
 const MAX_ROWS = 500_000;
 
@@ -40,92 +36,6 @@ const parseTs = (value: string | null): number | null => {
   const normalized = /^\d{4}-\d{2}-\d{2} \d/.test(value) && !/[zZ+]/.test(value.slice(10)) ? `${value.replace(" ", "T")}Z` : value;
   const ts = Date.parse(normalized);
   return Number.isFinite(ts) ? ts : /^\d{10,13}$/.test(value) ? Number(value.padEnd(13, "0")) : null;
-};
-
-const DEVICE: Record<string, string> = { mobile: "mobile", tablet: "tablet", desktop: "desktop", laptop: "desktop" };
-
-/** Maps Umami export rows to raw events. Pure. */
-export const umamiRowsToEvents = (
-  site: SiteDoc,
-  eventRows: Record<string, string>[],
-  sessionRows: Record<string, string>[] = [],
-): RawEvent[] => {
-  const sessions = new Map(sessionRows.map((row) => [pick(row, "session_id", "id") ?? "", row]));
-  const events: RawEvent[] = [];
-  let seq = 0;
-  for (const row of eventRows) {
-    const ts = parseTs(pick(row, "created_at", "timestamp", "date"));
-    const sessionId = pick(row, "session_id") ?? pick(row, "visit_id");
-    if (ts === null || !sessionId) continue;
-    const session = { ...(sessions.get(sessionId) ?? {}), ...row };
-    const day = localDay(ts, site.timezone);
-    const visitor = createHash("sha256").update(`umami|${site.id}|${sessionId}|${day}`).digest("hex").slice(0, 16);
-    const query = new URLSearchParams(pick(row, "url_query") ?? "");
-    const referrerDomain = pick(row, "referrer_domain");
-    const hostname = pick(session, "hostname") ?? site.domains[0] ?? "imported";
-    const referrer = referrerDomain ? parseReferrer(`https://${referrerDomain}${pick(row, "referrer_path") ?? "/"}`, [hostname, ...site.domains]) : null;
-    const utm = parseUtm(query);
-    const eventType = pick(row, "event_type");
-    const name = pick(row, "event_name");
-    const isEvent = eventType === "2" || (eventType !== "1" && Boolean(name));
-    const country = pick(session, "country");
-    const region = pick(session, "subdivision1", "region");
-    const doc: RawEvent = {
-      _id: rawEventId(site.id, ts, `u${(seq++).toString(36)}`),
-      t: isEvent ? "ev" : "pv",
-      ts,
-      v: visitor,
-      p: normalizePath(pick(row, "url_path") ?? "/"),
-      h: hostname.replace(/^www\./, ""),
-      ch: classifyChannel(referrer, utm, hasClickId(query)),
-      br: pick(session, "browser") ?? "Other",
-      os: pick(session, "os") ?? "Other",
-      dv: DEVICE[(pick(session, "device") ?? "").toLowerCase()] ?? "desktop",
-      src: "umami",
-    };
-    const title = pick(row, "page_title");
-    if (title) doc.ti = title.slice(0, 200);
-    if (referrer) Object.assign(doc, { r: referrer.name, rd: referrer.domain, rp: referrer.path });
-    if (Object.values(utm).some(Boolean)) doc.utm = utm;
-    const screen = pick(session, "screen");
-    if (screen) doc.sc = screen;
-    const language = pick(session, "language");
-    if (language) doc.lg = language.toLowerCase();
-    if (country && /^[A-Za-z]{2}$/.test(country)) doc.cc = country.toUpperCase();
-    if (doc.cc && region) doc.rg = region.replace(new RegExp(`^${doc.cc}-`, "i"), "").slice(0, 20);
-    const city = pick(session, "city");
-    if (doc.cc && city) doc.ci = city.slice(0, 80);
-    if (isEvent) doc.n = (name ?? "event").slice(0, 100);
-    const tag = pick(row, "tag");
-    if (tag) doc.tg = tag.slice(0, 50);
-    const distinct = pick(session, "distinct_id");
-    if (distinct) doc.uid = distinct.slice(0, 100);
-    events.push(doc);
-  }
-  return events;
-};
-
-/** Imports Umami rows into raw shards and rebuilds the affected days. */
-export const importUmami = async (config: EngineConfig, site: SiteDoc, eventsCsv: string, sessionsCsv?: string) => {
-  const events = umamiRowsToEvents(site, csvObjects(eventsCsv), sessionsCsv ? csvObjects(sessionsCsv) : []);
-  const byDb = new Map<string, RawEvent[]>();
-  for (const event of events) {
-    const db = rawDbForTs(config, event.ts);
-    const list = byDb.get(db) ?? [];
-    list.push(event);
-    byDb.set(db, list);
-  }
-  let written = 0;
-  for (const [db, docs] of byDb) {
-    await ensureDatabase(db);
-    for (let i = 0; i < docs.length; i += 1000) {
-      const result = await bulk(db, docs.slice(i, i + 1000));
-      written += (result ?? []).filter((r) => !r.error).length;
-    }
-  }
-  const days = [...new Set(events.map((e) => localDay(e.ts, site.timezone)))].sort();
-  const rebuilt = days.length ? await rebuildRange(config, site, days[0], days[days.length - 1]) : { days: 0, written: 0 };
-  return { rows: events.length, written, skippedDuplicates: events.length - written, days: rebuilt.days };
 };
 
 const num = (value: string | null) => {

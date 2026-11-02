@@ -62,7 +62,7 @@ const resolveStoreTarget = (
     try {
         const runtimeConfig = useRuntimeConfig()
         const i18nConfig = resolveContentI18nConfig(
-            runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n
+            (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined))
         )
 
         const fromPath = resolveContentLocalePath(normalizedPath, i18nConfig)
@@ -106,7 +106,8 @@ const normalizeDocument = (
         seo: {
             title: seoTitle,
             description: seoDescription,
-            image: seoImage
+            image: seoImage,
+            video: normalizeSeoImage(raw.seo?.video)
         },
         stem: raw.stem ?? deriveStem(normalizedPath),
         meta: raw.meta && typeof raw.meta === 'object' ? clonePlain(raw.meta) : (raw.metadata && typeof raw.metadata === 'object' ? clonePlain(raw.metadata) : {}),
@@ -400,7 +401,8 @@ export const useContentPagesStore = defineStore('content-pages', {
                 seo: {
                     title: document.seo?.title ?? document.title ?? 'Page title',
                     description: document.seo?.description ?? 'SEO description.',
-                    image: normalizeSeoImage(document.seo?.image)
+                    image: normalizeSeoImage(document.seo?.image),
+                    video: normalizeSeoImage(document.seo?.video)
                 },
                 stem: document.stem ?? deriveStem(normalizedPath),
                 meta: document.meta ? clonePlain(document.meta) : {},
@@ -471,7 +473,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             })
             const runtimeConfig = useRuntimeConfig()
             const i18nConfig = resolveContentI18nConfig(
-                runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+                (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
             )
             for (const locale of i18nConfig.locales) {
                 const key = buildLocalizedPath(input.sourcePath, locale, i18nConfig)
@@ -512,7 +514,7 @@ export const useContentPagesStore = defineStore('content-pages', {
             const target = resolveStoreTarget(path, options.locale)
             const runtimeConfig = useRuntimeConfig()
             const i18nConfig = resolveContentI18nConfig(
-                runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n
+                (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined))
             )
             const $f = useRequestFetch()
 

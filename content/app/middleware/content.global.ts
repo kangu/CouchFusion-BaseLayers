@@ -117,25 +117,23 @@ const resolvePreferredSupportedLocales = (
 
 const buildRoutePrefixConfig = (): RoutePrefixConfig => {
   const runtimeConfig = useRuntimeConfig();
-  const contentConfig =
-    runtimeConfig.content ?? runtimeConfig.public?.content ?? {};
-
-  const runtimeIgnore = Array.isArray(contentConfig.ignore)
-    ? contentConfig.ignore
-    : [];
-
-  const runtimeAllow = Array.isArray(contentConfig.allow)
-    ? contentConfig.allow
-    : [];
+  const appContent = useAppConfig().content ?? {};
+  const contentConfig = runtimeConfig.public?.content ?? {};
+  // App config carries auto/manual route exclusions; runtime config may add more.
+  const appAllow = resolveAllowedPrefixes(appContent);
+  const runtimeAllow = resolveAllowedPrefixes(contentConfig);
+  const allow = Array.from(new Set([...appAllow, ...runtimeAllow]));
 
   return {
     ignoredPrefixes: resolveIgnoredPrefixes({
-      ignore: runtimeIgnore,
-      allow: runtimeAllow,
+      ...appContent,
+      ignore: [
+        ...resolveIgnoredPrefixes(appContent),
+        ...resolveIgnoredPrefixes(contentConfig),
+      ],
+      allow,
     }),
-    allowedPrefixes: resolveAllowedPrefixes({
-      allow: runtimeAllow,
-    }),
+    allowedPrefixes: allow,
   };
 };
 
@@ -143,7 +141,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const { ignoredPrefixes, allowedPrefixes } = buildRoutePrefixConfig();
   const runtimeConfig = useRuntimeConfig();
   const contentI18nConfig = resolveContentI18nConfig(
-    runtimeConfig.content?.i18n ?? runtimeConfig.public?.content?.i18n,
+    (runtimeConfig.public?.content?.i18n ?? (import.meta.server ? runtimeConfig.content?.i18n : undefined)),
   );
   const serverRequestEvent = import.meta.server ? useRequestEvent() : null;
   const routePath = resolveContentRoutePath(
@@ -200,6 +198,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   if (
     handlesContentRoute &&
     import.meta.server &&
+    // Explicit language routes can opt out of first-visit browser negotiation.
+    runtimeConfig.public?.content?.i18n?.browserLanguageRedirect !== false &&
     contentI18nConfig.enabled &&
     contentI18nConfig.prefixedLocales.length > 0
   ) {

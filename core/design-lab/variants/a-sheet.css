@@ -1,0 +1,69 @@
+/* Variant A · Framed sheet (light). Dealt style: framed-sheet, seed 1201238658.
+   The move: one stone-tinted L-frame (sidebar + 48px top bar, no rule between) holds a white sheet inset 8px
+   from the right and bottom edges, 1px edge, 16px corners, no shadow. Face: the frame's stone tint from
+   CouchFusion's cream, and IBM Plex Mono for database names, IDs and revisions.
+   Grid: sheet padding 24; 12 columns with a 24px gutter; the tray's 6px inset holds the same 12 columns. */
+:root {
+  --ground: #f5f5f2; --surface: #ffffff; --raised: #f4f6f8; --active: #e9e9e4;
+  --border: #e8eaec; --rule: #f0f1f2; --control: #cdced1;
+  --text: #131416; --muted: #5d5f60; --faint: #6b6d6e;
+  --accent: #1b6c80; --focus: #1b6c80; --brand: #f7931a;
+  --primary: #131416; --primary-ink: #ffffff; --primary-hover: #2a2c2f;
+  --positive: #1e7b4f; --negative: #c4242a; --warning: #92400e;
+  --pill-positive-bg: #dcfae5; --pill-positive-ink: #04250e;
+  --pill-negative-bg: #ffedea; --pill-negative-ink: #831c1e;
+  --pill-warning-bg: #fffbeb; --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #ebedee; --pill-neutral-ink: #353736;
+  --chart-1: #1b6c80; --chart-muted: #c9d3d6; --grid: #eceeef; --axis-ink: #5d5f60; --ink: #131416; --chart-span: .06;
+  --gap-track: #dfe5e7; --gap-fill: #1b6c80; --share-fill: #eef3f4;
+  --select-line: #131416; --switch-on: #1e7b4f;
+  --font: "IBM Plex Sans", Inter, system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace; --name-font: var(--mono);
+  --fs-title: 22px; --fs-section: 16px; --fs-kpi: 24px; --fs-body: 14px;
+  --radius-card: 8px; --radius-control: 6px; --radius-sheet: 16px;
+  --gap: 24px; --pad: 24px; --card-pad: 20px; --control-height: 32px; --row-height: 48px;
+  --set-panel: #fafafa;
+}
+.app.frame { grid-template-columns: 228px minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr); }
+.frame .sidebar { grid-row: 1 / span 2; position: sticky; top: 0; height: 100svh; overflow: auto; }
+.frame .topbar { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 0 8px 0 24px; }
+.frame .top-search { width: min(548px, 100%); }
+.frame .top-search input { background: var(--surface); border-color: var(--border); }
+.frame .tb-right { position: absolute; right: 16px; top: 8px; display: flex; align-items: center; gap: 8px; }
+.frame .topbar { position: relative; }
+.frame .canvas { margin: 0 8px 8px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sheet); min-height: calc(100svh - 56px); }
+.frame .switcher { background: transparent; border-color: transparent; padding-left: 8px; }
+.frame .switcher:hover { background: var(--active); }
+.frame .sidebar .nav-item { color: #4b4d4f; }
+.frame .nav-item[aria-current="page"] { background: var(--active); }
+.mono-name, .job .src, td .name.mono-name { font-size: 13px; }
+
+/* blocks sit on the sheet; the sites table has no card around it */
+.block-head h2 { font-size: 18px; font-weight: 500; }
+.body { gap: 40px; }
+.body > .grid, .body > .kpis, .body > .tabs, .body > .toolbar { margin: 0; }
+.canvas:not([data-x]) .body:has(> .tabs) { gap: 20px; }
+.tray { display: grid; gap: 6px; padding: 6px; background: #fafafa; border-radius: 12px; }
+.tray .kpis { border-radius: var(--radius-card); }
+.tray-row { gap: 6px; }
+.panel h2 { font-weight: 500; }
+.title-row h1 { font-weight: 600; }
+
+/* lists on the sheet: no card, rules bleed past the text column */
+.list-frame td:first-child, .list-frame th:first-child { padding-left: 8px; }
+.list-frame td:last-child, .list-frame th:last-child { padding-right: 8px; }
+.list-frame { margin: 0 -8px; }
+
+/* analytics: no cards, sections carried by space */
+.chart-panel { border: 0; padding: 0; }
+.shares { gap: 24px 40px; }
+
+/* builder panes on the sheet */
+.pane { border-color: var(--border); }
+.page-canvas { background: #f2f3ef; }
+
+@media (max-width: 960px) {
+  .phone-bar { background: var(--ground); border-bottom: 0; }
+  .canvas { background: var(--surface); min-height: auto; }
+  .frame .sidebar { height: 100%; }
+}
+.span-5 .kv > div { padding: 10px 0; }

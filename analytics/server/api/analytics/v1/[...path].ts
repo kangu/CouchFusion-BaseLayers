@@ -1,6 +1,6 @@
 // Public REST API (Bearer API key). Read-only, for the app's single website.
 import { createError, defineEventHandler, getRouterParam } from "h3";
-import { resolveEngineConfig, storesLocally, type EngineConfig } from "../../../engine/config";
+import { resolveEngineConfig, type EngineConfig } from "../../../engine/config";
 import { bearerToken, verifyApiKey, type ApiKeyDoc } from "../../../engine/platform";
 import { getMetrics, getOverview, getRealtime } from "../../../engine/query";
 import { loadVisits, sessionList } from "../../../engine/reports";
@@ -41,7 +41,6 @@ const routes: Route<V1Context>[] = [
 export default defineEventHandler((event) =>
   dispatch(event, getRouterParam(event, "path") ?? "", routes, async () => {
     const config = await resolveEngineConfig(useRuntimeConfig());
-    if (!storesLocally(config)) throw createError({ statusCode: 404, statusMessage: "Not found" });
     const key = await verifyApiKey(config, bearerToken(event));
     if (!key) throw createError({ statusCode: 401, statusMessage: "Invalid or missing API key" });
     return { config, key, site: await ensureAppSite(config) };

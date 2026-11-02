@@ -1,14 +1,13 @@
 /**
- * Standalone tracker served at `/a.js` for non-Nuxt sites. Umami-compatible
- * attributes and API:
+ * Standalone tracker served at `/a.js` for non-Nuxt sites. Attributes and API:
  *   <script defer src="https://host/a.js"></script>
  * All hits go to the app's single website, so no website id is needed (a
  * leftover data-website-id attribute is ignored).
  *   data-host-url, data-auto-track="false", data-domains="a.com,b.com",
  *   data-tag, data-exclude-search, data-exclude-hash, data-do-not-track,
  *   data-before-send="fnName"
- *   window.umami.track(name?, data?) / window.umami.identify(id?, data?)
- *   <a data-umami-event="cta" data-umami-event-plan="pro">  (also data-cfa-event)
+ *   window.cfa.track(name?, data?) / window.cfa.identify(id?, data?)
+ *   <a data-cfa-event="cta" data-cfa-event-plan="pro">
  */
 export const TRACKER_SCRIPT = `(function(){
   "use strict";
@@ -29,7 +28,7 @@ export const TRACKER_SCRIPT = `(function(){
   var disabled = function(){
     if (dnt && (n.doNotTrack === "1" || w.doNotTrack === "1" || n.globalPrivacyControl)) return true;
     if (domains.length && domains.indexOf(l.hostname) === -1) return true;
-    try { if (localStorage.getItem("umami.disabled") || localStorage.getItem("cfa.disabled")) return true; } catch (e) {}
+    try { if (localStorage.getItem("cfa.disabled")) return true; } catch (e) {}
     return false;
   };
   var currentUrl = function(){
@@ -37,9 +36,11 @@ export const TRACKER_SCRIPT = `(function(){
     return u;
   };
   var lastUrl = null, lastRef = d.referrer || "";
+  var tz = "";
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
   var base = function(){
     var p = { hostname: l.hostname, screen: (w.screen ? w.screen.width + "x" + w.screen.height : ""),
-      language: n.language, title: d.title, url: currentUrl(), referrer: lastRef };
+      language: n.language, title: d.title, url: currentUrl(), referrer: lastRef, timezone: tz };
     if (tag) p.tag = tag;
     if (distinctId) p.id = distinctId;
     return p;
@@ -76,17 +77,16 @@ export const TRACKER_SCRIPT = `(function(){
     history[method] = function(){ var r = orig.apply(this, arguments); setTimeout(pageview, 0); return r; };
   };
   d.addEventListener("click", function(e){
-    var el = e.target && e.target.closest ? e.target.closest("[data-umami-event],[data-cfa-event]") : null;
+    var el = e.target && e.target.closest ? e.target.closest("[data-cfa-event]") : null;
     if (!el) return;
-    var name = el.getAttribute("data-umami-event") || el.getAttribute("data-cfa-event");
+    var name = el.getAttribute("data-cfa-event");
     var data = {};
     for (var i = 0; i < el.attributes.length; i++) {
-      var a = el.attributes[i].name, m = a.match(/^data-(?:umami|cfa)-event-(.+)$/);
+      var a = el.attributes[i].name, m = a.match(/^data-cfa-event-(.+)$/);
       if (m) data[m[1]] = el.attributes[i].value;
     }
     track(name, data);
   }, true);
-  w.umami = w.umami || { track: track, identify: identify };
   w.cfa = { track: track, identify: identify };
   if (autoTrack) {
     hook("pushState"); hook("replaceState");

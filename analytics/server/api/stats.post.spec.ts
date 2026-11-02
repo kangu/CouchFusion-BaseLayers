@@ -3,20 +3,16 @@ import { createEvent } from "h3";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 
-const { resolveUmamiConfigMock } = vi.hoisted(() => ({
-  resolveUmamiConfigMock: vi.fn(),
-}));
+const { collectHitMock } = vi.hoisted(() => ({ collectHitMock: vi.fn() }));
 
-vi.mock("../utils/umami-config", () => ({
-  resolveUmamiConfig: resolveUmamiConfigMock,
-}));
-
+vi.mock("../engine/collector", () => ({ collectHit: collectHitMock }));
+vi.mock("../engine/cors", () => ({ applyCollectCors: vi.fn() }));
 vi.mock("../engine/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../engine/config")>()),
-  resolveEngineConfig: vi.fn().mockResolvedValue({ mode: "umami_cloud" }),
+  resolveEngineConfig: vi.fn().mockResolvedValue({ slug: "test" }),
 }));
 
-const createPostEvent = (body: Record<string, any>) => {
+const createPostEvent = (body: unknown) => {
   const socket = new Socket();
   const req = new IncomingMessage(socket);
   req.method = "POST";
@@ -25,7 +21,7 @@ const createPostEvent = (body: Record<string, any>) => {
     "content-type": "application/json",
     "user-agent": "analytics-test",
   };
-  req.body = JSON.stringify(body);
+  (req as any).body = typeof body === "string" ? body : JSON.stringify(body);
 
   const res = new ServerResponse(req);
   res.on("finish", () => socket.destroy());
@@ -36,69 +32,47 @@ const createPostEvent = (body: Record<string, any>) => {
   return { event, socket };
 };
 
-describe("analytics stats proxy", () => {
+describe("analytics stats endpoint", () => {
   beforeEach(() => {
-    resolveUmamiConfigMock.mockReset();
-    vi.stubGlobal("useRuntimeConfig", () => ({
-      analytics: {
-        umami: {
-          proxyHost: "https://cloud.umami.is",
-        },
-      },
-    }));
+    collectHitMock.mockReset();
+    vi.stubGlobal("useRuntimeConfig", () => ({}));
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.restoreAllMocks();
   });
 
-  it("overwrites a client-supplied website with the CouchDB website ID", async () => {
-    resolveUmamiConfigMock.mockResolvedValue({
-      excludedPaths: [],
-      websiteId: "couch-website",
-    });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      text: vi.fn().mockResolvedValue("ok"),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const handler = (await import("./stats.post")).default;
-    const { event, socket } = createPostEvent({
-      payload: {
-        pathname: "/pricing",
-        website: "client-selected-website",
-      },
-    });
-
-    await expect(handler(event)).resolves.toEqual({ ok: true });
-
-    const request = fetchMock.mock.calls[0]?.[1];
-    expect(JSON.parse(String(request?.body))).toMatchObject({
-      payload: {
-        pathname: "/pricing",
-        website: "couch-website",
-      },
-    });
-    socket.destroy();
-  });
-
-  it("filters requests using exclusions resolved from CouchDB", async () => {
-    resolveUmamiConfigMock.mockResolvedValue({
-      excludedPaths: ["/admin/*", "/login"],
-      websiteId: "couch-website",
-    });
+  it("stores every hit locally without any _config keys", async () => {
+    collectHitMock.mockResolvedValue("stored");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const handler = (await import("./stats.post")).default;
-    const { event, socket } = createPostEvent({
-      payload: {
-        pathname: "/admin/orders",
-      },
-    });
+    const { event, socket } = createPostEvent({ type: "event", payload: { pathname: "/pricing" } });
 
     await expect(handler(event)).resolves.toEqual({ ok: true });
+    expect(collectHitMock).toHaveBeenCalledTimes(1);
+    expect(collectHitMock.mock.calls[0]?.[1]).toMatchObject({ payload: { pathname: "/pricing" } });
+    // Nothing leaves the server.
     expect(fetchMock).not.toHaveBeenCalled();
+    socket.destroy();
+  });
+
+  it("still answers ok when local collection throws", async () => {
+    collectHitMock.mockRejectedValue(new Error("couch down"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const handler = (await import("./stats.post")).default;
+    const { event, socket } = createPostEvent({ payload: { pathname: "/" } });
+
+    await expect(handler(event)).resolves.toEqual({ ok: true });
+    socket.destroy();
+  });
+
+  it("rejects a body without a payload object", async () => {
+    const handler = (await import("./stats.post")).default;
+    const { event, socket } = createPostEvent({ type: "event" });
+
+    await expect(handler(event)).rejects.toMatchObject({ statusCode: 400 });
+    expect(collectHitMock).not.toHaveBeenCalled();
     socket.destroy();
   });
 });

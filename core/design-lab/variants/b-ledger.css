@@ -1,0 +1,48 @@
+/* Variant B · Achromatic ledger (light). Dealt style: achromatic-ledger.
+   The move: no colour in the chrome; the primary is near-black; the one chart hue (#1d5fbf) goes on the main data
+   element (live data inside each file, the spike hour, today); the only other hue is a small change signal.
+   Face: a blue-grey ledger ground (#f2f4f7) with white cards, and Geist throughout.
+   Grid: canvas padding 32; 12 columns with a 12px gutter; KPI strip of four equal cells. */
+:root {
+  --ground: #f2f4f7; --surface: #ffffff; --raised: #f5f6f8; --active: #e3e6ea;
+  --border: #e3e6ea; --rule: #eef0f2; --control: #d0d4d9;
+  --text: #0a0a0a; --muted: #5f6368; --faint: #6b6b6b;
+  --accent: #141414; --focus: #1d5fbf; --brand: #141414;
+  --primary: #141414; --primary-ink: #ffffff; --primary-hover: #2b2b2b;
+  --positive: #2e7d32; --negative: #c4242a; --warning: #92400e;
+  --pill-positive-bg: #dcfae5; --pill-positive-ink: #04250e;
+  --pill-negative-bg: #ffedea; --pill-negative-ink: #831c1e;
+  --pill-warning-bg: #fffbeb; --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #eceef1; --pill-neutral-ink: #3d3d3d;
+  --chart-1: #1d5fbf; --chart-muted: #c8ccd2; --grid: #eceef0; --axis-ink: #5f6368; --ink: #0a0a0a; --chart-span: .06;
+  --gap-track: #e3e6ea; --gap-fill: #1d5fbf; --share-fill: #eef1f5;
+  --select-line: #0a0a0a; --switch-on: #141414;
+  --font: "Geist", Inter, system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, monospace;
+  --fs-title: 24px; --fs-section: 16px; --fs-kpi: 24px; --fs-kpi-lead: 32px; --fs-body: 14px;
+  --radius-card: 8px; --radius-control: 6px;
+  --gap: 12px; --pad: 32px; --card-pad: 20px; --control-height: 34px; --row-height: 46px;
+  --set-panel: #ffffff; --set-border: 1px solid #e3e6ea; --radius-set: 8px;
+  --title-gap: 28px; --section-weight: 500;
+}
+.app.plane { grid-template-columns: 256px minmax(0, 1fr); }
+.plane .sidebar { position: sticky; top: 0; height: 100svh; overflow: auto; padding: 20px 14px; }
+.plane .switcher { background: var(--surface); }
+.plane .side-search { margin: 4px 0 2px; }
+.plane .side-search input { background: transparent; border-color: var(--control); }
+.plane .nav-item { color: #4a4d52; }
+.plane .canvas { padding-top: 36px; }
+.kpi-value { font-weight: 400; }
+.kpi.kpi-lead .kpi-value { font-weight: 500; }
+.pill.ink { --pill-ink-bg: #141414; --pill-ink-ink: #fff; }
+.title-row .sub { font-size: 15px; }
+.body > .tabs { margin-bottom: 0; }
+.list-frame { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 4px 20px; }
+.body:has(> .tabs) { gap: 16px; }
+.ledger .gapbar { height: 10px; }
+.shares .share { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 10px 10px; }
+.chart-panel { padding-bottom: 12px; }
+.page-canvas { background: #e9ecf0; }
+.set-panel { padding: 20px; }
+@media (max-width: 960px) { .list-frame { padding: 0 14px; } }
+.ledger li { min-height: 46px; }
+.span-5 .kv > div { min-height: 39px; }

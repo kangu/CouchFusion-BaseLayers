@@ -15,3 +15,12 @@ export const useRuntimeConfig = () => {
 
   return {}
 }
+
+export const useNuxtApp = () => {
+  const resolver = (globalThis as any).useNuxtApp
+  if (typeof resolver === 'function') {
+    return resolver()
+  }
+
+  return {}
+}

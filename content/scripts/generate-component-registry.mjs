@@ -4,6 +4,8 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createRegistryRecord, writeRegistryPair } from './registry-output.mjs'
+import { readComponentSource } from './read-component-source.mjs'
+import { isNumericValue, readNumericLiteral } from './registry-literals.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -551,7 +553,7 @@ const inferFieldTypeFromValue = (node, types) => {
   if (types.isStringLiteral(node) || types.isTemplateLiteral(node)) {
     return 'text'
   }
-  if (types.isNumericLiteral(node)) {
+  if (isNumericValue(node, types)) {
     return 'number'
   }
   if (types.isBooleanLiteral(node)) {
@@ -846,8 +848,8 @@ const nodeToValue = (node, types) => {
   if (types.isBooleanLiteral(node)) {
     return node.value
   }
-  if (types.isNumericLiteral(node)) {
-    return node.value
+  if (isNumericValue(node, types)) {
+    return readNumericLiteral(node, types)
   }
   if (types.isNullLiteral?.(node)) {
     return null
@@ -912,45 +914,6 @@ const determineControlType = (prop) => {
   return convertTypeToControl(prop.type)
 }
 
-const IMAGE_FIELD_KEYWORDS = [
-  'image',
-  'thumbnail',
-  'thumb',
-  'avatar',
-  'logo',
-  'logos',
-  'photo',
-  'picture',
-  'cover',
-  'banner',
-  'illustration'
-]
-
-const normalizeKey = (key) => key.replace(/[\s_-]+/g, '').toLowerCase()
-
-const looksLikeImageField = (key) => {
-  const normalized = normalizeKey(key)
-
-  return IMAGE_FIELD_KEYWORDS.some((keyword) => {
-    if (normalized === keyword) return true
-    if (normalized.endsWith(keyword)) return true
-    if (normalized.startsWith(keyword)) return true
-    return normalized.includes(keyword) && keyword.length >= 4
-  })
-}
-
-const applyImageFieldUi = (schema, key) => {
-  if (schema.ui || !looksLikeImageField(key)) {
-    return schema
-  }
-
-  if (schema.type === 'text' || schema.type === 'stringarray') {
-    schema.ui = { component: 'ContentImageField' }
-  }
-
-  return schema
-}
-
 const applySchemaUiHints = (schema, key, ui) => {
   if (ui?.widget === 'textarea' && schema.type === 'text') {
     schema.type = 'textarea'
@@ -959,7 +922,8 @@ const applySchemaUiHints = (schema, key, ui) => {
     schema.ui = ui
     return schema
   }
-  return applyImageFieldUi(schema, key)
+  // Image controls must be explicitly declared in field metadata.
+  return schema
 }
 
 const buildPropSchema = (prop) => {
@@ -1535,8 +1499,13 @@ const generateRecords = async (vueFiles, helpers) => {
   const records = []
 
   for (const file of vueFiles) {
-    const source = await fs.readFile(file, 'utf8')
-    const sourceStats = await fs.stat(file)
+    const loaded = await readComponentSource(file)
+    if (!loaded) {
+      // Deleted between listing and reading (e.g. a component delete during a watcher run).
+      console.warn(`[registry] skipped ${path.relative(process.cwd(), file)}: file no longer exists`)
+      continue
+    }
+    const { source, stats: sourceStats } = loaded
     const { descriptor } = helpers.compiler.parse(source, { filename: file })
     const componentName = path.basename(file, '.vue')
 
@@ -1681,12 +1650,14 @@ const objectExpressionToLiteral = (node, types) => {
         obj[key] = prop.value.elements.map((el) => {
           if (types.isObjectExpression(el)) return objectExpressionToLiteral(el, types)
           if (types.isStringLiteral(el)) return el.value
-          if (types.isNumericLiteral(el)) return el.value
+          if (isNumericValue(el, types)) return readNumericLiteral(el, types)
           if (types.isBooleanLiteral(el)) return el.value
           return null
         })
-      } else if (types.isStringLiteral(prop.value) || types.isNumericLiteral(prop.value) || types.isBooleanLiteral(prop.value)) {
+      } else if (types.isStringLiteral(prop.value) || types.isBooleanLiteral(prop.value)) {
         obj[key] = prop.value.value
+      } else if (isNumericValue(prop.value, types)) {
+        obj[key] = readNumericLiteral(prop.value, types)
       }
     }
   })

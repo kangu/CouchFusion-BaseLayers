@@ -29,15 +29,29 @@ vi.mock("#database/utils/couchdb", () => ({
   getView: async (_db: string, _ddoc: string, _view: string, { key }: { key: string }) => ({
     rows: user.email.toLowerCase() === key ? [{ id: user._id, key, value: user }] : [],
   }),
+  // _all_docs over an id range, as used to cancel an email's pending codes.
+  getAllDocs: async (_db: string, { startkey, endkey }: { startkey: string; endkey: string }) => ({
+    rows: [...tokens.values()]
+      .filter((doc) => doc._id >= startkey && doc._id <= endkey)
+      .sort((a, b) => (a._id < b._id ? -1 : 1))
+      .map((doc) => ({ id: doc._id, key: doc._id, value: { rev: doc._rev }, doc })),
+  }),
+  getSession: async () => ({ ok: true, userCtx: { name: "maria", roles: [] } }),
   generateAuthSessionCookie: (name: string) =>
     `AuthSession=${Buffer.from(`${name}:stamp:sig`).toString("base64")}; Version=1; Path=/; HttpOnly`,
+}));
+
+// The cookie secret comes from CouchDB's own config (chttpd_auth/secret), nothing else.
+vi.mock("#database/utils/couch-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#database/utils/couch-config")>()),
+  readCouchConfigValue: async (section: string, key: string) =>
+    section === "chttpd_auth" && key === "secret" ? "fixture-secret" : null,
 }));
 
 let server: Server;
 let url = "";
 beforeAll(async () => {
   (globalThis as any).useRuntimeConfig = () => ({
-    couchdbCookieSecret: "fixture-secret",
     dbLoginPrefix: "bv",
   });
   const handler = (await import("./login-verify.post")).default;
@@ -51,7 +65,8 @@ afterAll(() => {
   server.close();
   delete (globalThis as any).useRuntimeConfig;
 });
-beforeEach(() => {
+beforeEach(async () => {
+  (await import("../utils/login-limits")).resetLoginLimits();
   tokens.clear();
   tokens.set("maria@example.com--ABCDEF", {
     _id: "maria@example.com--ABCDEF",
@@ -64,12 +79,81 @@ beforeEach(() => {
   });
 });
 
-const verify = (email: string, token: string) =>
+const verify = (email: string, token: string, address = "203.0.113.10") =>
   fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Real-IP": address },
     body: JSON.stringify({ email, token }),
   });
+
+const pendingCode = (email: string, code: string) => {
+  tokens.set(`${email}--${code}`, {
+    _id: `${email}--${code}`,
+    _rev: "1-t",
+    email,
+    code,
+    expires: new Date(Date.now() + 60_000).toISOString(),
+    used: false,
+  });
+};
+
+describe("POST /api/login-verify: wrong-code limits", () => {
+  it("allows four wrong codes, and a right one then resets the count", async () => {
+    for (const code of ["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD"]) {
+      expect((await verify("maria@example.com", code)).status).toBe(404);
+    }
+    expect((await verify("maria@example.com", "ABCDEF")).status).toBe(200);
+    // The count started over: four more misses still don't cancel anything.
+    pendingCode("maria@example.com", "GHIJKL");
+    for (const code of ["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD"]) {
+      expect((await verify("maria@example.com", code)).status).toBe(404);
+    }
+    expect(tokens.get("maria@example.com--GHIJKL").used).toBe(false);
+  });
+
+  it("cancels the email's pending codes on the 5th wrong code; a new code works", async () => {
+    pendingCode("maria@example.com", "UVWXYZ");
+    pendingCode("other@example.com", "OTHERS");
+    const statuses = [];
+    for (const code of ["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE"]) {
+      statuses.push((await verify("maria@example.com", code)).status);
+    }
+    expect(statuses).toEqual([404, 404, 404, 404, 429]);
+    expect(tokens.get("maria@example.com--ABCDEF")).toMatchObject({ used: true, cancelled: "too-many-wrong-codes" });
+    expect(tokens.get("maria@example.com--UVWXYZ")).toMatchObject({ used: true, cancelled: "too-many-wrong-codes" });
+    // Another email's code is untouched.
+    expect(tokens.get("other@example.com--OTHERS").used).toBe(false);
+    // The right (old) code no longer works ...
+    const late = await verify("maria@example.com", "ABCDEF");
+    expect(late.status).toBe(404);
+    expect(late.headers.get("set-cookie")).toBeNull();
+    // ... a newly requested one does.
+    pendingCode("maria@example.com", "NEWONE");
+    expect((await verify("maria@example.com", "NEWONE")).status).toBe(200);
+  });
+
+  it("answers the same for an email without an account", async () => {
+    const statuses = [];
+    for (const code of ["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD", "EEEEEE"]) {
+      statuses.push((await verify("nobody@example.com", code)).status);
+    }
+    expect(statuses).toEqual([404, 404, 404, 404, 429]);
+  });
+
+  it("blocks an address after 30 wrong codes across emails, even with a right code", async () => {
+    for (let i = 0; i < 30; i++) {
+      // Three misses per email stay under the per-email limit.
+      const response = await verify(`guess${Math.floor(i / 3)}@example.com`, "ZZZZZZ", "198.51.100.7");
+      expect(response.status).toBe(404);
+    }
+    const blocked = await verify("maria@example.com", "ABCDEF", "198.51.100.7");
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("set-cookie")).toBeNull();
+    expect(tokens.get("maria@example.com--ABCDEF").used).toBe(false);
+    // Another address is unaffected.
+    expect((await verify("maria@example.com", "ABCDEF", "203.0.113.99")).status).toBe(200);
+  });
+});
 
 describe("POST /api/login-verify", () => {
   it("returns no password-hash fields or token document to the browser", async () => {

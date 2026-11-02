@@ -2,7 +2,7 @@
  * Website registry stored as `site:<id>` docs in the main analytics database.
  */
 import { randomBytes } from "node:crypto";
-import type { EngineConfig } from "./config";
+import { assertConfigLoaded, type EngineConfig } from "./config";
 import { CouchError, ensureDatabase, getDoc, putDoc } from "./couch";
 import { normalizeHost } from "./referrer";
 import { mainDb } from "./storage";
@@ -93,12 +93,21 @@ const serverTimeZone = (): string => {
 let ensuring: Promise<SiteDoc> | null = null;
 
 /**
+ * Paths a new website excludes. Admin work is not a visit: the admin area, the login page and
+ * the content builder (`/builder`, its `/k` alias). Exact paths plus `/x/*` prefixes, so pages
+ * like `/kids` still count.
+ */
+export const DEFAULT_EXCLUDED_PATHS = ["/admin*", "/login", "/builder", "/builder/*", "/k", "/k/*"];
+
+/**
  * Returns the app's website, creating it with sensible defaults on first use
- * (any hostname accepted, `/admin*` and `/login` excluded, server timezone).
+ * (any hostname accepted, DEFAULT_EXCLUDED_PATHS excluded, server timezone).
  */
 export const ensureAppSite = async (config: EngineConfig, { fresh = false } = {}): Promise<SiteDoc> => {
   const existing = (await listSites(config, { fresh }))[0];
   if (existing) return existing;
+  // Never create a website record from guessed (default) settings.
+  assertConfigLoaded(config);
   if (ensuring) return ensuring;
   ensuring = (async () => {
     const db = mainDb(config);
@@ -107,7 +116,7 @@ export const ensureAppSite = async (config: EngineConfig, { fresh = false } = {}
       id: config.defaultSiteId,
       name: config.slug || config.defaultSiteId,
       timezone: serverTimeZone(),
-      excludedPaths: ["/admin*", "/login"],
+      excludedPaths: [...DEFAULT_EXCLUDED_PATHS],
     });
     try {
       await putDoc(db, site);

@@ -1,9 +1,8 @@
 /**
- * Starts the in-app aggregator when the app stores analytics locally and
- * `analytics_aggregator_enabled` is not false. Runs every 60 s; a CouchDB
+ * Starts the in-app aggregator unless `analytics_aggregator_enabled` is false. Runs every 60 s; a CouchDB
  * lease keeps multiple instances from writing concurrently.
  */
-import { resolveEngineConfig, storesLocally } from "../engine/config";
+import { resolveEngineConfig } from "../engine/config";
 import { releaseLease, runAggregatorTick } from "../engine/aggregator";
 import { flushRawEvents } from "../engine/queue";
 
@@ -19,7 +18,7 @@ export default defineNitroPlugin((nitroApp) => {
     running = true;
     try {
       const config = await resolveEngineConfig(useRuntimeConfig());
-      if (storesLocally(config) && config.aggregatorEnabled) {
+      if (config.loaded && config.aggregatorEnabled) {
         await flushRawEvents();
         const result = await runAggregatorTick(config);
         if (import.meta.dev && result.leader) {
@@ -44,8 +43,9 @@ export default defineNitroPlugin((nitroApp) => {
     stopped = true;
     clearTimeout(first);
     clearInterval(interval);
-    await flushRawEvents().catch(() => undefined);
+    // One bounded attempt: never hold shutdown hostage to an unreachable CouchDB.
+    await flushRawEvents({ timeoutMs: 5_000 }).catch(() => undefined);
     const config = await resolveEngineConfig(useRuntimeConfig()).catch(() => null);
-    if (config && storesLocally(config)) await releaseLease(config).catch(() => undefined);
+    if (config?.loaded) await releaseLease(config).catch(() => undefined);
   });
 });

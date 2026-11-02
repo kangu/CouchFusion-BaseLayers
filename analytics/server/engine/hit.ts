@@ -13,7 +13,7 @@ import type { ParsedUserAgent } from "./ua";
 export interface HitContext {
   body: unknown;
   site: SiteDoc;
-  config: Pick<EngineConfig, "excludedPaths" | "persistentId">;
+  config: Pick<EngineConfig, "persistentId">;
   agent: ParsedUserAgent;
   geo: GeoInfo;
   visitor: string;
@@ -87,7 +87,7 @@ export const buildRawEvent = (ctx: HitContext): HitResult => {
   }
 
   const path = normalizePath(url.pathname);
-  const isExcluded = createExclusionMatcher([...ctx.site.excludedPaths, ...ctx.config.excludedPaths]);
+  const isExcluded = createExclusionMatcher(ctx.site.excludedPaths);
   if (isExcluded(path) || isExcluded(url.pathname)) return { ok: false, reason: "excluded" };
 
   const name = str(payload.name, 100);

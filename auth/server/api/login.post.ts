@@ -1,9 +1,11 @@
 import { defineEventHandler, readBody, createError } from "h3";
-import { getDocument, getView, putDocument } from "#database/utils/couchdb";
+import { getDocument, getView } from "#database/utils/couchdb";
+import { createLoginToken } from "#auth/server/utils/login-token";
 import {
   type ProofOfWorkSolution,
 } from "#auth/server/utils/proof-of-work";
 import { assertProofOfWork } from "#auth/server/utils/proof-of-work-runtime";
+import { resolveCookieSecret } from "#auth/server/utils/session-cookie";
 import {
   assertInvisibleFormShield,
   type InvisibleFormShieldPayload,
@@ -34,6 +36,7 @@ export default defineEventHandler(async (event) => {
   }
 
   assertInvisibleFormShield(body.invisibleShield, { purpose: "login" });
+  await resolveCookieSecret(); // refreshes the proof-of-work signing secret
   assertProofOfWork(body.proofOfWork, "login");
 
   const affiliateCode =
@@ -41,7 +44,6 @@ export default defineEventHandler(async (event) => {
 
   const config = useRuntimeConfig();
   const dbLoginPrefix = config.dbLoginPrefix;
-  const DB = `${dbLoginPrefix}-logins`;
 
   // Validate required runtime config
   if (!config.dbLoginPrefix) {
@@ -63,11 +65,6 @@ export default defineEventHandler(async (event) => {
   if (!existingAccount?.rows?.length) {
     return { success: true, message: "If you have an account with us, you'll receive an email" };
   }
-
-  // record timestamp with expiration of 60 minutes
-  const timestamp = new Date();
-  const expireTimestamp = new Date(timestamp);
-  expireTimestamp.setMinutes(expireTimestamp.getMinutes() + 60);
 
   let validatedAffiliateCode: string | undefined;
 
@@ -95,27 +92,14 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // generate unique login token and save to couch
-  const uniqueCode = [...Array(6)]
-    .map(() => String.fromCharCode((65 + Math.random() * 26) | 0))
-    .join("");
-  const doc: Record<string, unknown> = {
-    _id: email + "--" + uniqueCode,
-    funnel: body.funnel,
-    timestamp: timestamp.toISOString(),
-    expires: expireTimestamp.toISOString(),
-    used: false,
-    /* these are used by the cli watcher to ensure it can build up the email template request */
+  // One-time code (crypto-random, lifetime from runtimeConfig.authLoginTokenTtlMinutes),
+  // stored in `${dbLoginPrefix}-logins` as `email--CODE`; `email` and `code` on the
+  // document are what the watcher uses to build the email.
+  await createLoginToken({
     email,
-    code: uniqueCode,
-  };
-
-  if (validatedAffiliateCode) {
-    doc.affiliate_friend_code = validatedAffiliateCode;
-  }
-  // persist token document to couchdb
-  const resp = await putDocument(DB, doc);
-  // console.log("Saved token document", resp);
+    funnel: body.funnel,
+    fields: validatedAffiliateCode ? { affiliate_friend_code: validatedAffiliateCode } : undefined,
+  });
 
   // send out the corresponding email
   // email is now sent through couchdb-monitor watching login tokens being created

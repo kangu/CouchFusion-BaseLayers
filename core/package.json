@@ -1,0 +1,50 @@
+{
+  "name": "@couchfusion/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./nuxt.config.ts"
+  },
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": "^22.21.0 || ^24.11.0 || >=26.0.0"
+  },
+  "scripts": {
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:local": "vitest run --project local",
+    "test:local:watch": "vitest --project local",
+    "test:doctor": "tsx scripts/test-doctor.ts",
+    "test:cleanup": "tsx scripts/test-cleanup.ts",
+    "test:nuxt": "vitest run --project nuxt",
+    "test:matrix": "tsx scripts/test-matrix.ts",
+    "provision": "tsx scripts/provision.ts",
+    "preflight": "tsx scripts/preflight.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "nuxt": "^4.6.2",
+    "nostr-tools": "^2.17.0"
+  },
+  "dependencies": {
+    "@nuxt/kit": "4.6.2",
+    "@noble/hashes": "^1.8.0",
+    "h3": "^1.15.4",
+    "@nuxt/schema": "4.6.2"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.19.0",
+    "nostr-tools": "^2.17.0",
+    "nitropack": "2.13.5"
+  },
+  "peerDependenciesMeta": {
+    "nostr-tools": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,78 @@
+/* Variant C · Data terminal (dark). Dealt style: data-terminal; shell redrawn to a ruled T-frame (labelled
+   sidebar + 64px top bar) because CF Cloud has more destinations than an icon rail should carry.
+   The move: every selection (nav item, tab, KPI tab, selected block) is a 1px line in the accent, as wide as its
+   label; numbers stay white or grey and carry their sign in the text. Face: the accent is CouchFusion's own orange,
+   and every figure is set in IBM Plex Mono so digits stack like a terminal's.
+   Grid: canvas padding 32; 12 columns with a 24px gutter. */
+:root {
+  --ground: #171719; --surface: #131217; --raised: #212023; --active: #1d1c20;
+  --border: #29282c; --rule: #222125; --control: #3a3a3e;
+  --text: #ffffff; --muted: #9a9ca2; --faint: #8a8c92;
+  --accent: #f7931a; --focus: #f7931a; --brand: #f7931a; --warn-dot: #d9a441;
+  --primary: #ffffff; --primary-ink: #111111; --primary-hover: #e6e6e6;
+  --positive: #44a282; --negative: #e5566f; --warning: #d9a441;
+  --pill-positive-bg: #1b2828; --pill-positive-ink: #5fc39c;
+  --pill-negative-bg: #2c1a20; --pill-negative-ink: #f07a8e;
+  --pill-warning-bg: #2a2416; --pill-warning-ink: #d9a441;
+  --pill-neutral-bg: #212023; --pill-neutral-ink: #c8c8cc;
+  --chart-1: #4a8ad6; --chart-muted: #4a4a50; --grid: #29282c; --axis-ink: #9a9ca2; --ink: #ffffff; --chart-span: .12;
+  --gap-track: #34333a; --gap-fill: #e9e9ec; --share-fill: #1f1e23;
+  --select-line: #f7931a; --tab-line: 1px; --switch-on: #44a282;
+  --card-shadow: 0 12px 28px rgba(0,0,0,.2);
+  --font: "Public Sans", Inter, system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace; --figure-font: var(--mono); --name-font: var(--mono);
+  --fs-title: 24px; --fs-section: 16px; --fs-kpi: 22px; --fs-body: 13px;
+  --radius-card: 6px; --radius-control: 999px; --radius-nav: 4px;
+  --gap: 24px; --pad: 32px; --card-pad: 20px; --control-height: 34px; --row-height: 42px;
+  --set-panel: #131217; --set-border: 1px solid #29282c; --radius-set: 6px; --input-bg: #1b1a1f;
+  --page-bg: #ffffff; --canvas-bg: #0f0e12; --login-bg: #f4f3ef;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23aaa' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+body { line-height: 19px; }
+.app.tframe { grid-template-columns: 232px minmax(0, 1fr); grid-template-rows: 64px minmax(0, 1fr); }
+.tframe .topbar { grid-column: 1 / -1; display: grid; grid-template-columns: 232px minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; background: var(--ground); }
+.tframe .brand { padding-left: 20px; }
+.tframe .top-search { width: min(520px, 100%); margin-left: 32px; }
+.tframe .top-search input { background: var(--input-bg); border-color: var(--border); }
+.tframe .tb-right { display: flex; align-items: center; height: 100%; gap: 8px; padding-left: 12px; }
+.tframe .switcher { height: 100%; margin: 0; width: 260px; border: 0; border-left: 1px solid var(--border); border-radius: 0; background: transparent; padding: 0 20px; }
+.tframe .switcher:hover { background: var(--raised); }
+.tframe .sidebar { grid-row: 2; position: sticky; top: 64px; height: calc(100svh - 64px); overflow: auto; border-right: 1px solid var(--border); padding: 8px 12px 14px; }
+.tframe .canvas { grid-row: 2; }
+/* selection: a 1px accent line as wide as the label */
+.nav-item { color: var(--muted); }
+.nav-item:hover { background: transparent; color: var(--text); }
+.nav-item[aria-current="page"] { background: transparent; color: var(--text); }
+.nav-item[aria-current="page"] span { position: relative; }
+.nav-item[aria-current="page"] span::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: var(--accent); }
+.tree a.on { background: transparent; }
+.tree a.on span:first-of-type { box-shadow: 0 1px 0 var(--accent); }
+.kpis[role="tablist"] .kpi[aria-selected="true"]::after { height: 1px; }
+.block-frame.on { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* figures in the mono */
+.num, td.n, .kv dd.num, .facts dd { font-family: var(--mono); }
+td.n small, .num small { font-family: var(--font); }
+h1 { font-weight: 700; }
+.panel, .pane, .kpis, .list-frame { border-color: var(--border); }
+.panel h2, .pane-head h2 { font-weight: 600; }
+.title-row .sub { color: var(--muted); }
+.pill.ink { --pill-ink-bg: #ffffff; --pill-ink-ink: #111; }
+.panel.lead { border-left: 1px solid var(--negative); }
+.panel.lead .meta { color: var(--negative); }
+.list-frame { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 4px 20px; box-shadow: var(--card-shadow); }
+.body:has(> .tabs) { gap: 20px; }
+.shares .share { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 10px 10px; box-shadow: var(--card-shadow); }
+.share-row .fill { border-radius: 4px; }
+.avatar { color: #1b1b1b; }
+.btn { background: transparent; border-color: var(--control); }
+.btn:hover { background: var(--raised); }
+.btn.primary { background: var(--primary); color: var(--primary-ink); }
+.input, .chips { color: var(--text); }
+.preview { border-color: var(--control); }
+.preview.login { border-color: transparent; }
+.pv-brand > span span { color: var(--muted); }
+.parts .bar { background: var(--chart-1); }
+@media (max-width: 960px) {
+  .phone-bar { background: var(--ground); }
+  .tframe .sidebar { top: 0; height: 100%; border: 0; }
+}
+textarea.input { border-radius: 14px; }

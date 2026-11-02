@@ -16,6 +16,8 @@ export interface CouchDBError {
 export interface CouchDBLoginResult {
   ok: boolean;
   setCookie?: string | null;
+  /** The CouchDB user name the session belongs to (from the `_session` response). */
+  name?: string;
 }
 
 export interface CouchDBResponse {
@@ -926,7 +928,6 @@ export async function initializeDatabase(
  */
 export interface CouchDBEnvironmentOptions {
   adminAuth?: string | null;
-  cookieSecret?: string | null;
   strict?: boolean;
 }
 
@@ -970,23 +971,7 @@ COUCHDB_ADMIN_AUTH must be base64("username:password").
     }
   }
 
-  const cookieSecret =
-    options.cookieSecret ??
-    process.env.NUXT_COUCHDB_COOKIE_SECRET ??
-    process.env.COUCHDB_COOKIE_SECRET;
-
-  if (!cookieSecret) {
-    const message = `
-🚨 CouchDB Configuration Warning:
-COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Session generation may fail at runtime.
-    `.trim();
-
-    if (options.strict) {
-      throw new Error(message);
-    } else {
-      console.warn(message);
-    }
-  }
+  // No cookie secret to check: the auth layer reads CouchDB's own chttpd_auth/secret.
 }
 
 /**
@@ -1030,12 +1015,20 @@ export async function authenticate(
       body: formData.toString(),
     });
 
-    console.log("_session response:", response);
+    // Log the outcome only: the full response includes the AuthSession Set-Cookie (a live session token).
+    console.log(`_session response: ${response.status} ${response.statusText} for ${username}`);
     if (response.ok) {
       // Extract AuthSession cookie from Set-Cookie header
       // not anymore
       // just return the it so it can be set
-      return { ok: true, setCookie: response.headers.get("set-cookie") };
+      const payload = (await response.json().catch(() => null)) as {
+        name?: unknown;
+      } | null;
+      return {
+        ok: true,
+        setCookie: response.headers.get("set-cookie"),
+        name: typeof payload?.name === "string" ? payload.name : undefined,
+      };
       /*
       // keep this code here commented as I might want to use it later
       const setCookieHeader = response.headers.get('set-cookie');
@@ -1127,12 +1120,17 @@ export async function getSession(
 
 /**
  * Generate a CouchDB AuthSession cookie value.
+ *
+ * CouchDB accepts the cookie while `stamp + [chttpd_auth] timeout` is in the future, where
+ * the stamp is `now + timeoutSeconds`. `maxAgeSeconds` adds a `Max-Age` attribute, so the
+ * browser keeps the cookie across restarts instead of dropping it with the session.
  */
 export function generateAuthSessionCookie(
   username: string,
   couchSecret: string,
   userSalt: string,
   timeoutSeconds = 600,
+  options: { maxAgeSeconds?: number } = {},
 ): string {
   // Calculate expiration timestamp
   const expirationTime = Math.floor(Date.now() / 1000) + timeoutSeconds;
@@ -1168,7 +1166,12 @@ export function generateAuthSessionCookie(
   const isProduction = process.env.NODE_ENV === "production";
   const secureFlag = isProduction ? "; Secure" : "";
 
-  return `AuthSession=${base64Cookie}; Version=1; Path=/; HttpOnly${secureFlag}`;
+  const maxAge =
+    Number.isFinite(options.maxAgeSeconds) && (options.maxAgeSeconds as number) > 0
+      ? `; Max-Age=${Math.floor(options.maxAgeSeconds as number)}`
+      : "";
+
+  return `AuthSession=${base64Cookie}; Version=1; Path=/${maxAge}; HttpOnly${secureFlag}`;
 }
 
 export interface VerifyAuthSessionOptions {

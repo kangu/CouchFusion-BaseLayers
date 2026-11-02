@@ -83,7 +83,8 @@ export const minimalToContentDocument = (doc: MinimalContentDocument): ContentPa
         seo: {
             title: doc.seo?.title ?? doc.title ?? 'Page title',
             description: doc.seo?.description ?? 'SEO description.',
-            image: normalizeSeoImage(doc.seo?.image)
+            image: normalizeSeoImage(doc.seo?.image),
+            video: normalizeSeoImage(doc.seo?.video)
         },
         stem: doc.stem ?? deriveStem(normalizedPath),
         meta: doc.meta ? clonePlain(doc.meta) : {},
@@ -112,7 +113,8 @@ export const contentToMinimalDocument = (doc: ContentPageDocument): MinimalConte
         seo: {
             title: doc.seo?.title ?? doc.title ?? 'Page title',
             description: doc.seo?.description ?? 'SEO description.',
-            image: normalizeSeoImage(doc.seo?.image)
+            image: normalizeSeoImage(doc.seo?.image),
+            video: normalizeSeoImage(doc.seo?.video)
         },
         stem: doc.stem ?? deriveStem(doc.path)
     }

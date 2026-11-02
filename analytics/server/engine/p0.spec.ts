@@ -76,17 +76,15 @@ describe("cidr matching", () => {
 });
 
 describe("engine config", () => {
-  it("defaults to umami_cloud and parses flat keys", () => {
+  it("runs on defaults with no keys and parses flat keys", () => {
     const empty = buildEngineConfig("kangu", {});
-    expect(empty).toMatchObject({ mode: "umami_cloud", dbPrefix: "analytics_kangu", rawRetentionMonths: 13, respectDnt: true, maxScanDays: 31 });
+    expect(empty).toMatchObject({ dbPrefix: "analytics_kangu", rawRetentionMonths: 13, respectDnt: true, maxScanDays: 31, aggregatorEnabled: true });
+    expect(empty).not.toHaveProperty("mode");
     const custom = buildEngineConfig("lovable-gifts", {
-      analytics_mode: "DUAL",
       analytics_respect_dnt: "false",
       analytics_raw_retention_months: "999",
-      umami_excluded_paths: "/admin*, /login",
     });
-    expect(custom).toMatchObject({ mode: "dual", dbPrefix: "analytics_lovable_gifts", respectDnt: false, rawRetentionMonths: 120 });
-    expect(custom.excludedPaths).toEqual(["/admin*", "/login"]);
+    expect(custom).toMatchObject({ dbPrefix: "analytics_lovable_gifts", respectDnt: false, rawRetentionMonths: 120 });
     // One website per app: the id defaults to the app slug.
     expect(empty.defaultSiteId).toBe("kangu");
     expect(custom.defaultSiteId).toBe("lovable-gifts");
@@ -96,10 +94,10 @@ describe("engine config", () => {
 });
 
 describe("hit builder", () => {
-  const site = sanitizeSite({ id: "kangu", domains: ["kangu.ro"], timezone: "Europe/Bucharest", excludedPaths: ["/admin*"] });
+  const site = sanitizeSite({ id: "kangu", domains: ["kangu.ro"], timezone: "Europe/Bucharest", excludedPaths: ["/admin*", "/login"] });
   const base = {
     site,
-    config: { excludedPaths: ["/login"], persistentId: false },
+    config: { persistentId: false },
     agent: { browser: "Chrome", os: "macOS", device: "desktop" as const },
     geo: { country: "RO", region: "B", city: "Bucharest" },
     visitor: "abc",

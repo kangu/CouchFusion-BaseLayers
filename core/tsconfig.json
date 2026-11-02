@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "#core/*": ["src/*"]
+    }
+  },
+  "include": ["module.ts", "src/**/*.ts", "scripts/**/*.ts", "virtual.d.ts"],
+  "exclude": ["src/features/**/app/**", "src/features/ui-theme/**", "src/auth.ts", "src/admin.ts"]
+}

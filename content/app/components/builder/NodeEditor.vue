@@ -2554,13 +2554,6 @@ const hydrateDrafts = () => {
     }
 };
 
-watch(
-    () => props.node,
-    () => {
-        hydrateDrafts();
-    },
-    { immediate: true, deep: true },
-);
 
 const parseValueByType = (value: unknown, type: PropInputType) => {
     if (type === "boolean") {
@@ -3123,6 +3116,15 @@ const applyTextValue = () => {
     }
     props.onUpdateText(props.node.uid, textDraft.value);
 };
+// Hydration can recurse through nested object/array schemas. Register only after
+// all normalization helpers have initialized so immediate hydration is safe.
+watch(
+    () => props.node,
+    () => {
+        hydrateDrafts();
+    },
+    { immediate: true, deep: true },
+);
 </script>
 
 <style scoped>

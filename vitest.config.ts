@@ -12,6 +12,7 @@ const resolveLayerPath = (relativePath: string) =>
 const contentRoot = resolveLayerPath("content");
 const databaseRoot = resolveLayerPath("database");
 const analyticsRoot = resolveLayerPath("analytics");
+const authRoot = resolveLayerPath("auth");
 const testStubsRoot = resolveLayerPath("_tests/stubs");
 
 const loadedEnv = loadEnv(process.env.NODE_ENV ?? "test", dirname, "");
@@ -37,6 +38,8 @@ export default defineConfig({
       { find: /^#database\/(.*)$/, replacement: `${databaseRoot}/$1` },
       { find: /^#analytics\/?$/, replacement: analyticsRoot },
       { find: /^#analytics\/(.*)$/, replacement: `${analyticsRoot}/$1` },
+      { find: /^#auth\/?$/, replacement: authRoot },
+      { find: /^#auth\/(.*)$/, replacement: `${authRoot}/$1` },
     ],
   },
 });

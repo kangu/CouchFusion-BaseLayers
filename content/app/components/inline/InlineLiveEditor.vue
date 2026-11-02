@@ -14,6 +14,7 @@ import type ContentAdminWorkbenchComponent from "#content/app/components/admin/C
 import type { ContentPageSummary } from "#content/types/content-page";
 import type { MinimalContentDocument } from "#content/app/utils/contentBuilder";
 import type { InlinePreviewPropHint } from "#content/app/utils/inline-preview-prop-path";
+import { useControlPlaneBridge } from "#content/app/composables/useControlPlaneBridge";
 
 type ContentAdminWorkbenchProps = InstanceType<
     typeof ContentAdminWorkbenchComponent
@@ -186,12 +187,36 @@ const applyBeforeUnload = (enabled: boolean) => {
     }
 };
 
+// CouchFusion control-plane bridge: inert unless this builder runs framed by the
+// control plane in a dev session (see docs/couchfusion-control-plane-bridge.md).
+const controlPlaneBridge = useControlPlaneBridge();
+let stopControlPlaneReloadHandler: (() => void) | null = null;
+
 const setUnsavedState = (value: boolean) => {
     if (hasUnsavedChanges.value === value) {
         return;
     }
     hasUnsavedChanges.value = value;
     applyBeforeUnload(value);
+    controlPlaneBridge.setDirty(value);
+};
+
+/**
+ * Reload requested by the control plane (after a component was added or removed).
+ * Clean editor: reload. Unsaved changes: ask first; on confirm drop the unload guard so
+ * the browser does not prompt a second time.
+ */
+const handleControlPlaneReload = (request: { dirty: boolean }): boolean => {
+    if (!request.dirty && !hasUnsavedChanges.value) {
+        return true;
+    }
+    const confirmed = window.confirm(
+        "The component list changed. Reload the builder now? Unsaved changes will be lost.",
+    );
+    if (confirmed) {
+        applyBeforeUnload(false);
+    }
+    return confirmed;
 };
 
 const builderBasePath = computed(() => {
@@ -1059,9 +1084,17 @@ onMounted(() => {
             passive: true,
         });
     }
+
+    stopControlPlaneReloadHandler = controlPlaneBridge.onReloadRequest(
+        handleControlPlaneReload,
+    );
+    controlPlaneBridge.setDirty(hasUnsavedChanges.value);
+    controlPlaneBridge.start({ builder: true });
 });
 
 onBeforeUnmount(() => {
+    stopControlPlaneReloadHandler?.();
+    stopControlPlaneReloadHandler = null;
     applyBeforeUnload(false);
     stopDividerDrag();
     if (typeof window !== "undefined" && previewFrameMeasureFrame !== null) {

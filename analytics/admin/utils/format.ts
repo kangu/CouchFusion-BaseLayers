@@ -123,8 +123,13 @@ export const formatDimValue = (dim: string, value: string): string => {
     case "device":
       return value.charAt(0).toUpperCase() + value.slice(1);
     case "prop": {
-      const [, key, val] = value.split("\u001f");
-      return `${key} = ${val}`;
+      // Table rows use `event␟key␟value`; filter values use `key=value`.
+      if (value.includes("\u001f")) {
+        const [, key, val] = value.split("\u001f");
+        return `${key} = ${val}`;
+      }
+      const [key, ...rest] = value.split("=");
+      return `${key} = ${rest.join("=")}`;
     }
     default:
       return value;

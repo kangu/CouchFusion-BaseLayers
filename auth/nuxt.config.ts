@@ -37,9 +37,22 @@ export default defineNuxtConfig({
   runtimeConfig: {
     couchUrl: process.env.COUCHDB_URL || "http://localhost:5984",
     couchAdminAuth: process.env.COUCHDB_ADMIN_AUTH,
-    couchdbCookieSecret:
-      process.env.NUXT_COUCHDB_COOKIE_SECRET ||
-      process.env.COUCHDB_COOKIE_SECRET,
+    // No cookie secret here: session cookies, Nostr and proof-of-work challenges use
+    // CouchDB's own chttpd_auth/secret, read with COUCHDB_ADMIN_AUTH (session-cookie.ts).
+    // Login session length in seconds (default one year). CouchDB `_config`
+    // `cf_env_<slug>.auth_session_max_age_seconds` overrides it at runtime.
+    authSessionMaxAgeSeconds:
+      Number.parseInt(
+        process.env.NUXT_AUTH_SESSION_MAX_AGE_SECONDS ||
+          process.env.AUTH_SESSION_MAX_AGE_SECONDS ||
+          "",
+        10,
+      ) || 31536000,
+    // How long an emailed login code stays valid, in minutes (1–1440, default 60).
+    // Admin-only apps can lower it with NUXT_AUTH_LOGIN_TOKEN_TTL_MINUTES; flows that email
+    // codes for later use (order confirmations) rely on the generous default.
+    authLoginTokenTtlMinutes:
+      Number.parseInt(process.env.NUXT_AUTH_LOGIN_TOKEN_TTL_MINUTES || "", 10) || 60,
     nostrConfigSlug:
       process.env.NUXT_NOSTR_CONFIG_SLUG || process.env.NOSTR_CONFIG_SLUG || "",
     nostrConfigSection:
@@ -105,6 +118,10 @@ export default defineNuxtConfig({
       authLoginPath: "/login",
       authDefaultRedirectPath: "/builder",
       authLoginHeading: "CouchFusion Login",
+      // Protected pages under these prefixes answer 404 to signed-out visitors instead of
+      // redirecting to the login page (app/utils/hidden-paths.ts). Comma-separated; '' turns
+      // it off. Default: the admin area, the content builder and its /k alias.
+      authHiddenPaths: "/admin,/builder,/k",
     },
   },
 
@@ -148,8 +165,7 @@ COUCHDB_ADMIN_AUTH=YWRtaW46cGFzc3dvcmQ=
         );
       }
 
-      // Passwordless session creation validates couchdbCookieSecret at request time.
-      // Building or using CouchDB password sessions does not require that secret.
+      // No cookie secret to validate: it is read from CouchDB (chttpd_auth/secret) at runtime.
 
       // Validate base64 format
       try {

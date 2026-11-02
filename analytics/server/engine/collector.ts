@@ -6,7 +6,8 @@ import { randomBytes } from "node:crypto";
 import { getRequestHeader, type H3Event } from "h3";
 import type { EngineConfig } from "./config";
 import { buildRawEvent } from "./hit";
-import { geoFromHeaders, getClientIp, ipMatchesCidrs } from "./net";
+import { resolveGeo } from "./geo";
+import { ipMatchesCidrs, resolveClient } from "./net";
 import { getDailySalt, visitorHash } from "./identity";
 import { enqueueRawEvent } from "./queue";
 import { ensureAppSite } from "./sites";
@@ -16,6 +17,8 @@ import { isBot, parseUserAgent } from "./ua";
 
 export type CollectOutcome =
   | "stored"
+  | "unavailable"
+  | "queue_full"
   | "invalid"
   | "disabled"
   | "host"
@@ -25,8 +28,8 @@ export type CollectOutcome =
   | "ignored_ip"
   | "rate_limited";
 
-/** In-memory counters since process start, shown in Settings to verify CDN geo headers. */
-export const geoStats = { stored: 0, withCountry: 0, since: Date.now() };
+/** In-memory counters since process start, shown in Settings to verify geo detection. */
+export const geoStats = { stored: 0, withCountry: 0, fromTimezone: 0, ignoredCloudflareHeaders: 0, since: Date.now() };
 
 /** How many hits ended in each outcome since process start (why hits are dropped). */
 export const outcomeStats: Partial<Record<CollectOutcome, number>> = {};
@@ -63,6 +66,8 @@ const runPipeline = async (
 ): Promise<CollectOutcome> => {
   const payload = (body as any)?.payload;
   if (!payload || typeof payload !== "object") return "invalid";
+  // Settings never loaded: the database prefix may be wrong, so don't write.
+  if (!config.loaded) return "unavailable";
 
   const userAgent = getRequestHeader(event, "user-agent") || "";
   if (isBot(userAgent)) return "bot";
@@ -72,7 +77,8 @@ const runPipeline = async (
   ) {
     return "dnt";
   }
-  const ip = getClientIp(event);
+  const client = resolveClient(event, config.trustHeaders);
+  const ip = client.ip;
   if (ipMatchesCidrs(ip, config.ignoreIps)) return "ignored_ip";
 
   const site = await resolveTargetSite(config);
@@ -82,20 +88,23 @@ const runPipeline = async (
   const visitor = visitorHash(salt, site.id, ip, userAgent);
   if (isRateLimited(`${site.id}:${visitor}`, now)) return "rate_limited";
 
+  const geo = resolveGeo(event, (payload as any).timezone, config.geoSource, client.geoHeaders);
   const result = buildRawEvent({
     body,
     site,
     config,
     agent: parseUserAgent(userAgent),
-    geo: config.geoSource === "header" ? geoFromHeaders(event) : { country: null, region: null, city: null },
+    geo,
     visitor,
     now,
     random: randomBytes(4).toString("hex"),
   });
   if (!result.ok) return result.reason;
-  enqueueRawEvent(config, result.doc);
+  if (!enqueueRawEvent(config, result.doc)) return "queue_full";
   geoStats.stored += 1;
   if (result.doc.cc) geoStats.withCountry += 1;
+  if (geo.via === "timezone") geoStats.fromTimezone += 1;
+  if (client.ignoredCloudflareHeaders) geoStats.ignoredCloudflareHeaders += 1;
   return "stored";
 };
 

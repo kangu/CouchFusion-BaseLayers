@@ -28,8 +28,9 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - Default page: `/login`.
 - API groups: `/api/login*`, `/api/logout`, `/api/users`, `/api/auth/nostr/*`, `/api/proof-of-work/challenge`.
 - Websocket route: `/api/routes/live-events`.
-- Public runtime config: `authLoginPath`, `authDefaultRedirectPath`, `authLoginHeading`.
-- Required consumer config/env: `runtimeConfig.dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. Passwordless email/Nostr session creation additionally requires `COUCHDB_COOKIE_SECRET` or `NUXT_COUCHDB_COOKIE_SECRET` at runtime.
+- Public runtime config: `authLoginPath`, `authDefaultRedirectPath`, `authLoginHeading`, `authHiddenPaths`.
+- Admin areas answer 404 when signed out: on pages using the `auth` middleware, a signed-out visitor under a prefix in `public.authHiddenPaths` (comma-separated, default `/admin,/builder,/k`; `NUXT_PUBLIC_AUTH_HIDDEN_PATHS`; `''` restores the redirect) gets a 404 instead of a redirect to `authLoginPath`, and no `redirectTo` cookie. Matching is by whole segments, ignoring case, encoding and extra slashes (`app/utils/hidden-paths.ts`). Other protected pages still redirect. Editors open the login page directly. Signed-in users without the role still get `role-auth`'s 403; `admin-auth` pages already answered 404.
+- Required consumer config/env: `runtimeConfig.dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. Nothing else: there is no cookie-secret setting. Session cookies, Nostr challenges and proof-of-work challenges all use CouchDB's own `chttpd_auth/secret`, read with the admin credentials.
 
 ## Conventions
 
@@ -50,7 +51,7 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 
 ## Gotchas
 
-- Nuxt startup validates `dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. A cookie secret is optional at startup/build time; passwordless session endpoints enforce it at request time.
+- Nuxt startup validates `dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. `COUCHDB_COOKIE_SECRET` / `NUXT_COUCHDB_COOKIE_SECRET` are no longer read anywhere (removed 2026-11-02); apps can drop them.
 - `COUCHDB_ADMIN_AUTH` must be base64 of `username:password`.
 - `userSession.global.ts` runs on every server-rendered navigation; keep it light.
 - `/api/routes/live-events` requires websocket-capable reverse proxies.
@@ -58,7 +59,11 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - Proof-of-work defaults include `enabled: "true"`, `difficultyBits: 18`, and `ttlSeconds: 600`; coerce string booleans before checking.
 - Consumers customize login UI by shadowing `/login`, not by editing this layer's default login page.
 - Cookie secret rotation invalidates existing sessions across all instances.
+- Every login issues its session through `server/utils/session-cookie.ts`: stamped one year ahead with `Max-Age` (override per app with `cf_env_<slug>.auth_session_max_age_seconds` or `NUXT_AUTH_SESSION_MAX_AGE_SECONDS`). The secret is always CouchDB's `chttpd_auth/secret` (legacy `couch_httpd_auth/secret`), read by `resolveCookieSecret` and cached for five minutes; a failed read keeps the last good value. The init plugin reads it at startup. The cookie salt comes from `[admins]` first (CouchDB checks server admins before `_users`), and each cookie is checked with `GET /_session` before it is sent. Do not pass CouchDB's own `_session` cookie through: it expires after CouchDB's 600 s timeout.
 - `assert-admin-session` throws a 403; consumers should render/handle forbidden states explicitly.
+- Login codes: always create them with `createLoginToken` / `createLoginCode` (`server/utils/login-token.ts`): six letters from `crypto.randomInt`, stored as `email--CODE` in `<prefix>-logins`, valid `runtimeConfig.authLoginTokenTtlMinutes` (`NUXT_AUTH_LOGIN_TOKEN_TTL_MINUTES`, default 60; the lightning layer's order emails rely on the generous default, admin-only apps can lower it). Never `Math.random`.
+- Brute-force limits (`server/utils/login-limits.ts`, in memory per process, 15-minute windows): `POST /api/login-verify` cancels an email's pending codes and answers 429 on its 5th wrong code (same answer for unknown emails; a new code works at once) and gives an address 429 after 30 wrong codes; `POST /api/login-with-password` answers 429 after 5 wrong passwords for a username (prefix and case ignored) or 20 from an address, before calling CouchDB. The address is `X-Real-IP` (set by the proxy) or the socket. A restart clears the counters; cancelled codes stay cancelled in CouchDB. Reset in tests with `resetLoginLimits()`.
+- `assertProofOfWork` / `issueProofOfWorkChallenge` stay synchronous (bitvocation and the lightning layer call them without `await`), so they sign with `getCachedCookieSecret()`; auth's own endpoints call `await resolveCookieSecret()` first. Nostr challenge helpers (`issueNostrChallenge`, `verifyNostrChallenge`) are async.
 
 ## Cross-References
 
