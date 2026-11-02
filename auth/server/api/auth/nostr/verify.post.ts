@@ -98,7 +98,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const challengePayload = verifyNostrChallenge(
+  const challengePayload = await verifyNostrChallenge(
     payload.challengeToken,
     identity.npub,
   );

@@ -30,11 +30,11 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event);
   const runtimeConfig = useRuntimeConfig();
 
-  // Validate a cookie secret is available before the token is consumed
-  if (!(await resolveCookieSecret(runtimeConfig))) {
+  // CouchDB's cookie secret must be readable before the token is consumed
+  if (!(await resolveCookieSecret())) {
     throw createError({
       statusCode: 500,
-      statusMessage: "CouchDB cookie secret not configured",
+      statusMessage: "CouchDB cookie secret could not be read",
     });
   }
 

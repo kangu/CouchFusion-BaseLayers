@@ -44,7 +44,7 @@ export const parseSessionMaxAge = (value: unknown): number | null => {
 };
 
 let cachedMaxAge: { value: number; at: number } | null = null;
-let cachedSecret: { value: string | null; at: number } | null = null;
+let cachedSecret: { value: string; at: number } | null = null;
 
 /** Session length in seconds (see the precedence above). */
 export const resolveSessionMaxAge = async (
@@ -68,18 +68,16 @@ export const resolveSessionMaxAge = async (
 };
 
 /**
- * CouchDB's cookie secret: `runtimeConfig.couchdbCookieSecret` when set, otherwise the
- * server's own `chttpd_auth/secret` (read with the admin credentials the app already has).
+ * CouchDB's cookie secret, read from the server's own `chttpd_auth/secret` (legacy
+ * `couch_httpd_auth/secret`) with the admin credentials the app already has. It is the only
+ * secret CouchDB accepts `AuthSession` cookies for, so apps configure nothing. The value is
+ * cached for five minutes; a failed read is not cached and falls back to the last good value.
+ * The same secret signs Nostr login challenges and proof-of-work challenges.
  */
 export const resolveCookieSecret = async (
-  runtimeConfig: RuntimeConfigLike,
   readConfig: typeof readCouchConfigValue = readCouchConfigValue,
   now = Date.now(),
 ): Promise<string | null> => {
-  const configured = runtimeConfig?.couchdbCookieSecret;
-  if (typeof configured === "string" && configured.trim()) {
-    return configured.trim();
-  }
   if (cachedSecret && now - cachedSecret.at < CACHE_MS) {
     return cachedSecret.value;
   }
@@ -87,9 +85,18 @@ export const resolveCookieSecret = async (
     (await readConfig("chttpd_auth", "secret").catch(() => null)) ||
     (await readConfig("couch_httpd_auth", "secret").catch(() => null)) ||
     null;
-  cachedSecret = { value, at: now };
-  return value;
+  if (value) {
+    cachedSecret = { value, at: now };
+    return value;
+  }
+  return cachedSecret?.value ?? null;
 };
+
+/**
+ * The last cookie secret read from CouchDB, for callers that cannot await (the auth init
+ * plugin reads it at server start; `resolveCookieSecret` refreshes it). `null` until read.
+ */
+export const getCachedCookieSecret = (): string | null => cachedSecret?.value ?? null;
 
 /**
  * Salt from a CouchDB `[admins]` password hash: `-pbkdf2:<prf>-<key>,<salt>,<iterations>`,
@@ -153,7 +160,7 @@ export const issueSessionCookie = async (
     return false;
   }
   const [secret, salt] = await Promise.all([
-    resolveCookieSecret(runtimeConfig),
+    resolveCookieSecret(),
     resolveCookieSalt(user.name, user.salt),
   ]);
   if (!secret || !salt) {

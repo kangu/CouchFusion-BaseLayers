@@ -5,6 +5,7 @@
 
 import {initializeDatabase, validateCouchDBEnvironment} from '#database/utils/couchdb';
 import {authDesignDocument} from '../../utils/design-documents';
+import {resolveCookieSecret} from '../utils/session-cookie';
 
 /**
  * Initialize CouchDB for auth layer
@@ -24,6 +25,11 @@ async function initializeAuthLayer(): Promise<void> {
 
         const loginDatabaseName = `${dbLoginPrefix}-logins`;
         await initializeDatabase(loginDatabaseName, []);
+
+        // Session cookies, Nostr and proof-of-work challenges use CouchDB's own secret.
+        if (!(await resolveCookieSecret())) {
+            console.warn('⚠️ [auth] Could not read CouchDB chttpd_auth/secret yet; it is retried on first use.');
+        }
 
         console.log('🎉 CouchDB auth layer initialization completed successfully');
 

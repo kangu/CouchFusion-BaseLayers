@@ -34,11 +34,17 @@ vi.mock("#database/utils/couchdb", () => ({
     `AuthSession=${Buffer.from(`${name}:stamp:sig`).toString("base64")}; Version=1; Path=/; HttpOnly`,
 }));
 
+// The cookie secret comes from CouchDB's own config (chttpd_auth/secret), nothing else.
+vi.mock("#database/utils/couch-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#database/utils/couch-config")>()),
+  readCouchConfigValue: async (section: string, key: string) =>
+    section === "chttpd_auth" && key === "secret" ? "fixture-secret" : null,
+}));
+
 let server: Server;
 let url = "";
 beforeAll(async () => {
   (globalThis as any).useRuntimeConfig = () => ({
-    couchdbCookieSecret: "fixture-secret",
     dbLoginPrefix: "bv",
   });
   const handler = (await import("./login-verify.post")).default;

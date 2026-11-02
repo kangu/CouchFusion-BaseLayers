@@ -3,6 +3,7 @@ import {
   type ProofOfWorkPurpose,
 } from "#auth/server/utils/proof-of-work";
 import { issueProofOfWorkChallenge } from "#auth/server/utils/proof-of-work-runtime";
+import { resolveCookieSecret } from "#auth/server/utils/session-cookie";
 
 interface ProofOfWorkChallengeRequest {
   purpose?: ProofOfWorkPurpose;
@@ -21,5 +22,6 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  await resolveCookieSecret(); // refreshes the proof-of-work signing secret
   return issueProofOfWorkChallenge(body.purpose);
 });

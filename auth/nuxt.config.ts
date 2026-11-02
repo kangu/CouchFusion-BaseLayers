@@ -37,9 +37,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     couchUrl: process.env.COUCHDB_URL || "http://localhost:5984",
     couchAdminAuth: process.env.COUCHDB_ADMIN_AUTH,
-    couchdbCookieSecret:
-      process.env.NUXT_COUCHDB_COOKIE_SECRET ||
-      process.env.COUCHDB_COOKIE_SECRET,
+    // No cookie secret here: session cookies, Nostr and proof-of-work challenges use
+    // CouchDB's own chttpd_auth/secret, read with COUCHDB_ADMIN_AUTH (session-cookie.ts).
     // Login session length in seconds (default one year). CouchDB `_config`
     // `cf_env_<slug>.auth_session_max_age_seconds` overrides it at runtime.
     authSessionMaxAgeSeconds:
@@ -157,8 +156,7 @@ COUCHDB_ADMIN_AUTH=YWRtaW46cGFzc3dvcmQ=
         );
       }
 
-      // Passwordless session creation validates couchdbCookieSecret at request time.
-      // Building or using CouchDB password sessions does not require that secret.
+      // No cookie secret to validate: it is read from CouchDB (chttpd_auth/secret) at runtime.
 
       // Validate base64 format
       try {

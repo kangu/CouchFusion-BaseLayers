@@ -928,7 +928,6 @@ export async function initializeDatabase(
  */
 export interface CouchDBEnvironmentOptions {
   adminAuth?: string | null;
-  cookieSecret?: string | null;
   strict?: boolean;
 }
 
@@ -972,23 +971,7 @@ COUCHDB_ADMIN_AUTH must be base64("username:password").
     }
   }
 
-  const cookieSecret =
-    options.cookieSecret ??
-    process.env.NUXT_COUCHDB_COOKIE_SECRET ??
-    process.env.COUCHDB_COOKIE_SECRET;
-
-  if (!cookieSecret) {
-    const message = `
-🚨 CouchDB Configuration Warning:
-COUCHDB_COOKIE_SECRET (or NUXT_COUCHDB_COOKIE_SECRET) is not defined. Login sessions will use CouchDB's own chttpd_auth/secret (read with the admin credentials).
-    `.trim();
-
-    if (options.strict) {
-      throw new Error(message);
-    } else {
-      console.warn(message);
-    }
-  }
+  // No cookie secret to check: the auth layer reads CouchDB's own chttpd_auth/secret.
 }
 
 /**

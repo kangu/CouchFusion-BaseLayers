@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SESSION_MAX_AGE_SECONDS,
   buildSessionCookie,
+  getCachedCookieSecret,
   parseSessionMaxAge,
   resetSessionCookieCache,
   resolveCookieSecret,
@@ -51,18 +52,37 @@ describe("resolveSessionMaxAge", () => {
 });
 
 describe("resolveCookieSecret", () => {
-  it("uses the configured secret without asking CouchDB", async () => {
-    const read = vi.fn();
-    expect(await resolveCookieSecret({ couchdbCookieSecret: " s3 " }, read)).toBe("s3");
-    expect(read).not.toHaveBeenCalled();
+  it("reads CouchDB's chttpd_auth secret, then couch_httpd_auth, and caches it", async () => {
+    const read = vi.fn(async (section: string) => (section === "couch_httpd_auth" ? "old" : null));
+    expect(await resolveCookieSecret(read, 1_000)).toBe("old");
+    expect(read).toHaveBeenNthCalledWith(1, "chttpd_auth", "secret");
+    expect(read).toHaveBeenNthCalledWith(2, "couch_httpd_auth", "secret");
+    expect(getCachedCookieSecret()).toBe("old");
+    const again = vi.fn();
+    expect(await resolveCookieSecret(again, 2_000)).toBe("old");
+    expect(again).not.toHaveBeenCalled();
   });
 
-  it("falls back to CouchDB's chttpd_auth secret, then couch_httpd_auth", async () => {
-    const read = vi.fn(async (section: string) => (section === "couch_httpd_auth" ? "old" : null));
-    expect(await resolveCookieSecret({}, read)).toBe("old");
-    expect(read).toHaveBeenNthCalledWith(1, "chttpd_auth", "secret");
-    resetSessionCookieCache();
-    expect(await resolveCookieSecret({}, async () => null)).toBeNull();
+  it("is CouchDB-only: the old environment variables are ignored", async () => {
+    process.env.COUCHDB_COOKIE_SECRET = "stale-env";
+    process.env.NUXT_COUCHDB_COOKIE_SECRET = "stale-nuxt-env";
+    try {
+      expect(await resolveCookieSecret(async () => "from-couch")).toBe("from-couch");
+    } finally {
+      delete process.env.COUCHDB_COOKIE_SECRET;
+      delete process.env.NUXT_COUCHDB_COOKIE_SECRET;
+    }
+  });
+
+  it("is null until CouchDB answers; a later failed read keeps the last good secret", async () => {
+    expect(await resolveCookieSecret(async () => null)).toBeNull();
+    expect(getCachedCookieSecret()).toBeNull();
+    expect(await resolveCookieSecret(async () => "s1", 0)).toBe("s1");
+    const down = async () => {
+      throw new Error("CouchDB unavailable");
+    };
+    expect(await resolveCookieSecret(down, 10 * 60 * 1000)).toBe("s1");
+    expect(getCachedCookieSecret()).toBe("s1");
   });
 });
 

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createError } from "h3";
+import { resolveCookieSecret } from "#auth/server/utils/session-cookie";
 
 interface NostrChallengePayload {
   challenge: string;
@@ -23,17 +24,14 @@ const base64UrlDecode = (value: string): string => {
   return Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
 };
 
-const getChallengeSecret = (): string => {
-  const runtimeConfig = useRuntimeConfig();
-  const secret =
-    typeof runtimeConfig.couchdbCookieSecret === "string"
-      ? runtimeConfig.couchdbCookieSecret.trim()
-      : "";
+/** Challenges are signed with CouchDB's own cookie secret (chttpd_auth/secret). */
+const getChallengeSecret = async (): Promise<string> => {
+  const secret = await resolveCookieSecret();
 
   if (!secret) {
     throw createError({
       statusCode: 500,
-      statusMessage: "CouchDB cookie secret is required for Nostr challenge signing",
+      statusMessage: "CouchDB cookie secret could not be read for Nostr challenge signing",
     });
   }
 
@@ -44,10 +42,10 @@ const signPayload = (payloadSegment: string, secret: string): string => {
   return createHmac("sha256", secret).update(payloadSegment).digest("hex");
 };
 
-export const issueNostrChallenge = (
+export const issueNostrChallenge = async (
   npub: string,
   ttlSeconds = 300,
-): { challenge: string; token: string; expiresAt: string } => {
+): Promise<{ challenge: string; token: string; expiresAt: string }> => {
   const nonce = randomBytes(18).toString("hex");
   const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
   const challenge = `nostr-login:${nonce}:${expiresAt}`;
@@ -59,7 +57,7 @@ export const issueNostrChallenge = (
   };
 
   const payloadSegment = base64UrlEncode(JSON.stringify(payload));
-  const signatureSegment = signPayload(payloadSegment, getChallengeSecret());
+  const signatureSegment = signPayload(payloadSegment, await getChallengeSecret());
 
   return {
     challenge,
@@ -68,10 +66,10 @@ export const issueNostrChallenge = (
   };
 };
 
-export const verifyNostrChallenge = (
+export const verifyNostrChallenge = async (
   token: string,
   npub: string,
-): NostrChallengePayload => {
+): Promise<NostrChallengePayload> => {
   const [payloadSegment, signatureSegment] = token.split(CHALLENGE_SEPARATOR);
 
   if (!payloadSegment || !signatureSegment) {
@@ -81,7 +79,7 @@ export const verifyNostrChallenge = (
     });
   }
 
-  const expectedSignature = signPayload(payloadSegment, getChallengeSecret());
+  const expectedSignature = signPayload(payloadSegment, await getChallengeSecret());
   const signatureBuffer = Buffer.from(signatureSegment, "hex");
   const expectedBuffer = Buffer.from(expectedSignature, "hex");
 

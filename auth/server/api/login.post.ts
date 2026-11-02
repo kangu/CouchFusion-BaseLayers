@@ -4,6 +4,7 @@ import {
   type ProofOfWorkSolution,
 } from "#auth/server/utils/proof-of-work";
 import { assertProofOfWork } from "#auth/server/utils/proof-of-work-runtime";
+import { resolveCookieSecret } from "#auth/server/utils/session-cookie";
 import {
   assertInvisibleFormShield,
   type InvisibleFormShieldPayload,
@@ -34,6 +35,7 @@ export default defineEventHandler(async (event) => {
   }
 
   assertInvisibleFormShield(body.invisibleShield, { purpose: "login" });
+  await resolveCookieSecret(); // refreshes the proof-of-work signing secret
   assertProofOfWork(body.proofOfWork, "login");
 
   const affiliateCode =
