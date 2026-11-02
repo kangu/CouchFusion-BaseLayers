@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import registerControlPlaneRoutes, {
   CONTROL_PLANE_ROUTES,
@@ -41,16 +42,37 @@ describe("control-plane route registration", () => {
     expect(nuxt.options.vite.server.allowedHosts).toBeUndefined();
   });
 
-  it("registers exactly the two GET routes in dev with a token", async () => {
+  it("registers exactly the control routes with their methods in dev with a token", async () => {
     const nuxt = nuxtStub(true);
     await registerControlPlaneRoutes({}, nuxt, { COUCHFUSION_CONTROL_TOKEN: "t" });
-    expect(nuxt.options.nitro.handlers.map((entry) => entry.route)).toEqual(
-      CONTROL_PLANE_ROUTES.map((entry) => entry.route),
-    );
+    expect(nuxt.options.nitro.handlers.map((entry) => [entry.method, entry.route])).toEqual([
+      ["get", "/__couchfusion/control/ping"],
+      ["get", "/__couchfusion/control/component-usage"],
+      ["get", "/__couchfusion/control/pages"],
+      ["get", "/__couchfusion/control/page-documents"],
+      ["post", "/__couchfusion/control/pages/check"],
+      ["post", "/__couchfusion/control/pages/apply"],
+    ]);
+    expect(CONTROL_PLANE_ROUTES).toHaveLength(6);
     for (const entry of nuxt.options.nitro.handlers) {
-      expect(entry.method).toBe("get");
-      expect(entry.handler).toMatch(/runtime\/control-plane\/.+\.get\.ts$/);
+      expect(entry.handler).toMatch(new RegExp(`runtime/control-plane/.+\\.${entry.method}\\.ts$`));
+      expect(existsSync(entry.handler)).toBe(true);
     }
+  });
+
+  it("tells the page check where the registry manifest lives", async () => {
+    const nuxt: any = nuxtStub(true);
+    nuxt.options.srcDir = "/srv/apps/site/app";
+    nuxt.options.rootDir = "/srv/apps/site";
+    await registerControlPlaneRoutes({}, nuxt, { COUCHFUSION_CONTROL_TOKEN: "t" });
+    expect(nuxt.options.runtimeConfig.content.controlPlaneRegistryManifests).toEqual([
+      "/srv/apps/site/app/content-builder/component-definitions.json",
+      "/srv/apps/site/content-builder/component-definitions.json",
+    ]);
+
+    const without: any = nuxtStub(true);
+    await registerControlPlaneRoutes({}, without, {});
+    expect(without.options.runtimeConfig).toBeUndefined();
   });
 
   it("adds only the slot hostname to allowedHosts and never overrides hmr", async () => {

@@ -76,6 +76,37 @@ export const entryContainsComponentTag = (
 };
 
 /**
+ * Collect every element tag (`entry[0]`) in a list of minimark entries, at any
+ * depth, in first-seen order. Text nodes are ignored. Callers decide which tags
+ * are components (e.g. by excluding plain HTML tags).
+ */
+export const collectMinimarkTags = (entries: unknown): string[] => {
+  const seen = new Set<string>();
+  const visit = (entry: unknown) => {
+    if (!Array.isArray(entry)) {
+      return;
+    }
+    const [rawTag, maybeProps] = entry;
+    if (typeof rawTag === "string" && rawTag) {
+      seen.add(rawTag);
+    }
+    const childStartIndex =
+      maybeProps && typeof maybeProps === "object" && !Array.isArray(maybeProps)
+        ? 2
+        : 1;
+    for (const child of entry.slice(childStartIndex)) {
+      visit(child);
+    }
+  };
+  if (Array.isArray(entries)) {
+    for (const entry of entries) {
+      visit(entry);
+    }
+  }
+  return Array.from(seen);
+};
+
+/**
  * Report whether a page document's minimark body references one of `names`.
  */
 export const documentContainsComponentTag = (
