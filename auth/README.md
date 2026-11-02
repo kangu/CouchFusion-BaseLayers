@@ -31,6 +31,17 @@ export default defineNuxtConfig({
   - Example: `'myapp-'`, `'prod-'`, `'dev-'`
   - Will be prepended to randomly generated IDs: `myapp-pZ3YwF9nq6JcK`
 
+### Admin areas: 404 instead of the login redirect
+
+Pages protected by the `auth` middleware under `/admin`, `/builder` or `/k` answer **404** to
+signed-out visitors (the site's normal not-found page) instead of redirecting to the login page,
+so the admin area isn't advertised. Editors sign in at `/login` directly. Other protected pages
+still redirect to the login page.
+
+- `runtimeConfig.public.authHiddenPaths` (string, default `'/admin,/builder,/k'`): comma-separated
+  path prefixes, matched by whole segments (`/admin/x` yes, `/administrator` no). Override with
+  `NUXT_PUBLIC_AUTH_HIDDEN_PATHS`; set it to `''` to redirect everywhere as before.
+
 ### Required Environment Variables
 
 - **`COUCHDB_ADMIN_AUTH`** (string, required): Base64-encoded admin credentials for CouchDB access.

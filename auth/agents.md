@@ -28,7 +28,8 @@ Before changing behavior, inspect the consuming app's `nuxt.config.ts` and app-l
 - Default page: `/login`.
 - API groups: `/api/login*`, `/api/logout`, `/api/users`, `/api/auth/nostr/*`, `/api/proof-of-work/challenge`.
 - Websocket route: `/api/routes/live-events`.
-- Public runtime config: `authLoginPath`, `authDefaultRedirectPath`, `authLoginHeading`.
+- Public runtime config: `authLoginPath`, `authDefaultRedirectPath`, `authLoginHeading`, `authHiddenPaths`.
+- Admin areas answer 404 when signed out: on pages using the `auth` middleware, a signed-out visitor under a prefix in `public.authHiddenPaths` (comma-separated, default `/admin,/builder,/k`; `NUXT_PUBLIC_AUTH_HIDDEN_PATHS`; `''` restores the redirect) gets a 404 instead of a redirect to `authLoginPath`, and no `redirectTo` cookie. Matching is by whole segments, ignoring case, encoding and extra slashes (`app/utils/hidden-paths.ts`). Other protected pages still redirect. Editors open the login page directly. Signed-in users without the role still get `role-auth`'s 403; `admin-auth` pages already answered 404.
 - Required consumer config/env: `runtimeConfig.dbLoginPrefix` and `COUCHDB_ADMIN_AUTH`. Nothing else: there is no cookie-secret setting. Session cookies, Nostr challenges and proof-of-work challenges all use CouchDB's own `chttpd_auth/secret`, read with the admin credentials.
 
 ## Conventions

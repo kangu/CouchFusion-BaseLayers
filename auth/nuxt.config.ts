@@ -118,6 +118,10 @@ export default defineNuxtConfig({
       authLoginPath: "/login",
       authDefaultRedirectPath: "/builder",
       authLoginHeading: "CouchFusion Login",
+      // Protected pages under these prefixes answer 404 to signed-out visitors instead of
+      // redirecting to the login page (app/utils/hidden-paths.ts). Comma-separated; '' turns
+      // it off. Default: the admin area, the content builder and its /k alias.
+      authHiddenPaths: "/admin,/builder,/k",
     },
   },
 
