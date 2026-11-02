@@ -202,7 +202,7 @@ export default defineNuxtConfig({
 @source "../../../../../layers/admin_workspace/**/*.{vue,ts}";
 @source "../../../../../layers/auth/app/**/*.{vue,ts}";</code></pre></li>
   <li><strong>Review the website settings</strong>
-    Log in as a user with the <code>admin</code> role and open <code>/admin/analytics/settings</code>. Set the display name and timezone, list the site's domains (while the list is empty, any hostname is accepted), and keep <code>/admin*</code> and <code>/login</code> in <em>Excluded paths</em>.</li>
+    Log in as a user with the <code>admin</code> role and open <code>/admin/analytics/settings</code>. Set the display name and timezone, list the site's domains (while the list is empty, any hostname is accepted), and keep <code>/admin*</code>, <code>/login</code> and the content builder (<code>/builder</code>, <code>/builder/*</code>, <code>/k</code>, <code>/k/*</code>) in <em>Excluded paths</em>. The builder's live preview (<code>?inline-preview</code>) is never tracked.</li>
   <li><strong>Check it</strong>
     Open a public page of the site, then look at <em>Realtime</em>. The hit appears immediately. Overview totals follow within about a minute.</li>
 </ol>
@@ -370,7 +370,7 @@ const onSignup = () =&gt; analytics.trackEvent("signup", { plan: "pro" });
 <h2 id="trouble">Troubleshooting</h2>
 <div class="table-wrap"><table>
   <tr><th>Symptom</th><th>Likely cause</th></tr>
-  <tr><td>My own visits don't show</td><td>You only visited <code>/admin*</code> or <code>/login</code>, which are excluded. Open a public page.</td></tr>
+  <tr><td>My own visits don't show</td><td>You only visited <code>/admin*</code>, <code>/login</code> or the builder, which are excluded, or looked at pages in the builder's live preview, which is never tracked. Open a public page.</td></tr>
   <tr><td>Hits appear in Realtime but not in Overview</td><td>Rollups refresh every 60 seconds.</td></tr>
   <tr><td>Nothing is recorded at all</td><td>CouchDB isn't reachable, or its <code>_config</code> can't be read (the log says "could not read _config … collection is paused"), or "Collecting" is switched off in Settings.</td></tr>
   <tr><td>A browser never shows up</td><td>It sends Do-Not-Track or Global Privacy Control (Brave does by default), or its IP is in <code>analytics_ignore_ips</code>. <em>Settings → Engine</em> lists how many hits were dropped and why since the server started.</td></tr>

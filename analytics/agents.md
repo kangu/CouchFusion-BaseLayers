@@ -37,7 +37,8 @@ Consuming apps (extend this layer):
 - All layer imports go through the `#analytics` alias.
 - Composables live in `composables/` (NOT `app/composables/`) — this layer predates the Nuxt 4 `app/` convention; preserve the existing path or update `imports.dirs` in `nuxt.config.ts` if moving.
 - Track via `v-analytics="'event-name'"` in templates; avoid inline `addEventListener` for analytics.
-- Excluded paths live only on the website record (Settings → Website; defaults `/admin*`, `/login`). Glob suffix `*` is supported. There is no `_config` or runtime-config exclusion list.
+- Excluded paths live only on the website record (Settings → Website; defaults for new sites `/admin*`, `/login`, `/builder`, `/builder/*`, `/k`, `/k/*`). Glob suffix `*` is a prefix match, so exclude `/k` and `/k/*`, not `/k*` (that would hide `/kids`). The default only applies when the site record is created; existing sites change in Settings. There is no `_config` or runtime-config exclusion list.
+- Builder previews are never tracked: a page loaded with `?inline-preview` (the content builder's live-preview iframe) sends nothing from any client of `composables/useAnalytics.ts` for its whole lifetime (`PREVIEW_QUERY_PARAMS`, decided once at load). `composables/useAnalytics.spec.ts` covers it.
 - Browser dispatch prefers `navigator.sendBeacon`, then `fetch(..., { keepalive: true })` — do not replace with plain `fetch` without keepalive.
 - The `component-analytics.client.ts` plugin dedupes component-view tracking per session via `sessionStorage["component-analytics-seen"]`.
 

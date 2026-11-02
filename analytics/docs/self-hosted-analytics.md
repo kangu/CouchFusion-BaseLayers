@@ -71,7 +71,7 @@ Admin pages: `/admin/analytics` (overview), `/realtime`, `/events`, `/sessions`,
 
 ## Excluded paths
 
-Excluded paths live only on the website record (Settings → Website → Excluded paths; defaults `/admin*` and `/login`). The old `umami_excluded_paths` `_config` key is no longer read.
+Excluded paths live only on the website record (Settings → Website → Excluded paths; defaults for new sites `/admin*`, `/login`, `/builder`, `/builder/*`, `/k` and `/k/*`). Pages loaded in the content builder's live preview (`?inline-preview`) are never tracked by the browser client. The old `umami_excluded_paths` `_config` key is no longer read.
 
 ## Testing
 

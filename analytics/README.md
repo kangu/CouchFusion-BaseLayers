@@ -104,7 +104,7 @@ Log in with a user that has the `admin` role and open `/admin/analytics/settings
 
 1. Set the display name and the timezone (it defines where a day starts and ends).
 2. List the site's domains, one per line (subdomains are included). While the list is empty, hits from any hostname are accepted.
-3. Keep `/admin*` and `/login` in **Excluded paths** so your own admin work isn't counted.
+3. Keep `/admin*`, `/login` and the content builder (`/builder`, `/builder/*`, `/k`, `/k/*`) in **Excluded paths** so your own admin work isn't counted. The builder's live preview (`?inline-preview`) is never tracked.
 
 ### 5. Check it
 
@@ -304,7 +304,7 @@ Cloudflare's ranges are built into `server/engine/net.ts`. Check them against ht
 
 | Symptom | Likely cause |
 |---|---|
-| My own visits don't show | You only visited `/admin*` or `/login`, which are excluded. Open a public page. |
+| My own visits don't show | You only visited `/admin*`, `/login` or the builder, which are excluded, or looked at pages in the builder's live preview, which is never tracked. Open a public page. |
 | Hits appear in Realtime but not in Overview | Rollups refresh every 60 seconds. |
 | Nothing is recorded at all | CouchDB isn't reachable, or its `_config` can't be read (the log says "could not read _config … collection is paused"), or "Collecting" is switched off in Settings. |
 | A browser never shows up | It sends Do-Not-Track or Global Privacy Control (Brave does by default), or its IP is in `analytics_ignore_ips`. Settings → Engine lists how many hits were dropped and why since the server started. |
