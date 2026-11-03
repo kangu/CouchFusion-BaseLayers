@@ -78,18 +78,38 @@ describe("cidr matching", () => {
 describe("engine config", () => {
   it("runs on defaults with no keys and parses flat keys", () => {
     const empty = buildEngineConfig("kangu", {});
-    expect(empty).toMatchObject({ dbPrefix: "analytics_kangu", rawRetentionMonths: 13, respectDnt: true, maxScanDays: 31, aggregatorEnabled: true });
+    expect(empty).toMatchObject({ dbPrefix: "kangu-analytics", dbPrefixSource: "default", rawRetentionMonths: 13, respectDnt: true, maxScanDays: 31, aggregatorEnabled: true });
     expect(empty).not.toHaveProperty("mode");
     const custom = buildEngineConfig("lovable-gifts", {
       analytics_respect_dnt: "false",
       analytics_raw_retention_months: "999",
     });
-    expect(custom).toMatchObject({ dbPrefix: "analytics_lovable_gifts", respectDnt: false, rawRetentionMonths: 120 });
+    expect(custom).toMatchObject({ dbPrefix: "lovable-gifts-analytics", respectDnt: false, rawRetentionMonths: 120 });
     // One website per app: the id defaults to the app slug.
     expect(empty.defaultSiteId).toBe("kangu");
     expect(custom.defaultSiteId).toBe("lovable-gifts");
     expect(buildEngineConfig("kangu", { analytics_default_site_id: "Main_Site" }).defaultSiteId).toBe("main_site");
     expect(buildEngineConfig("kangu", { analytics_default_site_id: "not valid!" }).defaultSiteId).toBe("kangu");
+  });
+
+  it("names new databases <dbLoginPrefix>-analytics and keeps legacy and explicit names", () => {
+    const named = (values: Record<string, string>, naming = {}) => buildEngineConfig("paleologu-prosti", values, true, naming);
+    expect(named({}, { loginPrefix: "prosti" })).toMatchObject({ dbPrefix: "prosti-analytics", dbPrefixSource: "default" });
+    expect(named({}, { loginPrefix: " BV- " }).dbPrefix).toBe("bv-analytics");
+    // No usable login prefix: the app slug stands in.
+    expect(named({}).dbPrefix).toBe("paleologu-prosti-analytics");
+    expect(named({}, { loginPrefix: "1bad" }).dbPrefix).toBe("paleologu-prosti-analytics");
+    // Existing installs keep analytics_<slug>.
+    expect(named({}, { loginPrefix: "prosti", legacyDbExists: true })).toMatchObject({
+      dbPrefix: "analytics_paleologu_prosti",
+      dbPrefixSource: "legacy",
+    });
+    // analytics_db_prefix always wins.
+    expect(named({ analytics_db_prefix: "Custom_DB" }, { loginPrefix: "prosti", legacyDbExists: true })).toMatchObject({
+      dbPrefix: "custom_db",
+      dbPrefixSource: "config",
+    });
+    expect(named({ analytics_db_prefix: "Not Valid" }, { loginPrefix: "prosti" }).dbPrefix).toBe("prosti-analytics");
   });
 });
 

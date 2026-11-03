@@ -36,13 +36,13 @@ Analytics is on as soon as an app extends the layer. No CouchDB `_config` keys a
 ```
  Browser                      Your Nuxt app (Nitro)                        CouchDB
 ┌──────────────┐  POST   ┌──────────────────────────────┐  batch   ┌─────────────────────────────┐
-│ useAnalytics │ ──────► │ /api/stats                   │ ───────► │ analytics_<slug>_raw_YYYY_MM │
+│ useAnalytics │ ──────► │ /api/stats                   │ ───────► │ <db>_raw_YYYY_MM             │
 │ v-analytics  │  hits   │  validate → bot/DNT/IP rules │  writes  │   one doc per hit            │
 │ /a.js script │         │  enrich (UA, geo, referrer)  │          └──────────────┬──────────────┘
 └──────────────┘         │  hash visitor (daily salt)   │                         │ every 60 s
                          └──────────────────────────────┘                         ▼
                          ┌──────────────────────────────┐          ┌─────────────────────────────┐
- Admin dashboard  ◄───── │ /api/analytics/admin/**      │ ◄─────── │ analytics_<slug>             │
+ Admin dashboard  ◄───── │ /api/analytics/admin/**      │ ◄─────── │ <db>                         │
  /admin/analytics  JSON  │  rollups for totals/tables   │  reads   │   day rollups, sites, salts, │
                          │  raw scans for filters,      │          │   segments, keys, pixels…    │
                          │  reports, sessions, realtime │          └─────────────────────────────┘
@@ -216,7 +216,7 @@ All keys are optional. They live in CouchDB `_config`, section `cf_env_<appSlug>
 | Key | Default | Meaning |
 |---|---|---|
 | `analytics_default_site_id` | app slug | id of the app's website record; rarely needs setting |
-| `analytics_db_prefix` | `analytics_<slug>` | database name prefix |
+| `analytics_db_prefix` | `<dbLoginPrefix>-analytics` (existing installs: `analytics_<slug>`) | main database name; see Databases |
 | `analytics_raw_retention_months` | `13` | raw hits older than this are deleted; rollups are kept |
 | `analytics_respect_dnt` | `true` | drop hits with `DNT: 1` or `Sec-GPC: 1` |
 | `analytics_ignore_ips` | — | comma-separated IPs or CIDRs to ignore |
@@ -288,8 +288,16 @@ Cloudflare's ranges are built into `server/engine/net.ts`. Check them against ht
 
 | Database | Contents |
 |---|---|
-| `analytics_<slug>` | the website record, day rollups, salts, segments, saved reports, API keys, pixels, links, aggregator lease |
-| `analytics_<slug>_raw_<yyyy>_<mm>` | raw hits for that month |
+| `<db>` | the website record, day rollups, salts, segments, saved reports, API keys, pixels, links, aggregator lease |
+| `<db>_raw_<yyyy>_<mm>` | raw hits for that month |
+
+`<db>` is chosen at startup, in this order:
+
+1. `analytics_db_prefix` from `_config`, when set.
+2. `analytics_<slug>` (e.g. `analytics_paleologu_prosti`), when that database already exists. Installs from before November 2026 keep their data this way.
+3. Otherwise `<dbLoginPrefix>-analytics` (e.g. `prosti-analytics`), next to the app's other databases. Without `dbLoginPrefix` it is `<slug>-analytics`.
+
+The startup log says which one is in use: `[analytics] storage: prosti-analytics (+ prosti-analytics_raw_<yyyy>_<mm>; default)`.
 
 - **Aggregator.** Runs inside the app every 60 seconds. With several instances, a lease in CouchDB makes sure only one aggregates. An instance that is killed hard can hold the lease for up to three minutes.
 - **Retention.** Whole monthly raw databases are dropped once they are older than `analytics_raw_retention_months`.
@@ -298,7 +306,7 @@ Cloudflare's ranges are built into `server/engine/net.ts`. Check them against ht
 - **CouchDB outages.** Hits are buffered in memory (up to 20,000) and retried with backoff, from 2 up to 30 seconds. They are written once CouchDB answers again. Every CouchDB call times out (15 s, or 60 s for scans and bulk writes), so a stalled CouchDB never hangs requests. If `_config` can't be read, the last settings that loaded stay in use. If none have loaded since the server started, nothing is stored or deleted until they can be read. Settings → Engine shows both states.
 - **Request size.** `/api/stats` accepts bodies up to 32 KB and the APIs up to 64 KB (the import, 50 MB). Larger requests get 413 before they are fully read.
 - **Capacity.** Today's hits are kept in memory for aggregation. Plan for roughly 100–200k hits per day per app.
-- **Backups.** Back up `analytics_<slug>`. Raw month databases can be replicated like any CouchDB database.
+- **Backups.** Back up `<db>`. Raw month databases can be replicated like any CouchDB database.
 
 ## Troubleshooting
 

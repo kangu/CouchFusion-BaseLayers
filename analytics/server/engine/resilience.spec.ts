@@ -47,7 +47,45 @@ describe("engine config", () => {
   it("treats a missing section as empty, not as a failure", async () => {
     couchMock.couch.mockResolvedValue(null);
     const { resolveEngineConfig } = await fresh<typeof import("./config")>("./config");
-    expect(await resolveEngineConfig(runtime)).toMatchObject({ loaded: true, dbPrefix: "analytics_kangu" });
+    expect(await resolveEngineConfig(runtime)).toMatchObject({ loaded: true, dbPrefix: "kangu-analytics" });
+  });
+
+  it("uses <dbLoginPrefix>-analytics for new installs", async () => {
+    couchMock.couch.mockResolvedValue(null);
+    const { resolveEngineConfig } = await fresh<typeof import("./config")>("./config");
+    const config = await resolveEngineConfig({ dbLoginPrefix: "prosti", public: { appSlug: "paleologu-prosti" } });
+    expect(config).toMatchObject({ loaded: true, dbPrefix: "prosti-analytics", dbPrefixSource: "default" });
+    expect(couchMock.couch.mock.calls[1][0]).toBe("analytics_paleologu_prosti");
+  });
+
+  it("keeps the legacy analytics_<slug> database when it already exists", async () => {
+    couchMock.couch.mockImplementation(async (path: string) =>
+      path.startsWith("_node/") ? {} : { db_name: "analytics_paleologu_prosti" },
+    );
+    const { resolveEngineConfig, resetEngineConfigCache } = await fresh<typeof import("./config")>("./config");
+    const runtime = { dbLoginPrefix: "prosti", public: { appSlug: "paleologu-prosti" } };
+    expect(await resolveEngineConfig(runtime)).toMatchObject({ dbPrefix: "analytics_paleologu_prosti", dbPrefixSource: "legacy" });
+    // The lookup happens once per process.
+    resetEngineConfigCache();
+    await resolveEngineConfig(runtime);
+    expect(couchMock.couch.mock.calls.filter(([path]) => !String(path).startsWith("_node/"))).toHaveLength(1);
+  });
+
+  it("skips the legacy lookup when analytics_db_prefix is set", async () => {
+    couchMock.couch.mockResolvedValue({ analytics_db_prefix: "custom" });
+    const { resolveEngineConfig } = await fresh<typeof import("./config")>("./config");
+    expect(await resolveEngineConfig(runtime)).toMatchObject({ dbPrefix: "custom", dbPrefixSource: "config" });
+    expect(couchMock.couch).toHaveBeenCalledTimes(1);
+  });
+
+  it("is marked not loaded when the legacy lookup fails before any success", async () => {
+    const { CouchError } = await import("./couch");
+    couchMock.couch.mockImplementation(async (path: string) => {
+      if (path.startsWith("_node/")) return {};
+      throw new CouchError(503, "unreachable", "ECONNREFUSED");
+    });
+    const { resolveEngineConfig } = await fresh<typeof import("./config")>("./config");
+    expect(await resolveEngineConfig(runtime)).toMatchObject({ loaded: false });
   });
 
   it("is marked not loaded when CouchDB can't be read before any success", async () => {
@@ -125,7 +163,7 @@ describe("write queue", () => {
     couchMock.bulk.mockRejectedValueOnce(new CouchError(404, "not_found", "Database does not exist."));
     queue.enqueueRawEvent(buildEngineConfig("kangu", {}), event(1));
     await queue.flushRawEvents();
-    expect(couchMock.forgetDatabase).toHaveBeenCalledWith("analytics_kangu_raw_2026_10");
+    expect(couchMock.forgetDatabase).toHaveBeenCalledWith("kangu-analytics_raw_2026_10");
     expect(queue.pendingRawEvents()).toBe(1);
   });
 

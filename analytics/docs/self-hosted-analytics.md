@@ -20,7 +20,7 @@ The Nuxt client tracker (`useAnalytics()`, `v-analytics`, router pageviews) need
 | Key | Default | Meaning |
 |---|---|---|
 | `analytics_default_site_id` | app slug | id of the app's single website record; rarely needs setting |
-| `analytics_db_prefix` | `analytics_<slug>` | main DB name; raw shards are `<prefix>_raw_<yyyy>_<mm>` |
+| `analytics_db_prefix` | `<dbLoginPrefix>-analytics` | main DB name; raw shards are `<prefix>_raw_<yyyy>_<mm>`. Unset: an existing `analytics_<slug>` DB is kept, else `<dbLoginPrefix>-analytics` (`<slug>-analytics` without a login prefix) |
 | `analytics_raw_retention_months` | `13` | raw month shards older than this are dropped (rollups kept forever) |
 | `analytics_respect_dnt` | `true` | drop hits with `DNT: 1` or `Sec-GPC: 1` |
 | `analytics_ignore_ips` | — | comma-separated IPs/CIDRs (v4 and v6) |

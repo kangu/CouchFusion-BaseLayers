@@ -24,7 +24,10 @@ export interface EngineConfig {
   loaded: boolean;
   /** Id of the app's single website (`analytics_default_site_id`, else the app slug). */
   defaultSiteId: string;
+  /** Main database name; raw shards are `<dbPrefix>_raw_<yyyy>_<mm>`. */
   dbPrefix: string;
+  /** Where `dbPrefix` came from: the `_config` key, an existing legacy database, or the default. */
+  dbPrefixSource: DbPrefixSource;
   rawRetentionMonths: number;
   respectDnt: boolean;
   ignoreIps: ReturnType<typeof parseCidrList>;
@@ -34,6 +37,16 @@ export interface EngineConfig {
   aggregatorEnabled: boolean;
   persistentId: boolean;
   maxScanDays: number;
+}
+
+export type DbPrefixSource = "config" | "legacy" | "default";
+
+/** Inputs for naming the database when `analytics_db_prefix` is unset. */
+export interface DbNaming {
+  /** The app's `runtimeConfig.dbLoginPrefix` (e.g. `prosti`). */
+  loginPrefix?: unknown;
+  /** True when the pre-2026-11 database `analytics_<slug>` already exists. */
+  legacyDbExists?: boolean;
 }
 
 export const ENGINE_CONFIG_KEYS = [
@@ -83,9 +96,40 @@ const parseHeaderTrust = (value: unknown): HeaderTrust => {
   return raw === "cloudflare" || raw === "all" ? raw : "auto";
 };
 
-/** Builds the default database prefix for an app slug. */
-export const defaultDbPrefix = (slug: string): string =>
+const DB_NAME_PATTERN = /^[a-z][a-z0-9_$()+-]*$/;
+
+/** Database name used before 2026-11 (`analytics_<slug>`). Existing installs keep it. */
+export const legacyDbPrefix = (slug: string): string =>
   `analytics_${normalizeCouchEnvSlug(slug).replace(/-/g, "_") || "app"}`;
+
+/**
+ * Default database name for new installs: `<dbLoginPrefix>-analytics` (e.g. `prosti-analytics`),
+ * matching the app's other databases. Falls back to the app slug when no usable login prefix is set.
+ */
+export const defaultDbPrefix = (slug: string, loginPrefix?: unknown): string => {
+  const fromLogin = typeof loginPrefix === "string" ? loginPrefix.trim().toLowerCase().replace(/[-_]+$/, "") : "";
+  if (fromLogin && DB_NAME_PATTERN.test(fromLogin)) return `${fromLogin}-analytics`;
+  const fromSlug = normalizeCouchEnvSlug(slug);
+  return `${DB_NAME_PATTERN.test(fromSlug) ? fromSlug : "app"}-analytics`;
+};
+
+/** Main database name: explicit `_config` key, else an existing legacy database, else the new default. */
+const resolveDbPrefix = (
+  explicit: string | null,
+  slug: string,
+  naming: DbNaming,
+): { dbPrefix: string; dbPrefixSource: DbPrefixSource } => {
+  const prefix = explicit?.toLowerCase();
+  if (prefix && DB_NAME_PATTERN.test(prefix)) return { dbPrefix: prefix, dbPrefixSource: "config" };
+  if (naming.legacyDbExists) return { dbPrefix: legacyDbPrefix(slug), dbPrefixSource: "legacy" };
+  return { dbPrefix: defaultDbPrefix(slug, naming.loginPrefix), dbPrefixSource: "default" };
+};
+
+/** True when `analytics_db_prefix` holds a usable name (then no legacy lookup is needed). */
+const hasExplicitDbPrefix = (values: Record<string, string | null | undefined>): boolean => {
+  const prefix = text(values.analytics_db_prefix)?.toLowerCase();
+  return Boolean(prefix && DB_NAME_PATTERN.test(prefix));
+};
 
 /** One website per app: an explicit id wins, otherwise it is derived from the app slug. */
 const resolveSiteId = (explicit: string | null, slug: string): string => {
@@ -101,14 +145,14 @@ export const buildEngineConfig = (
   slug: string,
   values: Record<string, string | null | undefined>,
   loaded = true,
+  naming: DbNaming = {},
 ): EngineConfig => {
-  const prefix = text(values.analytics_db_prefix)?.toLowerCase();
   return {
     slug,
     section: buildCouchEnvSection(slug),
     loaded,
     defaultSiteId: resolveSiteId(text(values.analytics_default_site_id), slug),
-    dbPrefix: prefix && /^[a-z][a-z0-9_$()+-]*$/.test(prefix) ? prefix : defaultDbPrefix(slug),
+    ...resolveDbPrefix(text(values.analytics_db_prefix), slug, naming),
     rawRetentionMonths: int(values.analytics_raw_retention_months, 13, 1, 120),
     respectDnt: bool(values.analytics_respect_dnt, true),
     ignoreIps: parseCidrList(text(values.analytics_ignore_ips)),
@@ -143,6 +187,23 @@ export const readConfigSection = async (section: string): Promise<Record<string,
   return values;
 };
 
+/** Legacy-database lookups per slug. Only successful answers are kept; a failed lookup is retried. */
+const legacyDbChecks = new Map<string, boolean>();
+
+/**
+ * Whether the pre-2026-11 database `analytics_<slug>` exists. Asked once per process:
+ * installs that already have it keep using it, new installs never create it.
+ * Throws when CouchDB can't answer, so the name is never guessed.
+ */
+const legacyDbExists = async (slug: string): Promise<boolean> => {
+  const known = legacyDbChecks.get(slug);
+  if (known !== undefined) return known;
+  const info = await couch(encodeURIComponent(legacyDbPrefix(slug)), {}, { allow404: true, timeoutMs: 5_000 });
+  const exists = info !== null;
+  legacyDbChecks.set(slug, exists);
+  return exists;
+};
+
 let cached: { expiresAt: number; config: EngineConfig } | null = null;
 let inFlight: Promise<EngineConfig> | null = null;
 /** Last config read successfully; survives cache resets. */
@@ -163,14 +224,19 @@ export const resolveEngineConfig = async (
     const slug = resolveRuntimeAppSlug(runtimeConfig);
     const section = buildCouchEnvSection(slug);
     try {
-      const config = buildEngineConfig(slug, await readConfigSection(section));
+      const values = await readConfigSection(section);
+      const naming: DbNaming = {
+        loginPrefix: runtimeConfig.dbLoginPrefix,
+        legacyDbExists: hasExplicitDbPrefix(values) ? false : await legacyDbExists(slug),
+      };
+      const config = buildEngineConfig(slug, values, true, naming);
       lastGood = config;
       if (failing) console.info(`[analytics] _config ${section} is readable again`);
       failing = false;
       cached = { expiresAt: Date.now() + CACHE_TTL_MS, config };
       return config;
     } catch (error) {
-      const fallback = lastGood?.slug === slug ? lastGood : buildEngineConfig(slug, {}, false);
+      const fallback = lastGood?.slug === slug ? lastGood : buildEngineConfig(slug, {}, false, { loginPrefix: runtimeConfig.dbLoginPrefix });
       if (!failing) {
         const reason = error instanceof CouchError ? error.message : String(error);
         console.warn(

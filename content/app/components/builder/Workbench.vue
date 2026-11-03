@@ -625,7 +625,7 @@ const applySeoDraft = () => {
             seoDraft.routeAccess,
         );
         if (!routeAccessResult.valid) {
-            return;
+            return false;
         }
         pageConfig.meta = routeAccessResult.meta;
     }
@@ -640,6 +640,7 @@ const applySeoDraft = () => {
         setAssistiveSectionSnap(seoDraft.assistiveSectionSnap);
     }
     isSeoCardExpanded.value = false;
+    return true;
 };
 
 const cancelSeoDraft = () => {
@@ -3315,7 +3316,14 @@ const loadDocument = (doc: MinimalContentDocument | null) => {
     applyDocument(cloned);
 };
 
+// The page Save button must include edits still open in the metadata panel.
+const commitPendingMetadata = (): boolean => {
+    if (!isSeoCardExpanded.value || !hasSeoDraftChanges.value) return true;
+    return applySeoDraft();
+};
+
 defineExpose({
+    commitPendingMetadata,
     getSerializedDocument,
     loadDocument,
     discardFocusedEditForReload,

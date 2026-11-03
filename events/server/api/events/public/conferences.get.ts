@@ -131,6 +131,8 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
   const databaseName = await ensureEventsDatabase();
   const query = getQuery(event);
   const minimumMonthKey = currentUtcMonthKey();
+  // Boards may request history and apply their Upcoming only toggle locally.
+  const includePast = query.includePast === "true" || query.includePast === "1";
 
   const searchFilter = normalize(query.search);
   const continentFilter = normalize(query.continent);
@@ -161,7 +163,7 @@ export default defineEventHandler(async (event): Promise<PublicConferenceListRes
         return false;
       }
 
-      return monthKey >= minimumMonthKey;
+      return includePast || monthKey >= minimumMonthKey;
     });
 
   const conferenceById = new Map<string, PublicConference>();

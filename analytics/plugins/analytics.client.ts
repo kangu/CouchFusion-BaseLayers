@@ -135,7 +135,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         if (autoCapture.downloads && downloadPattern.test(url.pathname)) {
           void tracker.trackEvent("file-download", { url: url.href.slice(0, 200), file: url.pathname.split("/").pop() });
         } else if (autoCapture.outbound && url.hostname !== window.location.hostname) {
-          void tracker.trackEvent("outbound-link-click", { url: url.href.slice(0, 200), domain: url.hostname });
+          void tracker.trackEvent(typeof autoCapture.outboundEventName === "string" && autoCapture.outboundEventName.trim() ? autoCapture.outboundEventName.trim() : "outbound-link-click", { url: url.href.slice(0, 200), domain: url.hostname });
         }
       },
       true,

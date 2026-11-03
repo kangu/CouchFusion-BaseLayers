@@ -158,7 +158,7 @@ describe("aggregation tick", () => {
 
 describe("reset", () => {
   it("deletes page by page and leaves a marker", async () => {
-    couchMock.listDatabases.mockResolvedValue(["analytics_kangu_raw_2026_10"]);
+    couchMock.listDatabases.mockResolvedValue(["kangu-analytics_raw_2026_10"]);
     const pages = [[{ id: "kangu:1", rev: "1-a" }, { id: "kangu:2", rev: "1-b" }], []];
     couchMock.scanIds.mockImplementation(async (database: string) => (database.includes("_raw_") ? pages.shift() ?? [] : []));
     couchMock.bulk.mockImplementation(async (_db: string, docs: any[]) => docs.map((d) => ({ id: d._id, rev: "2-x" })));
@@ -172,7 +172,7 @@ describe("reset", () => {
   });
 
   it("reports failure instead of claiming success", async () => {
-    couchMock.listDatabases.mockResolvedValue(["analytics_kangu_raw_2026_10"]);
+    couchMock.listDatabases.mockResolvedValue(["kangu-analytics_raw_2026_10"]);
     couchMock.scanIds.mockResolvedValue([{ id: "kangu:1", rev: "1-a" }]);
     couchMock.bulk.mockResolvedValue([{ id: "kangu:1", error: "forbidden" }]);
     const { resetSiteData } = await import("./aggregator");

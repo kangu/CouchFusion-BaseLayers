@@ -127,13 +127,13 @@
   <!-- raw db -->
   <rect x="650" y="30" width="220" height="130" rx="12" fill="#fff" stroke="#e5e7eb"/>
   <text x="666" y="56" font-size="14" font-weight="700" fill="#111827">CouchDB: raw hits</text>
-  <text x="666" y="82" font-size="12.5" fill="#374151">analytics_&lt;slug&gt;_raw_YYYY_MM</text>
+  <text x="666" y="82" font-size="12.5" fill="#374151">&lt;db&gt;_raw_YYYY_MM</text>
   <text x="666" y="104" font-size="13" fill="#6b7280">one document per hit</text>
   <text x="666" y="126" font-size="13" fill="#6b7280">one database per month</text>
   <!-- main db -->
   <rect x="650" y="240" width="220" height="140" rx="12" fill="#fff" stroke="#e5e7eb"/>
   <text x="666" y="266" font-size="14" font-weight="700" fill="#111827">CouchDB: main</text>
-  <text x="666" y="292" font-size="12.5" fill="#374151">analytics_&lt;slug&gt;</text>
+  <text x="666" y="292" font-size="12.5" fill="#374151">&lt;db&gt;</text>
   <text x="666" y="314" font-size="13" fill="#6b7280">daily rollups per website</text>
   <text x="666" y="336" font-size="13" fill="#6b7280">websites, salts, segments,</text>
   <text x="666" y="356" font-size="13" fill="#6b7280">API keys, pixels, links</text>
@@ -280,7 +280,7 @@ const onSignup = () =&gt; analytics.trackEvent("signup", { plan: "pro" });
 <div class="table-wrap"><table>
   <tr><th>Key</th><th>Default</th><th>Meaning</th></tr>
   <tr><td><code>analytics_default_site_id</code></td><td>app slug</td><td>Id of the app's website record. Rarely needs setting.</td></tr>
-  <tr><td><code>analytics_db_prefix</code></td><td><code>analytics_&lt;slug&gt;</code></td><td>Database name prefix</td></tr>
+  <tr><td><code>analytics_db_prefix</code></td><td><code>&lt;dbLoginPrefix&gt;-analytics</code> (existing installs: <code>analytics_&lt;slug&gt;</code>)</td><td>Main database name; see Operations</td></tr>
   <tr><td><code>analytics_raw_retention_months</code></td><td><code>13</code></td><td>Raw hits older than this are deleted. Rollups are kept.</td></tr>
   <tr><td><code>analytics_respect_dnt</code></td><td><code>true</code></td><td>Drop hits with <code>DNT: 1</code> or <code>Sec-GPC: 1</code></td></tr>
   <tr><td><code>analytics_ignore_ips</code></td><td>—</td><td>Comma-separated IPs or CIDRs to ignore</td></tr>
@@ -352,10 +352,11 @@ const onSignup = () =&gt; analytics.trackEvent("signup", { plan: "pro" });
 <h2 id="ops">Operations</h2>
 <div class="table-wrap"><table>
   <tr><th>Database</th><th>Contents</th></tr>
-  <tr><td><code>analytics_&lt;slug&gt;</code></td><td>The website record, day rollups, salts, segments, saved reports, API keys, pixels, links, aggregator lease</td></tr>
-  <tr><td><code>analytics_&lt;slug&gt;_raw_&lt;yyyy&gt;_&lt;mm&gt;</code></td><td>Raw hits for that month</td></tr>
+  <tr><td><code>&lt;db&gt;</code></td><td>The website record, day rollups, salts, segments, saved reports, API keys, pixels, links, aggregator lease</td></tr>
+  <tr><td><code>&lt;db&gt;_raw_&lt;yyyy&gt;_&lt;mm&gt;</code></td><td>Raw hits for that month</td></tr>
 </table></div>
 <p>Both are readable by CouchDB admins only.</p>
+<p><code>&lt;db&gt;</code> is chosen at startup: <code>analytics_db_prefix</code> from <code>_config</code> when set; otherwise <code>analytics_&lt;slug&gt;</code> (e.g. <code>analytics_paleologu_prosti</code>) when that database already exists, so installs from before November 2026 keep their data; otherwise <code>&lt;dbLoginPrefix&gt;-analytics</code> (e.g. <code>prosti-analytics</code>), or <code>&lt;slug&gt;-analytics</code> without a login prefix. The startup log names the one in use.</p>
 <ul>
   <li><strong>Aggregator.</strong> Runs inside the app every 60 seconds. With several instances, a lease in CouchDB makes sure only one aggregates. An instance that is killed hard can hold the lease for up to three minutes.</li>
   <li><strong>Retention.</strong> Whole monthly raw databases are dropped once they are older than <code>analytics_raw_retention_months</code>.</li>
@@ -364,7 +365,7 @@ const onSignup = () =&gt; analytics.trackEvent("signup", { plan: "pro" });
   <li><strong>CouchDB outages.</strong> Hits are buffered in memory (up to 20,000) and retried with backoff, from 2 up to 30 seconds. They are written once CouchDB answers again. Every CouchDB call times out (15 s, or 60 s for scans and bulk writes), so a stalled CouchDB never hangs requests. If <code>_config</code> can't be read, the last settings that loaded stay in use. If none have loaded since the server started, nothing is stored or deleted until they can be read. <em>Settings → Engine</em> shows both states.</li>
   <li><strong>Request size.</strong> <code>/api/stats</code> accepts bodies up to 32 KB and the APIs up to 64 KB (the import, 50 MB). Larger requests get 413 before they are fully read.</li>
   <li><strong>Capacity.</strong> Today's hits are kept in memory for aggregation. Plan for roughly 100–200k hits per day per app.</li>
-  <li><strong>Backups.</strong> Back up <code>analytics_&lt;slug&gt;</code>. Raw month databases replicate like any CouchDB database.</li>
+  <li><strong>Backups.</strong> Back up <code>&lt;db&gt;</code>. Raw month databases replicate like any CouchDB database.</li>
 </ul>
 
 <h2 id="trouble">Troubleshooting</h2>

@@ -17,7 +17,8 @@ async function initializeAnalyticsLayer(): Promise<void> {
       return;
     }
     const db = await ensureMainDb(engine);
-    console.info(`[analytics] storage: ${db} (+ ${db}_raw_<yyyy>_<mm>)`);
+    const source = { config: "analytics_db_prefix", legacy: "existing legacy database", default: "default" }[engine.dbPrefixSource];
+    console.info(`[analytics] storage: ${db} (+ ${db}_raw_<yyyy>_<mm>; ${source})`);
     const site = await ensureAppSite(engine);
     console.info(`[analytics] website: ${site.id} (${site.domains.join(", ") || "any hostname"}, ${site.timezone})`);
   } catch (error) {

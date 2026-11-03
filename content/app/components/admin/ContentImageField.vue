@@ -446,6 +446,7 @@ import type {
     ImageKitUploadResult,
 } from "#imagekit/utils/imagekit";
 import { useImageKit } from "#imagekit/composables/useImageKit";
+import { useImageKitPublicConfig } from "#imagekit/composables/useImageKitPublicConfig";
 import {
     extractImageKitTransformations,
     mergeImageKitTransformations,
@@ -512,6 +513,7 @@ const emit = defineEmits<{
 }>();
 
 const runtimeConfig = useRuntimeConfig();
+const { config: imageKitPublicConfig } = useImageKitPublicConfig();
 const { uploadImage, getImageList } = useImageKit();
 const requestFetch = useRequestFetch();
 
@@ -555,7 +557,7 @@ const normalizeFolderName = (value?: string | null) => {
 };
 
 const defaultFolder = computed(() => {
-    const publicFolder = normalizeFolderName(runtimeConfig.public?.imagekit?.folder);
+    const publicFolder = normalizeFolderName(imageKitPublicConfig.value?.folder ?? runtimeConfig.public?.imagekit?.folder);
     const serverFolder =
         import.meta.server &&
         normalizeFolderName((runtimeConfig as Record<string, any>)?.imagekit?.folder);
@@ -578,7 +580,7 @@ const placeholder = computed(
 );
 
 const urlEndpoint = computed(
-    () => runtimeConfig.public?.imagekit?.urlEndpoint || "",
+    () => imageKitPublicConfig.value?.urlEndpoint || runtimeConfig.public?.imagekit?.urlEndpoint || "",
 );
 
 const isLocalLibrary = computed(() => libraryMode.value === "local");
@@ -890,7 +892,7 @@ function buildPreviewUrl(
         return filePath;
     }
 
-    if (!urlEndpoint.value && isImageKitPath(filePath)) {
+    if (!urlEndpoint.value && !/^https?:\/\//i.test(filePath) && isImageKitPath(filePath)) {
         return "";
     }
 

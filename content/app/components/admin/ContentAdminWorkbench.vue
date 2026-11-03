@@ -295,6 +295,7 @@ const hasActiveLocaleStagedDocument = computed(
 
 type BuilderWorkbenchInstance = ComponentPublicInstance<{
     getSerializedDocument: () => MinimalContentDocument;
+    commitPendingMetadata: () => boolean;
     loadDocument: (doc: MinimalContentDocument | null) => void;
     discardFocusedEditForReload: () => void;
     focusNodeProp: (payload: {
@@ -3111,6 +3112,10 @@ async function handleSaveDocument(): Promise<void> {
     try {
         isSavePending.value = true;
         saveError.value = null;
+
+        if (!builder.commitPendingMetadata()) {
+            throw new Error("Review the page metadata validation errors before saving.");
+        }
 
         const serialized = builder.getSerializedDocument();
         const contentDocument = minimalToContentDocument(serialized);
